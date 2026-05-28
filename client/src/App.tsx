@@ -7,6 +7,8 @@ import type { User } from '@tournament-predictor/shared';
 import HomePage from '@/pages/HomePage';
 import LoginPage from '@/pages/LoginPage';
 import RegisterPage from '@/pages/RegisterPage';
+import TournamentsPage from '@/pages/TournamentsPage';
+import TournamentDetailPage from '@/pages/TournamentDetailPage';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuthStore();
@@ -37,6 +39,22 @@ export default function App() {
         element={
           <PrivateRoute>
             <HomePage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/tournaments"
+        element={
+          <PrivateRoute>
+            <TournamentsPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/tournaments/:id"
+        element={
+          <PrivateRoute>
+            <TournamentDetailPage />
           </PrivateRoute>
         }
       />

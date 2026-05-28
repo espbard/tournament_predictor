@@ -385,6 +385,7 @@ CLIENT_URL=http://localhost:5173   # Only used in dev for CORS
 - [ ] Initial scaffold
 - [ ] DB schema + Drizzle migrations
 - [ ] Auth — register, login, session middleware
+- [ ] Tournament CRUD — create tournament, add teams and matches (admin only)
 
 ### In Progress
 -
@@ -399,10 +400,10 @@ CLIENT_URL=http://localhost:5173   # Only used in dev for CORS
 [UPDATE AS YOU BUILD — or keep this in a separate TODO.md and paste it here]
 
 ### Next Session
-1. Tournament CRUD — create tournament, add teams and matches (admin only)
+1. Add icons/profile pictures to teams, tournaments and users. 
 
 ### Backlog (in order)
-1. Tournament CRUD — create tournament, add teams and matches (admin only)
+1. Add two landing pages, one for normal users and one for admins. Add a nav bar with logout button and option to swap between normal landing page and admin landing page (admin should open on normal landing page).
 2. Competitions — create, join via link, member list
 3. Predictions UI — match score form, deadline enforcement
 4. Scoring engine — pure function + Vitest unit tests
