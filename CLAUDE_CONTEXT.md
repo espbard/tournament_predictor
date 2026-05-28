@@ -35,39 +35,64 @@ A web application for predicting sports tournament outcomes. Used by a small pri
 
 ## Repository Structure
 
-[UPDATE AS YOU BUILD — paste output of `tree /F` here]
-.gitignore
-CLAUDE_CONTEXT.md
-README.md
+[UPDATE AS YOU BUILD — paste output of `eza --tree --git-ignore -L 4` here]
 
 ```
-/
-├── client/                  # React + Vite frontend
-│   ├── src/
-│   │   ├── components/      # Shared UI components
-│   │   ├── pages/           # Route-level page components
-│   │   ├── lib/             # API client, query hooks, utils
-│   │   ├── store/           # Zustand stores
-│   │   └── main.tsx
+.
+├── CLAUDE_CONTEXT.md
+├── client
+│   ├── components.json
 │   ├── index.html
+│   ├── package.json
+│   ├── postcss.config.js
+│   ├── src
+│   │   ├── App.tsx
+│   │   ├── components
+│   │   ├── index.css
+│   │   ├── lib
+│   │   │   ├── api.ts
+│   │   │   └── utils.ts
+│   │   ├── main.tsx
+│   │   ├── pages
+│   │   │   ├── HomePage.tsx
+│   │   │   ├── LoginPage.tsx
+│   │   │   └── RegisterPage.tsx
+│   │   └── store
+│   │       └── authStore.ts
+│   ├── tailwind.config.js
+│   ├── tsconfig.json
 │   └── vite.config.ts
-├── server/                  # Express backend
-│   ├── src/
-│   │   ├── db/              # Drizzle schema, migrations, client
-│   │   ├── routes/          # Express routers (one file per domain)
-│   │   ├── middleware/      # Auth, error handling, validation
-│   │   ├── lib/             # Scoring engine, helpers
-│   │   └── index.ts         # Express entry point
+├── package-lock.json
+├── package.json
+├── railway.toml
+├── README.md
+├── server
+│   ├── drizzle
+│   │   ├── 0000_amazing_killmonger.sql
+│   │   └── meta
+│   │       └── 0000_snapshot.json
+│   ├── drizzle.config.ts
+│   ├── package.json
+│   ├── src
+│   │   ├── db
+│   │   │   ├── client.ts
+│   │   │   ├── migrate.ts
+│   │   │   └── schema.ts
+│   │   ├── index.ts
+│   │   ├── lib
+│   │   │   └── scoring.ts
+│   │   ├── middleware
+│   │   │   └── auth.ts
+│   │   └── routes
+│   │       └── auth.ts
 │   └── tsconfig.json
-├── shared/                  # Shared TypeScript types and Zod schemas
-│   └── src/
-│       ├── types.ts
-│       └── schemas.ts
-├── CLAUDE_CONTEXT.md        # This file
-├── TODO.md                  # Current task list (see below)
-├── package.json             # Root — npm workspaces
-├── railway.toml             # Railway deploy config
-└── .env.example
+└── shared
+    ├── package.json
+    └── src
+        ├── index.ts
+        ├── schemas.ts
+        └── types.ts
+
 ```
 
 ---
@@ -77,7 +102,166 @@ README.md
 [UPDATE AS YOU BUILD — paste your current Drizzle schema file(s) here]
 
 ```typescript
-// server/src/db/schema.ts — paste current schema here after first session
+import {
+  pgTable,
+  pgEnum,
+  text,
+  timestamp,
+  boolean,
+  integer,
+  json,
+} from 'drizzle-orm/pg-core';
+import { relations } from 'drizzle-orm';
+import type { ScoringConfig } from '@tournament-predictor/shared';
+
+// ── Enums ─────────────────────────────────────────────────────────────────────
+
+export const tournamentStatusEnum = pgEnum('tournament_status', [
+  'upcoming',
+  'active',
+  'completed',
+]);
+
+export const matchStageEnum = pgEnum('match_stage', [
+  'group',
+  'round_of_16',
+  'quarter_final',
+  'semi_final',
+  'final',
+]);
+
+export const matchStatusEnum = pgEnum('match_status', ['scheduled', 'completed']);
+
+// ── Tables ────────────────────────────────────────────────────────────────────
+
+export const users = pgTable('users', {
+  id: text('id').primaryKey(),
+  username: text('username').notNull().unique(),
+  hashedPassword: text('hashed_password').notNull(),
+  isAdmin: boolean('is_admin').notNull().default(false),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+// Lucia v3 sessions table
+export const sessions = pgTable('sessions', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id),
+  expiresAt: timestamp('expires_at', {
+    withTimezone: true,
+    mode: 'date',
+  }).notNull(),
+});
+
+export const tournaments = pgTable('tournaments', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  status: tournamentStatusEnum('status').notNull().default('upcoming'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+export const teams = pgTable('teams', {
+  id: text('id').primaryKey(),
+  tournamentId: text('tournament_id')
+    .notNull()
+    .references(() => tournaments.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  group: text('group'),
+});
+
+export const matches = pgTable('matches', {
+  id: text('id').primaryKey(),
+  tournamentId: text('tournament_id')
+    .notNull()
+    .references(() => tournaments.id, { onDelete: 'cascade' }),
+  homeTeamId: text('home_team_id').references(() => teams.id),
+  awayTeamId: text('away_team_id').references(() => teams.id),
+  stage: matchStageEnum('stage').notNull(),
+  scheduledAt: timestamp('scheduled_at'),
+  status: matchStatusEnum('status').notNull().default('scheduled'),
+  homeScore: integer('home_score'),
+  awayScore: integer('away_score'),
+});
+
+export const competitions = pgTable('competitions', {
+  id: text('id').primaryKey(),
+  tournamentId: text('tournament_id')
+    .notNull()
+    .references(() => tournaments.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  inviteCode: text('invite_code').notNull().unique(),
+  scoringConfig: json('scoring_config').notNull().$type<ScoringConfig>(),
+  predictionDeadline: timestamp('prediction_deadline'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+export const competitionMembers = pgTable('competition_members', {
+  competitionId: text('competition_id')
+    .notNull()
+    .references(() => competitions.id, { onDelete: 'cascade' }),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  joinedAt: timestamp('joined_at').notNull().defaultNow(),
+});
+
+export const predictions = pgTable('predictions', {
+  id: text('id').primaryKey(),
+  competitionId: text('competition_id')
+    .notNull()
+    .references(() => competitions.id, { onDelete: 'cascade' }),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  matchId: text('match_id')
+    .notNull()
+    .references(() => matches.id, { onDelete: 'cascade' }),
+  homeScore: integer('home_score').notNull(),
+  awayScore: integer('away_score').notNull(),
+  // For knockout draws: which team the user thinks will progress from ET/pens
+  progressingTeamId: text('progressing_team_id').references(() => teams.id),
+  points: integer('points'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+// ── Relations ─────────────────────────────────────────────────────────────────
+
+export const usersRelations = relations(users, ({ many }) => ({
+  sessions: many(sessions),
+  competitionMembers: many(competitionMembers),
+  predictions: many(predictions),
+}));
+
+export const tournamentsRelations = relations(tournaments, ({ many }) => ({
+  teams: many(teams),
+  matches: many(matches),
+  competitions: many(competitions),
+}));
+
+export const matchesRelations = relations(matches, ({ one }) => ({
+  tournament: one(tournaments, {
+    fields: [matches.tournamentId],
+    references: [tournaments.id],
+  }),
+  homeTeam: one(teams, {
+    fields: [matches.homeTeamId],
+    references: [teams.id],
+  }),
+  awayTeam: one(teams, {
+    fields: [matches.awayTeamId],
+    references: [teams.id],
+  }),
+}));
+
+export const competitionsRelations = relations(competitions, ({ one, many }) => ({
+  tournament: one(tournaments, {
+    fields: [competitions.tournamentId],
+    references: [tournaments.id],
+  }),
+  members: many(competitionMembers),
+  predictions: many(predictions),
+}));
 ```
 
 Key tables:
@@ -198,10 +382,12 @@ CLIENT_URL=http://localhost:5173   # Only used in dev for CORS
 [UPDATE AS YOU BUILD]
 
 ### Completed
-- [ ] Nothing yet — project not started
+- [ ] Initial scaffold
+- [ ] DB schema + Drizzle migrations
+- [ ] Auth — register, login, session middleware
 
 ### In Progress
-- [ ] Initial scaffold
+-
 
 ### Known Issues / Tech Debt
 - None yet
@@ -213,21 +399,18 @@ CLIENT_URL=http://localhost:5173   # Only used in dev for CORS
 [UPDATE AS YOU BUILD — or keep this in a separate TODO.md and paste it here]
 
 ### Next Session
-1. Generate full project scaffold (see "First Prompt" below)
+1. Tournament CRUD — create tournament, add teams and matches (admin only)
 
 ### Backlog (in order)
-1. Project scaffold — folder structure, configs, Railway setup
-2. DB schema + Drizzle migrations
-3. Auth — register, login, session middleware
-4. Tournament CRUD — create tournament, add teams and matches (admin only)
-5. Competitions — create, join via link, member list
-6. Predictions UI — match score form, deadline enforcement
-7. Scoring engine — pure function + Vitest unit tests
-8. Score calculation trigger — admin marks match complete → points calculated
-9. Leaderboard — ranked view per competition
-10. Group stage predictions
-11. Knockout bracket predictions
-12. Polish — UI improvements, mobile layout
+1. Tournament CRUD — create tournament, add teams and matches (admin only)
+2. Competitions — create, join via link, member list
+3. Predictions UI — match score form, deadline enforcement
+4. Scoring engine — pure function + Vitest unit tests
+5. Score calculation trigger — admin marks match complete → points calculated
+6. Leaderboard — ranked view per competition
+7. Group stage predictions
+8. Knockout bracket predictions
+9. Polish — UI improvements, mobile layout
 
 ---
 

@@ -27,6 +27,14 @@ A web app for predicting sports tournament outcomes. Small private groups compet
 npm install
 ```
 
+Install eza (only required if updating CLAUDE_CONTEXT.md Repository Structure):
+
+```powershell
+winget install eza-community.eza
+eza --tree --git-ignore
+eza --tree --git-ignore -L 4   # limit depth
+```
+
 ### 2. Configure environment
 
 ```bash
