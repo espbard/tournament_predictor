@@ -1,0 +1,40 @@
+{
+  "name": "@tournament-predictor/server",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "tsx --env-file=../.env watch src/index.ts",
+    "build": "tsup",
+    "start": "node dist/index.js",
+    "db:generate": "drizzle-kit --env-file=../.env generate",
+    "db:migrate": "tsx --env-file=../.env src/db/migrate.ts"
+  },
+  "tsup": {
+    "entry": ["src/index.ts"],
+    "format": ["cjs"],
+    "target": "node20",
+    "clean": true,
+    "sourcemap": true
+  },
+  "dependencies": {
+    "@tournament-predictor/shared": "*",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "drizzle-orm": "^0.45.2",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "lucia": "^3.2.0",
+    "@lucia-auth/adapter-drizzle": "^1.1.0",
+    "postgres": "^3.4.4",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.0",
+    "drizzle-kit": "^0.30.0",
+    "tsup": "^8.1.0",
+    "tsx": "^4.15.2",
+    "typescript": "^5.4.5"
+  }
+}
