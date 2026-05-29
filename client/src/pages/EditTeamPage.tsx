@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import ImageUpload from '@/components/ImageUpload';
-import type { Team } from '@tournament-predictor/shared';
+import type { Team, Group } from '@tournament-predictor/shared';
 
 export default function EditTeamPage() {
   const { teamId } = useParams<{ teamId: string }>();
@@ -16,13 +16,21 @@ export default function EditTeamPage() {
     enabled: !!teamId,
   });
 
+  const { data: groupList = [] } = useQuery({
+    queryKey: ['groups', team?.tournamentId],
+    queryFn: () => api.get<Group[]>(`/tournaments/${team!.tournamentId}/groups`),
+    enabled: !!team?.tournamentId,
+  });
+
   const [name, setName] = useState('');
+  const [groupId, setGroupId] = useState<string>('');
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [initialized, setInitialized] = useState(false);
 
   if (team && !initialized) {
     setName(team.name);
+    setGroupId(team.groupId ?? '');
     setImageUrl(team.imageUrl ?? null);
     setInitialized(true);
   }
@@ -31,6 +39,7 @@ export default function EditTeamPage() {
     mutationFn: () =>
       api.patch<Team>(`/teams/${teamId}`, {
         name: name.trim(),
+        groupId: groupId || null,
         imageUrl,
       }),
     onSuccess: updated => {
@@ -73,6 +82,23 @@ export default function EditTeamPage() {
             required
             maxLength={100}
           />
+        </div>
+
+        <div>
+          <label className="mb-1 block text-sm font-medium" htmlFor="group">
+            Group
+          </label>
+          <select
+            id="group"
+            value={groupId}
+            onChange={e => setGroupId(e.target.value)}
+            className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+          >
+            <option value="">Uncategorized</option>
+            {groupList.map(g => (
+              <option key={g.id} value={g.id}>{g.name}</option>
+            ))}
+          </select>
         </div>
 
         <div>

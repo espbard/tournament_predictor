@@ -1,10 +1,19 @@
 import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  DndContext,
+  DragOverlay,
+  useDraggable,
+  useDroppable,
+  type DragEndEvent,
+  type DragStartEvent,
+} from '@dnd-kit/core';
+import { CSS } from '@dnd-kit/utilities';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import ImageUpload from '@/components/ImageUpload';
-import type { Tournament, Team, Match, MatchStage } from '@tournament-predictor/shared';
+import type { Tournament, Team, Match, MatchStage, Group } from '@tournament-predictor/shared';
 
 type MatchWithTeams = Match & {
   homeTeamName: string | null;
@@ -27,6 +36,88 @@ const STATUS_COLORS: Record<Tournament['status'], string> = {
   completed: 'bg-gray-100 text-gray-600',
 };
 
+// ── DnD sub-components ────────────────────────────────────────────────────────
+
+function TeamChip({ team, ghost }: { team: Team; ghost?: boolean }) {
+  return (
+    <div
+      className={`flex items-center gap-2 rounded-md border bg-white px-2.5 py-1.5 text-sm shadow-sm ${
+        ghost ? 'opacity-40' : ''
+      }`}
+    >
+      {team.imageUrl ? (
+        <img src={team.imageUrl} alt={team.name} className="h-5 w-5 rounded-sm object-cover" />
+      ) : (
+        <span className="h-5 w-5 rounded-sm bg-gray-100 inline-block flex-shrink-0" />
+      )}
+      <span className="truncate">{team.name}</span>
+    </div>
+  );
+}
+
+function DraggableTeamChip({ team }: { team: Team }) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: team.id,
+    data: { team },
+  });
+  const style = transform
+    ? { transform: CSS.Translate.toString(transform) }
+    : undefined;
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...listeners}
+      {...attributes}
+      className="cursor-grab touch-none active:cursor-grabbing"
+    >
+      <TeamChip team={team} ghost={isDragging} />
+    </div>
+  );
+}
+
+function DroppableZone({
+  id,
+  label,
+  teams,
+  onDelete,
+}: {
+  id: string;
+  label: string;
+  teams: Team[];
+  onDelete?: () => void;
+}) {
+  const { isOver, setNodeRef } = useDroppable({ id });
+  return (
+    <div
+      ref={setNodeRef}
+      className={`flex min-h-32 w-44 flex-shrink-0 flex-col rounded-lg border-2 transition-colors ${
+        isOver ? 'border-primary bg-primary/5' : 'border-gray-200 bg-gray-50'
+      }`}
+    >
+      <div className="flex items-center justify-between px-3 py-2">
+        <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+          {label}
+        </span>
+        {onDelete && (
+          <button
+            type="button"
+            onClick={onDelete}
+            className="text-xs text-red-400 hover:text-red-600"
+          >
+            ✕
+          </button>
+        )}
+      </div>
+      <div className="flex flex-1 flex-col gap-1.5 px-2 pb-2">
+        {teams.map(team => (
+          <DraggableTeamChip key={team.id} team={team} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function TeamBadge({ name, imageUrl }: { name: string | null; imageUrl?: string | null }) {
   return (
     <span className="flex items-center gap-1.5">
@@ -40,6 +131,8 @@ function TeamBadge({ name, imageUrl }: { name: string | null; imageUrl?: string 
   );
 }
 
+// ── Main page ─────────────────────────────────────────────────────────────────
+
 export default function TournamentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuthStore();
@@ -49,9 +142,14 @@ export default function TournamentDetailPage() {
   const [showAddTeam, setShowAddTeam] = useState(false);
   const [showAddMatch, setShowAddMatch] = useState(false);
   const [scoreMatchId, setScoreMatchId] = useState<string | null>(null);
+  const [activeTeamId, setActiveTeamId] = useState<string | null>(null);
+
+  const [showAddGroup, setShowAddGroup] = useState(false);
+  const [groupName, setGroupName] = useState('');
+  const [addGroupError, setAddGroupError] = useState('');
 
   const [teamName, setTeamName] = useState('');
-  const [teamGroup, setTeamGroup] = useState('');
+  const [teamGroupId, setTeamGroupId] = useState('');
   const [teamImageUrl, setTeamImageUrl] = useState<string | null>(null);
   const [matchHomeTeamId, setMatchHomeTeamId] = useState('');
   const [matchAwayTeamId, setMatchAwayTeamId] = useState('');
@@ -76,10 +174,67 @@ export default function TournamentDetailPage() {
     enabled: !!id,
   });
 
+  const { data: groupList = [] } = useQuery({
+    queryKey: ['groups', id],
+    queryFn: () => api.get<Group[]>(`/tournaments/${id}/groups`),
+    enabled: !!id,
+  });
+
   const { data: matchList = [] } = useQuery({
     queryKey: ['matches', id],
     queryFn: () => api.get<MatchWithTeams[]>(`/tournaments/${id}/matches`),
     enabled: !!id,
+  });
+
+  const groupMap = new Map(groupList.map(g => [g.id, g]));
+
+  // Partition teams into groups + uncategorized
+  const teamsByGroup = new Map<string | null, Team[]>();
+  teamsByGroup.set(null, []);
+  for (const g of groupList) teamsByGroup.set(g.id, []);
+  for (const t of teams) {
+    const key = t.groupId ?? null;
+    if (!teamsByGroup.has(key)) teamsByGroup.set(key, []);
+    teamsByGroup.get(key)!.push(t);
+  }
+  // Sort teams within each bucket by name
+  for (const bucket of teamsByGroup.values()) {
+    bucket.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  const activeTeam = activeTeamId ? teams.find(t => t.id === activeTeamId) : null;
+
+  // ── Mutations ───────────────────────────────────────────────────────────────
+
+  const addGroupMutation = useMutation({
+    mutationFn: (data: { name: string }) =>
+      api.post<Group>(`/tournaments/${id}/groups`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['groups', id] });
+      setGroupName('');
+      setShowAddGroup(false);
+      setAddGroupError('');
+    },
+    onError: (err: any) => setAddGroupError(err.message),
+  });
+
+  const deleteGroupMutation = useMutation({
+    mutationFn: (groupId: string) =>
+      api.delete<Group>(`/tournaments/${id}/groups/${groupId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['groups', id] });
+      queryClient.invalidateQueries({ queryKey: ['teams', id] });
+    },
+  });
+
+  const assignGroupMutation = useMutation({
+    mutationFn: ({ teamId, groupId }: { teamId: string; groupId: string | null }) =>
+      api.patch<Team>(`/teams/${teamId}`, { groupId }),
+    onSuccess: updated => {
+      queryClient.setQueryData<Team[]>(['teams', id], prev =>
+        prev?.map(t => (t.id === updated.id ? updated : t)) ?? []
+      );
+    },
   });
 
   const updateStatusMutation = useMutation({
@@ -89,12 +244,12 @@ export default function TournamentDetailPage() {
   });
 
   const addTeamMutation = useMutation({
-    mutationFn: (data: { name: string; group?: string; imageUrl: string | null }) =>
+    mutationFn: (data: { name: string; groupId?: string | null; imageUrl: string | null }) =>
       api.post<Team>(`/tournaments/${id}/teams`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['teams', id] });
       setTeamName('');
-      setTeamGroup('');
+      setTeamGroupId('');
       setTeamImageUrl(null);
       setShowAddTeam(false);
       setAddTeamError('');
@@ -117,15 +272,8 @@ export default function TournamentDetailPage() {
   });
 
   const updateScoreMutation = useMutation({
-    mutationFn: ({
-      matchId,
-      home,
-      away,
-    }: {
-      matchId: string;
-      home: number;
-      away: number;
-    }) => api.patch<Match>(`/matches/${matchId}`, { homeScore: home, awayScore: away }),
+    mutationFn: ({ matchId, home, away }: { matchId: string; home: number; away: number }) =>
+      api.patch<Match>(`/matches/${matchId}`, { homeScore: home, awayScore: away }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['matches', id] });
       setScoreMatchId(null);
@@ -136,9 +284,34 @@ export default function TournamentDetailPage() {
     onError: (err: any) => setScoreError(err.message),
   });
 
+  // ── DnD handlers ────────────────────────────────────────────────────────────
+
+  function handleDragStart(event: DragStartEvent) {
+    setActiveTeamId(String(event.active.id));
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    setActiveTeamId(null);
+    const { active, over } = event;
+    if (!over) return;
+    const teamId = String(active.id);
+    const destId = String(over.id);
+    const destGroupId = destId === 'uncategorized' ? null : destId;
+    const team = teams.find(t => t.id === teamId);
+    if (!team || team.groupId === destGroupId) return;
+    assignGroupMutation.mutate({ teamId, groupId: destGroupId });
+  }
+
+  // ── Event handlers ───────────────────────────────────────────────────────────
+
+  function handleAddGroup(e: React.FormEvent) {
+    e.preventDefault();
+    addGroupMutation.mutate({ name: groupName.trim() });
+  }
+
   function handleAddTeam(e: React.FormEvent) {
     e.preventDefault();
-    addTeamMutation.mutate({ name: teamName, group: teamGroup || undefined, imageUrl: teamImageUrl });
+    addTeamMutation.mutate({ name: teamName, groupId: teamGroupId || null, imageUrl: teamImageUrl });
   }
 
   function handleAddMatch(e: React.FormEvent) {
@@ -175,15 +348,16 @@ export default function TournamentDetailPage() {
     return <div className="p-8 text-sm">Tournament not found.</div>;
   }
 
+  // Sorted teams for the non-admin list view
   const sortedTeams = [...teams].sort((a, b) => {
-    const ga = a.group ?? '';
-    const gb = b.group ?? '';
+    const ga = a.groupId ? (groupMap.get(a.groupId)?.name ?? '') : '￿';
+    const gb = b.groupId ? (groupMap.get(b.groupId)?.name ?? '') : '￿';
     if (ga !== gb) return ga.localeCompare(gb);
     return a.name.localeCompare(b.name);
   });
 
   return (
-    <main className="mx-auto max-w-3xl px-4 py-8">
+    <main className="mx-auto max-w-4xl px-4 py-8">
       <Link
         to="/tournaments"
         className="mb-4 inline-block text-sm text-muted-foreground hover:text-foreground"
@@ -230,19 +404,67 @@ export default function TournamentDetailPage() {
 
       {/* Teams */}
       <section className="mb-8">
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
           <h2 className="text-lg font-semibold">Teams ({teams.length})</h2>
-          {isAdmin && !showAddTeam && (
-            <button
-              onClick={() => setShowAddTeam(true)}
-              className="rounded-md border px-3 py-1.5 text-sm hover:bg-gray-50"
-            >
-              Add Team
-            </button>
+          {isAdmin && (
+            <div className="ml-auto flex gap-2">
+              {!showAddGroup && (
+                <button
+                  onClick={() => setShowAddGroup(true)}
+                  className="rounded-md border px-3 py-1.5 text-sm hover:bg-gray-50"
+                >
+                  Add Group
+                </button>
+              )}
+              {!showAddTeam && (
+                <button
+                  onClick={() => setShowAddTeam(true)}
+                  className="rounded-md border px-3 py-1.5 text-sm hover:bg-gray-50"
+                >
+                  Add Team
+                </button>
+              )}
+            </div>
           )}
         </div>
 
-        {showAddTeam && (
+        {/* Add Group form */}
+        {isAdmin && showAddGroup && (
+          <form onSubmit={handleAddGroup} className="mb-4 rounded-lg border p-4">
+            <div className="mb-3 flex gap-2">
+              <input
+                type="text"
+                placeholder="Group name (e.g. A, B, Group A)"
+                value={groupName}
+                onChange={e => setGroupName(e.target.value)}
+                className="flex-1 rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                required
+                autoFocus
+                maxLength={20}
+              />
+            </div>
+            {addGroupError && <p className="mb-2 text-sm text-red-600">{addGroupError}</p>}
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                disabled={addGroupMutation.isPending}
+                className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              >
+                {addGroupMutation.isPending ? 'Adding…' : 'Add Group'}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowAddGroup(false); setGroupName(''); setAddGroupError(''); }}
+                className="rounded-md border px-3 py-1.5 text-sm hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* Add Team form */}
+        {isAdmin && showAddTeam && (
           <form onSubmit={handleAddTeam} className="mb-4 rounded-lg border p-4">
             <div className="mb-3 flex gap-2">
               <input
@@ -254,14 +476,16 @@ export default function TournamentDetailPage() {
                 required
                 autoFocus
               />
-              <input
-                type="text"
-                placeholder="Group (A, B, …)"
-                value={teamGroup}
-                onChange={e => setTeamGroup(e.target.value)}
-                className="w-32 rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                maxLength={10}
-              />
+              <select
+                value={teamGroupId}
+                onChange={e => setTeamGroupId(e.target.value)}
+                className="w-36 rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              >
+                <option value="">Uncategorized</option>
+                {groupList.map(g => (
+                  <option key={g.id} value={g.id}>{g.name}</option>
+                ))}
+              </select>
             </div>
             <div className="mb-3">
               <p className="mb-1 text-xs font-medium text-gray-600">Team icon (optional)</p>
@@ -279,17 +503,11 @@ export default function TournamentDetailPage() {
                 disabled={addTeamMutation.isPending}
                 className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
               >
-                {addTeamMutation.isPending ? 'Adding…' : 'Add'}
+                {addTeamMutation.isPending ? 'Adding…' : 'Add Team'}
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setShowAddTeam(false);
-                  setTeamName('');
-                  setTeamGroup('');
-                  setTeamImageUrl(null);
-                  setAddTeamError('');
-                }}
+                onClick={() => { setShowAddTeam(false); setTeamName(''); setTeamGroupId(''); setTeamImageUrl(null); setAddTeamError(''); }}
                 className="rounded-md border px-3 py-1.5 text-sm hover:bg-gray-50"
               >
                 Cancel
@@ -298,40 +516,57 @@ export default function TournamentDetailPage() {
           </form>
         )}
 
-        {sortedTeams.length === 0 ? (
+        {teams.length === 0 ? (
           <p className="text-sm text-muted-foreground">No teams added yet.</p>
+        ) : isAdmin ? (
+          /* Drag-and-drop board for admins */
+          <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+            <div className="flex flex-wrap gap-3">
+              <DroppableZone
+                id="uncategorized"
+                label="Uncategorized"
+                teams={teamsByGroup.get(null) ?? []}
+              />
+              {groupList.map(group => (
+                <DroppableZone
+                  key={group.id}
+                  id={group.id}
+                  label={group.name}
+                  teams={teamsByGroup.get(group.id) ?? []}
+                  onDelete={() => deleteGroupMutation.mutate(group.id)}
+                />
+              ))}
+            </div>
+            <DragOverlay dropAnimation={null}>
+              {activeTeam && <TeamChip team={activeTeam} />}
+            </DragOverlay>
+          </DndContext>
         ) : (
+          /* Simple grouped list for non-admins */
           <div className="divide-y rounded-lg border">
-            {sortedTeams.map(team => (
-              <div
-                key={team.id}
-                className="flex items-center justify-between px-4 py-2.5 text-sm"
-              >
-                <span className="flex items-center gap-2">
-                  {team.imageUrl ? (
-                    <img src={team.imageUrl} alt={team.name} className="h-6 w-6 rounded-sm object-cover" />
-                  ) : (
-                    <span className="h-6 w-6 rounded-sm bg-gray-100 inline-block" />
-                  )}
-                  {team.name}
-                </span>
-                <span className="flex items-center gap-2">
-                  {team.group && (
+            {sortedTeams.map(team => {
+              const gName = team.groupId ? (groupMap.get(team.groupId)?.name ?? null) : null;
+              return (
+                <div
+                  key={team.id}
+                  className="flex items-center justify-between px-4 py-2.5 text-sm"
+                >
+                  <span className="flex items-center gap-2">
+                    {team.imageUrl ? (
+                      <img src={team.imageUrl} alt={team.name} className="h-6 w-6 rounded-sm object-cover" />
+                    ) : (
+                      <span className="h-6 w-6 rounded-sm bg-gray-100 inline-block" />
+                    )}
+                    {team.name}
+                  </span>
+                  {gName && (
                     <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600">
-                      Group {team.group}
+                      Group {gName}
                     </span>
                   )}
-                  {isAdmin && (
-                    <Link
-                      to={`/teams/${team.id}/edit`}
-                      className="text-xs text-muted-foreground hover:text-foreground"
-                    >
-                      Edit
-                    </Link>
-                  )}
-                </span>
-              </div>
-            ))}
+                </div>
+              );
+            })}
           </div>
         )}
       </section>
@@ -362,9 +597,7 @@ export default function TournamentDetailPage() {
                 >
                   <option value="">TBD</option>
                   {teams.map(t => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
+                    <option key={t.id} value={t.id}>{t.name}</option>
                   ))}
                 </select>
               </div>
@@ -377,9 +610,7 @@ export default function TournamentDetailPage() {
                 >
                   <option value="">TBD</option>
                   {teams.map(t => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
+                    <option key={t.id} value={t.id}>{t.name}</option>
                   ))}
                 </select>
               </div>
@@ -392,9 +623,7 @@ export default function TournamentDetailPage() {
                   required
                 >
                   {(Object.entries(STAGE_LABELS) as [MatchStage, string][]).map(([val, label]) => (
-                    <option key={val} value={val}>
-                      {label}
-                    </option>
+                    <option key={val} value={val}>{label}</option>
                   ))}
                 </select>
               </div>
@@ -421,10 +650,7 @@ export default function TournamentDetailPage() {
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setShowAddMatch(false);
-                  setAddMatchError('');
-                }}
+                onClick={() => { setShowAddMatch(false); setAddMatchError(''); }}
                 className="rounded-md border px-3 py-1.5 text-sm hover:bg-gray-50"
               >
                 Cancel
@@ -479,10 +705,7 @@ export default function TournamentDetailPage() {
                 </div>
 
                 {scoreMatchId === match.id && (
-                  <form
-                    onSubmit={handleEnterScore}
-                    className="mt-3 flex flex-wrap items-center gap-2"
-                  >
+                  <form onSubmit={handleEnterScore} className="mt-3 flex flex-wrap items-center gap-2">
                     <input
                       type="number"
                       min="0"
@@ -513,10 +736,7 @@ export default function TournamentDetailPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        setScoreMatchId(null);
-                        setScoreError('');
-                      }}
+                      onClick={() => { setScoreMatchId(null); setScoreError(''); }}
                       className="rounded-md border px-3 py-1.5 text-xs hover:bg-gray-50"
                     >
                       Cancel

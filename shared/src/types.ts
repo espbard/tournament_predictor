@@ -13,11 +13,17 @@ export interface Tournament {
   createdAt: string;
 }
 
+export interface Group {
+  id: string;
+  tournamentId: string;
+  name: string;
+}
+
 export interface Team {
   id: string;
   tournamentId: string;
   name: string;
-  group: string | null;
+  groupId: string | null;
   imageUrl?: string | null;
 }
 

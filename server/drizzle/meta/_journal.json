@@ -15,6 +15,13 @@
       "when": 1779998705093,
       "tag": "0001_little_blizzard",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1780091218498,
+      "tag": "0002_easy_terrax",
+      "breakpoints": true
     }
   ]
 }

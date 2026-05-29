@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client';
-import { tournaments, teams, matches } from '../db/schema';
+import { tournaments, teams, matches, groups } from '../db/schema';
 import { requireAuth, requireAdmin } from '../middleware/auth';
 import {
   CreateTournamentSchema,
@@ -10,6 +10,7 @@ import {
   UpdateTeamSchema,
   CreateMatchSchema,
   UpdateMatchSchema,
+  CreateGroupSchema,
 } from '@tournament-predictor/shared';
 
 export const tournamentsRouter = Router();
@@ -92,7 +93,7 @@ tournamentsRouter.get('/:id/teams', requireAuth, async (req, res) => {
 
 tournamentsRouter.post('/:id/teams', requireAdmin, async (req, res) => {
   try {
-    const { name, group, imageUrl } = CreateTeamSchema.parse(req.body);
+    const { name, groupId, imageUrl } = CreateTeamSchema.parse(req.body);
     const [exists] = await db
       .select({ id: tournaments.id })
       .from(tournaments)
@@ -103,7 +104,7 @@ tournamentsRouter.post('/:id/teams', requireAdmin, async (req, res) => {
     const id = crypto.randomUUID();
     const [team] = await db
       .insert(teams)
-      .values({ id, tournamentId: req.params.id, name, group: group ?? null, imageUrl: imageUrl ?? null })
+      .values({ id, tournamentId: req.params.id, name, groupId: groupId ?? null, imageUrl: imageUrl ?? null })
       .returning();
     return res.status(201).json(team);
   } catch (err: any) {
@@ -175,6 +176,57 @@ tournamentsRouter.post('/:id/matches', requireAdmin, async (req, res) => {
     return res.status(201).json(match);
   } catch (err: any) {
     if (err?.name === 'ZodError') return res.status(400).json({ error: 'Invalid input', details: err.errors });
+    console.error(err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+tournamentsRouter.get('/:id/groups', requireAuth, async (req, res) => {
+  try {
+    const all = await db
+      .select()
+      .from(groups)
+      .where(eq(groups.tournamentId, req.params.id))
+      .orderBy(groups.name);
+    return res.json(all);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+tournamentsRouter.post('/:id/groups', requireAdmin, async (req, res) => {
+  try {
+    const { name } = CreateGroupSchema.parse(req.body);
+    const [exists] = await db
+      .select({ id: tournaments.id })
+      .from(tournaments)
+      .where(eq(tournaments.id, req.params.id))
+      .limit(1);
+    if (!exists) return res.status(404).json({ error: 'Tournament not found' });
+
+    const id = crypto.randomUUID();
+    const [group] = await db
+      .insert(groups)
+      .values({ id, tournamentId: req.params.id, name })
+      .returning();
+    return res.status(201).json(group);
+  } catch (err: any) {
+    if (err?.name === 'ZodError') return res.status(400).json({ error: 'Invalid input', details: err.errors });
+    console.error(err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+tournamentsRouter.delete('/:id/groups/:groupId', requireAdmin, async (req, res) => {
+  try {
+    const [deleted] = await db
+      .delete(groups)
+      .where(eq(groups.id, req.params.groupId))
+      .returning();
+    if (!deleted) return res.status(404).json({ error: 'Group not found' });
+    return res.json(deleted);
+  } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'Internal server error' });
   }

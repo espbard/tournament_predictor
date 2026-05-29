@@ -24,13 +24,18 @@ export const UpdateTournamentSchema = z.object({
 
 export const CreateTeamSchema = z.object({
   name: z.string().min(1).max(100),
-  group: z.string().max(10).optional(),
+  groupId: z.string().nullable().optional(),
   imageUrl: z.string().url().nullable().optional(),
 });
 
 export const UpdateTeamSchema = z.object({
   name: z.string().min(1).max(100).optional(),
+  groupId: z.string().nullable().optional(),
   imageUrl: z.string().url().nullable().optional(),
+});
+
+export const CreateGroupSchema = z.object({
+  name: z.string().min(1).max(20),
 });
 
 export const UpdateUserSchema = z.object({
@@ -68,6 +73,7 @@ export type CreateTournamentInput = z.infer<typeof CreateTournamentSchema>;
 export type UpdateTournamentInput = z.infer<typeof UpdateTournamentSchema>;
 export type CreateTeamInput = z.infer<typeof CreateTeamSchema>;
 export type UpdateTeamInput = z.infer<typeof UpdateTeamSchema>;
+export type CreateGroupInput = z.infer<typeof CreateGroupSchema>;
 export type UpdateUserInput = z.infer<typeof UpdateUserSchema>;
 export type CreateMatchInput = z.infer<typeof CreateMatchSchema>;
 export type UpdateMatchInput = z.infer<typeof UpdateMatchSchema>;

@@ -59,13 +59,21 @@ export const tournaments = pgTable('tournaments', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
+export const groups = pgTable('groups', {
+  id: text('id').primaryKey(),
+  tournamentId: text('tournament_id')
+    .notNull()
+    .references(() => tournaments.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+});
+
 export const teams = pgTable('teams', {
   id: text('id').primaryKey(),
   tournamentId: text('tournament_id')
     .notNull()
     .references(() => tournaments.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
-  group: text('group'),
+  groupId: text('group_id').references(() => groups.id, { onDelete: 'set null' }),
   imageUrl: text('image_url'),
 });
 
@@ -134,8 +142,17 @@ export const usersRelations = relations(users, ({ many }) => ({
 
 export const tournamentsRelations = relations(tournaments, ({ many }) => ({
   teams: many(teams),
+  groups: many(groups),
   matches: many(matches),
   competitions: many(competitions),
+}));
+
+export const groupsRelations = relations(groups, ({ one, many }) => ({
+  tournament: one(tournaments, {
+    fields: [groups.tournamentId],
+    references: [tournaments.id],
+  }),
+  teams: many(teams),
 }));
 
 export const matchesRelations = relations(matches, ({ one }) => ({
