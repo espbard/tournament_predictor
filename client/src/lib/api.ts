@@ -10,10 +10,11 @@ export class ApiError extends Error {
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const isFormData = body instanceof FormData;
   const res = await fetch(`/api${path}`, {
     method,
-    headers: body ? { 'Content-Type': 'application/json' } : {},
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    headers: isFormData ? undefined : (body ? { 'Content-Type': 'application/json' } : {}),
+    body: isFormData ? body : (body !== undefined ? JSON.stringify(body) : undefined),
     credentials: 'include',
   });
 
@@ -24,6 +25,14 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
+}
+
+export async function uploadFile(file: File, type: 'users' | 'tournaments' | 'teams'): Promise<string> {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('type', type);
+  const result = await request<{ url: string }>('POST', '/upload', form);
+  return result.url;
 }
 
 export const api = {

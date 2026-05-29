@@ -7,12 +7,14 @@ import {
   CreateTournamentSchema,
   UpdateTournamentSchema,
   CreateTeamSchema,
+  UpdateTeamSchema,
   CreateMatchSchema,
   UpdateMatchSchema,
 } from '@tournament-predictor/shared';
 
 export const tournamentsRouter = Router();
 export const matchesRouter = Router();
+export const teamsRouter = Router();
 
 tournamentsRouter.get('/', requireAuth, async (_req, res) => {
   try {
@@ -26,9 +28,12 @@ tournamentsRouter.get('/', requireAuth, async (_req, res) => {
 
 tournamentsRouter.post('/', requireAdmin, async (req, res) => {
   try {
-    const { name } = CreateTournamentSchema.parse(req.body);
+    const { name, imageUrl } = CreateTournamentSchema.parse(req.body);
     const id = crypto.randomUUID();
-    const [tournament] = await db.insert(tournaments).values({ id, name }).returning();
+    const [tournament] = await db
+      .insert(tournaments)
+      .values({ id, name, imageUrl: imageUrl ?? null })
+      .returning();
     return res.status(201).json(tournament);
   } catch (err: any) {
     if (err?.name === 'ZodError') return res.status(400).json({ error: 'Invalid input', details: err.errors });
@@ -87,7 +92,7 @@ tournamentsRouter.get('/:id/teams', requireAuth, async (req, res) => {
 
 tournamentsRouter.post('/:id/teams', requireAdmin, async (req, res) => {
   try {
-    const { name, group } = CreateTeamSchema.parse(req.body);
+    const { name, group, imageUrl } = CreateTeamSchema.parse(req.body);
     const [exists] = await db
       .select({ id: tournaments.id })
       .from(tournaments)
@@ -98,7 +103,7 @@ tournamentsRouter.post('/:id/teams', requireAdmin, async (req, res) => {
     const id = crypto.randomUUID();
     const [team] = await db
       .insert(teams)
-      .values({ id, tournamentId: req.params.id, name, group: group ?? null })
+      .values({ id, tournamentId: req.params.id, name, group: group ?? null, imageUrl: imageUrl ?? null })
       .returning();
     return res.status(201).json(team);
   } catch (err: any) {
@@ -128,13 +133,15 @@ tournamentsRouter.get('/:id/matches', requireAuth, async (req, res) => {
         ? await db.select().from(teams).where(inArray(teams.id, teamIds))
         : [];
 
-    const teamMap = new Map(teamRows.map(t => [t.id, t.name]));
+    const teamMap = new Map(teamRows.map(t => [t.id, { name: t.name, imageUrl: t.imageUrl }]));
 
     return res.json(
       matchRows.map(m => ({
         ...m,
-        homeTeamName: m.homeTeamId ? (teamMap.get(m.homeTeamId) ?? null) : null,
-        awayTeamName: m.awayTeamId ? (teamMap.get(m.awayTeamId) ?? null) : null,
+        homeTeamName: m.homeTeamId ? (teamMap.get(m.homeTeamId)?.name ?? null) : null,
+        awayTeamName: m.awayTeamId ? (teamMap.get(m.awayTeamId)?.name ?? null) : null,
+        homeTeamImageUrl: m.homeTeamId ? (teamMap.get(m.homeTeamId)?.imageUrl ?? null) : null,
+        awayTeamImageUrl: m.awayTeamId ? (teamMap.get(m.awayTeamId)?.imageUrl ?? null) : null,
       }))
     );
   } catch (err) {
@@ -182,6 +189,41 @@ matchesRouter.patch('/:id', requireAdmin, async (req, res) => {
       .where(eq(matches.id, req.params.id))
       .returning();
     if (!updated) return res.status(404).json({ error: 'Match not found' });
+    return res.json(updated);
+  } catch (err: any) {
+    if (err?.name === 'ZodError') return res.status(400).json({ error: 'Invalid input', details: err.errors });
+    console.error(err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+teamsRouter.get('/:id', requireAuth, async (req, res) => {
+  try {
+    const [team] = await db
+      .select()
+      .from(teams)
+      .where(eq(teams.id, req.params.id))
+      .limit(1);
+    if (!team) return res.status(404).json({ error: 'Team not found' });
+    return res.json(team);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+teamsRouter.patch('/:id', requireAdmin, async (req, res) => {
+  try {
+    const updates = UpdateTeamSchema.parse(req.body);
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+    const [updated] = await db
+      .update(teams)
+      .set(updates)
+      .where(eq(teams.id, req.params.id))
+      .returning();
+    if (!updated) return res.status(404).json({ error: 'Team not found' });
     return res.json(updated);
   } catch (err: any) {
     if (err?.name === 'ZodError') return res.status(400).json({ error: 'Invalid input', details: err.errors });

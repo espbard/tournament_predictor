@@ -4,16 +4,29 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import type { User } from '@tournament-predictor/shared';
+import AppLayout from '@/components/AppLayout';
 import HomePage from '@/pages/HomePage';
+import AdminHomePage from '@/pages/AdminHomePage';
 import LoginPage from '@/pages/LoginPage';
 import RegisterPage from '@/pages/RegisterPage';
 import TournamentsPage from '@/pages/TournamentsPage';
 import TournamentDetailPage from '@/pages/TournamentDetailPage';
+import EditUserPage from '@/pages/EditUserPage';
+import EditTournamentPage from '@/pages/EditTournamentPage';
+import EditTeamPage from '@/pages/EditTeamPage';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuthStore();
   if (isLoading) return null;
-  return user ? <>{children}</> : <Navigate to="/login" replace />;
+  return user ? <AppLayout>{children}</AppLayout> : <Navigate to="/login" replace />;
+}
+
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  const { user, isLoading } = useAuthStore();
+  if (isLoading) return null;
+  if (!user) return <Navigate to="/login" replace />;
+  if (!user.isAdmin) return <Navigate to="/" replace />;
+  return <AppLayout>{children}</AppLayout>;
 }
 
 export default function App() {
@@ -43,6 +56,22 @@ export default function App() {
         }
       />
       <Route
+        path="/admin"
+        element={
+          <AdminRoute>
+            <AdminHomePage />
+          </AdminRoute>
+        }
+      />
+      <Route
+        path="/settings"
+        element={
+          <PrivateRoute>
+            <EditUserPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
         path="/tournaments"
         element={
           <PrivateRoute>
@@ -56,6 +85,22 @@ export default function App() {
           <PrivateRoute>
             <TournamentDetailPage />
           </PrivateRoute>
+        }
+      />
+      <Route
+        path="/tournaments/:id/edit"
+        element={
+          <AdminRoute>
+            <EditTournamentPage />
+          </AdminRoute>
+        }
+      />
+      <Route
+        path="/teams/:teamId/edit"
+        element={
+          <AdminRoute>
+            <EditTeamPage />
+          </AdminRoute>
         }
       />
       <Route path="*" element={<Navigate to="/" replace />} />

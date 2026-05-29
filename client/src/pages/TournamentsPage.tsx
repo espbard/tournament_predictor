@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
+import ImageUpload from '@/components/ImageUpload';
 import type { Tournament } from '@tournament-predictor/shared';
 
 const STATUS_COLORS: Record<Tournament['status'], string> = {
@@ -16,6 +17,7 @@ export default function TournamentsPage() {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState('');
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [error, setError] = useState('');
 
   const { data: tournamentList = [], isLoading } = useQuery({
@@ -24,11 +26,12 @@ export default function TournamentsPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (tournamentName: string) =>
-      api.post<Tournament>('/tournaments', { name: tournamentName }),
+    mutationFn: (data: { name: string; imageUrl: string | null }) =>
+      api.post<Tournament>('/tournaments', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tournaments'] });
       setName('');
+      setImageUrl(null);
       setShowForm(false);
       setError('');
     },
@@ -37,7 +40,14 @@ export default function TournamentsPage() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    createMutation.mutate(name);
+    createMutation.mutate({ name, imageUrl });
+  }
+
+  function handleCancel() {
+    setShowForm(false);
+    setName('');
+    setImageUrl(null);
+    setError('');
   }
 
   return (
@@ -71,6 +81,15 @@ export default function TournamentsPage() {
             required
             autoFocus
           />
+          <div className="mb-3">
+            <p className="mb-1 text-xs font-medium text-gray-600">Logo (optional)</p>
+            <ImageUpload
+              type="tournaments"
+              currentUrl={imageUrl}
+              onUploaded={setImageUrl}
+              label="Choose logo"
+            />
+          </div>
           {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
           <div className="flex gap-2">
             <button
@@ -82,11 +101,7 @@ export default function TournamentsPage() {
             </button>
             <button
               type="button"
-              onClick={() => {
-                setShowForm(false);
-                setName('');
-                setError('');
-              }}
+              onClick={handleCancel}
               className="rounded-md border px-3 py-1.5 text-sm hover:bg-gray-50"
             >
               Cancel
@@ -105,9 +120,14 @@ export default function TournamentsPage() {
             <li key={t.id}>
               <Link
                 to={`/tournaments/${t.id}`}
-                className="flex items-center justify-between px-4 py-3 hover:bg-gray-50"
+                className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50"
               >
-                <span className="font-medium">{t.name}</span>
+                {t.imageUrl ? (
+                  <img src={t.imageUrl} alt={t.name} className="h-8 w-8 rounded object-cover" />
+                ) : (
+                  <div className="h-8 w-8 rounded bg-gray-100" />
+                )}
+                <span className="flex-1 font-medium">{t.name}</span>
                 <span
                   className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLORS[t.status]}`}
                 >

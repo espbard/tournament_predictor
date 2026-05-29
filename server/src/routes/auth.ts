@@ -4,13 +4,13 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client';
 import { users } from '../db/schema';
 import { lucia, requireAuth } from '../middleware/auth';
-import { LoginSchema, RegisterSchema } from '@tournament-predictor/shared';
+import { LoginSchema, RegisterSchema, UpdateUserSchema } from '@tournament-predictor/shared';
 
 export const authRouter = Router();
 
 authRouter.post('/register', async (req, res) => {
   try {
-    const { username, password } = RegisterSchema.parse(req.body);
+    const { username, password, imageUrl } = RegisterSchema.parse(req.body);
 
     const existing = await db
       .select({ id: users.id })
@@ -25,12 +25,12 @@ authRouter.post('/register', async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
     const userId = crypto.randomUUID();
 
-    await db.insert(users).values({ id: userId, username, hashedPassword });
+    await db.insert(users).values({ id: userId, username, hashedPassword, imageUrl: imageUrl ?? null });
 
     const session = await lucia.createSession(userId, {});
     res.setHeader('Set-Cookie', lucia.createSessionCookie(session.id).serialize());
 
-    return res.status(201).json({ id: userId, username, isAdmin: false });
+    return res.status(201).json({ id: userId, username, isAdmin: false, imageUrl: imageUrl ?? null });
   } catch (err: any) {
     if (err?.name === 'ZodError') {
       return res.status(400).json({ error: 'Invalid input', details: err.errors });
@@ -62,7 +62,7 @@ authRouter.post('/login', async (req, res) => {
     const session = await lucia.createSession(user.id, {});
     res.setHeader('Set-Cookie', lucia.createSessionCookie(session.id).serialize());
 
-    return res.json({ id: user.id, username: user.username, isAdmin: user.isAdmin });
+    return res.json({ id: user.id, username: user.username, isAdmin: user.isAdmin, imageUrl: user.imageUrl });
   } catch (err: any) {
     if (err?.name === 'ZodError') {
       return res.status(400).json({ error: 'Invalid input', details: err.errors });
@@ -78,7 +78,27 @@ authRouter.post('/logout', requireAuth, async (_req, res) => {
   return res.status(204).send();
 });
 
-authRouter.get('/me', requireAuth, (_req, res) => {
-  const { id, username, isAdmin } = res.locals.user;
-  return res.json({ id, username, isAdmin });
+authRouter.get('/me', requireAuth, async (_req, res) => {
+  const [user] = await db
+    .select({ id: users.id, username: users.username, isAdmin: users.isAdmin, imageUrl: users.imageUrl })
+    .from(users)
+    .where(eq(users.id, res.locals.user.id))
+    .limit(1);
+  return res.json(user);
+});
+
+authRouter.patch('/me', requireAuth, async (req, res) => {
+  try {
+    const updates = UpdateUserSchema.parse(req.body);
+    const [updated] = await db
+      .update(users)
+      .set(updates)
+      .where(eq(users.id, res.locals.user.id))
+      .returning({ id: users.id, username: users.username, isAdmin: users.isAdmin, imageUrl: users.imageUrl });
+    return res.json(updated);
+  } catch (err: any) {
+    if (err?.name === 'ZodError') return res.status(400).json({ error: 'Invalid input', details: err.errors });
+    console.error(err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
 });

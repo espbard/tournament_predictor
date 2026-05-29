@@ -2,12 +2,14 @@ export interface User {
   id: string;
   username: string;
   isAdmin: boolean;
+  imageUrl?: string | null;
 }
 
 export interface Tournament {
   id: string;
   name: string;
   status: 'upcoming' | 'active' | 'completed';
+  imageUrl?: string | null;
   createdAt: string;
 }
 
@@ -16,6 +18,7 @@ export interface Team {
   tournamentId: string;
   name: string;
   group: string | null;
+  imageUrl?: string | null;
 }
 
 export type MatchStage = 'group' | 'round_of_16' | 'quarter_final' | 'semi_final' | 'final';

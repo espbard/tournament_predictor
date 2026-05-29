@@ -3,11 +3,13 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
+import ImageUpload from '@/components/ImageUpload';
 import type { User } from '@tournament-predictor/shared';
 
 export default function RegisterPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -20,7 +22,7 @@ export default function RegisterPage() {
     setError('');
     setLoading(true);
     try {
-      const user = await api.post<User>('/auth/register', { username, password });
+      const user = await api.post<User>('/auth/register', { username, password, imageUrl });
       setUser(user);
       queryClient.setQueryData(['me'], user);
       navigate('/');
@@ -64,6 +66,16 @@ export default function RegisterPage() {
               autoComplete="new-password"
             />
             <p className="text-xs text-muted-foreground">At least 6 characters.</p>
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Profile picture (optional)</label>
+            <ImageUpload
+              type="users"
+              currentUrl={imageUrl}
+              onUploaded={setImageUrl}
+              shape="circle"
+              label="Choose photo"
+            />
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <button

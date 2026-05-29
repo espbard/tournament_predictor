@@ -2,7 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { authRouter } from './routes/auth';
-import { tournamentsRouter, matchesRouter } from './routes/tournaments';
+import { tournamentsRouter, matchesRouter, teamsRouter } from './routes/tournaments';
+import { uploadRouter } from './routes/upload';
 
 const app = express();
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
@@ -23,6 +24,8 @@ app.use(express.json());
 app.use('/api/auth', authRouter);
 app.use('/api/tournaments', tournamentsRouter);
 app.use('/api/matches', matchesRouter);
+app.use('/api/teams', teamsRouter);
+app.use('/api/upload', uploadRouter);
 
 // Serve built React app in production
 if (process.env.NODE_ENV === 'production') {

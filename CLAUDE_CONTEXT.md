@@ -382,16 +382,29 @@ CLIENT_URL=http://localhost:5173   # Only used in dev for CORS
 [UPDATE AS YOU BUILD]
 
 ### Completed
-- [ ] Initial scaffold
-- [ ] DB schema + Drizzle migrations
-- [ ] Auth — register, login, session middleware
-- [ ] Tournament CRUD — create tournament, add teams and matches (admin only)
+- [x] Initial scaffold
+- [x] DB schema + Drizzle migrations
+- [x] Auth — register, login, session middleware
+- [x] Tournament CRUD — create tournament, add teams and matches (admin only)
+- [x] Image uploads — profile pictures (users), logos (tournaments), icons (teams) via Cloudflare R2
+- [x] Added landing pages with navigation and logout
 
 ### In Progress
 -
 
 ### Known Issues / Tech Debt
-- None yet
+-
+---
+
+## Image Upload Architecture
+
+- **Storage:** Cloudflare R2 (S3-compatible), bucket `tournament-predictor-assets`
+- **Upload flow:** client → `POST /api/upload` (multer + @aws-sdk/client-s3) → R2 → returns public URL → URL stored in DB
+- **File limits:** 5 MB, image types only (jpeg/png/gif/webp)
+- **Keys:** `{users|tournaments|teams}/{uuid}{ext}`
+- **Public URL base:** set via `R2_PUBLIC_URL` env var (R2 dev domain or custom domain)
+- **Reusable component:** `client/src/components/ImageUpload.tsx` — handles preview, upload, and error display
+- **Edit pages:** `/settings` (user profile pic), `/tournaments/:id/edit` (admin), `/teams/:teamId/edit` (admin)
 
 ---
 
@@ -400,10 +413,10 @@ CLIENT_URL=http://localhost:5173   # Only used in dev for CORS
 [UPDATE AS YOU BUILD — or keep this in a separate TODO.md and paste it here]
 
 ### Next Session
-1. Add icons/profile pictures to teams, tournaments and users. 
+1. Implement Group CRUD.
 
 ### Backlog (in order)
-1. Add two landing pages, one for normal users and one for admins. Add a nav bar with logout button and option to swap between normal landing page and admin landing page (admin should open on normal landing page).
+1. Implement Group CRUD.
 2. Competitions — create, join via link, member list
 3. Predictions UI — match score form, deadline enforcement
 4. Scoring engine — pure function + Vitest unit tests

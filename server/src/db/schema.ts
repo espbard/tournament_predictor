@@ -35,6 +35,7 @@ export const users = pgTable('users', {
   username: text('username').notNull().unique(),
   hashedPassword: text('hashed_password').notNull(),
   isAdmin: boolean('is_admin').notNull().default(false),
+  imageUrl: text('image_url'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
@@ -54,6 +55,7 @@ export const tournaments = pgTable('tournaments', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   status: tournamentStatusEnum('status').notNull().default('upcoming'),
+  imageUrl: text('image_url'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
@@ -64,6 +66,7 @@ export const teams = pgTable('teams', {
     .references(() => tournaments.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   group: text('group'),
+  imageUrl: text('image_url'),
 });
 
 export const matches = pgTable('matches', {

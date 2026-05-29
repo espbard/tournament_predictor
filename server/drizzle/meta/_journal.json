@@ -8,6 +8,13 @@
       "when": 1779992771310,
       "tag": "0000_amazing_killmonger",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1779998705093,
+      "tag": "0001_little_blizzard",
+      "breakpoints": true
     }
   ]
 }

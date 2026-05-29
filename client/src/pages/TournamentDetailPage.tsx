@@ -3,9 +3,15 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
+import ImageUpload from '@/components/ImageUpload';
 import type { Tournament, Team, Match, MatchStage } from '@tournament-predictor/shared';
 
-type MatchWithTeams = Match & { homeTeamName: string | null; awayTeamName: string | null };
+type MatchWithTeams = Match & {
+  homeTeamName: string | null;
+  awayTeamName: string | null;
+  homeTeamImageUrl?: string | null;
+  awayTeamImageUrl?: string | null;
+};
 
 const STAGE_LABELS: Record<MatchStage, string> = {
   group: 'Group',
@@ -21,6 +27,19 @@ const STATUS_COLORS: Record<Tournament['status'], string> = {
   completed: 'bg-gray-100 text-gray-600',
 };
 
+function TeamBadge({ name, imageUrl }: { name: string | null; imageUrl?: string | null }) {
+  return (
+    <span className="flex items-center gap-1.5">
+      {imageUrl ? (
+        <img src={imageUrl} alt={name ?? ''} className="h-5 w-5 rounded-sm object-cover" />
+      ) : (
+        <span className="h-5 w-5 rounded-sm bg-gray-100 inline-block" />
+      )}
+      <span className="font-medium">{name ?? 'TBD'}</span>
+    </span>
+  );
+}
+
 export default function TournamentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuthStore();
@@ -33,6 +52,7 @@ export default function TournamentDetailPage() {
 
   const [teamName, setTeamName] = useState('');
   const [teamGroup, setTeamGroup] = useState('');
+  const [teamImageUrl, setTeamImageUrl] = useState<string | null>(null);
   const [matchHomeTeamId, setMatchHomeTeamId] = useState('');
   const [matchAwayTeamId, setMatchAwayTeamId] = useState('');
   const [matchStage, setMatchStage] = useState<MatchStage>('group');
@@ -69,12 +89,13 @@ export default function TournamentDetailPage() {
   });
 
   const addTeamMutation = useMutation({
-    mutationFn: (data: { name: string; group?: string }) =>
+    mutationFn: (data: { name: string; group?: string; imageUrl: string | null }) =>
       api.post<Team>(`/tournaments/${id}/teams`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['teams', id] });
       setTeamName('');
       setTeamGroup('');
+      setTeamImageUrl(null);
       setShowAddTeam(false);
       setAddTeamError('');
     },
@@ -117,7 +138,7 @@ export default function TournamentDetailPage() {
 
   function handleAddTeam(e: React.FormEvent) {
     e.preventDefault();
-    addTeamMutation.mutate({ name: teamName, group: teamGroup || undefined });
+    addTeamMutation.mutate({ name: teamName, group: teamGroup || undefined, imageUrl: teamImageUrl });
   }
 
   function handleAddMatch(e: React.FormEvent) {
@@ -172,6 +193,13 @@ export default function TournamentDetailPage() {
 
       {/* Header */}
       <div className="mb-8 flex flex-wrap items-center gap-3">
+        {tournament.imageUrl && (
+          <img
+            src={tournament.imageUrl}
+            alt={tournament.name}
+            className="h-12 w-12 rounded-lg object-cover"
+          />
+        )}
         <h1 className="text-2xl font-bold">{tournament.name}</h1>
         <span
           className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLORS[tournament.status]}`}
@@ -179,16 +207,24 @@ export default function TournamentDetailPage() {
           {tournament.status}
         </span>
         {isAdmin && (
-          <select
-            value={tournament.status}
-            onChange={e => updateStatusMutation.mutate(e.target.value as Tournament['status'])}
-            className="ml-auto rounded-md border px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-            disabled={updateStatusMutation.isPending}
-          >
-            <option value="upcoming">Upcoming</option>
-            <option value="active">Active</option>
-            <option value="completed">Completed</option>
-          </select>
+          <>
+            <select
+              value={tournament.status}
+              onChange={e => updateStatusMutation.mutate(e.target.value as Tournament['status'])}
+              className="rounded-md border px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              disabled={updateStatusMutation.isPending}
+            >
+              <option value="upcoming">Upcoming</option>
+              <option value="active">Active</option>
+              <option value="completed">Completed</option>
+            </select>
+            <Link
+              to={`/tournaments/${id}/edit`}
+              className="ml-auto rounded-md border px-3 py-1.5 text-sm hover:bg-gray-50"
+            >
+              Edit
+            </Link>
+          </>
         )}
       </div>
 
@@ -227,6 +263,15 @@ export default function TournamentDetailPage() {
                 maxLength={10}
               />
             </div>
+            <div className="mb-3">
+              <p className="mb-1 text-xs font-medium text-gray-600">Team icon (optional)</p>
+              <ImageUpload
+                type="teams"
+                currentUrl={teamImageUrl}
+                onUploaded={setTeamImageUrl}
+                label="Choose icon"
+              />
+            </div>
             {addTeamError && <p className="mb-2 text-sm text-red-600">{addTeamError}</p>}
             <div className="flex gap-2">
               <button
@@ -242,6 +287,7 @@ export default function TournamentDetailPage() {
                   setShowAddTeam(false);
                   setTeamName('');
                   setTeamGroup('');
+                  setTeamImageUrl(null);
                   setAddTeamError('');
                 }}
                 className="rounded-md border px-3 py-1.5 text-sm hover:bg-gray-50"
@@ -261,12 +307,29 @@ export default function TournamentDetailPage() {
                 key={team.id}
                 className="flex items-center justify-between px-4 py-2.5 text-sm"
               >
-                <span>{team.name}</span>
-                {team.group && (
-                  <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600">
-                    Group {team.group}
-                  </span>
-                )}
+                <span className="flex items-center gap-2">
+                  {team.imageUrl ? (
+                    <img src={team.imageUrl} alt={team.name} className="h-6 w-6 rounded-sm object-cover" />
+                  ) : (
+                    <span className="h-6 w-6 rounded-sm bg-gray-100 inline-block" />
+                  )}
+                  {team.name}
+                </span>
+                <span className="flex items-center gap-2">
+                  {team.group && (
+                    <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600">
+                      Group {team.group}
+                    </span>
+                  )}
+                  {isAdmin && (
+                    <Link
+                      to={`/teams/${team.id}/edit`}
+                      className="text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      Edit
+                    </Link>
+                  )}
+                </span>
               </div>
             ))}
           </div>
@@ -394,7 +457,7 @@ export default function TournamentDetailPage() {
 
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <span className="font-medium">{match.homeTeamName ?? 'TBD'}</span>
+                    <TeamBadge name={match.homeTeamName} imageUrl={match.homeTeamImageUrl} />
                     {match.status === 'completed' ? (
                       <span className="rounded bg-gray-100 px-2 py-0.5 text-sm font-bold tabular-nums">
                         {match.homeScore} – {match.awayScore}
@@ -402,7 +465,7 @@ export default function TournamentDetailPage() {
                     ) : (
                       <span className="text-sm text-muted-foreground">vs</span>
                     )}
-                    <span className="font-medium">{match.awayTeamName ?? 'TBD'}</span>
+                    <TeamBadge name={match.awayTeamName} imageUrl={match.awayTeamImageUrl} />
                   </div>
 
                   {isAdmin && match.status === 'scheduled' && scoreMatchId !== match.id && (
