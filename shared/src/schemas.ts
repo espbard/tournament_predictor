@@ -57,6 +57,13 @@ export const UpdateMatchSchema = z.object({
 export const CreateCompetitionSchema = z.object({
   tournamentId: z.string().min(1),
   name: z.string().min(1).max(100),
+  imageUrl: z.string().url().nullable().optional(),
+  predictionDeadline: z.string().datetime().nullable().optional(),
+});
+
+export const UpdateCompetitionSchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  imageUrl: z.string().url().nullable().optional(),
   predictionDeadline: z.string().datetime().nullable().optional(),
 });
 
@@ -78,4 +85,5 @@ export type UpdateUserInput = z.infer<typeof UpdateUserSchema>;
 export type CreateMatchInput = z.infer<typeof CreateMatchSchema>;
 export type UpdateMatchInput = z.infer<typeof UpdateMatchSchema>;
 export type CreateCompetitionInput = z.infer<typeof CreateCompetitionSchema>;
+export type UpdateCompetitionInput = z.infer<typeof UpdateCompetitionSchema>;
 export type CreatePredictionInput = z.infer<typeof CreatePredictionSchema>;

@@ -119,7 +119,7 @@ export default function TournamentsPage() {
           {tournamentList.map(t => (
             <li key={t.id}>
               <Link
-                to={`/tournaments/${t.id}`}
+                to={`/admin/tournaments/${t.id}`}
                 className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50"
               >
                 {t.imageUrl ? (

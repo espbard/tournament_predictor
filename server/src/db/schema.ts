@@ -97,6 +97,7 @@ export const competitions = pgTable('competitions', {
     .notNull()
     .references(() => tournaments.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
+  imageUrl: text('image_url'),
   inviteCode: text('invite_code').notNull().unique(),
   scoringConfig: json('scoring_config').notNull().$type<ScoringConfig>(),
   predictionDeadline: timestamp('prediction_deadline'),

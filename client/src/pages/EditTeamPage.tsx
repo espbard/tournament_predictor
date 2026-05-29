@@ -45,7 +45,7 @@ export default function EditTeamPage() {
     onSuccess: updated => {
       queryClient.setQueryData(['team', teamId], updated);
       queryClient.invalidateQueries({ queryKey: ['teams', updated.tournamentId] });
-      navigate(`/tournaments/${updated.tournamentId}`);
+      navigate(`/admin/tournaments/${updated.tournamentId}`);
     },
     onError: (err: any) => setError(err instanceof ApiError ? err.message : 'Failed to save'),
   });
@@ -61,7 +61,7 @@ export default function EditTeamPage() {
   return (
     <main className="mx-auto max-w-sm px-4 py-8">
       <Link
-        to={`/tournaments/${team.tournamentId}`}
+        to={`/admin/tournaments/${team.tournamentId}`}
         className="mb-4 inline-block text-sm text-muted-foreground hover:text-foreground"
       >
         ← Back to tournament
@@ -122,7 +122,7 @@ export default function EditTeamPage() {
             {saveMutation.isPending ? 'Saving…' : 'Save changes'}
           </button>
           <Link
-            to={`/tournaments/${team.tournamentId}`}
+            to={`/admin/tournaments/${team.tournamentId}`}
             className="rounded-md border px-4 py-2 text-sm hover:bg-gray-50"
           >
             Cancel

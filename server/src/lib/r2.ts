@@ -16,7 +16,7 @@ const PUBLIC_URL = process.env.R2_PUBLIC_URL ?? '';
 
 export async function uploadToR2(
   file: Express.Multer.File,
-  folder: 'users' | 'tournaments' | 'teams'
+  folder: 'users' | 'tournaments' | 'teams' | 'competitions'
 ): Promise<string> {
   const ext = path.extname(file.originalname).toLowerCase() || '.jpg';
   const key = `${folder}/${randomUUID()}${ext}`;

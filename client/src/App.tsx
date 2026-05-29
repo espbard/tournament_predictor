@@ -11,6 +11,8 @@ import LoginPage from '@/pages/LoginPage';
 import RegisterPage from '@/pages/RegisterPage';
 import TournamentsPage from '@/pages/TournamentsPage';
 import TournamentDetailPage from '@/pages/TournamentDetailPage';
+import CompetitionsPage from '@/pages/CompetitionsPage';
+import CompetitionDetailPage from '@/pages/CompetitionDetailPage';
 import EditUserPage from '@/pages/EditUserPage';
 import EditTournamentPage from '@/pages/EditTournamentPage';
 import EditTeamPage from '@/pages/EditTeamPage';
@@ -72,23 +74,39 @@ export default function App() {
         }
       />
       <Route
-        path="/tournaments"
+        path="/admin/competitions"
+        element={
+          <AdminRoute>
+            <CompetitionsPage />
+          </AdminRoute>
+        }
+      />
+      <Route
+        path="/competitions/:id"
         element={
           <PrivateRoute>
+            <CompetitionDetailPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/admin/tournaments"
+        element={
+          <AdminRoute>
             <TournamentsPage />
-          </PrivateRoute>
+          </AdminRoute>
         }
       />
       <Route
-        path="/tournaments/:id"
+        path="/admin/tournaments/:id"
         element={
-          <PrivateRoute>
+          <AdminRoute>
             <TournamentDetailPage />
-          </PrivateRoute>
+          </AdminRoute>
         }
       />
       <Route
-        path="/tournaments/:id/edit"
+        path="/admin/tournaments/:id/edit"
         element={
           <AdminRoute>
             <EditTournamentPage />
@@ -96,7 +114,7 @@ export default function App() {
         }
       />
       <Route
-        path="/teams/:teamId/edit"
+        path="/admin/teams/:teamId/edit"
         element={
           <AdminRoute>
             <EditTeamPage />

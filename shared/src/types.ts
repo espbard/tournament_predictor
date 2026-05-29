@@ -65,6 +65,7 @@ export interface Competition {
   id: string;
   tournamentId: string;
   name: string;
+  imageUrl?: string | null;
   inviteCode: string;
   scoringConfig: ScoringConfig;
   predictionDeadline: string | null;

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { Pencil } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   DndContext,
@@ -38,7 +39,7 @@ const STATUS_COLORS: Record<Tournament['status'], string> = {
 
 // ── DnD sub-components ────────────────────────────────────────────────────────
 
-function TeamChip({ team, ghost }: { team: Team; ghost?: boolean }) {
+function TeamChip({ team, ghost, editPath }: { team: Team; ghost?: boolean; editPath?: string }) {
   return (
     <div
       className={`flex items-center gap-2 rounded-md border bg-white px-2.5 py-1.5 text-sm shadow-sm ${
@@ -46,11 +47,21 @@ function TeamChip({ team, ghost }: { team: Team; ghost?: boolean }) {
       }`}
     >
       {team.imageUrl ? (
-        <img src={team.imageUrl} alt={team.name} className="h-5 w-5 rounded-sm object-cover" />
+        <img src={team.imageUrl} alt={team.name} className="h-5 w-5 flex-shrink-0 rounded-sm object-cover" />
       ) : (
-        <span className="h-5 w-5 rounded-sm bg-gray-100 inline-block flex-shrink-0" />
+        <span className="h-5 w-5 flex-shrink-0 rounded-sm bg-gray-100 inline-block" />
       )}
-      <span className="truncate">{team.name}</span>
+      <span className="min-w-0 flex-1 truncate">{team.name}</span>
+      {editPath && (
+        <Link
+          to={editPath}
+          onPointerDown={e => e.stopPropagation()}
+          className="flex-shrink-0 text-red-400 hover:text-red-600"
+          title="Edit team"
+        >
+          <Pencil size={12} />
+        </Link>
+      )}
     </div>
   );
 }
@@ -71,7 +82,7 @@ function DraggableTeamChip({ team }: { team: Team }) {
       {...attributes}
       className="cursor-grab touch-none active:cursor-grabbing"
     >
-      <TeamChip team={team} ghost={isDragging} />
+      <TeamChip team={team} ghost={isDragging} editPath={`/admin/teams/${team.id}/edit`} />
     </div>
   );
 }
@@ -359,7 +370,7 @@ export default function TournamentDetailPage() {
   return (
     <main className="mx-auto max-w-4xl px-4 py-8">
       <Link
-        to="/tournaments"
+        to="/admin/tournaments"
         className="mb-4 inline-block text-sm text-muted-foreground hover:text-foreground"
       >
         ← Back to Tournaments
@@ -393,7 +404,7 @@ export default function TournamentDetailPage() {
               <option value="completed">Completed</option>
             </select>
             <Link
-              to={`/tournaments/${id}/edit`}
+              to={`/admin/tournaments/${id}/edit`}
               className="ml-auto rounded-md border px-3 py-1.5 text-sm hover:bg-gray-50"
             >
               Edit

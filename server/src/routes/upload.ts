@@ -29,11 +29,11 @@ uploadRouter.post(
       }
 
       const type = req.body.type as string;
-      if (!['users', 'tournaments', 'teams'].includes(type)) {
-        return res.status(400).json({ error: 'Invalid type. Must be users, tournaments, or teams' });
+      if (!['users', 'tournaments', 'teams', 'competitions'].includes(type)) {
+        return res.status(400).json({ error: 'Invalid type. Must be users, tournaments, teams, or competitions' });
       }
 
-      const url = await uploadToR2(req.file, type as 'users' | 'tournaments' | 'teams');
+      const url = await uploadToR2(req.file, type as 'users' | 'tournaments' | 'teams' | 'competitions');
       return res.json({ url });
     } catch (err: any) {
       console.error('Upload error:', err);

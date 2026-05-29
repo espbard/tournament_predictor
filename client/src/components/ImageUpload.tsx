@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { uploadFile } from '@/lib/api';
 
 interface Props {
-  type: 'users' | 'tournaments' | 'teams';
+  type: 'users' | 'tournaments' | 'teams' | 'competitions';
   currentUrl?: string | null;
   onUploaded: (url: string) => void;
   shape?: 'circle' | 'square';

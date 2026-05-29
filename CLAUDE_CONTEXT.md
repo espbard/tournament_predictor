@@ -389,6 +389,7 @@ CLIENT_URL=http://localhost:5173   # Only used in dev for CORS
 - [x] Image uploads — profile pictures (users), logos (tournaments), icons (teams) via Cloudflare R2
 - [x] Added landing pages with navigation and logout
 - [x] Implement Group CRUD. It is now possible to create, edit and delete groups
+- [x] Add Competition CRUD, limit non-admin users to only see competitions they are part of
 
 ### In Progress
 -
@@ -414,17 +415,15 @@ CLIENT_URL=http://localhost:5173   # Only used in dev for CORS
 [UPDATE AS YOU BUILD — or keep this in a separate TODO.md and paste it here]
 
 ### Next Session
-1. Make only competitions visible for non-admin users.
 
 ### Backlog (in order)
-1. Competitions — create, join via link, member list
-2. Predictions UI — match score form, deadline enforcement
-3. Scoring engine — pure function + Vitest unit tests
-4. Score calculation trigger — admin marks match complete → points calculated
-5. Leaderboard — ranked view per competition
-6. Group stage predictions
-7. Knockout bracket predictions
-8. Polish — UI improvements, mobile layout
+1. Predictions UI — match score form, deadline enforcement
+2. Scoring engine — pure function + Vitest unit tests
+3. Score calculation trigger — admin marks match complete → points calculated
+4. Leaderboard — ranked view per competition
+5. Group stage predictions
+6. Knockout bracket predictions
+7. Polish — UI improvements, mobile layout
 
 ---
 

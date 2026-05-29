@@ -1,18 +1,51 @@
-import { Link } from 'react-router-dom';
+import { useState } from 'react';
+import { Link, Navigate } from 'react-router-dom';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
+import type { Competition } from '@tournament-predictor/shared';
 
 export default function HomePage() {
   const { user } = useAuthStore();
+
+  if (user?.isAdmin) return <Navigate to="/admin" replace />;
+
+  return <CompetitionsHome />;
+}
+
+function CompetitionsHome() {
+  const { user } = useAuthStore();
+  const queryClient = useQueryClient();
+  const [inviteCode, setInviteCode] = useState('');
+  const [joinError, setJoinError] = useState('');
+
+  const { data: competitions = [], isLoading } = useQuery({
+    queryKey: ['competitions'],
+    queryFn: () => api.get<Competition[]>('/competitions'),
+  });
+
+  const joinMutation = useMutation({
+    mutationFn: (code: string) => api.post<Competition>('/competitions/join', { inviteCode: code }),
+    onSuccess: () => {
+      setInviteCode('');
+      setJoinError('');
+      queryClient.invalidateQueries({ queryKey: ['competitions'] });
+    },
+    onError: (err) => {
+      setJoinError(err instanceof ApiError ? err.message : 'Failed to join competition');
+    },
+  });
+
+  function handleJoin(e: React.FormEvent) {
+    e.preventDefault();
+    if (inviteCode.trim()) joinMutation.mutate(inviteCode.trim());
+  }
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-12">
       <div className="mb-8 flex items-center gap-4">
         {user?.imageUrl ? (
-          <img
-            src={user.imageUrl}
-            alt={user.username}
-            className="h-14 w-14 rounded-full object-cover"
-          />
+          <img src={user.imageUrl} alt={user.username} className="h-14 w-14 rounded-full object-cover" />
         ) : (
           <span className="flex h-14 w-14 items-center justify-center rounded-full bg-gray-100 text-xl font-semibold">
             {user?.username?.[0]?.toUpperCase()}
@@ -23,27 +56,64 @@ export default function HomePage() {
           <p className="text-sm text-muted-foreground">Pick your scores and climb the leaderboard</p>
         </div>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Link
-          to="/tournaments"
-          className="rounded-lg border p-5 transition-colors hover:bg-gray-50"
-        >
-          <h2 className="mb-1 font-semibold">Tournaments</h2>
-          <p className="text-sm text-muted-foreground">Browse active and upcoming tournaments</p>
-        </Link>
-        <div className="cursor-not-allowed rounded-lg border p-5 opacity-50">
-          <h2 className="mb-1 font-semibold">My Competitions</h2>
-          <p className="text-sm text-muted-foreground">Coming soon</p>
-        </div>
-        <div className="cursor-not-allowed rounded-lg border p-5 opacity-50">
-          <h2 className="mb-1 font-semibold">My Predictions</h2>
-          <p className="text-sm text-muted-foreground">Coming soon</p>
-        </div>
-        <div className="cursor-not-allowed rounded-lg border p-5 opacity-50">
-          <h2 className="mb-1 font-semibold">Leaderboard</h2>
-          <p className="text-sm text-muted-foreground">Coming soon</p>
-        </div>
+
+      <div className="mb-8 rounded-lg border p-5">
+        <h2 className="mb-3 font-semibold">Join a Competition</h2>
+        <form onSubmit={handleJoin} className="flex gap-2">
+          <input
+            type="text"
+            value={inviteCode}
+            onChange={e => setInviteCode(e.target.value)}
+            placeholder="Enter 5-digit invite code"
+            maxLength={5}
+            className="flex-1 rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+          <button
+            type="submit"
+            disabled={joinMutation.isPending || inviteCode.trim().length === 0}
+            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          >
+            {joinMutation.isPending ? 'Joining…' : 'Join'}
+          </button>
+        </form>
+        {joinError && <p className="mt-2 text-sm text-destructive">{joinError}</p>}
+        {joinMutation.isSuccess && (
+          <p className="mt-2 text-sm text-green-600">Successfully joined competition!</p>
+        )}
       </div>
+
+      <h2 className="mb-4 font-semibold">My Competitions</h2>
+      {isLoading ? (
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      ) : competitions.length === 0 ? (
+        <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+          No competitions yet. Enter an invite code above to join one.
+        </p>
+      ) : (
+        <div className="grid gap-3">
+          {competitions.map(c => (
+            <Link
+              key={c.id}
+              to={`/competitions/${c.id}`}
+              className="flex items-center gap-4 rounded-lg border p-4 transition-colors hover:bg-gray-50"
+            >
+              {c.imageUrl ? (
+                <img src={c.imageUrl} alt={c.name} className="h-12 w-12 rounded-lg object-cover flex-shrink-0" />
+              ) : (
+                <div className="h-12 w-12 rounded-lg bg-gray-100 flex-shrink-0" />
+              )}
+              <div className="flex-1 min-w-0 flex items-center justify-between gap-2">
+                <h3 className="font-semibold">{c.name}</h3>
+                {c.predictionDeadline && (
+                  <span className="text-xs text-muted-foreground flex-shrink-0">
+                    Deadline: {new Date(c.predictionDeadline).toLocaleDateString()}
+                  </span>
+                )}
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
     </main>
   );
 }

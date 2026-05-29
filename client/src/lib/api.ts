@@ -27,7 +27,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return res.json() as Promise<T>;
 }
 
-export async function uploadFile(file: File, type: 'users' | 'tournaments' | 'teams'): Promise<string> {
+export async function uploadFile(file: File, type: 'users' | 'tournaments' | 'teams' | 'competitions'): Promise<string> {
   const form = new FormData();
   form.append('file', file);
   form.append('type', type);
