@@ -413,6 +413,7 @@ CLIENT_URL=http://localhost:5173   # Only used in dev for CORS
 - [x] Add Competition CRUD, limit non-admin users to only see competitions they are part of
 - [x] Added basic color scheme
 - [x] Predictions UI — per-match score inputs in CompetitionDetailPage, deadline enforcement, save per match, show actual result vs prediction for completed matches
+- [x] Add round of 32 and bronze final as possible stages
 
 
 ### In Progress
@@ -439,10 +440,10 @@ CLIENT_URL=http://localhost:5173   # Only used in dev for CORS
 [UPDATE AS YOU BUILD — or keep this in a separate TODO.md and paste it here]
 
 ### Next Session
-1. Scoring engine — pure function + Vitest unit tests, triggered when admin marks match complete
+1. Group stage calculations
 
 ### Backlog (in order)
-1. Scoring engine — pure function + Vitest unit tests
+1. Scoring engine — pure function + Vitest unit tests, triggered when admin marks match complete
 2. Score calculation trigger — admin marks match complete → points calculated
 3. Leaderboard — ranked view per competition
 4. Group stage predictions

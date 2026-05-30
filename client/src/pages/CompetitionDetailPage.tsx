@@ -33,9 +33,11 @@ interface MatchWithTeams {
 
 const STAGE_LABELS: Record<MatchStage, string> = {
   group: 'Group Stage',
+  round_of_32: 'Round of 32',
   round_of_16: 'Round of 16',
   quarter_final: 'Quarter-finals',
   semi_final: 'Semi-finals',
+  bronze_final: 'Bronze Final',
   final: 'Final',
 };
 

@@ -27,7 +27,7 @@ export interface Team {
   imageUrl?: string | null;
 }
 
-export type MatchStage = 'group' | 'round_of_16' | 'quarter_final' | 'semi_final' | 'final';
+export type MatchStage = 'group' | 'round_of_32' | 'round_of_16' | 'quarter_final' | 'semi_final' | 'bronze_final' | 'final';
 
 export interface Match {
   id: string;

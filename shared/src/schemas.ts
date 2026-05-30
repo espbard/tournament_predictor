@@ -45,7 +45,7 @@ export const UpdateUserSchema = z.object({
 export const CreateMatchSchema = z.object({
   homeTeamId: z.string().nullable().optional(),
   awayTeamId: z.string().nullable().optional(),
-  stage: z.enum(['group', 'round_of_16', 'quarter_final', 'semi_final', 'final']),
+  stage: z.enum(['group', 'round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'bronze_final', 'final']),
   scheduledAt: z.string().datetime().nullable().optional(),
 });
 
@@ -54,7 +54,7 @@ export const UpdateMatchSchema = z.object({
   awayScore: z.number().int().min(0).optional(),
   homeTeamId: z.string().nullable().optional(),
   awayTeamId: z.string().nullable().optional(),
-  stage: z.enum(['group', 'round_of_16', 'quarter_final', 'semi_final', 'final']).optional(),
+  stage: z.enum(['group', 'round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'bronze_final', 'final']).optional(),
   scheduledAt: z.string().datetime().nullable().optional(),
 });
 

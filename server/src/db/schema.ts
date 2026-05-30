@@ -20,9 +20,11 @@ export const tournamentStatusEnum = pgEnum('tournament_status', [
 
 export const matchStageEnum = pgEnum('match_stage', [
   'group',
+  'round_of_32',
   'round_of_16',
   'quarter_final',
   'semi_final',
+  'bronze_final',
   'final',
 ]);
 
