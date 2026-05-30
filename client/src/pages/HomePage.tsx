@@ -47,7 +47,7 @@ function CompetitionsHome() {
         {user?.imageUrl ? (
           <img src={user.imageUrl} alt={user.username} className="h-14 w-14 rounded-full object-cover" />
         ) : (
-          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-gray-100 text-xl font-semibold">
+          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-muted text-xl font-semibold">
             {user?.username?.[0]?.toUpperCase()}
           </span>
         )}
@@ -95,12 +95,12 @@ function CompetitionsHome() {
             <Link
               key={c.id}
               to={`/competitions/${c.id}`}
-              className="flex items-center gap-4 rounded-lg border p-4 transition-colors hover:bg-gray-50"
+              className="flex items-center gap-4 rounded-lg border p-4 transition-colors hover:bg-muted"
             >
               {c.imageUrl ? (
                 <img src={c.imageUrl} alt={c.name} className="h-12 w-12 rounded-lg object-cover flex-shrink-0" />
               ) : (
-                <div className="h-12 w-12 rounded-lg bg-gray-100 flex-shrink-0" />
+                <div className="h-12 w-12 rounded-lg bg-muted flex-shrink-0" />
               )}
               <div className="flex-1 min-w-0 flex items-center justify-between gap-2">
                 <h3 className="font-semibold">{c.name}</h3>

@@ -123,7 +123,7 @@ export default function EditTeamPage() {
           </button>
           <Link
             to={`/admin/tournaments/${team.tournamentId}`}
-            className="rounded-md border px-4 py-2 text-sm hover:bg-gray-50"
+            className="rounded-md border px-4 py-2 text-sm hover:bg-muted"
           >
             Cancel
           </Link>

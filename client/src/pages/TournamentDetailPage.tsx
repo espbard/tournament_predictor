@@ -32,24 +32,71 @@ const STAGE_LABELS: Record<MatchStage, string> = {
 };
 
 const STATUS_COLORS: Record<Tournament['status'], string> = {
-  upcoming: 'bg-yellow-100 text-yellow-800',
-  active: 'bg-green-100 text-green-800',
-  completed: 'bg-gray-100 text-gray-600',
+  upcoming: 'bg-primary/10 text-primary',
+  active: 'bg-accent/15 text-accent',
+  completed: 'bg-muted text-muted-foreground',
 };
+
+const MINUTE_OPTIONS = ['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'];
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
+
+// ── DateTimePickerFields ──────────────────────────────────────────────────────
+
+function DateTimePickerFields({
+  date, hour, minute,
+  onDate, onHour, onMinute,
+}: {
+  date: string; hour: string; minute: string;
+  onDate: (v: string) => void;
+  onHour: (v: string) => void;
+  onMinute: (v: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <input
+        type="date"
+        value={date}
+        onChange={e => onDate(e.target.value)}
+        className="flex-1 min-w-32 rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+      />
+      <div className="flex items-center gap-1">
+        <select
+          value={hour}
+          onChange={e => onHour(e.target.value)}
+          className="rounded-md border px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+        >
+          {HOUR_OPTIONS.map(h => (
+            <option key={h} value={h}>{h}</option>
+          ))}
+        </select>
+        <span className="text-sm text-muted-foreground">:</span>
+        <select
+          value={minute}
+          onChange={e => onMinute(e.target.value)}
+          className="rounded-md border px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+        >
+          {MINUTE_OPTIONS.map(m => (
+            <option key={m} value={m}>{m}</option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
+}
 
 // ── DnD sub-components ────────────────────────────────────────────────────────
 
 function TeamChip({ team, ghost, editPath }: { team: Team; ghost?: boolean; editPath?: string }) {
   return (
     <div
-      className={`flex items-center gap-2 rounded-md border bg-white px-2.5 py-1.5 text-sm shadow-sm ${
+      className={`flex items-center gap-2 rounded-md border bg-card px-2.5 py-1.5 text-sm shadow-sm ${
         ghost ? 'opacity-40' : ''
       }`}
     >
       {team.imageUrl ? (
         <img src={team.imageUrl} alt={team.name} className="h-5 w-5 flex-shrink-0 rounded-sm object-cover" />
       ) : (
-        <span className="h-5 w-5 flex-shrink-0 rounded-sm bg-gray-100 inline-block" />
+        <span className="h-5 w-5 flex-shrink-0 rounded-sm bg-muted inline-block" />
       )}
       <span className="min-w-0 flex-1 truncate">{team.name}</span>
       {editPath && (
@@ -103,11 +150,11 @@ function DroppableZone({
     <div
       ref={setNodeRef}
       className={`flex min-h-32 w-44 flex-shrink-0 flex-col rounded-lg border-2 transition-colors ${
-        isOver ? 'border-primary bg-primary/5' : 'border-gray-200 bg-gray-50'
+        isOver ? 'border-primary bg-primary/5' : 'border-border bg-muted/50'
       }`}
     >
       <div className="flex items-center justify-between px-3 py-2">
-        <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           {label}
         </span>
         {onDelete && (
@@ -135,7 +182,7 @@ function TeamBadge({ name, imageUrl }: { name: string | null; imageUrl?: string 
       {imageUrl ? (
         <img src={imageUrl} alt={name ?? ''} className="h-5 w-5 rounded-sm object-cover" />
       ) : (
-        <span className="h-5 w-5 rounded-sm bg-gray-100 inline-block" />
+        <span className="h-5 w-5 rounded-sm bg-muted inline-block" />
       )}
       <span className="font-medium">{name ?? 'TBD'}</span>
     </span>
@@ -151,7 +198,6 @@ export default function TournamentDetailPage() {
   const isAdmin = user?.isAdmin ?? false;
 
   const [showAddTeam, setShowAddTeam] = useState(false);
-  const [showAddMatch, setShowAddMatch] = useState(false);
   const [scoreMatchId, setScoreMatchId] = useState<string | null>(null);
   const [activeTeamId, setActiveTeamId] = useState<string | null>(null);
 
@@ -162,10 +208,28 @@ export default function TournamentDetailPage() {
   const [teamName, setTeamName] = useState('');
   const [teamGroupId, setTeamGroupId] = useState('');
   const [teamImageUrl, setTeamImageUrl] = useState<string | null>(null);
+
+  // Add match state — null=hidden, ''=top form, 'YYYY-MM-DD'=below that day group
+  const [addMatchForDate, setAddMatchForDate] = useState<string | null>(null);
   const [matchHomeTeamId, setMatchHomeTeamId] = useState('');
   const [matchAwayTeamId, setMatchAwayTeamId] = useState('');
   const [matchStage, setMatchStage] = useState<MatchStage>('group');
-  const [matchScheduledAt, setMatchScheduledAt] = useState('');
+  const [matchGroupId, setMatchGroupId] = useState('');
+  const [addDate, setAddDate] = useState('');
+  const [addHour, setAddHour] = useState('21');
+  const [addMinute, setAddMinute] = useState('00');
+
+  // Edit match state
+  const [editMatchId, setEditMatchId] = useState<string | null>(null);
+  const [editStage, setEditStage] = useState<MatchStage>('group');
+  const [editGroupId, setEditGroupId] = useState('');
+  const [editHomeTeamId, setEditHomeTeamId] = useState('');
+  const [editAwayTeamId, setEditAwayTeamId] = useState('');
+  const [editDate, setEditDate] = useState('');
+  const [editHour, setEditHour] = useState('21');
+  const [editMinute, setEditMinute] = useState('00');
+  const [editError, setEditError] = useState('');
+
   const [homeScore, setHomeScore] = useState('');
   const [awayScore, setAwayScore] = useState('');
 
@@ -208,7 +272,6 @@ export default function TournamentDetailPage() {
     if (!teamsByGroup.has(key)) teamsByGroup.set(key, []);
     teamsByGroup.get(key)!.push(t);
   }
-  // Sort teams within each bucket by name
   for (const bucket of teamsByGroup.values()) {
     bucket.sort((a, b) => a.name.localeCompare(b.name));
   }
@@ -275,8 +338,11 @@ export default function TournamentDetailPage() {
       setMatchHomeTeamId('');
       setMatchAwayTeamId('');
       setMatchStage('group');
-      setMatchScheduledAt('');
-      setShowAddMatch(false);
+      setMatchGroupId('');
+      setAddDate('');
+      setAddHour('21');
+      setAddMinute('00');
+      setAddMatchForDate(null);
       setAddMatchError('');
     },
     onError: (err: any) => setAddMatchError(err.message),
@@ -293,6 +359,17 @@ export default function TournamentDetailPage() {
       setScoreError('');
     },
     onError: (err: any) => setScoreError(err.message),
+  });
+
+  const editMatchMutation = useMutation({
+    mutationFn: ({ matchId, data }: { matchId: string; data: unknown }) =>
+      api.patch<Match>(`/matches/${matchId}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['matches', id] });
+      setEditMatchId(null);
+      setEditError('');
+    },
+    onError: (err: any) => setEditError(err.message),
   });
 
   // ── DnD handlers ────────────────────────────────────────────────────────────
@@ -325,13 +402,68 @@ export default function TournamentDetailPage() {
     addTeamMutation.mutate({ name: teamName, groupId: teamGroupId || null, imageUrl: teamImageUrl });
   }
 
+  function openAddMatch(dateStr: string = '') {
+    setAddMatchForDate(dateStr);
+    setAddDate(dateStr || new Date().toLocaleDateString('en-CA'));
+    setAddHour('21');
+    setAddMinute('00');
+    setMatchHomeTeamId('');
+    setMatchAwayTeamId('');
+    setMatchStage('group');
+    setMatchGroupId('');
+    setAddMatchError('');
+    setEditMatchId(null);
+  }
+
+  function openEditMatch(match: MatchWithTeams) {
+    setEditMatchId(match.id);
+    setEditStage(match.stage);
+    const homeTeam = match.homeTeamId ? teams.find(t => t.id === match.homeTeamId) : null;
+    setEditGroupId(homeTeam?.groupId ?? '');
+    setEditHomeTeamId(match.homeTeamId ?? '');
+    setEditAwayTeamId(match.awayTeamId ?? '');
+    if (match.scheduledAt) {
+      const d = new Date(match.scheduledAt);
+      setEditDate(d.toLocaleDateString('en-CA'));
+      setEditHour(String(d.getHours()).padStart(2, '0'));
+      const roundedMins = Math.round(d.getMinutes() / 5) * 5 % 60;
+      setEditMinute(String(roundedMins).padStart(2, '0'));
+    } else {
+      setEditDate('');
+      setEditHour('21');
+      setEditMinute('00');
+    }
+    setEditError('');
+    setAddMatchForDate(null);
+  }
+
   function handleAddMatch(e: React.FormEvent) {
     e.preventDefault();
+    const scheduledAt = addDate
+      ? new Date(`${addDate}T${addHour}:${addMinute}:00`).toISOString()
+      : null;
     addMatchMutation.mutate({
       homeTeamId: matchHomeTeamId || null,
       awayTeamId: matchAwayTeamId || null,
       stage: matchStage,
-      scheduledAt: matchScheduledAt ? new Date(matchScheduledAt).toISOString() : null,
+      scheduledAt,
+    });
+  }
+
+  function handleSaveEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editMatchId) return;
+    const scheduledAt = editDate
+      ? new Date(`${editDate}T${editHour}:${editMinute}:00`).toISOString()
+      : null;
+    editMatchMutation.mutate({
+      matchId: editMatchId,
+      data: {
+        homeTeamId: editHomeTeamId || null,
+        awayTeamId: editAwayTeamId || null,
+        stage: editStage,
+        scheduledAt,
+      },
     });
   }
 
@@ -359,13 +491,146 @@ export default function TournamentDetailPage() {
     return <div className="p-8 text-sm">Tournament not found.</div>;
   }
 
-  // Sorted teams for the non-admin list view
+  // Group matches by calendar date for display
+  const sortedMatches = [...matchList].sort((a, b) => {
+    if (!a.scheduledAt && !b.scheduledAt) return 0;
+    if (!a.scheduledAt) return 1;
+    if (!b.scheduledAt) return -1;
+    return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
+  });
+  const matchGroups: { dateLabel: string; isoDate: string; matches: MatchWithTeams[] }[] = [];
+  for (const match of sortedMatches) {
+    const isoDate = match.scheduledAt
+      ? new Date(match.scheduledAt).toLocaleDateString('en-CA')
+      : '__none__';
+    const dateLabel = match.scheduledAt
+      ? new Date(match.scheduledAt).toLocaleDateString(undefined, { dateStyle: 'long' })
+      : 'No date';
+    const last = matchGroups[matchGroups.length - 1];
+    if (last && last.isoDate === isoDate) {
+      last.matches.push(match);
+    } else {
+      matchGroups.push({ dateLabel, isoDate, matches: [match] });
+    }
+  }
+
+  function matchStageLabel(match: MatchWithTeams) {
+    if (match.stage !== 'group') return STAGE_LABELS[match.stage];
+    const team = teams.find(t => t.id === match.homeTeamId || t.id === match.awayTeamId);
+    const group = team?.groupId ? groupMap.get(team.groupId) : null;
+    return group ? `Group ${group.name}` : 'Group';
+  }
+
   const sortedTeams = [...teams].sort((a, b) => {
     const ga = a.groupId ? (groupMap.get(a.groupId)?.name ?? '') : '￿';
     const gb = b.groupId ? (groupMap.get(b.groupId)?.name ?? '') : '￿';
     if (ga !== gb) return ga.localeCompare(gb);
     return a.name.localeCompare(b.name);
   });
+
+  // ── Add match form (shared between top and per-day positions) ─────────────
+
+  function renderAddMatchForm() {
+    const addTeamsForStage = matchStage === 'group' && matchGroupId
+      ? teams.filter(t => t.groupId === matchGroupId)
+      : teams;
+    return (
+      <form onSubmit={handleAddMatch} className="mt-3 rounded-lg border p-4">
+        <div className="mb-3 grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-muted-foreground">Stage</label>
+            <select
+              value={matchStage}
+              onChange={e => {
+                const stage = e.target.value as MatchStage;
+                setMatchStage(stage);
+                if (stage !== 'group') setMatchGroupId('');
+                setMatchHomeTeamId('');
+                setMatchAwayTeamId('');
+              }}
+              className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              required
+            >
+              {(Object.entries(STAGE_LABELS) as [MatchStage, string][]).map(([val, label]) => (
+                <option key={val} value={val}>{label}</option>
+              ))}
+            </select>
+          </div>
+          {matchStage === 'group' && (
+            <div>
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">Group</label>
+              <select
+                value={matchGroupId}
+                onChange={e => {
+                  setMatchGroupId(e.target.value);
+                  setMatchHomeTeamId('');
+                  setMatchAwayTeamId('');
+                }}
+                className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              >
+                <option value="">All groups</option>
+                {groupList.map(g => (
+                  <option key={g.id} value={g.id}>{g.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div>
+            <label className="mb-1 block text-xs font-medium text-muted-foreground">Home Team</label>
+            <select
+              value={matchHomeTeamId}
+              onChange={e => setMatchHomeTeamId(e.target.value)}
+              className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              <option value="">TBD</option>
+              {addTeamsForStage.map(t => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-muted-foreground">Away Team</label>
+            <select
+              value={matchAwayTeamId}
+              onChange={e => setMatchAwayTeamId(e.target.value)}
+              className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              <option value="">TBD</option>
+              {addTeamsForStage.map(t => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="col-span-2">
+            <label className="mb-1 block text-xs font-medium text-muted-foreground">
+              Date &amp; Time (optional)
+            </label>
+            <DateTimePickerFields
+              date={addDate} hour={addHour} minute={addMinute}
+              onDate={setAddDate} onHour={setAddHour} onMinute={setAddMinute}
+            />
+          </div>
+        </div>
+        {addMatchError && <p className="mb-2 text-sm text-red-600">{addMatchError}</p>}
+        <div className="flex gap-2">
+          <button
+            type="submit"
+            disabled={addMatchMutation.isPending}
+            className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          >
+            {addMatchMutation.isPending ? 'Adding…' : 'Add Match'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setAddMatchForDate(null)}
+            className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+          >
+            Cancel
+          </button>
+        </div>
+      </form>
+    );
+  }
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-8">
@@ -405,7 +670,7 @@ export default function TournamentDetailPage() {
             </select>
             <Link
               to={`/admin/tournaments/${id}/edit`}
-              className="ml-auto rounded-md border px-3 py-1.5 text-sm hover:bg-gray-50"
+              className="ml-auto rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
             >
               Edit
             </Link>
@@ -422,7 +687,7 @@ export default function TournamentDetailPage() {
               {!showAddGroup && (
                 <button
                   onClick={() => setShowAddGroup(true)}
-                  className="rounded-md border px-3 py-1.5 text-sm hover:bg-gray-50"
+                  className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
                 >
                   Add Group
                 </button>
@@ -430,7 +695,7 @@ export default function TournamentDetailPage() {
               {!showAddTeam && (
                 <button
                   onClick={() => setShowAddTeam(true)}
-                  className="rounded-md border px-3 py-1.5 text-sm hover:bg-gray-50"
+                  className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
                 >
                   Add Team
                 </button>
@@ -466,7 +731,7 @@ export default function TournamentDetailPage() {
               <button
                 type="button"
                 onClick={() => { setShowAddGroup(false); setGroupName(''); setAddGroupError(''); }}
-                className="rounded-md border px-3 py-1.5 text-sm hover:bg-gray-50"
+                className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
               >
                 Cancel
               </button>
@@ -499,7 +764,7 @@ export default function TournamentDetailPage() {
               </select>
             </div>
             <div className="mb-3">
-              <p className="mb-1 text-xs font-medium text-gray-600">Team icon (optional)</p>
+              <p className="mb-1 text-xs font-medium text-muted-foreground">Team icon (optional)</p>
               <ImageUpload
                 type="teams"
                 currentUrl={teamImageUrl}
@@ -519,7 +784,7 @@ export default function TournamentDetailPage() {
               <button
                 type="button"
                 onClick={() => { setShowAddTeam(false); setTeamName(''); setTeamGroupId(''); setTeamImageUrl(null); setAddTeamError(''); }}
-                className="rounded-md border px-3 py-1.5 text-sm hover:bg-gray-50"
+                className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
               >
                 Cancel
               </button>
@@ -566,12 +831,12 @@ export default function TournamentDetailPage() {
                     {team.imageUrl ? (
                       <img src={team.imageUrl} alt={team.name} className="h-6 w-6 rounded-sm object-cover" />
                     ) : (
-                      <span className="h-6 w-6 rounded-sm bg-gray-100 inline-block" />
+                      <span className="h-6 w-6 rounded-sm bg-muted inline-block" />
                     )}
                     {team.name}
                   </span>
                   {gName && (
-                    <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600">
+                    <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
                       Group {gName}
                     </span>
                   )}
@@ -586,173 +851,243 @@ export default function TournamentDetailPage() {
       <section>
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-lg font-semibold">Matches ({matchList.length})</h2>
-          {isAdmin && !showAddMatch && (
+          {isAdmin && addMatchForDate === null && (
             <button
-              onClick={() => setShowAddMatch(true)}
-              className="rounded-md border px-3 py-1.5 text-sm hover:bg-gray-50"
+              onClick={() => openAddMatch()}
+              className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
             >
               Add Match
             </button>
           )}
         </div>
 
-        {showAddMatch && (
-          <form onSubmit={handleAddMatch} className="mb-4 rounded-lg border p-4">
-            <div className="mb-3 grid grid-cols-2 gap-3">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">Home Team</label>
-                <select
-                  value={matchHomeTeamId}
-                  onChange={e => setMatchHomeTeamId(e.target.value)}
-                  className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                >
-                  <option value="">TBD</option>
-                  {teams.map(t => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">Away Team</label>
-                <select
-                  value={matchAwayTeamId}
-                  onChange={e => setMatchAwayTeamId(e.target.value)}
-                  className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                >
-                  <option value="">TBD</option>
-                  {teams.map(t => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">Stage</label>
-                <select
-                  value={matchStage}
-                  onChange={e => setMatchStage(e.target.value as MatchStage)}
-                  className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                  required
-                >
-                  {(Object.entries(STAGE_LABELS) as [MatchStage, string][]).map(([val, label]) => (
-                    <option key={val} value={val}>{label}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">
-                  Date &amp; Time (optional)
-                </label>
-                <input
-                  type="datetime-local"
-                  value={matchScheduledAt}
-                  onChange={e => setMatchScheduledAt(e.target.value)}
-                  className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                />
-              </div>
-            </div>
-            {addMatchError && <p className="mb-2 text-sm text-red-600">{addMatchError}</p>}
-            <div className="flex gap-2">
-              <button
-                type="submit"
-                disabled={addMatchMutation.isPending}
-                className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-              >
-                {addMatchMutation.isPending ? 'Adding…' : 'Add Match'}
-              </button>
-              <button
-                type="button"
-                onClick={() => { setShowAddMatch(false); setAddMatchError(''); }}
-                className="rounded-md border px-3 py-1.5 text-sm hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
-        )}
+        {/* Top-level add match form */}
+        {isAdmin && addMatchForDate === '' && renderAddMatchForm()}
 
         {matchList.length === 0 ? (
           <p className="text-sm text-muted-foreground">No matches added yet.</p>
         ) : (
-          <div className="space-y-2">
-            {matchList.map(match => (
-              <div key={match.id} className="rounded-lg border p-4">
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">
-                    {STAGE_LABELS[match.stage]}
-                    {match.scheduledAt &&
-                      ` · ${new Date(match.scheduledAt).toLocaleString(undefined, {
-                        dateStyle: 'medium',
-                        timeStyle: 'short',
-                      })}`}
-                  </span>
-                  {match.status === 'completed' && (
-                    <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
-                      Final
-                    </span>
-                  )}
+          <div className="space-y-6">
+            {matchGroups.map(({ dateLabel, isoDate, matches }) => (
+              <div key={isoDate}>
+                <h3 className="mb-2 text-sm font-semibold text-muted-foreground">{dateLabel}</h3>
+                <div className="space-y-2">
+                  {matches.map(match => (
+                    <div key={match.id} className="rounded-lg border p-4">
+                      {/* Match header row */}
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="text-xs font-bold">
+                          {matchStageLabel(match)}
+                          {match.scheduledAt && (
+                            <span className="ml-1.5 font-normal text-muted-foreground">
+                              {new Date(match.scheduledAt).toLocaleTimeString(undefined, { timeStyle: 'short' })}
+                            </span>
+                          )}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          {match.status === 'completed' && (
+                            <span className="rounded-full bg-accent/15 px-2 py-0.5 text-xs font-medium text-accent">
+                              Final
+                            </span>
+                          )}
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              onClick={() => editMatchId === match.id ? setEditMatchId(null) : openEditMatch(match)}
+                              className="text-muted-foreground hover:text-foreground"
+                              title="Edit match"
+                            >
+                              <Pencil size={13} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Teams + score button */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <TeamBadge name={match.homeTeamName} imageUrl={match.homeTeamImageUrl} />
+                          {match.status === 'completed' ? (
+                            <span className="rounded bg-muted px-2 py-0.5 text-sm font-bold tabular-nums">
+                              {match.homeScore} – {match.awayScore}
+                            </span>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">vs</span>
+                          )}
+                          <TeamBadge name={match.awayTeamName} imageUrl={match.awayTeamImageUrl} />
+                        </div>
+
+                        {isAdmin && match.status === 'scheduled' && scoreMatchId !== match.id && (
+                          <button
+                            onClick={() => openScoreForm(match.id)}
+                            className="rounded-md border px-3 py-1 text-xs hover:bg-muted"
+                          >
+                            Enter Score
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Score form */}
+                      {scoreMatchId === match.id && (
+                        <form onSubmit={handleEnterScore} className="mt-3 flex flex-wrap items-center gap-2">
+                          <input
+                            type="number"
+                            min="0"
+                            value={homeScore}
+                            onChange={e => setHomeScore(e.target.value)}
+                            className="w-14 rounded-md border px-2 py-1.5 text-center text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                            placeholder="0"
+                            required
+                            autoFocus
+                          />
+                          <span className="text-sm font-medium">–</span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={awayScore}
+                            onChange={e => setAwayScore(e.target.value)}
+                            className="w-14 rounded-md border px-2 py-1.5 text-center text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                            placeholder="0"
+                            required
+                          />
+                          {scoreError && <span className="text-xs text-red-600">{scoreError}</span>}
+                          <button
+                            type="submit"
+                            disabled={updateScoreMutation.isPending}
+                            className="rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                          >
+                            {updateScoreMutation.isPending ? 'Saving…' : 'Save'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setScoreMatchId(null); setScoreError(''); }}
+                            className="rounded-md border px-3 py-1.5 text-xs hover:bg-muted"
+                          >
+                            Cancel
+                          </button>
+                        </form>
+                      )}
+
+                      {/* Inline edit form */}
+                      {editMatchId === match.id && (
+                        <form onSubmit={handleSaveEdit} className="mt-3 rounded-md border p-3">
+                          <div className="mb-3 grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="mb-1 block text-xs font-medium text-muted-foreground">Stage</label>
+                              <select
+                                value={editStage}
+                                onChange={e => {
+                                  const stage = e.target.value as MatchStage;
+                                  setEditStage(stage);
+                                  if (stage !== 'group') setEditGroupId('');
+                                  setEditHomeTeamId('');
+                                  setEditAwayTeamId('');
+                                }}
+                                className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                                required
+                              >
+                                {(Object.entries(STAGE_LABELS) as [MatchStage, string][]).map(([val, label]) => (
+                                  <option key={val} value={val}>{label}</option>
+                                ))}
+                              </select>
+                            </div>
+                            {editStage === 'group' && (
+                              <div>
+                                <label className="mb-1 block text-xs font-medium text-muted-foreground">Group</label>
+                                <select
+                                  value={editGroupId}
+                                  onChange={e => {
+                                    setEditGroupId(e.target.value);
+                                    setEditHomeTeamId('');
+                                    setEditAwayTeamId('');
+                                  }}
+                                  className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                                >
+                                  <option value="">All groups</option>
+                                  {groupList.map(g => (
+                                    <option key={g.id} value={g.id}>{g.name}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
+                            <div>
+                              <label className="mb-1 block text-xs font-medium text-muted-foreground">Home Team</label>
+                              <select
+                                value={editHomeTeamId}
+                                onChange={e => setEditHomeTeamId(e.target.value)}
+                                className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                              >
+                                <option value="">TBD</option>
+                                {(editStage === 'group' && editGroupId
+                                  ? teams.filter(t => t.groupId === editGroupId)
+                                  : teams
+                                ).map(t => (
+                                  <option key={t.id} value={t.id}>{t.name}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="mb-1 block text-xs font-medium text-muted-foreground">Away Team</label>
+                              <select
+                                value={editAwayTeamId}
+                                onChange={e => setEditAwayTeamId(e.target.value)}
+                                className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                              >
+                                <option value="">TBD</option>
+                                {(editStage === 'group' && editGroupId
+                                  ? teams.filter(t => t.groupId === editGroupId)
+                                  : teams
+                                ).map(t => (
+                                  <option key={t.id} value={t.id}>{t.name}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="col-span-2">
+                              <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                                Date &amp; Time (optional)
+                              </label>
+                              <DateTimePickerFields
+                                date={editDate} hour={editHour} minute={editMinute}
+                                onDate={setEditDate} onHour={setEditHour} onMinute={setEditMinute}
+                              />
+                            </div>
+                          </div>
+                          {editError && <p className="mb-2 text-sm text-red-600">{editError}</p>}
+                          <div className="flex gap-2">
+                            <button
+                              type="submit"
+                              disabled={editMatchMutation.isPending}
+                              className="rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                            >
+                              {editMatchMutation.isPending ? 'Saving…' : 'Save changes'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { setEditMatchId(null); setEditError(''); }}
+                              className="rounded-md border px-3 py-1.5 text-xs hover:bg-muted"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </form>
+                      )}
+                    </div>
+                  ))}
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <TeamBadge name={match.homeTeamName} imageUrl={match.homeTeamImageUrl} />
-                    {match.status === 'completed' ? (
-                      <span className="rounded bg-gray-100 px-2 py-0.5 text-sm font-bold tabular-nums">
-                        {match.homeScore} – {match.awayScore}
-                      </span>
-                    ) : (
-                      <span className="text-sm text-muted-foreground">vs</span>
-                    )}
-                    <TeamBadge name={match.awayTeamName} imageUrl={match.awayTeamImageUrl} />
-                  </div>
-
-                  {isAdmin && match.status === 'scheduled' && scoreMatchId !== match.id && (
-                    <button
-                      onClick={() => openScoreForm(match.id)}
-                      className="rounded-md border px-3 py-1 text-xs hover:bg-gray-50"
-                    >
-                      Enter Score
-                    </button>
-                  )}
-                </div>
-
-                {scoreMatchId === match.id && (
-                  <form onSubmit={handleEnterScore} className="mt-3 flex flex-wrap items-center gap-2">
-                    <input
-                      type="number"
-                      min="0"
-                      value={homeScore}
-                      onChange={e => setHomeScore(e.target.value)}
-                      className="w-14 rounded-md border px-2 py-1.5 text-center text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                      placeholder="0"
-                      required
-                      autoFocus
-                    />
-                    <span className="text-sm font-medium">–</span>
-                    <input
-                      type="number"
-                      min="0"
-                      value={awayScore}
-                      onChange={e => setAwayScore(e.target.value)}
-                      className="w-14 rounded-md border px-2 py-1.5 text-center text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                      placeholder="0"
-                      required
-                    />
-                    {scoreError && <span className="text-xs text-red-600">{scoreError}</span>}
-                    <button
-                      type="submit"
-                      disabled={updateScoreMutation.isPending}
-                      className="rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                    >
-                      {updateScoreMutation.isPending ? 'Saving…' : 'Save'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setScoreMatchId(null); setScoreError(''); }}
-                      className="rounded-md border px-3 py-1.5 text-xs hover:bg-gray-50"
-                    >
-                      Cancel
-                    </button>
-                  </form>
+                {/* Per-day add match form or button */}
+                {isAdmin && isoDate !== '__none__' && (
+                  addMatchForDate === isoDate
+                    ? renderAddMatchForm()
+                    : (
+                      <button
+                        type="button"
+                        onClick={() => openAddMatch(isoDate)}
+                        className="mt-2 w-full rounded-md border border-dashed px-3 py-1.5 text-xs text-muted-foreground hover:border-solid hover:bg-muted hover:text-foreground"
+                      >
+                        + Add match on this day
+                      </button>
+                    )
                 )}
               </div>
             ))}

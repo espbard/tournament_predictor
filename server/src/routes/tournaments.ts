@@ -134,16 +134,27 @@ tournamentsRouter.get('/:id/matches', requireAuth, async (req, res) => {
         ? await db.select().from(teams).where(inArray(teams.id, teamIds))
         : [];
 
-    const teamMap = new Map(teamRows.map(t => [t.id, { name: t.name, imageUrl: t.imageUrl }]));
+    const teamMap = new Map(teamRows.map(t => [t.id, { name: t.name, imageUrl: t.imageUrl, groupId: t.groupId }]));
+
+    const groupIds = [...new Set(teamRows.map(t => t.groupId).filter((id): id is string => id !== null))];
+    const groupRows = groupIds.length > 0
+      ? await db.select().from(groups).where(inArray(groups.id, groupIds))
+      : [];
+    const groupMap = new Map(groupRows.map(g => [g.id, g.name]));
 
     return res.json(
-      matchRows.map(m => ({
-        ...m,
-        homeTeamName: m.homeTeamId ? (teamMap.get(m.homeTeamId)?.name ?? null) : null,
-        awayTeamName: m.awayTeamId ? (teamMap.get(m.awayTeamId)?.name ?? null) : null,
-        homeTeamImageUrl: m.homeTeamId ? (teamMap.get(m.homeTeamId)?.imageUrl ?? null) : null,
-        awayTeamImageUrl: m.awayTeamId ? (teamMap.get(m.awayTeamId)?.imageUrl ?? null) : null,
-      }))
+      matchRows.map(m => {
+        const homeGroupId = m.homeTeamId ? (teamMap.get(m.homeTeamId)?.groupId ?? null) : null;
+        const groupName = homeGroupId ? (groupMap.get(homeGroupId) ?? null) : null;
+        return {
+          ...m,
+          homeTeamName: m.homeTeamId ? (teamMap.get(m.homeTeamId)?.name ?? null) : null,
+          awayTeamName: m.awayTeamId ? (teamMap.get(m.awayTeamId)?.name ?? null) : null,
+          homeTeamImageUrl: m.homeTeamId ? (teamMap.get(m.homeTeamId)?.imageUrl ?? null) : null,
+          awayTeamImageUrl: m.awayTeamId ? (teamMap.get(m.awayTeamId)?.imageUrl ?? null) : null,
+          groupName,
+        };
+      })
     );
   } catch (err) {
     console.error(err);
@@ -234,10 +245,25 @@ tournamentsRouter.delete('/:id/groups/:groupId', requireAdmin, async (req, res) 
 
 matchesRouter.patch('/:id', requireAdmin, async (req, res) => {
   try {
-    const { homeScore, awayScore } = UpdateMatchSchema.parse(req.body);
+    const updates = UpdateMatchSchema.parse(req.body);
+    const setData: Record<string, unknown> = {};
+    if (updates.homeTeamId !== undefined) setData.homeTeamId = updates.homeTeamId;
+    if (updates.awayTeamId !== undefined) setData.awayTeamId = updates.awayTeamId;
+    if (updates.stage !== undefined) setData.stage = updates.stage;
+    if (updates.scheduledAt !== undefined) {
+      setData.scheduledAt = updates.scheduledAt ? new Date(updates.scheduledAt) : null;
+    }
+    if (updates.homeScore !== undefined && updates.awayScore !== undefined) {
+      setData.homeScore = updates.homeScore;
+      setData.awayScore = updates.awayScore;
+      setData.status = 'completed';
+    }
+    if (Object.keys(setData).length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
     const [updated] = await db
       .update(matches)
-      .set({ homeScore, awayScore, status: 'completed' })
+      .set(setData)
       .where(eq(matches.id, req.params.id))
       .returning();
     if (!updated) return res.status(404).json({ error: 'Match not found' });

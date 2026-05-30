@@ -7,9 +7,9 @@ import ImageUpload from '@/components/ImageUpload';
 import type { Tournament } from '@tournament-predictor/shared';
 
 const STATUS_COLORS: Record<Tournament['status'], string> = {
-  upcoming: 'bg-yellow-100 text-yellow-800',
-  active: 'bg-green-100 text-green-800',
-  completed: 'bg-gray-100 text-gray-600',
+  upcoming: 'bg-primary/10 text-primary',
+  active: 'bg-accent/15 text-accent',
+  completed: 'bg-muted text-muted-foreground',
 };
 
 export default function TournamentsPage() {
@@ -82,7 +82,7 @@ export default function TournamentsPage() {
             autoFocus
           />
           <div className="mb-3">
-            <p className="mb-1 text-xs font-medium text-gray-600">Logo (optional)</p>
+            <p className="mb-1 text-xs font-medium text-muted-foreground">Logo (optional)</p>
             <ImageUpload
               type="tournaments"
               currentUrl={imageUrl}
@@ -102,7 +102,7 @@ export default function TournamentsPage() {
             <button
               type="button"
               onClick={handleCancel}
-              className="rounded-md border px-3 py-1.5 text-sm hover:bg-gray-50"
+              className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
             >
               Cancel
             </button>
@@ -120,12 +120,12 @@ export default function TournamentsPage() {
             <li key={t.id}>
               <Link
                 to={`/admin/tournaments/${t.id}`}
-                className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50"
+                className="flex items-center gap-3 px-4 py-3 hover:bg-muted"
               >
                 {t.imageUrl ? (
                   <img src={t.imageUrl} alt={t.name} className="h-8 w-8 rounded object-cover" />
                 ) : (
-                  <div className="h-8 w-8 rounded bg-gray-100" />
+                  <div className="h-8 w-8 rounded bg-muted" />
                 )}
                 <span className="flex-1 font-medium">{t.name}</span>
                 <span

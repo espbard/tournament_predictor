@@ -12,7 +12,7 @@ export default function AdminHomePage() {
       <div className="grid gap-4 sm:grid-cols-2">
         <Link
           to="/admin/tournaments"
-          className="rounded-lg border p-5 transition-colors hover:bg-gray-50"
+          className="rounded-lg border p-5 transition-colors hover:bg-muted"
         >
           <h2 className="mb-1 font-semibold">Tournaments</h2>
           <p className="text-sm text-muted-foreground">
@@ -21,7 +21,7 @@ export default function AdminHomePage() {
         </Link>
         <Link
           to="/admin/competitions"
-          className="rounded-lg border p-5 transition-colors hover:bg-gray-50"
+          className="rounded-lg border p-5 transition-colors hover:bg-muted"
         >
           <h2 className="mb-1 font-semibold">Competitions</h2>
           <p className="text-sm text-muted-foreground">

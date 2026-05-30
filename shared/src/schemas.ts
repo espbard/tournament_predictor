@@ -50,8 +50,12 @@ export const CreateMatchSchema = z.object({
 });
 
 export const UpdateMatchSchema = z.object({
-  homeScore: z.number().int().min(0),
-  awayScore: z.number().int().min(0),
+  homeScore: z.number().int().min(0).optional(),
+  awayScore: z.number().int().min(0).optional(),
+  homeTeamId: z.string().nullable().optional(),
+  awayTeamId: z.string().nullable().optional(),
+  stage: z.enum(['group', 'round_of_16', 'quarter_final', 'semi_final', 'final']).optional(),
+  scheduledAt: z.string().datetime().nullable().optional(),
 });
 
 export const CreateCompetitionSchema = z.object({

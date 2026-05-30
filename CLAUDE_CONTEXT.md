@@ -48,15 +48,26 @@ A web application for predicting sports tournament outcomes. Used by a small pri
 │   ├── src
 │   │   ├── App.tsx
 │   │   ├── components
+│   │   │   ├── AppLayout.tsx
+│   │   │   ├── ImageUpload.tsx
+│   │   │   └── Navbar.tsx
 │   │   ├── index.css
 │   │   ├── lib
 │   │   │   ├── api.ts
 │   │   │   └── utils.ts
 │   │   ├── main.tsx
 │   │   ├── pages
+│   │   │   ├── AdminHomePage.tsx
+│   │   │   ├── CompetitionDetailPage.tsx
+│   │   │   ├── CompetitionsPage.tsx
+│   │   │   ├── EditTeamPage.tsx
+│   │   │   ├── EditTournamentPage.tsx
+│   │   │   ├── EditUserPage.tsx
 │   │   │   ├── HomePage.tsx
 │   │   │   ├── LoginPage.tsx
-│   │   │   └── RegisterPage.tsx
+│   │   │   ├── RegisterPage.tsx
+│   │   │   ├── TournamentDetailPage.tsx
+│   │   │   └── TournamentsPage.tsx
 │   │   └── store
 │   │       └── authStore.ts
 │   ├── tailwind.config.js
@@ -69,8 +80,14 @@ A web application for predicting sports tournament outcomes. Used by a small pri
 ├── server
 │   ├── drizzle
 │   │   ├── 0000_amazing_killmonger.sql
+│   │   ├── 0001_little_blizzard.sql
+│   │   ├── 0002_easy_terrax.sql
+│   │   ├── 0003_puzzling_white_tiger.sql
 │   │   └── meta
-│   │       └── 0000_snapshot.json
+│   │       ├── 0000_snapshot.json
+│   │       ├── 0001_snapshot.json
+│   │       ├── 0002_snapshot.json
+│   │       └── 0003_snapshot.json
 │   ├── drizzle.config.ts
 │   ├── package.json
 │   ├── src
@@ -80,11 +97,15 @@ A web application for predicting sports tournament outcomes. Used by a small pri
 │   │   │   └── schema.ts
 │   │   ├── index.ts
 │   │   ├── lib
+│   │   │   ├── r2.ts
 │   │   │   └── scoring.ts
 │   │   ├── middleware
 │   │   │   └── auth.ts
 │   │   └── routes
-│   │       └── auth.ts
+│   │       ├── auth.ts
+│   │       ├── competitions.ts
+│   │       ├── tournaments.ts
+│   │       └── upload.ts
 │   └── tsconfig.json
 └── shared
     ├── package.json
@@ -313,8 +334,8 @@ GET    /api/competitions/:id
 GET    /api/competitions/:id/leaderboard
 POST   /api/competitions/:id/join
 
-GET    /api/competitions/:id/predictions
-POST   /api/competitions/:id/predictions
+GET    /api/competitions/:id/predictions   — returns current user's predictions
+POST   /api/competitions/:id/predictions   — upsert a prediction (checks deadline)
 ```
 
 ---
@@ -390,6 +411,9 @@ CLIENT_URL=http://localhost:5173   # Only used in dev for CORS
 - [x] Added landing pages with navigation and logout
 - [x] Implement Group CRUD. It is now possible to create, edit and delete groups
 - [x] Add Competition CRUD, limit non-admin users to only see competitions they are part of
+- [x] Added basic color scheme
+- [x] Predictions UI — per-match score inputs in CompetitionDetailPage, deadline enforcement, save per match, show actual result vs prediction for completed matches
+
 
 ### In Progress
 -
@@ -415,15 +439,15 @@ CLIENT_URL=http://localhost:5173   # Only used in dev for CORS
 [UPDATE AS YOU BUILD — or keep this in a separate TODO.md and paste it here]
 
 ### Next Session
+1. Scoring engine — pure function + Vitest unit tests, triggered when admin marks match complete
 
 ### Backlog (in order)
-1. Predictions UI — match score form, deadline enforcement
-2. Scoring engine — pure function + Vitest unit tests
-3. Score calculation trigger — admin marks match complete → points calculated
-4. Leaderboard — ranked view per competition
-5. Group stage predictions
-6. Knockout bracket predictions
-7. Polish — UI improvements, mobile layout
+1. Scoring engine — pure function + Vitest unit tests
+2. Score calculation trigger — admin marks match complete → points calculated
+3. Leaderboard — ranked view per competition
+4. Group stage predictions
+5. Knockout bracket predictions
+6. Polish — UI improvements, mobile layout
 
 ---
 

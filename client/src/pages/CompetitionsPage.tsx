@@ -145,7 +145,7 @@ export default function CompetitionsPage() {
             <button
               type="button"
               onClick={() => { setShowForm(false); setFormError(''); setImageUrl(null); }}
-              className="rounded-md border px-4 py-2 text-sm hover:bg-gray-50"
+              className="rounded-md border px-4 py-2 text-sm hover:bg-muted"
             >
               Cancel
             </button>
@@ -168,7 +168,7 @@ export default function CompetitionsPage() {
                 {c.imageUrl ? (
                   <img src={c.imageUrl} alt={c.name} className="h-12 w-12 rounded-lg object-cover flex-shrink-0" />
                 ) : (
-                  <div className="h-12 w-12 rounded-lg bg-gray-100 flex-shrink-0" />
+                  <div className="h-12 w-12 rounded-lg bg-muted flex-shrink-0" />
                 )}
                 <div className="flex-1 min-w-0">
                   <Link to={`/competitions/${c.id}`} className="font-semibold hover:underline">

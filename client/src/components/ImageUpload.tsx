@@ -46,7 +46,7 @@ export default function ImageUpload({ type, currentUrl, onUploaded, shape = 'squ
         />
       ) : (
         <div
-          className={`flex h-20 w-20 items-center justify-center border-2 border-dashed border-gray-300 bg-gray-50 text-gray-400 text-xs ${shapeClass}`}
+          className={`flex h-20 w-20 items-center justify-center border-2 border-dashed border-border bg-muted text-muted-foreground text-xs ${shapeClass}`}
         >
           No image
         </div>
@@ -55,7 +55,7 @@ export default function ImageUpload({ type, currentUrl, onUploaded, shape = 'squ
         type="button"
         onClick={() => inputRef.current?.click()}
         disabled={uploading}
-        className="rounded-md border px-3 py-1.5 text-xs hover:bg-gray-50 disabled:opacity-50"
+        className="rounded-md border px-3 py-1.5 text-xs hover:bg-muted disabled:opacity-50"
       >
         {uploading ? 'Uploading…' : label}
       </button>

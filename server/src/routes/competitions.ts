@@ -1,10 +1,10 @@
 import { Router } from 'express';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { generateId } from 'lucia';
 import { db } from '../db/client.js';
-import { competitions, competitionMembers, users, tournaments } from '../db/schema.js';
+import { competitions, competitionMembers, users, tournaments, predictions, matches } from '../db/schema.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
-import { CreateCompetitionSchema, DEFAULT_SCORING_CONFIG } from '@tournament-predictor/shared';
+import { CreateCompetitionSchema, CreatePredictionSchema, DEFAULT_SCORING_CONFIG } from '@tournament-predictor/shared';
 
 const router = Router();
 
@@ -193,6 +193,149 @@ router.get('/:id/members', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Get members error:', err);
     res.status(500).json({ error: 'Failed to fetch members' });
+  }
+});
+
+router.get('/:id/leaderboard', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = res.locals.user;
+
+    const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
+    if (!competition) return res.status(404).json({ error: 'Competition not found' });
+
+    if (!user.isAdmin) {
+      const [membership] = await db
+        .select()
+        .from(competitionMembers)
+        .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
+      if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+    }
+
+    const rows = await db
+      .select({
+        userId: users.id,
+        username: users.username,
+        imageUrl: users.imageUrl,
+        totalPoints: sql<number>`COALESCE(SUM(${predictions.points}), 0)`,
+      })
+      .from(competitionMembers)
+      .innerJoin(users, eq(competitionMembers.userId, users.id))
+      .leftJoin(
+        predictions,
+        and(eq(predictions.competitionId, id), eq(predictions.userId, users.id))
+      )
+      .where(eq(competitionMembers.competitionId, id))
+      .groupBy(users.id, users.username, users.imageUrl)
+      .orderBy(sql`COALESCE(SUM(${predictions.points}), 0) DESC`);
+
+    let rank = 1;
+    const leaderboard = rows.map((row, i) => {
+      if (i > 0 && row.totalPoints < rows[i - 1].totalPoints) rank = i + 1;
+      return { userId: row.userId, username: row.username, imageUrl: row.imageUrl, totalPoints: row.totalPoints, rank };
+    });
+
+    res.json(leaderboard);
+  } catch (err) {
+    console.error('Leaderboard error:', err);
+    res.status(500).json({ error: 'Failed to fetch leaderboard' });
+  }
+});
+
+router.get('/:id/predictions', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = res.locals.user;
+
+    if (!user.isAdmin) {
+      const [membership] = await db
+        .select()
+        .from(competitionMembers)
+        .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
+      if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+    }
+
+    const preds = await db
+      .select()
+      .from(predictions)
+      .where(and(eq(predictions.competitionId, id), eq(predictions.userId, user.id)));
+
+    res.json(preds);
+  } catch (err) {
+    console.error('Get predictions error:', err);
+    res.status(500).json({ error: 'Failed to fetch predictions' });
+  }
+});
+
+router.post('/:id/predictions', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = res.locals.user;
+
+    const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
+    if (!competition) return res.status(404).json({ error: 'Competition not found' });
+
+    if (!user.isAdmin) {
+      const [membership] = await db
+        .select()
+        .from(competitionMembers)
+        .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
+      if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+    }
+
+    if (competition.predictionDeadline && new Date() > new Date(competition.predictionDeadline)) {
+      return res.status(400).json({ error: 'Prediction deadline has passed' });
+    }
+
+    const result = CreatePredictionSchema.safeParse(req.body);
+    if (!result.success) {
+      return res.status(400).json({ error: 'Validation failed', details: result.error.flatten() });
+    }
+    const { matchId, homeScore, awayScore, progressingTeamId } = result.data;
+
+    const [match] = await db.select().from(matches).where(eq(matches.id, matchId));
+    if (!match) return res.status(404).json({ error: 'Match not found' });
+    if (match.tournamentId !== competition.tournamentId) {
+      return res.status(400).json({ error: "Match does not belong to this competition's tournament" });
+    }
+
+    const [existing] = await db
+      .select()
+      .from(predictions)
+      .where(
+        and(
+          eq(predictions.competitionId, id),
+          eq(predictions.userId, user.id),
+          eq(predictions.matchId, matchId)
+        )
+      );
+
+    if (existing) {
+      const [updated] = await db
+        .update(predictions)
+        .set({ homeScore, awayScore, progressingTeamId: progressingTeamId ?? null })
+        .where(eq(predictions.id, existing.id))
+        .returning();
+      return res.json(updated);
+    }
+
+    const predId = generateId(15);
+    const [created] = await db
+      .insert(predictions)
+      .values({
+        id: predId,
+        competitionId: id,
+        userId: user.id,
+        matchId,
+        homeScore,
+        awayScore,
+        progressingTeamId: progressingTeamId ?? null,
+      })
+      .returning();
+    return res.status(201).json(created);
+  } catch (err) {
+    console.error('Save prediction error:', err);
+    res.status(500).json({ error: 'Failed to save prediction' });
   }
 });
 
