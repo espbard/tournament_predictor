@@ -83,11 +83,13 @@ A web application for predicting sports tournament outcomes. Used by a small pri
 │   │   ├── 0001_little_blizzard.sql
 │   │   ├── 0002_easy_terrax.sql
 │   │   ├── 0003_puzzling_white_tiger.sql
+│   │   ├── 0004_eminent_silver_centurion.sql
 │   │   └── meta
 │   │       ├── 0000_snapshot.json
 │   │       ├── 0001_snapshot.json
 │   │       ├── 0002_snapshot.json
-│   │       └── 0003_snapshot.json
+│   │       ├── 0003_snapshot.json
+│   │       └── 0004_snapshot.json
 │   ├── drizzle.config.ts
 │   ├── package.json
 │   ├── src
@@ -414,6 +416,7 @@ CLIENT_URL=http://localhost:5173   # Only used in dev for CORS
 - [x] Added basic color scheme
 - [x] Predictions UI — per-match score inputs in CompetitionDetailPage, deadline enforcement, save per match, show actual result vs prediction for completed matches
 - [x] Add round of 32 and bronze final as possible stages
+- [x] Add live predicted tables
 
 
 ### In Progress
@@ -440,7 +443,7 @@ CLIENT_URL=http://localhost:5173   # Only used in dev for CORS
 [UPDATE AS YOU BUILD — or keep this in a separate TODO.md and paste it here]
 
 ### Next Session
-1. Group stage calculations
+1. Add konockout stage visualization in predictions
 
 ### Backlog (in order)
 1. Scoring engine — pure function + Vitest unit tests, triggered when admin marks match complete

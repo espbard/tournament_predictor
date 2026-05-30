@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
@@ -60,6 +60,15 @@ export default function CompetitionDetailPage() {
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [saveErrors, setSaveErrors] = useState<Record<string, string>>({});
 
+  const localEditsRef = useRef(localEdits);
+  useEffect(() => { localEditsRef.current = localEdits; }, [localEdits]);
+
+  const debounceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  useEffect(() => {
+    const timers = debounceTimers.current;
+    return () => { Object.values(timers).forEach(clearTimeout); };
+  }, []);
+
   const { data: competition, isLoading, error } = useQuery({
     queryKey: ['competitions', id],
     queryFn: () => api.get<Competition>(`/competitions/${id}`),
@@ -109,6 +118,92 @@ export default function CompetitionDetailPage() {
     [savedPredictions]
   );
 
+  type TeamStat = {
+    teamId: string;
+    teamName: string;
+    imageUrl: string | null;
+    group: string;
+    P: number; W: number; D: number; L: number; GF: number; GA: number;
+  };
+
+  const groupStandings = useMemo(() => {
+    const groupMatches = matchList.filter(m => m.stage === 'group');
+    const teamMap = new Map<string, TeamStat>();
+
+    for (const m of groupMatches) {
+      const g = m.groupName;
+      if (!g) continue;
+      if (m.homeTeamId && m.homeTeamName && !teamMap.has(m.homeTeamId)) {
+        teamMap.set(m.homeTeamId, { teamId: m.homeTeamId, teamName: m.homeTeamName, imageUrl: m.homeTeamImageUrl, group: g, P: 0, W: 0, D: 0, L: 0, GF: 0, GA: 0 });
+      }
+      if (m.awayTeamId && m.awayTeamName && !teamMap.has(m.awayTeamId)) {
+        teamMap.set(m.awayTeamId, { teamId: m.awayTeamId, teamName: m.awayTeamName, imageUrl: m.awayTeamImageUrl, group: g, P: 0, W: 0, D: 0, L: 0, GF: 0, GA: 0 });
+      }
+    }
+
+    for (const m of groupMatches) {
+      if (!m.homeTeamId || !m.awayTeamId || !m.groupName) continue;
+      let hs: number | null = null;
+      let as_: number | null = null;
+      if (m.status === 'completed') {
+        hs = m.homeScore; as_ = m.awayScore;
+      } else {
+        const edit = localEdits[m.id];
+        if (edit) {
+          const h = parseInt(edit.home, 10); const a = parseInt(edit.away, 10);
+          if (!isNaN(h) && !isNaN(a) && h >= 0 && a >= 0) { hs = h; as_ = a; }
+        }
+      }
+      if (hs === null || as_ === null) continue;
+      const home = teamMap.get(m.homeTeamId);
+      const away = teamMap.get(m.awayTeamId);
+      if (home) { home.P++; home.GF += hs; home.GA += as_; if (hs > as_) home.W++; else if (hs === as_) home.D++; else home.L++; }
+      if (away) { away.P++; away.GF += as_; away.GA += hs; if (as_ > hs) away.W++; else if (hs === as_) away.D++; else away.L++; }
+    }
+
+    const byGroup = new Map<string, TeamStat[]>();
+    for (const t of teamMap.values()) {
+      if (!byGroup.has(t.group)) byGroup.set(t.group, []);
+      byGroup.get(t.group)!.push(t);
+    }
+    for (const teams of byGroup.values()) {
+      teams.sort((a, b) => {
+        const pa = a.W * 3 + a.D; const pb = b.W * 3 + b.D;
+        if (pb !== pa) return pb - pa;
+        const gda = a.GF - a.GA; const gdb = b.GF - b.GA;
+        if (gdb !== gda) return gdb - gda;
+        return b.GF - a.GF;
+      });
+    }
+    return [...byGroup.entries()].sort(([a], [b]) => a.localeCompare(b));
+  }, [matchList, localEdits]);
+
+  // Top 8 third-placed teams ranked by FIFA criteria: Pts → GD → GF
+  const qualifyingThirdPlaceIds = useMemo(() => {
+    const third = groupStandings
+      .filter(([, teams]) => teams.length >= 3)
+      .map(([, teams]) => teams[2]);
+    third.sort((a, b) => {
+      const pa = a.W * 3 + a.D; const pb = b.W * 3 + b.D;
+      if (pb !== pa) return pb - pa;
+      const gda = a.GF - a.GA; const gdb = b.GF - b.GA;
+      if (gdb !== gda) return gdb - gda;
+      return b.GF - a.GF;
+    });
+    // Include all teams tied with the team at position 8 (boundary ties both show yellow)
+    const qualifying = third.slice(0, 8);
+    if (qualifying.length === 8 && third.length > 8) {
+      const edge = qualifying[7];
+      const edgePts = edge.W * 3 + edge.D; const edgeGD = edge.GF - edge.GA;
+      for (const t of third.slice(8)) {
+        const pts = t.W * 3 + t.D; const gd = t.GF - t.GA;
+        if (pts === edgePts && gd === edgeGD && t.GF === edge.GF) qualifying.push(t);
+        else break;
+      }
+    }
+    return new Set(qualifying.map(t => t.teamId));
+  }, [groupStandings]);
+
   const matchesByDate = useMemo(() => {
     const sorted = [...matchList].sort((a, b) => {
       if (!a.scheduledAt && !b.scheduledAt) return 0;
@@ -145,28 +240,12 @@ export default function CompetitionDetailPage() {
     ? new Date() > new Date(competition.predictionDeadline)
     : false;
 
-  function isDirty(matchId: string): boolean {
-    const edit = localEdits[matchId];
-    if (!edit) return false;
-    const saved = predMap[matchId];
-    if (!saved) return edit.home !== '' || edit.away !== '';
-    return edit.home !== String(saved.homeScore) || edit.away !== String(saved.awayScore);
-  }
-
-  function isValidEdit(matchId: string): boolean {
-    const edit = localEdits[matchId];
-    if (!edit) return false;
-    const h = parseInt(edit.home, 10);
-    const a = parseInt(edit.away, 10);
-    return !isNaN(h) && !isNaN(a) && h >= 0 && a >= 0;
-  }
-
   async function savePrediction(matchId: string) {
-    const edit = localEdits[matchId];
+    const edit = localEditsRef.current[matchId];
     if (!edit) return;
     const homeScore = parseInt(edit.home, 10);
     const awayScore = parseInt(edit.away, 10);
-    if (isNaN(homeScore) || isNaN(awayScore)) return;
+    if (isNaN(homeScore) || isNaN(awayScore) || homeScore < 0 || awayScore < 0) return;
 
     setSavingIds(prev => new Set([...prev, matchId]));
     setSaveErrors(prev => { const n = { ...prev }; delete n[matchId]; return n; });
@@ -184,6 +263,43 @@ export default function CompetitionDetailPage() {
     } finally {
       setSavingIds(prev => { const n = new Set(prev); n.delete(matchId); return n; });
     }
+  }
+
+  function scheduleAutoSave(matchId: string) {
+    if (debounceTimers.current[matchId]) clearTimeout(debounceTimers.current[matchId]);
+    debounceTimers.current[matchId] = setTimeout(() => savePrediction(matchId), 3000);
+  }
+
+  function simulatePredictions() {
+    const scheduledMatches = matchList.filter(m => m.status === 'scheduled');
+    const newEdits: Record<string, { home: string; away: string }> = {};
+    for (const m of scheduledMatches) {
+      newEdits[m.id] = {
+        home: String(Math.floor(Math.random() * 6)),
+        away: String(Math.floor(Math.random() * 6)),
+      };
+    }
+    localEditsRef.current = { ...localEditsRef.current, ...newEdits };
+    setLocalEdits(prev => ({ ...prev, ...newEdits }));
+    for (const m of scheduledMatches) {
+      if (debounceTimers.current[m.id]) clearTimeout(debounceTimers.current[m.id]);
+      savePrediction(m.id);
+    }
+  }
+
+  function clearPredictions() {
+    const scheduledMatches = matchList.filter(m => m.status === 'scheduled');
+    for (const m of scheduledMatches) {
+      if (debounceTimers.current[m.id]) {
+        clearTimeout(debounceTimers.current[m.id]);
+        delete debounceTimers.current[m.id];
+      }
+    }
+    setLocalEdits(prev => {
+      const next = { ...prev };
+      for (const m of scheduledMatches) delete next[m.id];
+      return next;
+    });
   }
 
   const updateMutation = useMutation({
@@ -231,7 +347,9 @@ export default function CompetitionDetailPage() {
   const tournament = tournamentsData.find(t => t.id === competition.tournamentId);
 
   return (
-    <main className="mx-auto max-w-2xl px-4 py-12">
+    <main className="mx-auto max-w-6xl px-4 py-12">
+      <div className="lg:flex lg:items-start lg:gap-8">
+      <div className="flex-1 min-w-0">
       <div className="mb-2 text-sm text-muted-foreground">
         <Link to={user?.isAdmin ? '/competitions' : '/'} className="hover:underline">
           ← {user?.isAdmin ? 'Competitions' : 'Home'}
@@ -346,13 +464,31 @@ export default function CompetitionDetailPage() {
 
       {/* Predictions — collapsible */}
       <div className="mb-6">
-        <button
-          onClick={() => setPredictionsOpen(o => !o)}
-          className="flex w-full items-center justify-between mb-3 text-left"
-        >
-          <h2 className="font-semibold">Predictions</h2>
-          <span className={`text-muted-foreground transition-transform duration-200 ${predictionsOpen ? 'rotate-180' : ''}`}>▾</span>
-        </button>
+        <div className="flex items-center justify-between mb-3">
+          <button
+            onClick={() => setPredictionsOpen(o => !o)}
+            className="flex items-center gap-2 text-left"
+          >
+            <h2 className="font-semibold">Predictions</h2>
+            <span className={`text-muted-foreground transition-transform duration-200 ${predictionsOpen ? 'rotate-180' : ''}`}>▾</span>
+          </button>
+          {!deadlinePassed && matchList.some(m => m.status === 'scheduled') && (
+            <div className="flex gap-2">
+              <button
+                onClick={simulatePredictions}
+                className="text-xs rounded border px-2.5 py-1 hover:bg-muted"
+              >
+                Simulate
+              </button>
+              <button
+                onClick={clearPredictions}
+                className="text-xs rounded border px-2.5 py-1 hover:bg-muted"
+              >
+                Clear
+              </button>
+            </div>
+          )}
+        </div>
 
         {predictionsOpen && (matchList.length === 0 ? (
           <p className="text-sm text-muted-foreground">No matches scheduled yet.</p>
@@ -368,8 +504,6 @@ export default function CompetitionDetailPage() {
                     const saving = savingIds.has(match.id);
                     const justSaved = savedIds.has(match.id);
                     const saveErr = saveErrors[match.id];
-                    const dirty = isDirty(match.id);
-                    const valid = isValidEdit(match.id);
 
                     return (
                       <div key={match.id} className="rounded-lg border px-3 py-3">
@@ -417,10 +551,10 @@ export default function CompetitionDetailPage() {
                                   min={0}
                                   max={99}
                                   value={edit?.home ?? ''}
-                                  onChange={e => setLocalEdits(prev => ({
-                                    ...prev,
-                                    [match.id]: { home: e.target.value, away: prev[match.id]?.away ?? '' },
-                                  }))}
+                                  onChange={e => {
+                                    setLocalEdits(prev => ({ ...prev, [match.id]: { home: e.target.value, away: prev[match.id]?.away ?? '' } }));
+                                    scheduleAutoSave(match.id);
+                                  }}
                                   placeholder="0"
                                   className="w-12 rounded border text-center text-xl font-semibold py-1.5 focus:outline-none focus:ring-1 focus:ring-ring [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                                 />
@@ -430,10 +564,10 @@ export default function CompetitionDetailPage() {
                                   min={0}
                                   max={99}
                                   value={edit?.away ?? ''}
-                                  onChange={e => setLocalEdits(prev => ({
-                                    ...prev,
-                                    [match.id]: { home: prev[match.id]?.home ?? '', away: e.target.value },
-                                  }))}
+                                  onChange={e => {
+                                    setLocalEdits(prev => ({ ...prev, [match.id]: { home: prev[match.id]?.home ?? '', away: e.target.value } }));
+                                    scheduleAutoSave(match.id);
+                                  }}
                                   placeholder="0"
                                   className="w-12 rounded border text-center text-xl font-semibold py-1.5 focus:outline-none focus:ring-1 focus:ring-ring [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                                 />
@@ -456,21 +590,14 @@ export default function CompetitionDetailPage() {
                           </div>
                         </div>
 
-                        {/* Save / status — centered below match row */}
-                        {match.status === 'scheduled' && !deadlinePassed && (
+                        {/* Save status — centered below match row */}
+                        {match.status === 'scheduled' && !deadlinePassed && (saving || justSaved) && (
                           <div className="mt-2 text-center">
                             {saving ? (
                               <span className="text-xs text-muted-foreground">…</span>
-                            ) : justSaved ? (
+                            ) : (
                               <span className="text-xs text-green-600">Saved</span>
-                            ) : dirty && valid ? (
-                              <button
-                                onClick={() => savePrediction(match.id)}
-                                className="text-xs rounded bg-primary px-3 py-1 text-primary-foreground hover:bg-primary/90"
-                              >
-                                Save
-                              </button>
-                            ) : null}
+                            )}
                           </div>
                         )}
 
@@ -540,6 +667,69 @@ export default function CompetitionDetailPage() {
             </div>
           )
         )}
+      </div>
+      </div>
+
+      {/* Group standings sidebar */}
+      {groupStandings.length > 0 && (
+        <aside className="mt-8 lg:mt-0 lg:w-80 lg:flex-shrink-0">
+          <div className="lg:sticky lg:top-4 space-y-4">
+            <h2 className="font-semibold">Group Standings</h2>
+            {groupStandings.map(([groupName, teams]) => (
+              <div key={groupName} className="rounded-lg border overflow-hidden">
+                <div className="bg-muted/50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Group {groupName}
+                </div>
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b text-muted-foreground">
+                      <th className="pl-3 py-1.5 text-left w-6">#</th>
+                      <th className="py-1.5 text-left">Team</th>
+                      <th className="py-1.5 text-center w-6">P</th>
+                      <th className="py-1.5 text-center w-6">W</th>
+                      <th className="py-1.5 text-center w-6">D</th>
+                      <th className="py-1.5 text-center w-6">L</th>
+                      <th className="py-1.5 text-center w-8">GF</th>
+                      <th className="py-1.5 text-center w-8">GA</th>
+                      <th className="pr-3 py-1.5 text-center w-8 font-bold text-foreground">Pts</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {teams.map((t, i) => (
+                      <tr key={t.teamId} className={
+                        i < 2
+                          ? 'bg-green-50 dark:bg-green-950/30'
+                          : i === 2 && qualifyingThirdPlaceIds.has(t.teamId)
+                          ? 'bg-yellow-50 dark:bg-yellow-950/30'
+                          : 'hover:bg-muted/30'
+                      }>
+                        <td className="pl-3 py-1.5 text-muted-foreground">{i + 1}</td>
+                        <td className="py-1.5 pr-2">
+                          <div className="flex items-center gap-1.5">
+                            {t.imageUrl ? (
+                              <img src={t.imageUrl} alt="" className="h-4 w-4 rounded-full object-cover flex-shrink-0" />
+                            ) : (
+                              <div className="h-4 w-4 rounded-full bg-muted flex-shrink-0" />
+                            )}
+                            <span className="truncate max-w-[80px]">{t.teamName}</span>
+                          </div>
+                        </td>
+                        <td className="py-1.5 text-center text-muted-foreground">{t.P}</td>
+                        <td className="py-1.5 text-center text-muted-foreground">{t.W}</td>
+                        <td className="py-1.5 text-center text-muted-foreground">{t.D}</td>
+                        <td className="py-1.5 text-center text-muted-foreground">{t.L}</td>
+                        <td className="py-1.5 text-center text-muted-foreground">{t.GF}</td>
+                        <td className="py-1.5 text-center text-muted-foreground">{t.GA}</td>
+                        <td className="pr-3 py-1.5 text-center font-bold">{t.W * 3 + t.D}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))}
+          </div>
+        </aside>
+      )}
       </div>
     </main>
   );
