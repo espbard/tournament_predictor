@@ -5,12 +5,23 @@ export interface User {
   imageUrl?: string | null;
 }
 
+export type KnockoutFirstRound = 'round_of_32' | 'round_of_16' | 'quarter_final' | 'semi_final' | 'final';
+
+export interface KnockoutConfig {
+  firstRound: KnockoutFirstRound;
+  hasBronzeFinal: boolean;
+  directQualifiers: number;
+  luckyLosers: number;
+  bracketSlots: Record<string, string>;
+}
+
 export interface Tournament {
   id: string;
   name: string;
   status: 'upcoming' | 'active' | 'completed';
   imageUrl?: string | null;
   createdAt: string;
+  knockoutConfig: KnockoutConfig | null;
 }
 
 export interface Group {
@@ -90,3 +101,11 @@ export interface LeaderboardEntry {
   totalPoints: number;
   rank: number;
 }
+
+export interface BracketMatchPrediction {
+  homeScore: number;
+  awayScore: number;
+  progressingTeamId: string | null;
+}
+
+export type BracketPredictions = Record<string, BracketMatchPrediction>;

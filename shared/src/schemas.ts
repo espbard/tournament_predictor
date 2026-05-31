@@ -91,3 +91,25 @@ export type UpdateMatchInput = z.infer<typeof UpdateMatchSchema>;
 export type CreateCompetitionInput = z.infer<typeof CreateCompetitionSchema>;
 export type UpdateCompetitionInput = z.infer<typeof UpdateCompetitionSchema>;
 export type CreatePredictionInput = z.infer<typeof CreatePredictionSchema>;
+
+export const UpdateKnockoutConfigSchema = z.object({
+  firstRound: z.enum(['round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'final']).optional(),
+  hasBronzeFinal: z.boolean().optional(),
+  directQualifiers: z.number().int().min(1).max(4).optional(),
+  luckyLosers: z.number().int().min(0).optional(),
+  bracketSlots: z.record(z.string()).optional(),
+});
+
+export type UpdateKnockoutConfigInput = z.infer<typeof UpdateKnockoutConfigSchema>;
+
+export const SaveBracketPredictionsSchema = z.object({
+  predictions: z.record(
+    z.object({
+      homeScore: z.number().int().min(0).max(30),
+      awayScore: z.number().int().min(0).max(30),
+      progressingTeamId: z.string().nullable(),
+    }),
+  ),
+});
+
+export type SaveBracketPredictionsInput = z.infer<typeof SaveBracketPredictionsSchema>;

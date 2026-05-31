@@ -643,6 +643,19 @@ export default function TournamentDetailPage() {
         ← Back to Tournaments
       </Link>
 
+      {/* Stage tabs */}
+      <div className="flex border-b mb-6">
+        <div className="px-4 py-2 text-sm font-medium border-b-2 border-primary -mb-px">
+          Group Stage
+        </div>
+        <Link
+          to={`/admin/tournaments/${id}/knockout`}
+          className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground"
+        >
+          Knockout Stage
+        </Link>
+      </div>
+
       {/* Header */}
       <div className="mb-8 flex flex-wrap items-center gap-3">
         {tournament.imageUrl && (

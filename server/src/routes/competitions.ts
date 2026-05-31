@@ -2,9 +2,9 @@ import { Router } from 'express';
 import { eq, and, sql } from 'drizzle-orm';
 import { generateId } from 'lucia';
 import { db } from '../db/client.js';
-import { competitions, competitionMembers, users, tournaments, predictions, matches } from '../db/schema.js';
+import { competitions, competitionMembers, users, tournaments, predictions, matches, bracketPredictions } from '../db/schema.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
-import { CreateCompetitionSchema, CreatePredictionSchema, DEFAULT_SCORING_CONFIG } from '@tournament-predictor/shared';
+import { CreateCompetitionSchema, CreatePredictionSchema, SaveBracketPredictionsSchema, DEFAULT_SCORING_CONFIG } from '@tournament-predictor/shared';
 
 const router = Router();
 
@@ -336,6 +336,76 @@ router.post('/:id/predictions', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Save prediction error:', err);
     res.status(500).json({ error: 'Failed to save prediction' });
+  }
+});
+
+router.get('/:id/bracket-predictions', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = res.locals.user;
+
+    if (!user.isAdmin) {
+      const [membership] = await db
+        .select()
+        .from(competitionMembers)
+        .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
+      if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+    }
+
+    const [row] = await db
+      .select()
+      .from(bracketPredictions)
+      .where(and(eq(bracketPredictions.competitionId, id), eq(bracketPredictions.userId, user.id)));
+
+    res.json(row?.predictions ?? {});
+  } catch (err) {
+    console.error('Get bracket predictions error:', err);
+    res.status(500).json({ error: 'Failed to fetch bracket predictions' });
+  }
+});
+
+router.post('/:id/bracket-predictions', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = res.locals.user;
+
+    const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
+    if (!competition) return res.status(404).json({ error: 'Competition not found' });
+
+    if (competition.predictionDeadline && new Date() > new Date(competition.predictionDeadline)) {
+      return res.status(400).json({ error: 'Prediction deadline has passed' });
+    }
+
+    if (!user.isAdmin) {
+      const [membership] = await db
+        .select()
+        .from(competitionMembers)
+        .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
+      if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+    }
+
+    const result = SaveBracketPredictionsSchema.safeParse(req.body);
+    if (!result.success) {
+      return res.status(400).json({ error: 'Validation failed', details: result.error.flatten() });
+    }
+
+    await db
+      .insert(bracketPredictions)
+      .values({
+        competitionId: id,
+        userId: user.id,
+        predictions: result.data.predictions,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: [bracketPredictions.competitionId, bracketPredictions.userId],
+        set: { predictions: result.data.predictions, updatedAt: new Date() },
+      });
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Save bracket predictions error:', err);
+    res.status(500).json({ error: 'Failed to save bracket predictions' });
   }
 });
 

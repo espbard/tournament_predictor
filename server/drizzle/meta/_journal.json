@@ -36,6 +36,20 @@
       "when": 1780100070520,
       "tag": "0004_eminent_silver_centurion",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1748563200000,
+      "tag": "0005_knockout_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1780185600000,
+      "tag": "0006_bracket_predictions",
+      "breakpoints": true
     }
   ]
 }

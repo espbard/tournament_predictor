@@ -64,9 +64,11 @@ A web application for predicting sports tournament outcomes. Used by a small pri
 │   │   │   ├── EditTournamentPage.tsx
 │   │   │   ├── EditUserPage.tsx
 │   │   │   ├── HomePage.tsx
+│   │   │   ├── KnockoutStagePredictionsPage.tsx
 │   │   │   ├── LoginPage.tsx
 │   │   │   ├── RegisterPage.tsx
 │   │   │   ├── TournamentDetailPage.tsx
+│   │   │   ├── TournamentKnockoutPage.tsx
 │   │   │   └── TournamentsPage.tsx
 │   │   └── store
 │   │       └── authStore.ts
@@ -84,6 +86,8 @@ A web application for predicting sports tournament outcomes. Used by a small pri
 │   │   ├── 0002_easy_terrax.sql
 │   │   ├── 0003_puzzling_white_tiger.sql
 │   │   ├── 0004_eminent_silver_centurion.sql
+│   │   ├── 0005_knockout_config.sql
+│   │   ├── 0006_bracket_predictions.sql
 │   │   └── meta
 │   │       ├── 0000_snapshot.json
 │   │       ├── 0001_snapshot.json
@@ -417,10 +421,11 @@ CLIENT_URL=http://localhost:5173   # Only used in dev for CORS
 - [x] Predictions UI — per-match score inputs in CompetitionDetailPage, deadline enforcement, save per match, show actual result vs prediction for completed matches
 - [x] Add round of 32 and bronze final as possible stages
 - [x] Add live predicted tables
+- [x] Add full tournament knockout creation
 
 
 ### In Progress
--
+- [ ] Create knockout predictions page, seems to be working, except for bronze final not being filled.
 
 ### Known Issues / Tech Debt
 -
@@ -443,15 +448,14 @@ CLIENT_URL=http://localhost:5173   # Only used in dev for CORS
 [UPDATE AS YOU BUILD — or keep this in a separate TODO.md and paste it here]
 
 ### Next Session
-1. Add konockout stage visualization in predictions
+1. Scoring engine — pure function + Vitest unit tests, triggered when admin marks match complete
 
 ### Backlog (in order)
-1. Scoring engine — pure function + Vitest unit tests, triggered when admin marks match complete
-2. Score calculation trigger — admin marks match complete → points calculated
-3. Leaderboard — ranked view per competition
-4. Group stage predictions
-5. Knockout bracket predictions
-6. Polish — UI improvements, mobile layout
+1. Score calculation trigger — admin marks match complete → points calculated
+2. Leaderboard — ranked view per competition
+3. Group stage predictions
+4. Knockout bracket predictions
+5. Polish — UI improvements, mobile layout
 
 ---
 

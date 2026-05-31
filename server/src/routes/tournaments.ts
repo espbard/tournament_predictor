@@ -11,7 +11,9 @@ import {
   CreateMatchSchema,
   UpdateMatchSchema,
   CreateGroupSchema,
+  UpdateKnockoutConfigSchema,
 } from '@tournament-predictor/shared';
+import type { KnockoutConfig } from '@tournament-predictor/shared';
 
 export const tournamentsRouter = Router();
 export const matchesRouter = Router();
@@ -222,6 +224,40 @@ tournamentsRouter.post('/:id/groups', requireAdmin, async (req, res) => {
       .values({ id, tournamentId: req.params.id, name })
       .returning();
     return res.status(201).json(group);
+  } catch (err: any) {
+    if (err?.name === 'ZodError') return res.status(400).json({ error: 'Invalid input', details: err.errors });
+    console.error(err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+tournamentsRouter.patch('/:id/knockout-config', requireAdmin, async (req, res) => {
+  try {
+    const body = UpdateKnockoutConfigSchema.parse(req.body);
+    const [tournament] = await db
+      .select()
+      .from(tournaments)
+      .where(eq(tournaments.id, req.params.id))
+      .limit(1);
+    if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
+
+    const existing: KnockoutConfig = (tournament.knockoutConfig as KnockoutConfig | null) ?? {
+      firstRound: 'round_of_16',
+      hasBronzeFinal: false,
+      directQualifiers: 2,
+      luckyLosers: 0,
+      bracketSlots: {},
+    };
+
+    const merged: KnockoutConfig = { ...existing, ...body };
+
+    const [updated] = await db
+      .update(tournaments)
+      .set({ knockoutConfig: merged })
+      .where(eq(tournaments.id, req.params.id))
+      .returning();
+
+    return res.json(updated.knockoutConfig);
   } catch (err: any) {
     if (err?.name === 'ZodError') return res.status(400).json({ error: 'Invalid input', details: err.errors });
     console.error(err);

@@ -6,9 +6,10 @@ import {
   boolean,
   integer,
   json,
+  primaryKey,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import type { ScoringConfig } from '@tournament-predictor/shared';
+import type { ScoringConfig, KnockoutConfig, BracketPredictions } from '@tournament-predictor/shared';
 
 // ── Enums ─────────────────────────────────────────────────────────────────────
 
@@ -59,6 +60,7 @@ export const tournaments = pgTable('tournaments', {
   status: tournamentStatusEnum('status').notNull().default('upcoming'),
   imageUrl: text('image_url'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
+  knockoutConfig: json('knockout_config').$type<KnockoutConfig | null>(),
 });
 
 export const groups = pgTable('groups', {
@@ -134,6 +136,23 @@ export const predictions = pgTable('predictions', {
   points: integer('points'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
+
+export const bracketPredictions = pgTable(
+  'bracket_predictions',
+  {
+    competitionId: text('competition_id')
+      .notNull()
+      .references(() => competitions.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    predictions: json('predictions').notNull().$type<BracketPredictions>(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.competitionId, t.userId] }),
+  }),
+);
 
 // ── Relations ─────────────────────────────────────────────────────────────────
 

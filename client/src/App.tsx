@@ -13,9 +13,11 @@ import TournamentsPage from '@/pages/TournamentsPage';
 import TournamentDetailPage from '@/pages/TournamentDetailPage';
 import CompetitionsPage from '@/pages/CompetitionsPage';
 import CompetitionDetailPage from '@/pages/CompetitionDetailPage';
+import KnockoutStagePredictionsPage from '@/pages/KnockoutStagePredictionsPage';
 import EditUserPage from '@/pages/EditUserPage';
 import EditTournamentPage from '@/pages/EditTournamentPage';
 import EditTeamPage from '@/pages/EditTeamPage';
+import TournamentKnockoutPage from '@/pages/TournamentKnockoutPage';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuthStore();
@@ -90,6 +92,14 @@ export default function App() {
         }
       />
       <Route
+        path="/competitions/:id/knockout"
+        element={
+          <PrivateRoute>
+            <KnockoutStagePredictionsPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
         path="/admin/tournaments"
         element={
           <AdminRoute>
@@ -102,6 +112,14 @@ export default function App() {
         element={
           <AdminRoute>
             <TournamentDetailPage />
+          </AdminRoute>
+        }
+      />
+      <Route
+        path="/admin/tournaments/:id/knockout"
+        element={
+          <AdminRoute>
+            <TournamentKnockoutPage />
           </AdminRoute>
         }
       />

@@ -1,18 +1,10 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import ImageUpload from '@/components/ImageUpload';
 import type { Competition, Tournament, Prediction, MatchStage } from '@tournament-predictor/shared';
-
-interface LeaderboardEntry {
-  userId: string;
-  username: string;
-  imageUrl?: string | null;
-  totalPoints: number;
-  rank: number;
-}
 
 interface MatchWithTeams {
   id: string;
@@ -45,6 +37,7 @@ export default function CompetitionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const [editName, setEditName] = useState('');
   const [editImageUrl, setEditImageUrl] = useState<string | null>(null);
@@ -53,12 +46,19 @@ export default function CompetitionDetailPage() {
   const [editError, setEditError] = useState('');
 
   const [predictionsOpen, setPredictionsOpen] = useState(false);
-  const [leaderboardOpen, setLeaderboardOpen] = useState(false);
 
   const [localEdits, setLocalEdits] = useState<Record<string, { home: string; away: string }>>({});
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [saveErrors, setSaveErrors] = useState<Record<string, string>>({});
+
+  const [groupStageLocked, setGroupStageLocked] = useState(
+    () => localStorage.getItem(`competition:${id}:groupStageLocked`) === 'true'
+  );
+  const [hasDeclined, setHasDeclined] = useState(
+    () => localStorage.getItem(`competition:${id}:groupStageDeclined`) === 'true'
+  );
+  const [showProceedPrompt, setShowProceedPrompt] = useState(false);
 
   const localEditsRef = useRef(localEdits);
   useEffect(() => { localEditsRef.current = localEdits; }, [localEdits]);
@@ -72,12 +72,6 @@ export default function CompetitionDetailPage() {
   const { data: competition, isLoading, error } = useQuery({
     queryKey: ['competitions', id],
     queryFn: () => api.get<Competition>(`/competitions/${id}`),
-  });
-
-  const { data: leaderboard = [] } = useQuery({
-    queryKey: ['competitions', id, 'leaderboard'],
-    queryFn: () => api.get<LeaderboardEntry[]>(`/competitions/${id}/leaderboard`),
-    enabled: !!competition,
   });
 
   const { data: tournamentsData = [] } = useQuery({
@@ -178,7 +172,6 @@ export default function CompetitionDetailPage() {
     return [...byGroup.entries()].sort(([a], [b]) => a.localeCompare(b));
   }, [matchList, localEdits]);
 
-  // Top 8 third-placed teams ranked by FIFA criteria: Pts → GD → GF
   const qualifyingThirdPlaceIds = useMemo(() => {
     const third = groupStandings
       .filter(([, teams]) => teams.length >= 3)
@@ -190,7 +183,6 @@ export default function CompetitionDetailPage() {
       if (gdb !== gda) return gdb - gda;
       return b.GF - a.GF;
     });
-    // Include all teams tied with the team at position 8 (boundary ties both show yellow)
     const qualifying = third.slice(0, 8);
     if (qualifying.length === 8 && third.length > 8) {
       const edge = qualifying[7];
@@ -236,9 +228,42 @@ export default function CompetitionDetailPage() {
     return groups;
   }, [matchList]);
 
+  const groupMatchesByDate = useMemo(
+    () => matchesByDate
+      .map(g => ({ ...g, matches: g.matches.filter(m => m.stage === 'group') }))
+      .filter(g => g.matches.length > 0),
+    [matchesByDate]
+  );
+
+  const scheduledGroupMatches = useMemo(
+    () => matchList.filter(m => m.stage === 'group' && m.status === 'scheduled'),
+    [matchList]
+  );
+
+  const allGroupFilled = useMemo(() => {
+    if (scheduledGroupMatches.length === 0) return false;
+    return scheduledGroupMatches.every(m => {
+      const edit = localEdits[m.id];
+      if (edit) {
+        const h = parseInt(edit.home, 10);
+        const a = parseInt(edit.away, 10);
+        if (!isNaN(h) && !isNaN(a) && h >= 0 && a >= 0) return true;
+      }
+      return !!predMap[m.id];
+    });
+  }, [scheduledGroupMatches, localEdits, predMap]);
+
+  useEffect(() => {
+    if (allGroupFilled && !groupStageLocked && !hasDeclined) {
+      setShowProceedPrompt(true);
+    }
+  }, [allGroupFilled, groupStageLocked, hasDeclined]);
+
   const deadlinePassed = competition?.predictionDeadline
     ? new Date() > new Date(competition.predictionDeadline)
     : false;
+
+  const isLocked = deadlinePassed || groupStageLocked;
 
   async function savePrediction(matchId: string) {
     const edit = localEditsRef.current[matchId];
@@ -271,7 +296,7 @@ export default function CompetitionDetailPage() {
   }
 
   function simulatePredictions() {
-    const scheduledMatches = matchList.filter(m => m.status === 'scheduled');
+    const scheduledMatches = matchList.filter(m => m.status === 'scheduled' && m.stage === 'group');
     const newEdits: Record<string, { home: string; away: string }> = {};
     for (const m of scheduledMatches) {
       newEdits[m.id] = {
@@ -288,7 +313,7 @@ export default function CompetitionDetailPage() {
   }
 
   function clearPredictions() {
-    const scheduledMatches = matchList.filter(m => m.status === 'scheduled');
+    const scheduledMatches = matchList.filter(m => m.status === 'scheduled' && m.stage === 'group');
     for (const m of scheduledMatches) {
       if (debounceTimers.current[m.id]) {
         clearTimeout(debounceTimers.current[m.id]);
@@ -300,6 +325,18 @@ export default function CompetitionDetailPage() {
       for (const m of scheduledMatches) delete next[m.id];
       return next;
     });
+  }
+
+  function handleProceedToKnockout() {
+    localStorage.setItem(`competition:${id}:groupStageLocked`, 'true');
+    setGroupStageLocked(true);
+    navigate(`/competitions/${id}/knockout`);
+  }
+
+  function handleDeclineProceed() {
+    localStorage.setItem(`competition:${id}:groupStageDeclined`, 'true');
+    setHasDeclined(true);
+    setShowProceedPrompt(false);
   }
 
   const updateMutation = useMutation({
@@ -356,6 +393,8 @@ export default function CompetitionDetailPage() {
         </Link>
       </div>
 
+      <h1 className="text-4xl font-bold mb-6">Group Stage</h1>
+
       {/* Header */}
       <div className="mb-8 flex items-start gap-4">
         {competition.imageUrl ? (
@@ -370,7 +409,7 @@ export default function CompetitionDetailPage() {
         <div className="flex-1">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h1 className="text-2xl font-bold">{competition.name}</h1>
+              <h2 className="text-2xl font-bold">{competition.name}</h2>
               {tournament && <p className="mt-1 text-sm text-muted-foreground">{tournament.name}</p>}
             </div>
             {user?.isAdmin && !showEdit && (
@@ -449,7 +488,7 @@ export default function CompetitionDetailPage() {
         </form>
       )}
 
-      {/* Deadline banner — always visible */}
+      {/* Deadline banner */}
       {competition.predictionDeadline && (
         <div className={`mb-4 rounded-lg px-4 py-2.5 text-sm ${
           deadlinePassed
@@ -459,6 +498,37 @@ export default function CompetitionDetailPage() {
           {deadlinePassed
             ? `Predictions closed · ${new Date(competition.predictionDeadline).toLocaleString()}`
             : `Open until ${new Date(competition.predictionDeadline).toLocaleString()}`}
+        </div>
+      )}
+
+      {/* Group stage locked banner */}
+      {groupStageLocked && (
+        <div className="mb-4 rounded-lg bg-muted px-4 py-2.5 text-sm text-muted-foreground">
+          Group stage predictions are locked.
+        </div>
+      )}
+
+      {/* Navigate to knockout when locked */}
+      {groupStageLocked && (
+        <div className="mb-6">
+          <Link
+            to={`/competitions/${id}/knockout`}
+            className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          >
+            Go to knockout predictions →
+          </Link>
+        </div>
+      )}
+
+      {/* Go to knockout button — shown permanently after declining */}
+      {hasDeclined && !groupStageLocked && (
+        <div className="mb-6">
+          <button
+            onClick={() => setShowProceedPrompt(true)}
+            className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-muted"
+          >
+            Go to knockout predictions →
+          </button>
         </div>
       )}
 
@@ -472,7 +542,7 @@ export default function CompetitionDetailPage() {
             <h2 className="font-semibold">Predictions</h2>
             <span className={`text-muted-foreground transition-transform duration-200 ${predictionsOpen ? 'rotate-180' : ''}`}>▾</span>
           </button>
-          {!deadlinePassed && matchList.some(m => m.status === 'scheduled') && (
+          {!isLocked && scheduledGroupMatches.length > 0 && (
             <div className="flex gap-2">
               <button
                 onClick={simulatePredictions}
@@ -490,11 +560,11 @@ export default function CompetitionDetailPage() {
           )}
         </div>
 
-        {predictionsOpen && (matchList.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No matches scheduled yet.</p>
+        {predictionsOpen && (groupMatchesByDate.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No group stage matches scheduled yet.</p>
         ) : (
           <div className="space-y-6">
-            {matchesByDate.map(({ dateKey, dateLabel, matches }) => (
+            {groupMatchesByDate.map(({ dateKey, dateLabel, matches }) => (
               <div key={dateKey}>
                 <h3 className="mb-3 text-sm font-medium text-muted-foreground">{dateLabel}</h3>
                 <div className="space-y-2">
@@ -514,7 +584,7 @@ export default function CompetitionDetailPage() {
                             : STAGE_LABELS[match.stage]}
                         </p>
 
-                        {/* Match row — centered */}
+                        {/* Match row */}
                         <div className="flex items-center justify-center gap-3">
                           {/* Home team */}
                           <div className="flex w-32 items-center justify-end gap-2">
@@ -538,7 +608,7 @@ export default function CompetitionDetailPage() {
                                 <span className="text-muted-foreground">–</span>
                                 <span className="w-10 text-center">{match.awayScore}</span>
                               </div>
-                            ) : deadlinePassed ? (
+                            ) : isLocked ? (
                               <div className="flex items-center gap-2 text-xl text-muted-foreground">
                                 <span className="w-10 text-center">{pred ? pred.homeScore : '—'}</span>
                                 <span>–</span>
@@ -590,8 +660,8 @@ export default function CompetitionDetailPage() {
                           </div>
                         </div>
 
-                        {/* Save status — centered below match row */}
-                        {match.status === 'scheduled' && !deadlinePassed && (saving || justSaved) && (
+                        {/* Save status */}
+                        {match.status === 'scheduled' && !isLocked && (saving || justSaved) && (
                           <div className="mt-2 text-center">
                             {saving ? (
                               <span className="text-xs text-muted-foreground">…</span>
@@ -601,7 +671,7 @@ export default function CompetitionDetailPage() {
                           </div>
                         )}
 
-                        {/* Time — centered below match row */}
+                        {/* Time */}
                         {match.scheduledAt && (
                           <p className="mt-2 text-center text-xs text-muted-foreground">
                             {new Date(match.scheduledAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
@@ -629,44 +699,6 @@ export default function CompetitionDetailPage() {
             ))}
           </div>
         ))}
-      </div>
-
-      {/* Leaderboard — collapsible */}
-      <div>
-        <button
-          onClick={() => setLeaderboardOpen(o => !o)}
-          className="flex w-full items-center justify-between mb-3 text-left"
-        >
-          <h2 className="font-semibold">Leaderboard</h2>
-          <span className={`text-muted-foreground transition-transform duration-200 ${leaderboardOpen ? 'rotate-180' : ''}`}>▾</span>
-        </button>
-
-        {leaderboardOpen && (
-          leaderboard.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No members yet.</p>
-          ) : (
-            <div className="divide-y rounded-lg border">
-              {leaderboard.map(entry => (
-                <div key={entry.userId} className="flex items-center gap-3 px-4 py-3">
-                  <span className="w-6 flex-shrink-0 text-sm font-medium text-muted-foreground text-right">
-                    {entry.rank}
-                  </span>
-                  {entry.imageUrl ? (
-                    <img src={entry.imageUrl} alt={entry.username} className="h-8 w-8 rounded-full object-cover flex-shrink-0" />
-                  ) : (
-                    <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-muted text-sm font-semibold">
-                      {entry.username[0]?.toUpperCase()}
-                    </span>
-                  )}
-                  <span className="text-sm font-medium">{entry.username}</span>
-                  <span className="ml-auto text-sm font-semibold tabular-nums">
-                    {entry.totalPoints} pts
-                  </span>
-                </div>
-              ))}
-            </div>
-          )
-        )}
       </div>
       </div>
 
@@ -731,6 +763,33 @@ export default function CompetitionDetailPage() {
         </aside>
       )}
       </div>
+
+      {/* Proceed to knockout prompt */}
+      {showProceedPrompt && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-background rounded-lg border p-6 max-w-md w-full shadow-xl">
+            <p className="font-semibold mb-1">All group stage results filled in.</p>
+            <p className="text-sm text-muted-foreground mb-1">Continue to knockout predictions?</p>
+            <p className="text-sm text-muted-foreground mb-6">
+              All group stage predictions will be locked and can not be changed again if you proceed.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={handleDeclineProceed}
+                className="rounded-md border px-4 py-2 text-sm hover:bg-muted"
+              >
+                No
+              </button>
+              <button
+                onClick={handleProceedToKnockout}
+                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              >
+                Yes, continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
