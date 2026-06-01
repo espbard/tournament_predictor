@@ -360,11 +360,11 @@ competition. The scoring engine lives in `server/src/lib/scoring.ts` as a pure f
 {
   "exact_score": 3, // After 90 minutes, extra time and penalties are not counted.
   "correct_result": 1, // Correct on which team wins/draws
-  "correct_group_position": 2, // Exact end position of a team in their group (based on guessed results)
-  "correct_team_progresses": 3, // Points if the user guesses that the correct team win the tie (user can guess draw and select which team they believe will progress from extra time/penalties)
-  "correct_team_in_knockout_tie": 2, // Points if the predictions the user has made up to this point results in the correct team' being in the specific knockout tie.
+  "correct_group_position": 1, // Exact end position of a team in their group (based on guessed results)
+  "correct_team_progresses": 2, // Points if the user guesses that the correct team win the tie (user can guess draw and select which team they believe will progress from extra time/penalties)
+  "correct_team_in_knockout_tie": 1, // Points if the predictions the user has made up to this point results in the correct team' being in the specific knockout tie.
   "correct_team_in_final": 5, // Replaces "correct_team_in_knockout_tie" for the final game 
-  "correct_winner": 10 // Bonus if user guesses correct tournament winner
+  "correct_winner": 10 // Bonus if user guesses correct tournament winner replaces "correct_team_in_final"
   // More score sources will be added later. Bonus questions that can have different scores based on difficulty of question will be one of them
 }
 ```
@@ -427,13 +427,13 @@ CLIENT_URL=http://localhost:5173   # Only used in dev for CORS
 - [x] Add full tournament knockout creation
 - [x] Add full knockout predictions page
 - [x] Improve tournament creation and qualification logic
+- [x] Fully implement knockout results
 
 
 ### In Progress
-1. Fully implement knockout results
+1. 
 
 ### Known Issues / Tech Debt
-1. Knockout tie draws dont let a team advance.
 -
 ---
 

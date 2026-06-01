@@ -114,3 +114,25 @@ export const SaveBracketPredictionsSchema = z.object({
 });
 
 export type SaveBracketPredictionsInput = z.infer<typeof SaveBracketPredictionsSchema>;
+
+export const CreateBonusQuestionSchema = z.object({
+  question: z.string().min(1).max(500),
+  answerType: z.enum(['number', 'player', 'team', 'yes_no']),
+  points: z.number().int().min(1).max(1000),
+});
+
+export const UpdateBonusQuestionSchema = z.object({
+  question: z.string().min(1).max(500).optional(),
+  answerType: z.enum(['number', 'player', 'team', 'yes_no']).optional(),
+  points: z.number().int().min(1).max(1000).optional(),
+  correctAnswer: z.string().nullable().optional(),
+});
+
+export const SaveBonusAnswerSchema = z.object({
+  questionId: z.string().min(1),
+  answer: z.string().min(1),
+});
+
+export type CreateBonusQuestionInput = z.infer<typeof CreateBonusQuestionSchema>;
+export type UpdateBonusQuestionInput = z.infer<typeof UpdateBonusQuestionSchema>;
+export type SaveBonusAnswerInput = z.infer<typeof SaveBonusAnswerSchema>;

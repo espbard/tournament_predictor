@@ -9,7 +9,7 @@ import {
   primaryKey,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import type { ScoringConfig, KnockoutConfig, BracketPredictions } from '@tournament-predictor/shared';
+import type { ScoringConfig, KnockoutConfig, BracketPredictions, BonusAnswerType } from '@tournament-predictor/shared';
 
 // ── Enums ─────────────────────────────────────────────────────────────────────
 
@@ -30,6 +30,8 @@ export const matchStageEnum = pgEnum('match_stage', [
 ]);
 
 export const matchStatusEnum = pgEnum('match_status', ['scheduled', 'completed']);
+
+export const bonusAnswerTypeEnum = pgEnum('bonus_answer_type', ['text', 'number', 'player', 'team', 'yes_no']);
 
 // ── Tables ────────────────────────────────────────────────────────────────────
 
@@ -156,6 +158,34 @@ export const bracketPredictions = pgTable(
   }),
 );
 
+export const bonusQuestions = pgTable('bonus_questions', {
+  id: text('id').primaryKey(),
+  competitionId: text('competition_id')
+    .notNull()
+    .references(() => competitions.id, { onDelete: 'cascade' }),
+  question: text('question').notNull(),
+  answerType: bonusAnswerTypeEnum('answer_type').notNull().default('text').$type<BonusAnswerType>(),
+  points: integer('points').notNull(),
+  correctAnswer: text('correct_answer'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+export const bonusAnswers = pgTable('bonus_answers', {
+  id: text('id').primaryKey(),
+  questionId: text('question_id')
+    .notNull()
+    .references(() => bonusQuestions.id, { onDelete: 'cascade' }),
+  competitionId: text('competition_id')
+    .notNull()
+    .references(() => competitions.id, { onDelete: 'cascade' }),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  answer: text('answer').notNull(),
+  points: integer('points'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
 // ── Relations ─────────────────────────────────────────────────────────────────
 
 export const usersRelations = relations(users, ({ many }) => ({
@@ -201,4 +231,28 @@ export const competitionsRelations = relations(competitions, ({ one, many }) => 
   }),
   members: many(competitionMembers),
   predictions: many(predictions),
+  bonusQuestions: many(bonusQuestions),
+}));
+
+export const bonusQuestionsRelations = relations(bonusQuestions, ({ one, many }) => ({
+  competition: one(competitions, {
+    fields: [bonusQuestions.competitionId],
+    references: [competitions.id],
+  }),
+  answers: many(bonusAnswers),
+}));
+
+export const bonusAnswersRelations = relations(bonusAnswers, ({ one }) => ({
+  question: one(bonusQuestions, {
+    fields: [bonusAnswers.questionId],
+    references: [bonusQuestions.id],
+  }),
+  competition: one(competitions, {
+    fields: [bonusAnswers.competitionId],
+    references: [competitions.id],
+  }),
+  user: one(users, {
+    fields: [bonusAnswers.userId],
+    references: [users.id],
+  }),
 }));

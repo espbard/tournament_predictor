@@ -64,6 +64,13 @@
       "when": 1780358400000,
       "tag": "0008_progressing_team_id",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1748908800000,
+      "tag": "0009_bonus_questions",
+      "breakpoints": true
     }
   ]
 }

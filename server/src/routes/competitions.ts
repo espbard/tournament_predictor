@@ -2,9 +2,9 @@ import { Router } from 'express';
 import { eq, and, sql } from 'drizzle-orm';
 import { generateId } from 'lucia';
 import { db } from '../db/client.js';
-import { competitions, competitionMembers, users, tournaments, predictions, matches, bracketPredictions } from '../db/schema.js';
+import { competitions, competitionMembers, users, tournaments, predictions, matches, bracketPredictions, bonusQuestions, bonusAnswers } from '../db/schema.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
-import { CreateCompetitionSchema, CreatePredictionSchema, SaveBracketPredictionsSchema, DEFAULT_SCORING_CONFIG } from '@tournament-predictor/shared';
+import { CreateCompetitionSchema, CreatePredictionSchema, SaveBracketPredictionsSchema, DEFAULT_SCORING_CONFIG, CreateBonusQuestionSchema, UpdateBonusQuestionSchema, SaveBonusAnswerSchema } from '@tournament-predictor/shared';
 
 const router = Router();
 
@@ -457,6 +457,195 @@ router.post('/:id/bracket-predictions', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Save bracket predictions error:', err);
     res.status(500).json({ error: 'Failed to save bracket predictions' });
+  }
+});
+
+// ── Bonus questions ───────────────────────────────────────────────────────────
+
+router.get('/:id/bonus-questions', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = res.locals.user;
+
+    const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
+    if (!competition) return res.status(404).json({ error: 'Competition not found' });
+
+    if (!user.isAdmin) {
+      const [membership] = await db
+        .select()
+        .from(competitionMembers)
+        .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
+      if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+    }
+
+    const questions = await db
+      .select()
+      .from(bonusQuestions)
+      .where(eq(bonusQuestions.competitionId, id));
+    res.json(questions);
+  } catch (err) {
+    console.error('Get bonus questions error:', err);
+    res.status(500).json({ error: 'Failed to fetch bonus questions' });
+  }
+});
+
+router.post('/:id/bonus-questions', requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
+    if (!competition) return res.status(404).json({ error: 'Competition not found' });
+
+    const result = CreateBonusQuestionSchema.safeParse(req.body);
+    if (!result.success) {
+      return res.status(400).json({ error: 'Validation failed', details: result.error.flatten() });
+    }
+    const { question, answerType, points } = result.data;
+
+    const qid = generateId(15);
+    const [created] = await db
+      .insert(bonusQuestions)
+      .values({ id: qid, competitionId: id, question, answerType, points })
+      .returning();
+    res.status(201).json(created);
+  } catch (err) {
+    console.error('Create bonus question error:', err);
+    res.status(500).json({ error: 'Failed to create bonus question' });
+  }
+});
+
+router.patch('/:id/bonus-questions/:qid', requireAdmin, async (req, res) => {
+  try {
+    const { id, qid } = req.params;
+    const [existing] = await db
+      .select()
+      .from(bonusQuestions)
+      .where(and(eq(bonusQuestions.id, qid), eq(bonusQuestions.competitionId, id)));
+    if (!existing) return res.status(404).json({ error: 'Question not found' });
+
+    const result = UpdateBonusQuestionSchema.safeParse(req.body);
+    if (!result.success) {
+      return res.status(400).json({ error: 'Validation failed', details: result.error.flatten() });
+    }
+    const updates: Record<string, unknown> = {};
+    if (result.data.question !== undefined) updates.question = result.data.question;
+    if (result.data.answerType !== undefined) updates.answerType = result.data.answerType;
+    if (result.data.points !== undefined) updates.points = result.data.points;
+    if (result.data.correctAnswer !== undefined) updates.correctAnswer = result.data.correctAnswer;
+
+    if (Object.keys(updates).length === 0) return res.status(400).json({ error: 'No updates provided' });
+
+    const [updated] = await db
+      .update(bonusQuestions)
+      .set(updates)
+      .where(eq(bonusQuestions.id, qid))
+      .returning();
+    res.json(updated);
+  } catch (err) {
+    console.error('Update bonus question error:', err);
+    res.status(500).json({ error: 'Failed to update bonus question' });
+  }
+});
+
+router.delete('/:id/bonus-questions/:qid', requireAdmin, async (req, res) => {
+  try {
+    const { id, qid } = req.params;
+    const [existing] = await db
+      .select()
+      .from(bonusQuestions)
+      .where(and(eq(bonusQuestions.id, qid), eq(bonusQuestions.competitionId, id)));
+    if (!existing) return res.status(404).json({ error: 'Question not found' });
+
+    await db.delete(bonusQuestions).where(eq(bonusQuestions.id, qid));
+    res.status(204).send();
+  } catch (err) {
+    console.error('Delete bonus question error:', err);
+    res.status(500).json({ error: 'Failed to delete bonus question' });
+  }
+});
+
+router.get('/:id/bonus-answers', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = res.locals.user;
+
+    if (!user.isAdmin) {
+      const [membership] = await db
+        .select()
+        .from(competitionMembers)
+        .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
+      if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+    }
+
+    const answers = await db
+      .select()
+      .from(bonusAnswers)
+      .where(and(eq(bonusAnswers.competitionId, id), eq(bonusAnswers.userId, user.id)));
+    res.json(answers);
+  } catch (err) {
+    console.error('Get bonus answers error:', err);
+    res.status(500).json({ error: 'Failed to fetch bonus answers' });
+  }
+});
+
+router.post('/:id/bonus-answers', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = res.locals.user;
+
+    const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
+    if (!competition) return res.status(404).json({ error: 'Competition not found' });
+
+    if (!user.isAdmin) {
+      const [membership] = await db
+        .select()
+        .from(competitionMembers)
+        .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
+      if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+    }
+
+    if (competition.predictionDeadline && new Date() > new Date(competition.predictionDeadline)) {
+      return res.status(400).json({ error: 'Prediction deadline has passed' });
+    }
+
+    const result = SaveBonusAnswerSchema.safeParse(req.body);
+    if (!result.success) {
+      return res.status(400).json({ error: 'Validation failed', details: result.error.flatten() });
+    }
+    const { questionId, answer } = result.data;
+
+    const [question] = await db
+      .select()
+      .from(bonusQuestions)
+      .where(and(eq(bonusQuestions.id, questionId), eq(bonusQuestions.competitionId, id)));
+    if (!question) return res.status(404).json({ error: 'Question not found' });
+
+    const [existing] = await db
+      .select()
+      .from(bonusAnswers)
+      .where(and(
+        eq(bonusAnswers.questionId, questionId),
+        eq(bonusAnswers.userId, user.id),
+        eq(bonusAnswers.competitionId, id),
+      ));
+
+    if (existing) {
+      const [updated] = await db
+        .update(bonusAnswers)
+        .set({ answer })
+        .where(eq(bonusAnswers.id, existing.id))
+        .returning();
+      return res.json(updated);
+    }
+
+    const aid = generateId(15);
+    const [created] = await db
+      .insert(bonusAnswers)
+      .values({ id: aid, questionId, competitionId: id, userId: user.id, answer })
+      .returning();
+    return res.status(201).json(created);
+  } catch (err) {
+    console.error('Save bonus answer error:', err);
+    res.status(500).json({ error: 'Failed to save bonus answer' });
   }
 });
 

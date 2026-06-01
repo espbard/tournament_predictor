@@ -110,3 +110,25 @@ export interface BracketMatchPrediction {
 }
 
 export type BracketPredictions = Record<string, BracketMatchPrediction>;
+
+export type BonusAnswerType = 'number' | 'player' | 'team' | 'yes_no';
+
+export interface BonusQuestion {
+  id: string;
+  competitionId: string;
+  question: string;
+  answerType: BonusAnswerType;
+  points: number;
+  correctAnswer: string | null;
+  createdAt: string;
+}
+
+export interface BonusAnswer {
+  id: string;
+  questionId: string;
+  competitionId: string;
+  userId: string;
+  answer: string;
+  points: number | null;
+  createdAt: string;
+}

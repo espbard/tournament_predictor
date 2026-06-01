@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import ImageUpload from '@/components/ImageUpload';
+import BonusQuestionsTab from './BonusQuestionsTab';
 import type { Competition, Tournament, Prediction, MatchStage } from '@tournament-predictor/shared';
 import {
   sortGroupTeams,
@@ -60,6 +61,8 @@ export default function CompetitionDetailPage() {
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [saveErrors, setSaveErrors] = useState<Record<string, string>>({});
+
+  const [activeTab, setActiveTab] = useState<'group' | 'bonus'>('group');
 
   const [hasDeclined, setHasDeclined] = useState(
     () => localStorage.getItem(`competition:${id}:groupStageDeclined`) === 'true'
@@ -472,8 +475,6 @@ export default function CompetitionDetailPage() {
         </Link>
       </div>
 
-      <h1 className="text-4xl font-bold mb-6">Group Stage</h1>
-
       {/* Header */}
       <div className="mb-8 flex items-start gap-4">
         {competition.imageUrl ? (
@@ -566,6 +567,40 @@ export default function CompetitionDetailPage() {
           </div>
         </form>
       )}
+
+      {/* Tab navigation */}
+      <div className="flex gap-1 mb-6 border-b">
+        <button
+          onClick={() => setActiveTab('group')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            activeTab === 'group'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          Group Stage
+        </button>
+        <button
+          onClick={() => setActiveTab('bonus')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            activeTab === 'bonus'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          Bonus Questions
+        </button>
+      </div>
+
+      {activeTab === 'bonus' && competition.tournamentId && (
+        <BonusQuestionsTab
+          competitionId={id!}
+          tournamentId={competition.tournamentId}
+          deadlinePassed={deadlinePassed}
+        />
+      )}
+
+      {activeTab === 'group' && <>
 
       {/* Deadline banner */}
       {competition.predictionDeadline && (
@@ -779,6 +814,7 @@ export default function CompetitionDetailPage() {
           </div>
         ))}
       </div>
+      </>}
       </div>
 
       {/* Group standings sidebar */}
