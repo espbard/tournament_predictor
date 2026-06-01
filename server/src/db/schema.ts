@@ -93,6 +93,7 @@ export const matches = pgTable('matches', {
   status: matchStatusEnum('status').notNull().default('scheduled'),
   homeScore: integer('home_score'),
   awayScore: integer('away_score'),
+  progressingTeamId: text('progressing_team_id').references(() => teams.id),
 });
 
 export const competitions = pgTable('competitions', {
@@ -116,6 +117,7 @@ export const competitionMembers = pgTable('competition_members', {
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
   joinedAt: timestamp('joined_at').notNull().defaultNow(),
+  groupStageLocked: boolean('group_stage_locked').notNull().default(false),
 });
 
 export const predictions = pgTable('predictions', {

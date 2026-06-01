@@ -54,6 +54,7 @@ A web application for predicting sports tournament outcomes. Used by a small pri
 │   │   ├── index.css
 │   │   ├── lib
 │   │   │   ├── api.ts
+│   │   │   ├── tiebreakers.ts
 │   │   │   └── utils.ts
 │   │   ├── main.tsx
 │   │   ├── pages
@@ -88,6 +89,8 @@ A web application for predicting sports tournament outcomes. Used by a small pri
 │   │   ├── 0004_eminent_silver_centurion.sql
 │   │   ├── 0005_knockout_config.sql
 │   │   ├── 0006_bracket_predictions.sql
+│   │   ├── 0007_group_stage_locked.sql
+│   │   ├── 0008_progressing_team_id.sql
 │   │   └── meta
 │   │       ├── 0000_snapshot.json
 │   │       ├── 0001_snapshot.json
@@ -422,12 +425,15 @@ CLIENT_URL=http://localhost:5173   # Only used in dev for CORS
 - [x] Add round of 32 and bronze final as possible stages
 - [x] Add live predicted tables
 - [x] Add full tournament knockout creation
+- [x] Add full knockout predictions page
+- [x] Improve tournament creation and qualification logic
 
 
 ### In Progress
-- [ ] Create knockout predictions page, seems to be working, except for bronze final not being filled.
+1. Fully implement knockout results
 
 ### Known Issues / Tech Debt
+1. Knockout tie draws dont let a team advance.
 -
 ---
 
@@ -448,14 +454,15 @@ CLIENT_URL=http://localhost:5173   # Only used in dev for CORS
 [UPDATE AS YOU BUILD — or keep this in a separate TODO.md and paste it here]
 
 ### Next Session
-1. Scoring engine — pure function + Vitest unit tests, triggered when admin marks match complete
+1. Add bonus questions round 
 
 ### Backlog (in order)
-1. Score calculation trigger — admin marks match complete → points calculated
-2. Leaderboard — ranked view per competition
-3. Group stage predictions
-4. Knockout bracket predictions
-5. Polish — UI improvements, mobile layout
+1. Scoring engine — pure function + Vitest unit tests, triggered when admin marks match complete
+2. Score calculation trigger — admin marks match complete → points calculated
+3. Leaderboard — ranked view per competition
+4. Group stage predictions
+5. Knockout bracket predictions
+6. Polish — UI improvements, mobile layout
 
 ---
 

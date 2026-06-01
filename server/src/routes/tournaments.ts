@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, and, isNotNull } from 'drizzle-orm';
 import { db } from '../db/client';
 import { tournaments, teams, matches, groups } from '../db/schema';
 import { requireAuth, requireAdmin } from '../middleware/auth';
@@ -14,6 +14,344 @@ import {
   UpdateKnockoutConfigSchema,
 } from '@tournament-predictor/shared';
 import type { KnockoutConfig } from '@tournament-predictor/shared';
+
+// ── Types ──────────────────────────────────────────────────────────────────────
+
+type TeamStat = { teamId: string; points: number; gd: number; gf: number };
+type H2HStat = { points: number; gd: number; gf: number };
+type RawMatch = { homeTeamId: string | null; awayTeamId: string | null; homeScore: number | null; awayScore: number | null };
+
+const KNOCKOUT_STAGES = ['round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'bronze_final', 'final'] as const;
+
+const FIRST_ROUND_MATCH_COUNTS: Record<string, number> = {
+  round_of_32: 16,
+  round_of_16: 8,
+  quarter_final: 4,
+  semi_final: 2,
+  final: 1,
+};
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function computeH2HStats(teamIds: string[], matches: RawMatch[]): Map<string, H2HStat> {
+  const teamSet = new Set(teamIds);
+  const stats = new Map<string, H2HStat>(teamIds.map(id => [id, { points: 0, gd: 0, gf: 0 }]));
+  for (const m of matches) {
+    if (!m.homeTeamId || !m.awayTeamId || m.homeScore === null || m.awayScore === null) continue;
+    if (!teamSet.has(m.homeTeamId) || !teamSet.has(m.awayTeamId)) continue;
+    const home = stats.get(m.homeTeamId)!;
+    const away = stats.get(m.awayTeamId)!;
+    home.gf += m.homeScore; home.gd += m.homeScore - m.awayScore;
+    away.gf += m.awayScore; away.gd += m.awayScore - m.homeScore;
+    if (m.homeScore > m.awayScore) { home.points += 3; }
+    else if (m.homeScore === m.awayScore) { home.points += 1; away.points += 1; }
+    else { away.points += 3; }
+  }
+  return stats;
+}
+
+function sortGroupTeamsWithH2H(teams: TeamStat[], groupMatches: RawMatch[]): TeamStat[] {
+  if (teams.length <= 1) return [...teams];
+
+  const byPoints = new Map<number, TeamStat[]>();
+  for (const t of teams) {
+    if (!byPoints.has(t.points)) byPoints.set(t.points, []);
+    byPoints.get(t.points)!.push(t);
+  }
+
+  const result: TeamStat[] = [];
+  for (const [, group] of [...byPoints].sort(([a], [b]) => b - a)) {
+    if (group.length === 1) { result.push(group[0]); continue; }
+    const h2h = computeH2HStats(group.map(t => t.teamId), groupMatches);
+    const sorted = [...group].sort((a, b) => {
+      const ha = h2h.get(a.teamId)!; const hb = h2h.get(b.teamId)!;
+      if (hb.points !== ha.points) return hb.points - ha.points;
+      if (hb.gd !== ha.gd) return hb.gd - ha.gd;
+      if (hb.gf !== ha.gf) return hb.gf - ha.gf;
+      if (b.gd !== a.gd) return b.gd - a.gd;
+      if (b.gf !== a.gf) return b.gf - a.gf;
+      return a.teamId.localeCompare(b.teamId);
+    });
+    result.push(...sorted);
+  }
+  return result;
+}
+
+function computeGroupStandings(
+  completedMatches: RawMatch[],
+  teamGroupMap: Map<string, string>,
+): Map<string, TeamStat[]> {
+  const groupStats = new Map<string, Map<string, TeamStat>>();
+  const groupMatchesMap = new Map<string, RawMatch[]>();
+
+  for (const m of completedMatches) {
+    if (!m.homeTeamId || !m.awayTeamId || m.homeScore === null || m.awayScore === null) continue;
+    const homeGroup = teamGroupMap.get(m.homeTeamId);
+    const awayGroup = teamGroupMap.get(m.awayTeamId);
+    if (!homeGroup || !awayGroup || homeGroup !== awayGroup) continue;
+
+    if (!groupStats.has(homeGroup)) {
+      groupStats.set(homeGroup, new Map());
+      groupMatchesMap.set(homeGroup, []);
+    }
+    const statsMap = groupStats.get(homeGroup)!;
+    groupMatchesMap.get(homeGroup)!.push(m);
+
+    if (!statsMap.has(m.homeTeamId)) statsMap.set(m.homeTeamId, { teamId: m.homeTeamId, points: 0, gd: 0, gf: 0 });
+    if (!statsMap.has(m.awayTeamId)) statsMap.set(m.awayTeamId, { teamId: m.awayTeamId, points: 0, gd: 0, gf: 0 });
+
+    const home = statsMap.get(m.homeTeamId)!;
+    const away = statsMap.get(m.awayTeamId)!;
+    home.gf += m.homeScore; home.gd += m.homeScore - m.awayScore;
+    away.gf += m.awayScore; away.gd += m.awayScore - m.homeScore;
+    if (m.homeScore > m.awayScore) { home.points += 3; }
+    else if (m.homeScore === m.awayScore) { home.points += 1; away.points += 1; }
+    else { away.points += 3; }
+  }
+
+  const result = new Map<string, TeamStat[]>();
+  for (const [groupName, statsMap] of groupStats) {
+    const groupMatches = groupMatchesMap.get(groupName) ?? [];
+    result.set(groupName, sortGroupTeamsWithH2H([...statsMap.values()], groupMatches));
+  }
+  return result;
+}
+
+async function generateFirstRoundKnockout(tournamentId: string): Promise<void> {
+  const [tournament] = await db.select().from(tournaments).where(eq(tournaments.id, tournamentId)).limit(1);
+  if (!tournament?.knockoutConfig) return;
+
+  const cfg = tournament.knockoutConfig as KnockoutConfig;
+  const { firstRound, bracketSlots, directQualifiers, luckyLosers, hasBronzeFinal } = cfg;
+  const matchCount = FIRST_ROUND_MATCH_COUNTS[firstRound] ?? 0;
+  if (matchCount === 0) return;
+
+  // Build teamId → groupName map
+  const teamRows = await db.select({ id: teams.id, groupId: teams.groupId }).from(teams).where(eq(teams.tournamentId, tournamentId));
+  const groupRows = await db.select().from(groups).where(eq(groups.tournamentId, tournamentId));
+  const groupNameMap = new Map(groupRows.map(g => [g.id, g.name]));
+  const teamGroupMap = new Map<string, string>();
+  for (const t of teamRows) {
+    if (t.groupId) {
+      const gName = groupNameMap.get(t.groupId);
+      if (gName) teamGroupMap.set(t.id, gName);
+    }
+  }
+
+  // Get all group stage matches
+  const allGroupMatches = await db.select().from(matches).where(
+    and(eq(matches.tournamentId, tournamentId), eq(matches.stage, 'group'))
+  );
+  const completedGroupMatches = allGroupMatches.filter(m => m.status === 'completed');
+  const standings = computeGroupStandings(completedGroupMatches, teamGroupMap);
+
+  // Resolve direct qualifier label (e.g. "1A") → teamId
+  function qualifierToTeamId(label: string): string | null {
+    const m = label.match(/^(\d+)([A-Z])$/);
+    if (!m) return null;
+    const pos = parseInt(m[1]) - 1;
+    const groupStandings = standings.get(m[2]);
+    return groupStandings && groupStandings.length > pos ? groupStandings[pos].teamId : null;
+  }
+
+  // Collect lucky losers: rank (directQualifiers)-th place teams across all groups
+  const luckyLoserCandidates: TeamStat[] = [];
+  for (const [, gs] of standings) {
+    if (gs.length > directQualifiers) luckyLoserCandidates.push(gs[directQualifiers]);
+  }
+  luckyLoserCandidates.sort((a, b) => {
+    if (b.points !== a.points) return b.points - a.points;
+    if (b.gd !== a.gd) return b.gd - a.gd;
+    return b.gf - a.gf;
+  });
+  const selectedLuckyLosers = luckyLoserCandidates.slice(0, luckyLosers).map(t => t.teamId);
+
+  // Empty bracket slots (left-to-right) → lucky losers in order
+  const emptySlots: string[] = [];
+  for (let i = 1; i <= matchCount; i++) {
+    if (!bracketSlots[`m${i}_home`]) emptySlots.push(`m${i}_home`);
+    if (!bracketSlots[`m${i}_away`]) emptySlots.push(`m${i}_away`);
+  }
+  const luckyLoserSlotMap = new Map<string, string>();
+  for (let i = 0; i < Math.min(emptySlots.length, selectedLuckyLosers.length); i++) {
+    luckyLoserSlotMap.set(emptySlots[i], selectedLuckyLosers[i]);
+  }
+
+  // Base date = latest group match date (or today)
+  const datedMatches = allGroupMatches.filter(m => m.scheduledAt).sort(
+    (a, b) => new Date(b.scheduledAt!).getTime() - new Date(a.scheduledAt!).getTime()
+  );
+  const baseDate = datedMatches.length > 0 ? new Date(datedMatches[0].scheduledAt!) : new Date();
+  baseDate.setHours(12, 0, 0, 0);
+
+  // Delete all knockout matches before regenerating
+  await db.delete(matches).where(
+    and(eq(matches.tournamentId, tournamentId), inArray(matches.stage, [...KNOCKOUT_STAGES]))
+  );
+
+  // Create first-round matches with sequential dates (base + 1, base + 2, …)
+  for (let i = 1; i <= matchCount; i++) {
+    const homeSlotId = `m${i}_home`;
+    const awaySlotId = `m${i}_away`;
+    const homeTeamId = bracketSlots[homeSlotId]
+      ? qualifierToTeamId(bracketSlots[homeSlotId])
+      : (luckyLoserSlotMap.get(homeSlotId) ?? null);
+    const awayTeamId = bracketSlots[awaySlotId]
+      ? qualifierToTeamId(bracketSlots[awaySlotId])
+      : (luckyLoserSlotMap.get(awaySlotId) ?? null);
+
+    const matchDate = new Date(baseDate);
+    matchDate.setDate(baseDate.getDate() + i);
+
+    await db.insert(matches).values({
+      id: crypto.randomUUID(),
+      tournamentId,
+      homeTeamId: homeTeamId ?? null,
+      awayTeamId: awayTeamId ?? null,
+      stage: firstRound,
+      scheduledAt: matchDate,
+    });
+  }
+
+  // Create empty shell matches for all subsequent rounds so winners can advance into them
+  const BRACKET_STAGE_ORDER_LOCAL = ['round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'final'] as const;
+  const firstRoundStageIdx = BRACKET_STAGE_ORDER_LOCAL.indexOf(firstRound as typeof BRACKET_STAGE_ORDER_LOCAL[number]);
+  const subsequentStages = BRACKET_STAGE_ORDER_LOCAL.slice(firstRoundStageIdx + 1);
+
+  let shellDate = new Date(baseDate);
+  shellDate.setDate(baseDate.getDate() + matchCount + 7);
+
+  for (const stage of subsequentStages) {
+    const shellCount = FIRST_ROUND_MATCH_COUNTS[stage] ?? 0;
+    for (let i = 0; i < shellCount; i++) {
+      const matchDate = new Date(shellDate);
+      matchDate.setDate(shellDate.getDate() + i);
+      await db.insert(matches).values({
+        id: crypto.randomUUID(),
+        tournamentId,
+        homeTeamId: null,
+        awayTeamId: null,
+        stage,
+        scheduledAt: matchDate,
+      });
+    }
+    shellDate.setDate(shellDate.getDate() + Math.max(shellCount, 1) + 7);
+  }
+
+  if (hasBronzeFinal) {
+    await db.insert(matches).values({
+      id: crypto.randomUUID(),
+      tournamentId,
+      homeTeamId: null,
+      awayTeamId: null,
+      stage: 'bronze_final',
+      scheduledAt: null,
+    });
+  }
+}
+
+// ── advanceSingleKnockoutMatch ────────────────────────────────────────────────
+
+async function advanceSingleKnockoutMatch(match: {
+  id: string;
+  tournamentId: string;
+  stage: string;
+  homeTeamId: string | null;
+  awayTeamId: string | null;
+  progressingTeamId: string | null;
+}): Promise<void> {
+  const NEXT_STAGE: Record<string, string> = {
+    round_of_32: 'round_of_16',
+    round_of_16: 'quarter_final',
+    quarter_final: 'semi_final',
+    semi_final: 'final',
+  };
+
+  const { id: matchId, tournamentId, stage, progressingTeamId } = match;
+  if (!progressingTeamId) return;
+
+  const stageMatches = await db
+    .select({ id: matches.id })
+    .from(matches)
+    .where(and(
+      eq(matches.tournamentId, tournamentId),
+      eq(matches.stage, stage as typeof matches.stage._.data),
+    ))
+    .orderBy(matches.scheduledAt);
+
+  const matchIndex = stageMatches.findIndex(m => m.id === matchId);
+  if (matchIndex === -1) return;
+
+  const nextStage = NEXT_STAGE[stage];
+  if (nextStage) {
+    let nextMatches = await db
+      .select({ id: matches.id })
+      .from(matches)
+      .where(and(
+        eq(matches.tournamentId, tournamentId),
+        eq(matches.stage, nextStage as typeof matches.stage._.data),
+      ))
+      .orderBy(matches.scheduledAt);
+
+    // Create all shells for the next stage if none exist yet
+    if (nextMatches.length === 0) {
+      const shellCount = FIRST_ROUND_MATCH_COUNTS[nextStage] ?? 0;
+      const baseDate = new Date();
+      baseDate.setFullYear(baseDate.getFullYear() + 5);
+      const created: { id: string }[] = [];
+      for (let i = 0; i < shellCount; i++) {
+        const shellDate = new Date(baseDate);
+        shellDate.setDate(baseDate.getDate() + i);
+        const [row] = await db.insert(matches).values({
+          id: crypto.randomUUID(),
+          tournamentId,
+          homeTeamId: null,
+          awayTeamId: null,
+          stage: nextStage as typeof matches.stage._.data,
+          scheduledAt: shellDate,
+        }).returning({ id: matches.id });
+        created.push(row);
+      }
+      nextMatches = created;
+    }
+
+    const target = nextMatches[Math.floor(matchIndex / 2)];
+    if (target) {
+      const slot = matchIndex % 2 === 0 ? 'homeTeamId' : 'awayTeamId';
+      await db.update(matches).set({ [slot]: progressingTeamId }).where(eq(matches.id, target.id));
+    }
+  }
+
+  if (stage === 'semi_final') {
+    const loserId = progressingTeamId === match.homeTeamId ? match.awayTeamId : match.homeTeamId;
+    if (!loserId) return;
+    const [t] = await db
+      .select({ knockoutConfig: tournaments.knockoutConfig })
+      .from(tournaments)
+      .where(eq(tournaments.id, tournamentId))
+      .limit(1);
+    if ((t?.knockoutConfig as KnockoutConfig | null)?.hasBronzeFinal) {
+      let [bronze] = await db
+        .select({ id: matches.id })
+        .from(matches)
+        .where(and(eq(matches.tournamentId, tournamentId), eq(matches.stage, 'bronze_final')));
+      if (!bronze) {
+        [bronze] = await db.insert(matches).values({
+          id: crypto.randomUUID(),
+          tournamentId,
+          homeTeamId: null,
+          awayTeamId: null,
+          stage: 'bronze_final',
+          scheduledAt: null,
+        }).returning({ id: matches.id });
+      }
+      if (bronze) {
+        const slot = matchIndex % 2 === 0 ? 'homeTeamId' : 'awayTeamId';
+        await db.update(matches).set({ [slot]: loserId }).where(eq(matches.id, bronze.id));
+      }
+    }
+  }
+}
 
 export const tournamentsRouter = Router();
 export const matchesRouter = Router();
@@ -265,6 +603,180 @@ tournamentsRouter.patch('/:id/knockout-config', requireAdmin, async (req, res) =
   }
 });
 
+tournamentsRouter.post('/:id/simulate-group-stage', requireAdmin, async (req, res) => {
+  try {
+    const tournamentId = req.params.id;
+    const [exists] = await db.select({ id: tournaments.id }).from(tournaments).where(eq(tournaments.id, tournamentId)).limit(1);
+    if (!exists) return res.status(404).json({ error: 'Tournament not found' });
+
+    const scheduledGroupMatches = await db.select({ id: matches.id }).from(matches).where(
+      and(eq(matches.tournamentId, tournamentId), eq(matches.stage, 'group'), eq(matches.status, 'scheduled'))
+    );
+
+    for (const match of scheduledGroupMatches) {
+      await db.update(matches)
+        .set({ homeScore: Math.floor(Math.random() * 5), awayScore: Math.floor(Math.random() * 5), status: 'completed' })
+        .where(eq(matches.id, match.id));
+    }
+
+    await generateFirstRoundKnockout(tournamentId);
+    return res.json({ ok: true, simulated: scheduledGroupMatches.length });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+tournamentsRouter.post('/:id/clear-group-stage', requireAdmin, async (req, res) => {
+  try {
+    const tournamentId = req.params.id;
+    const [exists] = await db.select({ id: tournaments.id }).from(tournaments).where(eq(tournaments.id, tournamentId)).limit(1);
+    if (!exists) return res.status(404).json({ error: 'Tournament not found' });
+
+    // Reset all group stage matches to scheduled
+    await db.update(matches)
+      .set({ homeScore: null, awayScore: null, status: 'scheduled' })
+      .where(and(eq(matches.tournamentId, tournamentId), eq(matches.stage, 'group')));
+
+    // Delete all knockout matches
+    await db.delete(matches).where(
+      and(eq(matches.tournamentId, tournamentId), inArray(matches.stage, [...KNOCKOUT_STAGES]))
+    );
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+tournamentsRouter.post('/:id/simulate-knockout', requireAdmin, async (req, res) => {
+  try {
+    const tournamentId = req.params.id;
+    const [tournament] = await db.select().from(tournaments).where(eq(tournaments.id, tournamentId)).limit(1);
+    if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
+
+    const cfg = tournament.knockoutConfig as KnockoutConfig | null;
+    const firstRound = cfg?.firstRound ?? 'round_of_16';
+    const hasBronzeFinal = cfg?.hasBronzeFinal ?? false;
+
+    const BRACKET_ORDER = ['round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'final'] as const;
+    const startIdx = BRACKET_ORDER.indexOf(firstRound as typeof BRACKET_ORDER[number]);
+
+    // Fetch all knockout matches and group by stage in bracket order
+    const allKoMatches = await db.select().from(matches).where(
+      and(eq(matches.tournamentId, tournamentId), inArray(matches.stage, [...KNOCKOUT_STAGES]))
+    );
+    const sortByDate = (arr: typeof allKoMatches) => [...arr].sort((a, b) => {
+      if (!a.scheduledAt && !b.scheduledAt) return 0;
+      if (!a.scheduledAt) return 1;
+      if (!b.scheduledAt) return -1;
+      return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
+    });
+    const byStage = new Map<string, typeof allKoMatches>();
+    for (const m of allKoMatches) {
+      if (!byStage.has(m.stage)) byStage.set(m.stage, []);
+      byStage.get(m.stage)!.push(m);
+    }
+    for (const [k, v] of byStage) byStage.set(k, sortByDate(v));
+
+    let simulated = 0;
+
+    for (let si = startIdx; si < BRACKET_ORDER.length; si++) {
+      const stage = BRACKET_ORDER[si];
+      const nextStage = si + 1 < BRACKET_ORDER.length ? BRACKET_ORDER[si + 1] : null;
+      const stageMatches = byStage.get(stage) ?? [];
+
+      for (let i = 0; i < stageMatches.length; i++) {
+        const match = stageMatches[i];
+        if (!match.homeTeamId || !match.awayTeamId) continue;
+
+        // Simulate score if not already completed
+        if (match.status !== 'completed') {
+          let h = Math.floor(Math.random() * 4);
+          let a = Math.floor(Math.random() * 4);
+          while (h === a) a = Math.floor(Math.random() * 4);
+          await db.update(matches).set({ homeScore: h, awayScore: a, status: 'completed' }).where(eq(matches.id, match.id));
+          match.homeScore = h; match.awayScore = a; match.status = 'completed';
+          simulated++;
+        }
+
+        const winnerId = (match.homeScore ?? 0) > (match.awayScore ?? 0) ? match.homeTeamId : match.awayTeamId;
+        const loserId = winnerId === match.homeTeamId ? match.awayTeamId : match.homeTeamId;
+        const slot = i % 2 === 0 ? 'homeTeamId' : 'awayTeamId';
+
+        // Advance winner into the next round's match
+        if (nextStage) {
+          const nextMatches = byStage.get(nextStage) ?? [];
+          const target = nextMatches[Math.floor(i / 2)];
+          if (target) {
+            await db.update(matches).set({ [slot]: winnerId }).where(eq(matches.id, target.id));
+            (target as Record<string, unknown>)[slot] = winnerId;
+          }
+        }
+
+        // Advance SF loser to bronze final
+        if (stage === 'semi_final' && hasBronzeFinal && loserId) {
+          const bronze = (byStage.get('bronze_final') ?? [])[0];
+          if (bronze) {
+            await db.update(matches).set({ [slot]: loserId }).where(eq(matches.id, bronze.id));
+            (bronze as Record<string, unknown>)[slot] = loserId;
+          }
+        }
+      }
+    }
+
+    // Simulate bronze final (teams now filled in from SF results)
+    if (hasBronzeFinal) {
+      const bronze = (byStage.get('bronze_final') ?? [])[0];
+      if (bronze?.homeTeamId && bronze?.awayTeamId && bronze.status !== 'completed') {
+        let h = Math.floor(Math.random() * 4);
+        let a = Math.floor(Math.random() * 4);
+        while (h === a) a = Math.floor(Math.random() * 4);
+        await db.update(matches).set({ homeScore: h, awayScore: a, status: 'completed' }).where(eq(matches.id, bronze.id));
+        simulated++;
+      }
+    }
+
+    return res.json({ ok: true, simulated });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+tournamentsRouter.post('/:id/clear-knockout', requireAdmin, async (req, res) => {
+  try {
+    const tournamentId = req.params.id;
+    const [tournament] = await db.select().from(tournaments).where(eq(tournaments.id, tournamentId)).limit(1);
+    if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
+
+    const cfg = tournament.knockoutConfig as KnockoutConfig | null;
+    const firstRound = cfg?.firstRound ?? 'round_of_16';
+
+    // Reset scores, status and progressingTeamId on all knockout matches
+    await db.update(matches)
+      .set({ homeScore: null, awayScore: null, status: 'scheduled', progressingTeamId: null })
+      .where(and(eq(matches.tournamentId, tournamentId), inArray(matches.stage, [...KNOCKOUT_STAGES])));
+
+    // Clear team assignments from all stages except the first round (those come from bracket setup)
+    const stagesToClearTeams = KNOCKOUT_STAGES.filter(s => s !== firstRound);
+    if (stagesToClearTeams.length > 0) {
+      await db.update(matches)
+        .set({ homeTeamId: null, awayTeamId: null })
+        .where(and(
+          eq(matches.tournamentId, tournamentId),
+          inArray(matches.stage, stagesToClearTeams),
+        ));
+    }
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 tournamentsRouter.delete('/:id/groups/:groupId', requireAdmin, async (req, res) => {
   try {
     const [deleted] = await db
@@ -289,6 +801,7 @@ matchesRouter.patch('/:id', requireAdmin, async (req, res) => {
     if (updates.scheduledAt !== undefined) {
       setData.scheduledAt = updates.scheduledAt ? new Date(updates.scheduledAt) : null;
     }
+    if (updates.progressingTeamId !== undefined) setData.progressingTeamId = updates.progressingTeamId;
     if (updates.homeScore !== undefined && updates.awayScore !== undefined) {
       setData.homeScore = updates.homeScore;
       setData.awayScore = updates.awayScore;
@@ -303,6 +816,51 @@ matchesRouter.patch('/:id', requireAdmin, async (req, res) => {
       .where(eq(matches.id, req.params.id))
       .returning();
     if (!updated) return res.status(404).json({ error: 'Match not found' });
+
+    // Auto-generate first-round knockout matches when all group stage matches complete
+    if (updated.stage === 'group' && setData.status === 'completed') {
+      const allGroupMatches = await db
+        .select({ status: matches.status })
+        .from(matches)
+        .where(and(eq(matches.tournamentId, updated.tournamentId), eq(matches.stage, 'group')));
+
+      const allComplete = allGroupMatches.length > 0 && allGroupMatches.every(m => m.status === 'completed');
+      if (allComplete) {
+        const [cfg] = await db
+          .select({ knockoutConfig: tournaments.knockoutConfig })
+          .from(tournaments)
+          .where(eq(tournaments.id, updated.tournamentId))
+          .limit(1);
+
+        if (cfg?.knockoutConfig) {
+          const firstRound = (cfg.knockoutConfig as KnockoutConfig).firstRound;
+          const [existingKo] = await db
+            .select({ id: matches.id })
+            .from(matches)
+            .where(and(eq(matches.tournamentId, updated.tournamentId), eq(matches.stage, firstRound)))
+            .limit(1);
+
+          if (!existingKo) {
+            await generateFirstRoundKnockout(updated.tournamentId);
+          }
+        }
+      }
+    }
+
+    // For decisive knockout results: auto-set progressingTeamId, then advance immediately
+    const KNOCKOUT_STAGE_SET = new Set(KNOCKOUT_STAGES as readonly string[]);
+    if (KNOCKOUT_STAGE_SET.has(updated.stage) && updated.status === 'completed') {
+      if (!updated.progressingTeamId && updated.homeTeamId && updated.awayTeamId &&
+          updated.homeScore !== null && updated.awayScore !== null && updated.homeScore !== updated.awayScore) {
+        const winnerId = updated.homeScore > updated.awayScore ? updated.homeTeamId : updated.awayTeamId;
+        await db.update(matches).set({ progressingTeamId: winnerId }).where(eq(matches.id, updated.id));
+        updated.progressingTeamId = winnerId;
+      }
+      if (updated.progressingTeamId) {
+        await advanceSingleKnockoutMatch(updated);
+      }
+    }
+
     return res.json(updated);
   } catch (err: any) {
     if (err?.name === 'ZodError') return res.status(400).json({ error: 'Invalid input', details: err.errors });

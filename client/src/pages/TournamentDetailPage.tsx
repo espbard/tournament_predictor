@@ -374,6 +374,16 @@ export default function TournamentDetailPage() {
     onError: (err: any) => setEditError(err.message),
   });
 
+  const simulateGroupStageMutation = useMutation({
+    mutationFn: () => api.post(`/tournaments/${id}/simulate-group-stage`, {}),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['matches', id] }),
+  });
+
+  const clearGroupStageMutation = useMutation({
+    mutationFn: () => api.post(`/tournaments/${id}/clear-group-stage`, {}),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['matches', id] }),
+  });
+
   // ── DnD handlers ────────────────────────────────────────────────────────────
 
   function handleDragStart(event: DragStartEvent) {
@@ -493,8 +503,9 @@ export default function TournamentDetailPage() {
     return <div className="p-8 text-sm">Tournament not found.</div>;
   }
 
-  // Group matches by calendar date for display
-  const sortedMatches = [...matchList].sort((a, b) => {
+  // Group matches by calendar date for display — group stage only (knockout shown in Knockout tab)
+  const groupStageMatches = matchList.filter(m => m.stage === 'group');
+  const sortedMatches = [...groupStageMatches].sort((a, b) => {
     if (!a.scheduledAt && !b.scheduledAt) return 0;
     if (!a.scheduledAt) return 1;
     if (!b.scheduledAt) return -1;
@@ -864,15 +875,37 @@ export default function TournamentDetailPage() {
 
       {/* Matches */}
       <section>
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Matches ({matchList.length})</h2>
-          {isAdmin && addMatchForDate === null && (
-            <button
-              onClick={() => openAddMatch()}
-              className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
-            >
-              Add Match
-            </button>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-lg font-semibold">Matches ({groupStageMatches.length})</h2>
+          {isAdmin && (
+            <div className="flex flex-wrap gap-2">
+              {matchList.some(m => m.stage === 'group') && (
+                <>
+                  <button
+                    onClick={() => simulateGroupStageMutation.mutate()}
+                    disabled={simulateGroupStageMutation.isPending}
+                    className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
+                  >
+                    {simulateGroupStageMutation.isPending ? 'Simulating…' : 'Simulate Group Stage'}
+                  </button>
+                  <button
+                    onClick={() => clearGroupStageMutation.mutate()}
+                    disabled={clearGroupStageMutation.isPending}
+                    className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
+                  >
+                    {clearGroupStageMutation.isPending ? 'Clearing…' : 'Clear Group Stage Results'}
+                  </button>
+                </>
+              )}
+              {addMatchForDate === null && (
+                <button
+                  onClick={() => openAddMatch()}
+                  className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+                >
+                  Add Match
+                </button>
+              )}
+            </div>
           )}
         </div>
 

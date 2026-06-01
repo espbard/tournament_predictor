@@ -56,6 +56,7 @@ export const UpdateMatchSchema = z.object({
   awayTeamId: z.string().nullable().optional(),
   stage: z.enum(['group', 'round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'bronze_final', 'final']).optional(),
   scheduledAt: z.string().datetime().nullable().optional(),
+  progressingTeamId: z.string().nullable().optional(),
 });
 
 export const CreateCompetitionSchema = z.object({

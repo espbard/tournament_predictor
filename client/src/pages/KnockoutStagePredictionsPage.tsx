@@ -12,6 +12,15 @@ import type {
   BracketMatchPrediction,
   BracketPredictions,
 } from '@tournament-predictor/shared';
+import {
+  sortGroupTeams,
+  sortLuckyLosers,
+  findGroupDisciplinaryTies,
+  findLuckyLoserDisciplinaryTies,
+  makeDisciplinaryKey,
+  type MatchResult,
+  type DisciplinaryChoices,
+} from '@/lib/tiebreakers';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -88,14 +97,10 @@ const WC2026_LUCKY_LOSER_COMBOS: string[][] = [
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function sortTeams(teams: TeamStat[]): TeamStat[] {
-  return [...teams].sort((a, b) => {
-    const pa = a.W * 3 + a.D, pb = b.W * 3 + b.D;
-    if (pb !== pa) return pb - pa;
-    const gda = a.GF - a.GA, gdb = b.GF - b.GA;
-    if (gdb !== gda) return gdb - gda;
-    return b.GF - a.GF;
-  });
+function sortTeams(teams: TeamStat[], choices: DisciplinaryChoices = {}): TeamStat[] {
+  const stats = teams.map(t => ({ teamId: t.teamId, points: t.W * 3 + t.D, gd: t.GF - t.GA, gf: t.GF }));
+  const sortedIds = sortLuckyLosers(stats, choices).map(s => s.teamId);
+  return sortedIds.map(id => teams.find(t => t.teamId === id)!);
 }
 
 function parseQualifierLabel(label: string): { position: number; groups: string[] } {
@@ -155,6 +160,7 @@ function resolveSlots(
   groupStandings: [string, TeamStat[]][],
   directQualifiers: number,
   firstRoundMatchCount: number,
+  luckyLoserChoices: DisciplinaryChoices = {},
 ): Record<string, TeamStat | null> {
   const byGroup = new Map(groupStandings);
   const resolved: Record<string, TeamStat | null> = {};
@@ -181,6 +187,7 @@ function resolveSlots(
     groupStandings
       .filter(([, t]) => t.length > directQualifiers)
       .map(([, t]) => t[directQualifiers]),
+    luckyLoserChoices,
   );
 
   function solve(slotIdx: number, available: TeamStat[]): void {
@@ -218,6 +225,19 @@ function getWinner(
   return null;
 }
 
+function getLoser(
+  teams: { home: TeamStat | null; away: TeamStat | null } | undefined,
+  pred: BracketMatchPrediction | undefined,
+): TeamStat | null {
+  if (!teams || !pred) return null;
+  const { homeScore, awayScore, progressingTeamId } = pred;
+  if (homeScore > awayScore) return teams.away;
+  if (awayScore > homeScore) return teams.home;
+  if (progressingTeamId === teams.home?.teamId) return teams.away;
+  if (progressingTeamId === teams.away?.teamId) return teams.home;
+  return null;
+}
+
 function isPredComplete(
   pred: BracketMatchPrediction | undefined,
   teams: { home: TeamStat | null; away: TeamStat | null } | undefined,
@@ -235,12 +255,14 @@ function FocusedMatchCard({
   awayTeam,
   prediction,
   onUpdate,
+  isFinal,
 }: {
   matchKey: string;
   homeTeam: TeamStat | null;
   awayTeam: TeamStat | null;
   prediction: BracketMatchPrediction | undefined;
   onUpdate: (key: string, pred: BracketMatchPrediction) => void;
+  isFinal?: boolean;
 }) {
   const [homeStr, setHomeStr] = useState('');
   const [awayStr, setAwayStr] = useState('');
@@ -262,6 +284,8 @@ function FocusedMatchCard({
   const disabled = !homeTeam || !awayTeam;
   const homeWins = bothValid && homeNum! > awayNum!;
   const awayWins = bothValid && awayNum! > homeNum!;
+  const isHomeChampion = isFinal && (homeWins || (isDraw && prediction?.progressingTeamId === homeTeam?.teamId));
+  const isAwayChampion = isFinal && (awayWins || (isDraw && prediction?.progressingTeamId === awayTeam?.teamId));
 
   function handleScoreChange(side: 'home' | 'away', raw: string) {
     const val = raw.replace(/\D/g, '').slice(0, 2);
@@ -290,7 +314,10 @@ function FocusedMatchCard({
   return (
     <div className="rounded-xl border-2 bg-card shadow-sm overflow-hidden w-full max-w-xs mx-auto">
       {/* Home row */}
-      <div className={`flex items-center gap-3 px-4 py-3.5 transition-colors ${homeWins ? 'bg-primary/5' : ''}`}>
+      <div
+        className={`flex items-center gap-3 px-4 py-3.5 transition-colors ${homeWins && !isHomeChampion ? 'bg-primary/5' : ''}`}
+        style={isHomeChampion ? { animation: 'ko_winner_glow 1.8s ease-in-out infinite' } : undefined}
+      >
         {homeTeam ? (
           <>
             {homeTeam.imageUrl ? (
@@ -301,6 +328,11 @@ function FocusedMatchCard({
             <span className={`flex-1 text-sm truncate ${homeWins ? 'font-semibold' : 'font-medium'}`}>
               {homeTeam.teamName}
             </span>
+            {isHomeChampion && (
+              <span style={{ animation: 'ko_trophy_pop 0.45s cubic-bezier(0.34,1.56,0.64,1) forwards' }}>
+                🏆
+              </span>
+            )}
           </>
         ) : (
           <span className="flex-1 text-sm text-muted-foreground italic">TBD</span>
@@ -319,7 +351,10 @@ function FocusedMatchCard({
       <div className="h-px bg-border" />
 
       {/* Away row */}
-      <div className={`flex items-center gap-3 px-4 py-3.5 transition-colors ${awayWins ? 'bg-primary/5' : ''}`}>
+      <div
+        className={`flex items-center gap-3 px-4 py-3.5 transition-colors ${awayWins && !isAwayChampion ? 'bg-primary/5' : ''}`}
+        style={isAwayChampion ? { animation: 'ko_winner_glow 1.8s ease-in-out infinite' } : undefined}
+      >
         {awayTeam ? (
           <>
             {awayTeam.imageUrl ? (
@@ -330,6 +365,11 @@ function FocusedMatchCard({
             <span className={`flex-1 text-sm truncate ${awayWins ? 'font-semibold' : 'font-medium'}`}>
               {awayTeam.teamName}
             </span>
+            {isAwayChampion && (
+              <span style={{ animation: 'ko_trophy_pop 0.45s cubic-bezier(0.34,1.56,0.64,1) forwards' }}>
+                🏆
+              </span>
+            )}
           </>
         ) : (
           <span className="flex-1 text-sm text-muted-foreground italic">TBD</span>
@@ -431,12 +471,29 @@ function FocusedBracketView({
     return result;
   }, [resolvedSlots, bracketPreds, maxRoundIdx, reversedRounds, firstRoundMatchCount]);
 
+  // Semi-final losers fill the bronze final slots
+  const bronzeTeams = useMemo(() => ({
+    home: getLoser(matchTeams['1_0'], bracketPreds['semi_final_0']),
+    away: getLoser(matchTeams['1_1'], bracketPreds['semi_final_1']),
+  }), [matchTeams, bracketPreds]);
+
   // Flat chronological match list
   const allMatches = useMemo<FlatMatch[]>(() => {
     const list: FlatMatch[] = [];
     chronoRounds.forEach((round, chronoR) => {
       const bracketR = maxRoundIdx - chronoR;
       const count = Math.pow(2, bracketR);
+      // Insert bronze final just before the grand final
+      if (hasBronzeFinal && round === 'final') {
+        list.push({
+          round: 'semi_final' as KnockoutFirstRound,
+          matchIdxInRound: 0,
+          matchCountInRound: 1,
+          predKey: 'bronze_final_0',
+          bracketKey: '',
+          isBronze: true,
+        });
+      }
       for (let i = 0; i < count; i++) {
         list.push({
           round,
@@ -448,16 +505,6 @@ function FocusedBracketView({
         });
       }
     });
-    if (hasBronzeFinal) {
-      list.push({
-        round: 'semi_final' as KnockoutFirstRound,
-        matchIdxInRound: 0,
-        matchCountInRound: 1,
-        predKey: 'bronze_final_0',
-        bracketKey: '',
-        isBronze: true,
-      });
-    }
     return list;
   }, [chronoRounds, maxRoundIdx, hasBronzeFinal]);
 
@@ -522,7 +569,7 @@ function FocusedBracketView({
   if (!current) return null;
 
   const currentTeams = current.isBronze
-    ? { home: null, away: null }
+    ? bronzeTeams
     : (matchTeams[current.bracketKey] ?? { home: null, away: null });
   const currentPred = bracketPreds[current.predKey];
   const isComplete = isPredComplete(currentPred, currentTeams);
@@ -549,7 +596,7 @@ function FocusedBracketView({
           ).length;
           const allDone = doneCount === roundMs.length && roundMs.length > 0;
           const firstIdx = allMatches.findIndex(m => m.round === round && !m.isBronze);
-          return (
+          const roundBtn = (
             <button
               key={round}
               type="button"
@@ -566,23 +613,30 @@ function FocusedBracketView({
               {allDone && <span className="ml-1 text-green-600">✓</span>}
             </button>
           );
+          if (round === 'final' && hasBronzeFinal) {
+            const bronzeIdx = allMatches.findIndex(m => m.isBronze);
+            const isBronzeDone = isPredComplete(bracketPreds['bronze_final_0'], bronzeTeams);
+            const bronzeBtn = (
+              <button
+                key="bronze_final"
+                type="button"
+                onClick={() => bronzeIdx !== -1 && goTo(bronzeIdx)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                  current.isBronze
+                    ? 'bg-primary text-primary-foreground'
+                    : isBronzeDone
+                    ? 'bg-green-500/15 text-green-700 border border-green-500/30'
+                    : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                }`}
+              >
+                Bronze Final
+                {isBronzeDone && <span className="ml-1 text-green-600">✓</span>}
+              </button>
+            );
+            return [bronzeBtn, roundBtn];
+          }
+          return roundBtn;
         })}
-        {hasBronzeFinal && (
-          <button
-            type="button"
-            onClick={() => {
-              const bronzeIdx = allMatches.findIndex(m => m.isBronze);
-              if (bronzeIdx !== -1) goTo(bronzeIdx);
-            }}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-              current.isBronze
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted text-muted-foreground hover:bg-muted/80'
-            }`}
-          >
-            Bronze Final
-          </button>
-        )}
       </div>
 
       {/* Match navigation area */}
@@ -650,6 +704,7 @@ function FocusedBracketView({
               awayTeam={currentTeams.away}
               prediction={currentPred}
               onUpdate={handleUpdate}
+              isFinal={current.round === 'final' && !current.isBronze}
             />
           </div>
 
@@ -710,6 +765,8 @@ export default function KnockoutStagePredictionsPage() {
   const [localPreds, setLocalPreds] = useState<BracketPredictions>({});
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [initialized, setInitialized] = useState(false);
+  const [groupDisciplinaryChoices, setGroupDisciplinaryChoices] = useState<DisciplinaryChoices>({});
+  const [luckyLoserDisciplinaryChoices, setLuckyLoserDisciplinaryChoices] = useState<DisciplinaryChoices>({});
   const latestPredsRef = useRef<BracketPredictions>({});
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -746,7 +803,7 @@ export default function KnockoutStagePredictionsPage() {
     [savedGroupPredictions]
   );
 
-  const groupStandings = useMemo(() => {
+  const { groupStandings, effectiveGroupResults } = useMemo(() => {
     const groupMatches = matchList.filter(m => m.stage === 'group');
     const teamMap = new Map<string, TeamStat>();
 
@@ -760,6 +817,8 @@ export default function KnockoutStagePredictionsPage() {
         teamMap.set(m.awayTeamId, { teamId: m.awayTeamId, teamName: m.awayTeamName, imageUrl: m.awayTeamImageUrl, group: g, P: 0, W: 0, D: 0, L: 0, GF: 0, GA: 0 });
       }
     }
+
+    const groupResultsMap = new Map<string, MatchResult[]>();
 
     for (const m of groupMatches) {
       if (!m.homeTeamId || !m.awayTeamId || !m.groupName) continue;
@@ -775,6 +834,8 @@ export default function KnockoutStagePredictionsPage() {
       const away = teamMap.get(m.awayTeamId);
       if (home) { home.P++; home.GF += hs; home.GA += as_; if (hs > as_) home.W++; else if (hs === as_) home.D++; else home.L++; }
       if (away) { away.P++; away.GF += as_; away.GA += hs; if (as_ > hs) away.W++; else if (hs === as_) away.D++; else away.L++; }
+      if (!groupResultsMap.has(m.groupName)) groupResultsMap.set(m.groupName, []);
+      groupResultsMap.get(m.groupName)!.push({ homeTeamId: m.homeTeamId, awayTeamId: m.awayTeamId, homeScore: hs, awayScore: as_ });
     }
 
     const byGroup = new Map<string, TeamStat[]>();
@@ -782,17 +843,18 @@ export default function KnockoutStagePredictionsPage() {
       if (!byGroup.has(t.group)) byGroup.set(t.group, []);
       byGroup.get(t.group)!.push(t);
     }
-    for (const teams of byGroup.values()) {
-      teams.sort((a, b) => {
-        const pa = a.W * 3 + a.D, pb = b.W * 3 + b.D;
-        if (pb !== pa) return pb - pa;
-        const gda = a.GF - a.GA, gdb = b.GF - b.GA;
-        if (gdb !== gda) return gdb - gda;
-        return b.GF - a.GF;
-      });
+    for (const [groupName, teams] of byGroup) {
+      const results = groupResultsMap.get(groupName) ?? [];
+      const tiebreakerStats = teams.map(t => ({ teamId: t.teamId, points: t.W * 3 + t.D, gd: t.GF - t.GA, gf: t.GF }));
+      const sortedIds = sortGroupTeams(tiebreakerStats, results, groupDisciplinaryChoices).map(s => s.teamId);
+      teams.sort((a, b) => sortedIds.indexOf(a.teamId) - sortedIds.indexOf(b.teamId));
     }
-    return [...byGroup.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [matchList, predMap]);
+
+    return {
+      groupStandings: [...byGroup.entries()].sort(([a], [b]) => a.localeCompare(b)),
+      effectiveGroupResults: groupResultsMap,
+    };
+  }, [matchList, predMap, groupDisciplinaryChoices]);
 
   const knockoutConfig = tournament?.knockoutConfig ?? null;
 
@@ -815,8 +877,57 @@ export default function KnockoutStagePredictionsPage() {
       groupStandings,
       knockoutConfig.directQualifiers,
       FIRST_ROUND_COUNTS[knockoutConfig.firstRound],
+      luckyLoserDisciplinaryChoices,
     );
-  }, [knockoutConfig, luckyLoserLabels, groupStandings]);
+  }, [knockoutConfig, luckyLoserLabels, groupStandings, luckyLoserDisciplinaryChoices]);
+
+  const groupDisciplinaryTies = useMemo(() => {
+    const result: Array<{ groupName: string; teams: TeamStat[]; key: string }> = [];
+    for (const [groupName, teams] of groupStandings) {
+      const results = effectiveGroupResults.get(groupName) ?? [];
+      const tiebreakerStats = teams.map(t => ({ teamId: t.teamId, points: t.W * 3 + t.D, gd: t.GF - t.GA, gf: t.GF }));
+      const tiedGroups = findGroupDisciplinaryTies(tiebreakerStats, results);
+      for (const tiedGroup of tiedGroups) {
+        const key = makeDisciplinaryKey(tiedGroup.map(t => t.teamId));
+        const existing = groupDisciplinaryChoices[key] ?? [];
+        if (existing.length < tiedGroup.length) {
+          result.push({ groupName, teams: tiedGroup.map(s => teams.find(t => t.teamId === s.teamId)!).filter(Boolean), key });
+        }
+      }
+    }
+    return result;
+  }, [groupStandings, effectiveGroupResults, groupDisciplinaryChoices]);
+
+  const luckyLoserDisciplinaryTies = useMemo(() => {
+    if (!knockoutConfig) return [];
+    const third = groupStandings
+      .filter(([, t]) => t.length > knockoutConfig.directQualifiers)
+      .map(([, t]) => t[knockoutConfig.directQualifiers]);
+    const tiebreakerStats = third.map(t => ({ teamId: t.teamId, points: t.W * 3 + t.D, gd: t.GF - t.GA, gf: t.GF }));
+    return findLuckyLoserDisciplinaryTies(tiebreakerStats)
+      .filter(group => {
+        const key = makeDisciplinaryKey(group.map(t => t.teamId));
+        const existing = luckyLoserDisciplinaryChoices[key] ?? [];
+        return existing.length < group.length;
+      })
+      .map(group => ({
+        key: makeDisciplinaryKey(group.map(t => t.teamId)),
+        teams: group.map(s => third.find(t => t.teamId === s.teamId)!).filter(Boolean),
+      }));
+  }, [groupStandings, knockoutConfig, luckyLoserDisciplinaryChoices]);
+
+  function handleDisciplinaryChoice(
+    choices: DisciplinaryChoices,
+    setChoices: (c: DisciplinaryChoices) => void,
+    key: string,
+    teamId: string,
+  ) {
+    const ranking = [...(choices[key] ?? [])];
+    const idx = ranking.indexOf(teamId);
+    if (idx !== -1) ranking.splice(idx, 1);
+    else ranking.push(teamId);
+    setChoices({ ...choices, [key]: ranking });
+  }
 
   if (isLoading) return <p className="p-8 text-sm text-muted-foreground">Loading…</p>;
   if (error) {
@@ -824,6 +935,8 @@ export default function KnockoutStagePredictionsPage() {
     return <p className="p-8 text-sm text-destructive">{msg}</p>;
   }
   if (!competition) return null;
+
+  const hasPendingTies = groupDisciplinaryTies.length > 0 || luckyLoserDisciplinaryTies.length > 0;
 
   return (
     <main className="mx-auto max-w-lg px-4 py-12">
@@ -835,6 +948,14 @@ export default function KnockoutStagePredictionsPage() {
         @keyframes ko_slide_fromLeft {
           from { opacity: 0; transform: translateX(-36px); }
           to   { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes ko_winner_glow {
+          0%, 100% { background-color: rgba(234, 179, 8, 0.08); }
+          50%       { background-color: rgba(234, 179, 8, 0.22); }
+        }
+        @keyframes ko_trophy_pop {
+          from { transform: scale(0) rotate(-20deg); opacity: 0; }
+          to   { transform: scale(1) rotate(0deg);   opacity: 1; }
         }
       `}</style>
 
@@ -858,6 +979,78 @@ export default function KnockoutStagePredictionsPage() {
         Teams shown are based on your group stage predictions. Enter scores for each match — a draw
         prompts you to pick who advances.
       </p>
+
+      {/* Disciplinary tiebreaker prompts */}
+      {hasPendingTies && (
+        <div className="mb-6 space-y-3">
+          {groupDisciplinaryTies.map(tie => (
+            <div key={tie.key} className="rounded-lg border border-amber-400/40 bg-amber-50/10 p-3 text-xs">
+              <p className="font-semibold text-amber-700 dark:text-amber-400 mb-1">
+                Disciplinary tiebreaker — Group {tie.groupName}
+              </p>
+              <p className="text-muted-foreground mb-2">
+                {groupDisciplinaryChoices[tie.key]?.length
+                  ? `Ranked: ${(groupDisciplinaryChoices[tie.key] ?? []).map(id => tie.teams.find(t => t.teamId === id)?.teamName).join(' › ')}. Click to adjust:`
+                  : 'These teams are equal on all criteria. Click in order of best fair play (fewest cards):'}
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {tie.teams.map(t => {
+                  const rank = (groupDisciplinaryChoices[tie.key] ?? []).indexOf(t.teamId);
+                  const isRanked = rank !== -1;
+                  return (
+                    <button
+                      key={t.teamId}
+                      onClick={() => handleDisciplinaryChoice(groupDisciplinaryChoices, setGroupDisciplinaryChoices, tie.key, t.teamId)}
+                      className={`flex items-center gap-1 rounded border px-2 py-1 transition-colors ${
+                        isRanked
+                          ? 'border-amber-500 bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300'
+                          : 'border-border hover:border-amber-400 hover:bg-amber-50/20'
+                      }`}
+                    >
+                      {isRanked && <span className="font-bold text-amber-600 dark:text-amber-400">{rank + 1}.</span>}
+                      {t.imageUrl && <img src={t.imageUrl} alt="" className="h-3.5 w-3.5 rounded-sm" />}
+                      {t.teamName}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+          {luckyLoserDisciplinaryTies.map(tie => (
+            <div key={tie.key} className="rounded-lg border border-amber-400/40 bg-amber-50/10 p-3 text-xs">
+              <p className="font-semibold text-amber-700 dark:text-amber-400 mb-1">
+                Disciplinary tiebreaker — Lucky Losers
+              </p>
+              <p className="text-muted-foreground mb-2">
+                {luckyLoserDisciplinaryChoices[tie.key]?.length
+                  ? `Ranked: ${(luckyLoserDisciplinaryChoices[tie.key] ?? []).map(id => tie.teams.find(t => t.teamId === id)?.teamName).join(' › ')}. Click to adjust:`
+                  : 'These 3rd-place teams are equal on all criteria. Click in order of best fair play (fewest cards):'}
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {tie.teams.map(t => {
+                  const rank = (luckyLoserDisciplinaryChoices[tie.key] ?? []).indexOf(t.teamId);
+                  const isRanked = rank !== -1;
+                  return (
+                    <button
+                      key={t.teamId}
+                      onClick={() => handleDisciplinaryChoice(luckyLoserDisciplinaryChoices, setLuckyLoserDisciplinaryChoices, tie.key, t.teamId)}
+                      className={`flex items-center gap-1 rounded border px-2 py-1 transition-colors ${
+                        isRanked
+                          ? 'border-amber-500 bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300'
+                          : 'border-border hover:border-amber-400 hover:bg-amber-50/20'
+                      }`}
+                    >
+                      {isRanked && <span className="font-bold text-amber-600 dark:text-amber-400">{rank + 1}.</span>}
+                      {t.imageUrl && <img src={t.imageUrl} alt="" className="h-3.5 w-3.5 rounded-sm" />}
+                      {t.teamName}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {knockoutConfig ? (
         <FocusedBracketView

@@ -242,6 +242,47 @@ router.get('/:id/leaderboard', requireAuth, async (req, res) => {
   }
 });
 
+router.get('/:id/my-status', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = res.locals.user;
+
+    const [membership] = await db
+      .select()
+      .from(competitionMembers)
+      .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
+
+    res.json({ groupStageLocked: membership?.groupStageLocked ?? false });
+  } catch (err) {
+    console.error('Get my-status error:', err);
+    res.status(500).json({ error: 'Failed to fetch status' });
+  }
+});
+
+router.post('/:id/lock-group-stage', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = res.locals.user;
+
+    const [membership] = await db
+      .select()
+      .from(competitionMembers)
+      .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
+
+    if (membership) {
+      await db
+        .update(competitionMembers)
+        .set({ groupStageLocked: true })
+        .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
+    }
+
+    res.json({ groupStageLocked: true });
+  } catch (err) {
+    console.error('Lock group stage error:', err);
+    res.status(500).json({ error: 'Failed to lock group stage' });
+  }
+});
+
 router.get('/:id/predictions', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
@@ -297,6 +338,16 @@ router.post('/:id/predictions', requireAuth, async (req, res) => {
     if (!match) return res.status(404).json({ error: 'Match not found' });
     if (match.tournamentId !== competition.tournamentId) {
       return res.status(400).json({ error: "Match does not belong to this competition's tournament" });
+    }
+
+    if (match.stage === 'group' && !user.isAdmin) {
+      const [membership] = await db
+        .select()
+        .from(competitionMembers)
+        .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
+      if (membership?.groupStageLocked) {
+        return res.status(400).json({ error: 'Group stage predictions are locked' });
+      }
     }
 
     const [existing] = await db

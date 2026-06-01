@@ -56,32 +56,6 @@ function CompetitionsHome() {
           <p className="text-sm text-muted-foreground">Pick your scores and climb the leaderboard</p>
         </div>
       </div>
-
-      <div className="mb-8 rounded-lg border p-5">
-        <h2 className="mb-3 font-semibold">Join a Competition</h2>
-        <form onSubmit={handleJoin} className="flex gap-2">
-          <input
-            type="text"
-            value={inviteCode}
-            onChange={e => setInviteCode(e.target.value)}
-            placeholder="Enter 5-digit invite code"
-            maxLength={5}
-            className="flex-1 rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-          />
-          <button
-            type="submit"
-            disabled={joinMutation.isPending || inviteCode.trim().length === 0}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-          >
-            {joinMutation.isPending ? 'Joining…' : 'Join'}
-          </button>
-        </form>
-        {joinError && <p className="mt-2 text-sm text-destructive">{joinError}</p>}
-        {joinMutation.isSuccess && (
-          <p className="mt-2 text-sm text-green-600">Successfully joined competition!</p>
-        )}
-      </div>
-
       <h2 className="mb-4 font-semibold">My Competitions</h2>
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
@@ -114,6 +88,30 @@ function CompetitionsHome() {
           ))}
         </div>
       )}
+      <div className="mb-8 rounded-lg border p-5">
+        <h2 className="mb-3 font-semibold">Join a Competition</h2>
+        <form onSubmit={handleJoin} className="flex gap-2">
+          <input
+            type="text"
+            value={inviteCode}
+            onChange={e => setInviteCode(e.target.value)}
+            placeholder="Enter 5-digit invite code"
+            maxLength={5}
+            className="flex-1 rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+          <button
+            type="submit"
+            disabled={joinMutation.isPending || inviteCode.trim().length === 0}
+            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          >
+            {joinMutation.isPending ? 'Joining…' : 'Join'}
+          </button>
+        </form>
+        {joinError && <p className="mt-2 text-sm text-destructive">{joinError}</p>}
+        {joinMutation.isSuccess && (
+          <p className="mt-2 text-sm text-green-600">Successfully joined competition!</p>
+        )}
+      </div>
     </main>
   );
 }

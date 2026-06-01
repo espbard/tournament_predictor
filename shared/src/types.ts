@@ -50,6 +50,7 @@ export interface Match {
   status: 'scheduled' | 'completed';
   homeScore: number | null;
   awayScore: number | null;
+  progressingTeamId: string | null;
 }
 
 export interface ScoringConfig {

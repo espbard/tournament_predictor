@@ -5,6 +5,15 @@ import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import ImageUpload from '@/components/ImageUpload';
 import type { Competition, Tournament, Prediction, MatchStage } from '@tournament-predictor/shared';
+import {
+  sortGroupTeams,
+  sortLuckyLosers,
+  findGroupDisciplinaryTies,
+  findLuckyLoserDisciplinaryTies,
+  makeDisciplinaryKey,
+  type MatchResult,
+  type DisciplinaryChoices,
+} from '@/lib/tiebreakers';
 
 interface MatchWithTeams {
   id: string;
@@ -52,13 +61,13 @@ export default function CompetitionDetailPage() {
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [saveErrors, setSaveErrors] = useState<Record<string, string>>({});
 
-  const [groupStageLocked, setGroupStageLocked] = useState(
-    () => localStorage.getItem(`competition:${id}:groupStageLocked`) === 'true'
-  );
   const [hasDeclined, setHasDeclined] = useState(
     () => localStorage.getItem(`competition:${id}:groupStageDeclined`) === 'true'
   );
   const [showProceedPrompt, setShowProceedPrompt] = useState(false);
+
+  const [groupDisciplinaryChoices, setGroupDisciplinaryChoices] = useState<DisciplinaryChoices>({});
+  const [luckyLoserDisciplinaryChoices, setLuckyLoserDisciplinaryChoices] = useState<DisciplinaryChoices>({});
 
   const localEditsRef = useRef(localEdits);
   useEffect(() => { localEditsRef.current = localEdits; }, [localEdits]);
@@ -92,6 +101,19 @@ export default function CompetitionDetailPage() {
     enabled: !!competition,
   });
 
+  const { data: myStatus } = useQuery({
+    queryKey: ['competitions', id, 'my-status'],
+    queryFn: () => api.get<{ groupStageLocked: boolean }>(`/competitions/${id}/my-status`),
+    enabled: !!competition,
+  });
+
+  const lockMutation = useMutation({
+    mutationFn: () => api.post<{ groupStageLocked: boolean }>(`/competitions/${id}/lock-group-stage`, {}),
+    onSuccess: () => {
+      queryClient.setQueryData(['competitions', id, 'my-status'], { groupStageLocked: true });
+    },
+  });
+
   useEffect(() => {
     if (!savedPredictions.length) return;
     setLocalEdits(prev => {
@@ -120,7 +142,8 @@ export default function CompetitionDetailPage() {
     P: number; W: number; D: number; L: number; GF: number; GA: number;
   };
 
-  const groupStandings = useMemo(() => {
+  // effectiveGroupResults[groupName] holds the scored match results for H2H computation
+  const { groupStandings, effectiveGroupResults } = useMemo(() => {
     const groupMatches = matchList.filter(m => m.stage === 'group');
     const teamMap = new Map<string, TeamStat>();
 
@@ -134,6 +157,8 @@ export default function CompetitionDetailPage() {
         teamMap.set(m.awayTeamId, { teamId: m.awayTeamId, teamName: m.awayTeamName, imageUrl: m.awayTeamImageUrl, group: g, P: 0, W: 0, D: 0, L: 0, GF: 0, GA: 0 });
       }
     }
+
+    const groupResultsMap = new Map<string, MatchResult[]>();
 
     for (const m of groupMatches) {
       if (!m.homeTeamId || !m.awayTeamId || !m.groupName) continue;
@@ -153,6 +178,8 @@ export default function CompetitionDetailPage() {
       const away = teamMap.get(m.awayTeamId);
       if (home) { home.P++; home.GF += hs; home.GA += as_; if (hs > as_) home.W++; else if (hs === as_) home.D++; else home.L++; }
       if (away) { away.P++; away.GF += as_; away.GA += hs; if (as_ > hs) away.W++; else if (hs === as_) away.D++; else away.L++; }
+      if (!groupResultsMap.has(m.groupName)) groupResultsMap.set(m.groupName, []);
+      groupResultsMap.get(m.groupName)!.push({ homeTeamId: m.homeTeamId, awayTeamId: m.awayTeamId, homeScore: hs, awayScore: as_ });
     }
 
     const byGroup = new Map<string, TeamStat[]>();
@@ -160,41 +187,75 @@ export default function CompetitionDetailPage() {
       if (!byGroup.has(t.group)) byGroup.set(t.group, []);
       byGroup.get(t.group)!.push(t);
     }
-    for (const teams of byGroup.values()) {
-      teams.sort((a, b) => {
-        const pa = a.W * 3 + a.D; const pb = b.W * 3 + b.D;
-        if (pb !== pa) return pb - pa;
-        const gda = a.GF - a.GA; const gdb = b.GF - b.GA;
-        if (gdb !== gda) return gdb - gda;
-        return b.GF - a.GF;
-      });
+
+    for (const [groupName, teams] of byGroup) {
+      const results = groupResultsMap.get(groupName) ?? [];
+      const tiebreakerStats = teams.map(t => ({ teamId: t.teamId, points: t.W * 3 + t.D, gd: t.GF - t.GA, gf: t.GF }));
+      const sortedIds = sortGroupTeams(tiebreakerStats, results, groupDisciplinaryChoices).map(s => s.teamId);
+      teams.sort((a, b) => sortedIds.indexOf(a.teamId) - sortedIds.indexOf(b.teamId));
     }
-    return [...byGroup.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [matchList, localEdits]);
+
+    return {
+      groupStandings: [...byGroup.entries()].sort(([a], [b]) => a.localeCompare(b)),
+      effectiveGroupResults: groupResultsMap,
+    };
+  }, [matchList, localEdits, groupDisciplinaryChoices]);
 
   const qualifyingThirdPlaceIds = useMemo(() => {
     const third = groupStandings
       .filter(([, teams]) => teams.length >= 3)
       .map(([, teams]) => teams[2]);
-    third.sort((a, b) => {
-      const pa = a.W * 3 + a.D; const pb = b.W * 3 + b.D;
-      if (pb !== pa) return pb - pa;
-      const gda = a.GF - a.GA; const gdb = b.GF - b.GA;
-      if (gdb !== gda) return gdb - gda;
-      return b.GF - a.GF;
-    });
-    const qualifying = third.slice(0, 8);
-    if (qualifying.length === 8 && third.length > 8) {
+    const tiebreakerStats = third.map(t => ({ teamId: t.teamId, points: t.W * 3 + t.D, gd: t.GF - t.GA, gf: t.GF }));
+    const sortedIds = sortLuckyLosers(tiebreakerStats, luckyLoserDisciplinaryChoices).map(s => s.teamId);
+    const sortedThird = sortedIds.map(id => third.find(t => t.teamId === id)!).filter(Boolean);
+    const qualifying = sortedThird.slice(0, 8);
+    if (qualifying.length === 8 && sortedThird.length > 8) {
       const edge = qualifying[7];
       const edgePts = edge.W * 3 + edge.D; const edgeGD = edge.GF - edge.GA;
-      for (const t of third.slice(8)) {
+      for (const t of sortedThird.slice(8)) {
         const pts = t.W * 3 + t.D; const gd = t.GF - t.GA;
         if (pts === edgePts && gd === edgeGD && t.GF === edge.GF) qualifying.push(t);
         else break;
       }
     }
     return new Set(qualifying.map(t => t.teamId));
-  }, [groupStandings]);
+  }, [groupStandings, luckyLoserDisciplinaryChoices]);
+
+  // Detect which group standings still need disciplinary resolution
+  const groupDisciplinaryTies = useMemo(() => {
+    const result: Array<{ groupName: string; teams: TeamStat[]; key: string }> = [];
+    for (const [groupName, teams] of groupStandings) {
+      const results = effectiveGroupResults.get(groupName) ?? [];
+      const tiebreakerStats = teams.map(t => ({ teamId: t.teamId, points: t.W * 3 + t.D, gd: t.GF - t.GA, gf: t.GF }));
+      const tiedGroups = findGroupDisciplinaryTies(tiebreakerStats, results);
+      for (const tiedGroup of tiedGroups) {
+        const key = makeDisciplinaryKey(tiedGroup.map(t => t.teamId));
+        const existing = groupDisciplinaryChoices[key] ?? [];
+        if (existing.length < tiedGroup.length) {
+          result.push({ groupName, teams: tiedGroup.map(s => teams.find(t => t.teamId === s.teamId)!).filter(Boolean), key });
+        }
+      }
+    }
+    return result;
+  }, [groupStandings, effectiveGroupResults, groupDisciplinaryChoices]);
+
+  // Detect which lucky loser comparisons still need disciplinary resolution
+  const luckyLoserDisciplinaryTies = useMemo(() => {
+    const third = groupStandings
+      .filter(([, teams]) => teams.length >= 3)
+      .map(([, teams]) => teams[2]);
+    const tiebreakerStats = third.map(t => ({ teamId: t.teamId, points: t.W * 3 + t.D, gd: t.GF - t.GA, gf: t.GF }));
+    return findLuckyLoserDisciplinaryTies(tiebreakerStats)
+      .filter(group => {
+        const key = makeDisciplinaryKey(group.map(t => t.teamId));
+        const existing = luckyLoserDisciplinaryChoices[key] ?? [];
+        return existing.length < group.length;
+      })
+      .map(group => ({
+        key: makeDisciplinaryKey(group.map(t => t.teamId)),
+        teams: group.map(s => third.find(t => t.teamId === s.teamId)!).filter(Boolean),
+      }));
+  }, [groupStandings, luckyLoserDisciplinaryChoices]);
 
   const matchesByDate = useMemo(() => {
     const sorted = [...matchList].sort((a, b) => {
@@ -252,6 +313,8 @@ export default function CompetitionDetailPage() {
       return !!predMap[m.id];
     });
   }, [scheduledGroupMatches, localEdits, predMap]);
+
+  const groupStageLocked = myStatus?.groupStageLocked ?? false;
 
   useEffect(() => {
     if (allGroupFilled && !groupStageLocked && !hasDeclined) {
@@ -328,9 +391,9 @@ export default function CompetitionDetailPage() {
   }
 
   function handleProceedToKnockout() {
-    localStorage.setItem(`competition:${id}:groupStageLocked`, 'true');
-    setGroupStageLocked(true);
-    navigate(`/competitions/${id}/knockout`);
+    lockMutation.mutate(undefined, {
+      onSuccess: () => navigate(`/competitions/${id}/knockout`),
+    });
   }
 
   function handleDeclineProceed() {
@@ -372,6 +435,22 @@ export default function CompetitionDetailPage() {
       imageUrl: editImageUrl,
       predictionDeadline: editDeadline ? new Date(editDeadline).toISOString() : null,
     });
+  }
+
+  function handleDisciplinaryChoice(
+    choices: DisciplinaryChoices,
+    setChoices: (c: DisciplinaryChoices) => void,
+    key: string,
+    teamId: string,
+  ) {
+    const ranking = [...(choices[key] ?? [])];
+    const idx = ranking.indexOf(teamId);
+    if (idx !== -1) {
+      ranking.splice(idx, 1); // undo
+    } else {
+      ranking.push(teamId); // rank next
+    }
+    setChoices({ ...choices, [key]: ranking });
   }
 
   if (isLoading) return <p className="p-8 text-sm text-muted-foreground">Loading…</p>;
@@ -707,56 +786,131 @@ export default function CompetitionDetailPage() {
         <aside className="mt-8 lg:mt-0 lg:w-80 lg:flex-shrink-0">
           <div className="lg:sticky lg:top-4 space-y-4">
             <h2 className="font-semibold">Group Standings</h2>
-            {groupStandings.map(([groupName, teams]) => (
-              <div key={groupName} className="rounded-lg border overflow-hidden">
-                <div className="bg-muted/50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Group {groupName}
+            {groupStandings.map(([groupName, teams]) => {
+              const groupTies = groupDisciplinaryTies.filter(tie => tie.groupName === groupName);
+              return (
+                <div key={groupName} className="space-y-2">
+                  <div className="rounded-lg border overflow-hidden">
+                    <div className="bg-muted/50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Group {groupName}
+                    </div>
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b text-muted-foreground">
+                          <th className="pl-3 py-1.5 text-left w-6">#</th>
+                          <th className="py-1.5 text-left">Team</th>
+                          <th className="py-1.5 text-center w-6">P</th>
+                          <th className="py-1.5 text-center w-6">W</th>
+                          <th className="py-1.5 text-center w-6">D</th>
+                          <th className="py-1.5 text-center w-6">L</th>
+                          <th className="py-1.5 text-center w-8">GF</th>
+                          <th className="py-1.5 text-center w-8">GA</th>
+                          <th className="pr-3 py-1.5 text-center w-8 font-bold text-foreground">Pts</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {teams.map((t, i) => (
+                          <tr key={t.teamId} className={
+                            i < 2
+                              ? 'bg-green-50 dark:bg-green-950/30'
+                              : i === 2 && qualifyingThirdPlaceIds.has(t.teamId)
+                              ? 'bg-yellow-50 dark:bg-yellow-950/30'
+                              : 'hover:bg-muted/30'
+                          }>
+                            <td className="pl-3 py-1.5 text-muted-foreground">{i + 1}</td>
+                            <td className="py-1.5 pr-2">
+                              <div className="flex items-center gap-1.5">
+                                {t.imageUrl ? (
+                                  <img src={t.imageUrl} alt="" className="h-4 w-4 rounded-full object-cover flex-shrink-0" />
+                                ) : (
+                                  <div className="h-4 w-4 rounded-full bg-muted flex-shrink-0" />
+                                )}
+                                <span className="truncate max-w-[80px]">{t.teamName}</span>
+                              </div>
+                            </td>
+                            <td className="py-1.5 text-center text-muted-foreground">{t.P}</td>
+                            <td className="py-1.5 text-center text-muted-foreground">{t.W}</td>
+                            <td className="py-1.5 text-center text-muted-foreground">{t.D}</td>
+                            <td className="py-1.5 text-center text-muted-foreground">{t.L}</td>
+                            <td className="py-1.5 text-center text-muted-foreground">{t.GF}</td>
+                            <td className="py-1.5 text-center text-muted-foreground">{t.GA}</td>
+                            <td className="pr-3 py-1.5 text-center font-bold">{t.W * 3 + t.D}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Disciplinary tiebreaker prompts for this group */}
+                  {groupTies.map(tie => (
+                    <div key={tie.key} className="rounded-lg border border-amber-400/40 bg-amber-50/10 p-3 text-xs">
+                      <p className="font-semibold text-amber-700 dark:text-amber-400 mb-1">
+                        Disciplinary tiebreaker — Group {groupName}
+                      </p>
+                      <p className="text-muted-foreground mb-2">
+                        {groupDisciplinaryChoices[tie.key]?.length
+                          ? `Ranked: ${(groupDisciplinaryChoices[tie.key] ?? []).map(id => tie.teams.find(t => t.teamId === id)?.teamName).join(' › ')}. Click to adjust:`
+                          : 'These teams are equal on all criteria. Click in order of best fair play (fewest cards):'}
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {tie.teams.map(t => {
+                          const rank = (groupDisciplinaryChoices[tie.key] ?? []).indexOf(t.teamId);
+                          const isRanked = rank !== -1;
+                          return (
+                            <button
+                              key={t.teamId}
+                              onClick={() => handleDisciplinaryChoice(groupDisciplinaryChoices, setGroupDisciplinaryChoices, tie.key, t.teamId)}
+                              className={`flex items-center gap-1 rounded border px-2 py-1 transition-colors ${
+                                isRanked
+                                  ? 'border-amber-500 bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300'
+                                  : 'border-border hover:border-amber-400 hover:bg-amber-50/20'
+                              }`}
+                            >
+                              {isRanked && <span className="font-bold text-amber-600 dark:text-amber-400">{rank + 1}.</span>}
+                              {t.imageUrl && <img src={t.imageUrl} alt="" className="h-3.5 w-3.5 rounded-sm" />}
+                              {t.teamName}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="border-b text-muted-foreground">
-                      <th className="pl-3 py-1.5 text-left w-6">#</th>
-                      <th className="py-1.5 text-left">Team</th>
-                      <th className="py-1.5 text-center w-6">P</th>
-                      <th className="py-1.5 text-center w-6">W</th>
-                      <th className="py-1.5 text-center w-6">D</th>
-                      <th className="py-1.5 text-center w-6">L</th>
-                      <th className="py-1.5 text-center w-8">GF</th>
-                      <th className="py-1.5 text-center w-8">GA</th>
-                      <th className="pr-3 py-1.5 text-center w-8 font-bold text-foreground">Pts</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {teams.map((t, i) => (
-                      <tr key={t.teamId} className={
-                        i < 2
-                          ? 'bg-green-50 dark:bg-green-950/30'
-                          : i === 2 && qualifyingThirdPlaceIds.has(t.teamId)
-                          ? 'bg-yellow-50 dark:bg-yellow-950/30'
-                          : 'hover:bg-muted/30'
-                      }>
-                        <td className="pl-3 py-1.5 text-muted-foreground">{i + 1}</td>
-                        <td className="py-1.5 pr-2">
-                          <div className="flex items-center gap-1.5">
-                            {t.imageUrl ? (
-                              <img src={t.imageUrl} alt="" className="h-4 w-4 rounded-full object-cover flex-shrink-0" />
-                            ) : (
-                              <div className="h-4 w-4 rounded-full bg-muted flex-shrink-0" />
-                            )}
-                            <span className="truncate max-w-[80px]">{t.teamName}</span>
-                          </div>
-                        </td>
-                        <td className="py-1.5 text-center text-muted-foreground">{t.P}</td>
-                        <td className="py-1.5 text-center text-muted-foreground">{t.W}</td>
-                        <td className="py-1.5 text-center text-muted-foreground">{t.D}</td>
-                        <td className="py-1.5 text-center text-muted-foreground">{t.L}</td>
-                        <td className="py-1.5 text-center text-muted-foreground">{t.GF}</td>
-                        <td className="py-1.5 text-center text-muted-foreground">{t.GA}</td>
-                        <td className="pr-3 py-1.5 text-center font-bold">{t.W * 3 + t.D}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              );
+            })}
+
+            {/* Lucky loser disciplinary tiebreaker prompts */}
+            {luckyLoserDisciplinaryTies.map(tie => (
+              <div key={tie.key} className="rounded-lg border border-amber-400/40 bg-amber-50/10 p-3 text-xs">
+                <p className="font-semibold text-amber-700 dark:text-amber-400 mb-1">
+                  Disciplinary tiebreaker — Lucky Losers
+                </p>
+                <p className="text-muted-foreground mb-2">
+                  {luckyLoserDisciplinaryChoices[tie.key]?.length
+                    ? `Ranked: ${(luckyLoserDisciplinaryChoices[tie.key] ?? []).map(id => tie.teams.find(t => t.teamId === id)?.teamName).join(' › ')}. Click to adjust:`
+                    : 'These 3rd-place teams are equal on all criteria. Click in order of best fair play (fewest cards):'}
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {tie.teams.map(t => {
+                    const rank = (luckyLoserDisciplinaryChoices[tie.key] ?? []).indexOf(t.teamId);
+                    const isRanked = rank !== -1;
+                    return (
+                      <button
+                        key={t.teamId}
+                        onClick={() => handleDisciplinaryChoice(luckyLoserDisciplinaryChoices, setLuckyLoserDisciplinaryChoices, tie.key, t.teamId)}
+                        className={`flex items-center gap-1 rounded border px-2 py-1 transition-colors ${
+                          isRanked
+                            ? 'border-amber-500 bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300'
+                            : 'border-border hover:border-amber-400 hover:bg-amber-50/20'
+                        }`}
+                      >
+                        {isRanked && <span className="font-bold text-amber-600 dark:text-amber-400">{rank + 1}.</span>}
+                        {t.imageUrl && <img src={t.imageUrl} alt="" className="h-3.5 w-3.5 rounded-sm" />}
+                        {t.teamName}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             ))}
           </div>
@@ -782,9 +936,10 @@ export default function CompetitionDetailPage() {
               </button>
               <button
                 onClick={handleProceedToKnockout}
-                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                disabled={lockMutation.isPending}
+                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
               >
-                Yes, continue
+                {lockMutation.isPending ? 'Locking…' : 'Yes, continue'}
               </button>
             </div>
           </div>
