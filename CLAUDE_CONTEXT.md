@@ -431,7 +431,7 @@ CLIENT_URL=http://localhost:5173   # Only used in dev for CORS
 
 
 ### In Progress
-1. 
+1. Scoring engine — pure function + Vitest unit tests, triggered when admin marks match complete
 
 ### Known Issues / Tech Debt
 -
@@ -454,15 +454,11 @@ CLIENT_URL=http://localhost:5173   # Only used in dev for CORS
 [UPDATE AS YOU BUILD — or keep this in a separate TODO.md and paste it here]
 
 ### Next Session
-1. Add bonus questions round 
+1. Score calculation trigger — admin marks match complete → points calculated
 
 ### Backlog (in order)
-1. Scoring engine — pure function + Vitest unit tests, triggered when admin marks match complete
-2. Score calculation trigger — admin marks match complete → points calculated
-3. Leaderboard — ranked view per competition
-4. Group stage predictions
-5. Knockout bracket predictions
-6. Polish — UI improvements, mobile layout
+1. Leaderboard — ranked view per competition
+2. Polish — UI improvements, mobile layout
 
 ---
 

@@ -120,6 +120,8 @@ export const competitionMembers = pgTable('competition_members', {
     .references(() => users.id, { onDelete: 'cascade' }),
   joinedAt: timestamp('joined_at').notNull().defaultNow(),
   groupStageLocked: boolean('group_stage_locked').notNull().default(false),
+  groupPositionPoints: integer('group_position_points').notNull().default(0),
+  knockoutPoints: integer('knockout_points').notNull().default(0),
 });
 
 export const predictions = pgTable('predictions', {

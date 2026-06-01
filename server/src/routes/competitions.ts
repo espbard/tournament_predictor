@@ -163,6 +163,28 @@ router.delete('/:id', requireAdmin, async (req, res) => {
   }
 });
 
+router.delete('/:id/leave', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId: string = res.locals.user.id;
+
+    const [membership] = await db
+      .select()
+      .from(competitionMembers)
+      .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, userId)));
+    if (!membership) return res.status(404).json({ error: 'Not a member of this competition' });
+
+    await db
+      .delete(competitionMembers)
+      .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, userId)));
+
+    res.status(204).send();
+  } catch (err) {
+    console.error('Leave competition error:', err);
+    res.status(500).json({ error: 'Failed to leave competition' });
+  }
+});
+
 router.get('/:id/members', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
@@ -217,7 +239,9 @@ router.get('/:id/leaderboard', requireAuth, async (req, res) => {
         userId: users.id,
         username: users.username,
         imageUrl: users.imageUrl,
-        totalPoints: sql<number>`COALESCE(SUM(${predictions.points}), 0)`,
+        matchPoints: sql<number>`COALESCE(SUM(${predictions.points}), 0)`,
+        groupPositionPoints: competitionMembers.groupPositionPoints,
+        knockoutPoints: competitionMembers.knockoutPoints,
       })
       .from(competitionMembers)
       .innerJoin(users, eq(competitionMembers.userId, users.id))
@@ -226,12 +250,18 @@ router.get('/:id/leaderboard', requireAuth, async (req, res) => {
         and(eq(predictions.competitionId, id), eq(predictions.userId, users.id))
       )
       .where(eq(competitionMembers.competitionId, id))
-      .groupBy(users.id, users.username, users.imageUrl)
-      .orderBy(sql`COALESCE(SUM(${predictions.points}), 0) DESC`);
+      .groupBy(users.id, users.username, users.imageUrl, competitionMembers.groupPositionPoints, competitionMembers.knockoutPoints)
+      .orderBy(sql`COALESCE(SUM(${predictions.points}), 0) + ${competitionMembers.groupPositionPoints} + ${competitionMembers.knockoutPoints} DESC`);
+
+    const rowsWithTotal = rows.map(row => ({
+      ...row,
+      totalPoints: row.matchPoints + row.groupPositionPoints + row.knockoutPoints,
+    }));
+    rowsWithTotal.sort((a, b) => b.totalPoints - a.totalPoints);
 
     let rank = 1;
-    const leaderboard = rows.map((row, i) => {
-      if (i > 0 && row.totalPoints < rows[i - 1].totalPoints) rank = i + 1;
+    const leaderboard = rowsWithTotal.map((row, i) => {
+      if (i > 0 && row.totalPoints < rowsWithTotal[i - 1].totalPoints) rank = i + 1;
       return { userId: row.userId, username: row.username, imageUrl: row.imageUrl, totalPoints: row.totalPoints, rank };
     });
 

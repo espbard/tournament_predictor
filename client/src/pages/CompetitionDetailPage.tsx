@@ -63,6 +63,7 @@ export default function CompetitionDetailPage() {
   const [saveErrors, setSaveErrors] = useState<Record<string, string>>({});
 
   const [activeTab, setActiveTab] = useState<'group' | 'bonus'>('group');
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
 
   const [hasDeclined, setHasDeclined] = useState(
     () => localStorage.getItem(`competition:${id}:groupStageDeclined`) === 'true'
@@ -405,6 +406,14 @@ export default function CompetitionDetailPage() {
     setShowProceedPrompt(false);
   }
 
+  const leaveMutation = useMutation({
+    mutationFn: () => api.delete(`/competitions/${id}/leave`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['competitions'] });
+      navigate('/');
+    },
+  });
+
   const updateMutation = useMutation({
     mutationFn: (body: { name?: string; imageUrl?: string | null; predictionDeadline?: string | null }) =>
       api.patch<Competition>(`/competitions/${id}`, body),
@@ -498,6 +507,14 @@ export default function CompetitionDetailPage() {
                 className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted flex-shrink-0"
               >
                 Edit
+              </button>
+            )}
+            {!user?.isAdmin && (
+              <button
+                onClick={() => setShowLeaveConfirm(true)}
+                className="rounded-md border px-3 py-1.5 text-sm flex-shrink-0 text-destructive border-destructive/30 hover:bg-destructive/5"
+              >
+                Leave
               </button>
             )}
           </div>
@@ -953,6 +970,39 @@ export default function CompetitionDetailPage() {
         </aside>
       )}
       </div>
+
+      {/* Leave competition confirm */}
+      {showLeaveConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-background rounded-lg border p-6 max-w-sm w-full shadow-xl">
+            <p className="font-semibold mb-1">Leave competition?</p>
+            <p className="text-sm text-muted-foreground mb-6">
+              You will be removed from <span className="font-medium text-foreground">{competition.name}</span> and will need an invite code to rejoin.
+            </p>
+            {leaveMutation.isError && (
+              <p className="mb-4 text-sm text-destructive">
+                {leaveMutation.error instanceof ApiError ? leaveMutation.error.message : 'Failed to leave'}
+              </p>
+            )}
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowLeaveConfirm(false)}
+                disabled={leaveMutation.isPending}
+                className="rounded-md border px-4 py-2 text-sm hover:bg-muted disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => leaveMutation.mutate()}
+                disabled={leaveMutation.isPending}
+                className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
+              >
+                {leaveMutation.isPending ? 'Leaving…' : 'Leave'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Proceed to knockout prompt */}
       {showProceedPrompt && (

@@ -14,6 +14,7 @@ import {
   UpdateKnockoutConfigSchema,
 } from '@tournament-predictor/shared';
 import type { KnockoutConfig } from '@tournament-predictor/shared';
+import { triggerScoringForMatch } from '../lib/scoringTrigger';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -859,6 +860,13 @@ matchesRouter.patch('/:id', requireAdmin, async (req, res) => {
       if (updated.progressingTeamId) {
         await advanceSingleKnockoutMatch(updated);
       }
+    }
+
+    // Trigger scoring after the match (and knockout advancement) is fully settled
+    if (setData.status === 'completed') {
+      triggerScoringForMatch(updated.id, updated.tournamentId).catch(err =>
+        console.error('Scoring trigger error:', err)
+      );
     }
 
     return res.json(updated);

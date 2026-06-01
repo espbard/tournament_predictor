@@ -71,6 +71,13 @@
       "when": 1748908800000,
       "tag": "0009_bonus_questions",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1748906800000,
+      "tag": "0010_scoring_columns",
+      "breakpoints": true
     }
   ]
 }
