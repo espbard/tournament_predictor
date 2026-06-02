@@ -282,7 +282,10 @@ router.get('/:id/my-status', requireAuth, async (req, res) => {
       .from(competitionMembers)
       .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
 
-    res.json({ groupStageLocked: membership?.groupStageLocked ?? false });
+    res.json({
+      groupStageLocked: membership?.groupStageLocked ?? false,
+      knockoutCompleteSeen: membership?.knockoutCompleteSeen ?? false,
+    });
   } catch (err) {
     console.error('Get my-status error:', err);
     res.status(500).json({ error: 'Failed to fetch status' });
@@ -310,6 +313,23 @@ router.post('/:id/lock-group-stage', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Lock group stage error:', err);
     res.status(500).json({ error: 'Failed to lock group stage' });
+  }
+});
+
+router.post('/:id/acknowledge-knockout', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = res.locals.user;
+
+    await db
+      .update(competitionMembers)
+      .set({ knockoutCompleteSeen: true })
+      .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Acknowledge knockout error:', err);
+    res.status(500).json({ error: 'Failed to acknowledge' });
   }
 });
 
@@ -420,6 +440,35 @@ router.post('/:id/predictions', requireAuth, async (req, res) => {
   }
 });
 
+router.delete('/:id/predictions', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = res.locals.user;
+
+    if (!user.isAdmin) {
+      const [membership] = await db
+        .select()
+        .from(competitionMembers)
+        .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
+      if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+      if (membership.groupStageLocked) return res.status(400).json({ error: 'Group stage predictions are locked' });
+    }
+
+    await db
+      .delete(predictions)
+      .where(and(eq(predictions.competitionId, id), eq(predictions.userId, user.id)));
+
+    await db
+      .delete(bracketPredictions)
+      .where(and(eq(bracketPredictions.competitionId, id), eq(bracketPredictions.userId, user.id)));
+
+    res.status(204).send();
+  } catch (err) {
+    console.error('Delete predictions error:', err);
+    res.status(500).json({ error: 'Failed to delete predictions' });
+  }
+});
+
 router.get('/:id/bracket-predictions', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
@@ -487,6 +536,62 @@ router.post('/:id/bracket-predictions', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Save bracket predictions error:', err);
     res.status(500).json({ error: 'Failed to save bracket predictions' });
+  }
+});
+
+// ── Tiebreaker choices ────────────────────────────────────────────────────────
+
+router.get('/:id/tiebreak-choices', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = res.locals.user;
+
+    if (!user.isAdmin) {
+      const [membership] = await db
+        .select()
+        .from(competitionMembers)
+        .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
+      if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+      return res.json({
+        groupChoices: membership.groupDisciplinaryChoices ?? {},
+        luckyLoserChoices: membership.luckyLoserChoices ?? {},
+      });
+    }
+
+    return res.json({ groupChoices: {}, luckyLoserChoices: {} });
+  } catch (err) {
+    console.error('Get tiebreak choices error:', err);
+    res.status(500).json({ error: 'Failed to fetch tiebreak choices' });
+  }
+});
+
+router.post('/:id/tiebreak-choices', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = res.locals.user;
+
+    const [membership] = await db
+      .select()
+      .from(competitionMembers)
+      .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
+    if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+
+    const { groupChoices, luckyLoserChoices } = req.body;
+    const updates: Record<string, unknown> = {};
+    if (groupChoices !== undefined) updates.groupDisciplinaryChoices = groupChoices;
+    if (luckyLoserChoices !== undefined) updates.luckyLoserChoices = luckyLoserChoices;
+
+    if (Object.keys(updates).length > 0) {
+      await db
+        .update(competitionMembers)
+        .set(updates)
+        .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
+    }
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Save tiebreak choices error:', err);
+    res.status(500).json({ error: 'Failed to save tiebreak choices' });
   }
 });
 

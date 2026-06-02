@@ -122,6 +122,9 @@ export const competitionMembers = pgTable('competition_members', {
   groupStageLocked: boolean('group_stage_locked').notNull().default(false),
   groupPositionPoints: integer('group_position_points').notNull().default(0),
   knockoutPoints: integer('knockout_points').notNull().default(0),
+  groupDisciplinaryChoices: json('group_disciplinary_choices').$type<Record<string, string[]>>(),
+  luckyLoserChoices: json('lucky_loser_choices').$type<Record<string, string[]>>(),
+  knockoutCompleteSeen: boolean('knockout_complete_seen').notNull().default(false),
 });
 
 export const predictions = pgTable('predictions', {

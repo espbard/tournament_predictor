@@ -50,7 +50,10 @@ A web application for predicting sports tournament outcomes. Used by a small pri
 │   │   ├── components
 │   │   │   ├── AppLayout.tsx
 │   │   │   ├── ImageUpload.tsx
-│   │   │   └── Navbar.tsx
+│   │   │   ├── KnockoutStageContent.tsx
+│   │   │   ├── Navbar.tsx
+│   │   │   ├── PlayerSearchInput.tsx
+│   │   │   └── TeamSelectInput.tsx
 │   │   ├── index.css
 │   │   ├── lib
 │   │   │   ├── api.ts
@@ -59,13 +62,13 @@ A web application for predicting sports tournament outcomes. Used by a small pri
 │   │   ├── main.tsx
 │   │   ├── pages
 │   │   │   ├── AdminHomePage.tsx
+│   │   │   ├── BonusQuestionsTab.tsx
 │   │   │   ├── CompetitionDetailPage.tsx
 │   │   │   ├── CompetitionsPage.tsx
 │   │   │   ├── EditTeamPage.tsx
 │   │   │   ├── EditTournamentPage.tsx
 │   │   │   ├── EditUserPage.tsx
 │   │   │   ├── HomePage.tsx
-│   │   │   ├── KnockoutStagePredictionsPage.tsx
 │   │   │   ├── LoginPage.tsx
 │   │   │   ├── RegisterPage.tsx
 │   │   │   ├── TournamentDetailPage.tsx
@@ -91,6 +94,10 @@ A web application for predicting sports tournament outcomes. Used by a small pri
 │   │   ├── 0006_bracket_predictions.sql
 │   │   ├── 0007_group_stage_locked.sql
 │   │   ├── 0008_progressing_team_id.sql
+│   │   ├── 0009_bonus_questions.sql
+│   │   ├── 0010_scoring_columns.sql
+│   │   ├── 0011_tiebreak_choices.sql
+│   │   ├── 0012_knockout_complete_seen.sql
 │   │   └── meta
 │   │       ├── 0000_snapshot.json
 │   │       ├── 0001_snapshot.json
@@ -107,7 +114,9 @@ A web application for predicting sports tournament outcomes. Used by a small pri
 │   │   ├── index.ts
 │   │   ├── lib
 │   │   │   ├── r2.ts
-│   │   │   └── scoring.ts
+│   │   │   ├── scoring.test.ts
+│   │   │   ├── scoring.ts
+│   │   │   └── scoringTrigger.ts
 │   │   ├── middleware
 │   │   │   └── auth.ts
 │   │   └── routes
@@ -428,10 +437,10 @@ CLIENT_URL=http://localhost:5173   # Only used in dev for CORS
 - [x] Add full knockout predictions page
 - [x] Improve tournament creation and qualification logic
 - [x] Fully implement knockout results
+- [x] Finalize prediction layout
 
 
-### In Progress
-1. Scoring engine — pure function + Vitest unit tests, triggered when admin marks match complete
+### In Progress#
 
 ### Known Issues / Tech Debt
 -

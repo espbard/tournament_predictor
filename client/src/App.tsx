@@ -13,7 +13,6 @@ import TournamentsPage from '@/pages/TournamentsPage';
 import TournamentDetailPage from '@/pages/TournamentDetailPage';
 import CompetitionsPage from '@/pages/CompetitionsPage';
 import CompetitionDetailPage from '@/pages/CompetitionDetailPage';
-import KnockoutStagePredictionsPage from '@/pages/KnockoutStagePredictionsPage';
 import EditUserPage from '@/pages/EditUserPage';
 import EditTournamentPage from '@/pages/EditTournamentPage';
 import EditTeamPage from '@/pages/EditTeamPage';
@@ -88,14 +87,6 @@ export default function App() {
         element={
           <PrivateRoute>
             <CompetitionDetailPage />
-          </PrivateRoute>
-        }
-      />
-      <Route
-        path="/competitions/:id/knockout"
-        element={
-          <PrivateRoute>
-            <KnockoutStagePredictionsPage />
           </PrivateRoute>
         }
       />
