@@ -395,6 +395,11 @@ const translations = {
       disabling: 'Disabling…',
       activeBanner: 'Maintenance mode is active — users cannot access the site.',
     },
+    adminUsers: {
+      title: 'Users',
+      testAccount: 'Test account',
+      testAccountDesc: 'Can access the site during maintenance',
+    },
   },
 
   no: {
@@ -791,6 +796,11 @@ const translations = {
       enabling: 'Aktiverer…',
       disabling: 'Deaktiverer…',
       activeBanner: 'Vedlikeholdsmodus er aktiv — brukere har ikke tilgang til siden.',
+    },
+    adminUsers: {
+      title: 'Brukere',
+      testAccount: 'Testkonto',
+      testAccountDesc: 'Kan bruke siden under vedlikehold',
     },
   },
 } as const;

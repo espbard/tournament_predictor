@@ -401,8 +401,8 @@ as completed with its final score.
 
 ```env
 # .env (never commit — see .env.example for keys)
-DATABASE_URL=postgresql://postgres:lkKgPHqyNYbfpwIGkxsrPzuFGUdKfHoL@postgres.railway.internal:5432/railway
-SESSION_SECRET=7H$=hkACX8fwuJFbxyln{(pB}5yU8cl&
+DATABASE_URL=
+SESSION_SECRET=
 NODE_ENV=development
 PORT=5432
 CLIENT_URL=http://localhost:5173   # Only used in dev for CORS

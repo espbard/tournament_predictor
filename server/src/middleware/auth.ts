@@ -17,6 +17,7 @@ export const lucia = new Lucia(adapter, {
     return {
       username: attributes.username,
       isAdmin: attributes.isAdmin,
+      isTestAccount: attributes.isTestAccount,
     };
   },
 });
@@ -27,6 +28,7 @@ declare module 'lucia' {
     DatabaseUserAttributes: {
       username: string;
       isAdmin: boolean;
+      isTestAccount: boolean;
     };
   }
 }
