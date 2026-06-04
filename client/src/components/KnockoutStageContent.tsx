@@ -427,8 +427,17 @@ function FocusedMatchCard({
   }, [isCompleted, actualMatch, prediction, homeTeam, awayTeam]);
 
   const isFlipped = isCompleted && (!!prediction?.flipped || clientSideFlip);
+
+  // When flipped: swap teams and scores so the prediction card mirrors the
+  // actual result card's home/away layout.
+  const displayHomeTeam = isFlipped ? awayTeam : homeTeam;
+  const displayAwayTeam = isFlipped ? homeTeam : awayTeam;
   const displayHomeScore = isFlipped ? prediction?.awayScore : prediction?.homeScore;
   const displayAwayScore = isFlipped ? prediction?.homeScore : prediction?.awayScore;
+  const displayHomeWins = isFlipped ? awayWins : homeWins;
+  const displayAwayWins = isFlipped ? homeWins : awayWins;
+  const isDisplayHomeChampion = isFlipped ? isAwayChampion : isHomeChampion;
+  const isDisplayAwayChampion = isFlipped ? isHomeChampion : isAwayChampion;
 
   return (
     <div className="space-y-3 w-full">
@@ -442,20 +451,20 @@ function FocusedMatchCard({
         <div className={`rounded-xl border-2 shadow-sm overflow-hidden ${isCorrectResult ? 'border-green-400 bg-green-50/60 dark:bg-green-950/25' : 'bg-card'}`}>
           {/* Home row */}
           <div
-            className={`flex items-center gap-3 px-4 py-3.5 transition-colors ${homeWins && !isHomeChampion ? 'bg-primary/5' : ''}`}
-            style={isHomeChampion ? { animation: 'ko_winner_glow 1.8s ease-in-out infinite' } : undefined}
+            className={`flex items-center gap-3 px-4 py-3.5 transition-colors ${displayHomeWins && !isDisplayHomeChampion ? 'bg-primary/5' : ''}`}
+            style={isDisplayHomeChampion ? { animation: 'ko_winner_glow 1.8s ease-in-out infinite' } : undefined}
           >
-            {homeTeam ? (
+            {displayHomeTeam ? (
               <>
-                {homeTeam.imageUrl ? (
-                  <img src={homeTeam.imageUrl} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0" />
+                {displayHomeTeam.imageUrl ? (
+                  <img src={displayHomeTeam.imageUrl} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0" />
                 ) : (
                   <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
                 )}
-                <span className={`flex-1 text-sm truncate ${homeWins ? 'font-semibold' : 'font-medium'}`}>
-                  {homeTeam.teamName}
+                <span className={`flex-1 text-sm truncate ${displayHomeWins ? 'font-semibold' : 'font-medium'}`}>
+                  {displayHomeTeam.teamName}
                 </span>
-                {isHomeChampion && (
+                {isDisplayHomeChampion && (
                   <span style={{ animation: 'ko_trophy_pop 0.45s cubic-bezier(0.34,1.56,0.64,1) forwards' }}>
                     🏆
                   </span>
@@ -499,20 +508,20 @@ function FocusedMatchCard({
 
           {/* Away row */}
           <div
-            className={`flex items-center gap-3 px-4 py-3.5 transition-colors ${awayWins && !isAwayChampion ? 'bg-primary/5' : ''}`}
-            style={isAwayChampion ? { animation: 'ko_winner_glow 1.8s ease-in-out infinite' } : undefined}
+            className={`flex items-center gap-3 px-4 py-3.5 transition-colors ${displayAwayWins && !isDisplayAwayChampion ? 'bg-primary/5' : ''}`}
+            style={isDisplayAwayChampion ? { animation: 'ko_winner_glow 1.8s ease-in-out infinite' } : undefined}
           >
-            {awayTeam ? (
+            {displayAwayTeam ? (
               <>
-                {awayTeam.imageUrl ? (
-                  <img src={awayTeam.imageUrl} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0" />
+                {displayAwayTeam.imageUrl ? (
+                  <img src={displayAwayTeam.imageUrl} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0" />
                 ) : (
                   <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
                 )}
-                <span className={`flex-1 text-sm truncate ${awayWins ? 'font-semibold' : 'font-medium'}`}>
-                  {awayTeam.teamName}
+                <span className={`flex-1 text-sm truncate ${displayAwayWins ? 'font-semibold' : 'font-medium'}`}>
+                  {displayAwayTeam.teamName}
                 </span>
-                {isAwayChampion && (
+                {isDisplayAwayChampion && (
                   <span style={{ animation: 'ko_trophy_pop 0.45s cubic-bezier(0.34,1.56,0.64,1) forwards' }}>
                     🏆
                   </span>
