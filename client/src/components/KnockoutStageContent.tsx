@@ -390,7 +390,7 @@ function FocusedMatchCard({
   }
 
   return (
-    <div className="rounded-xl border-2 bg-card shadow-sm overflow-hidden w-full max-w-xs mx-auto">
+    <div className="rounded-xl border-2 bg-card shadow-sm overflow-hidden w-full sm:max-w-xs sm:mx-auto">
       <div
         className={`flex items-center gap-3 px-4 py-3.5 transition-colors ${homeWins && !isHomeChampion ? 'bg-primary/5' : ''}`}
         style={isHomeChampion ? { animation: 'ko_winner_glow 1.8s ease-in-out infinite' } : undefined}
@@ -414,15 +414,35 @@ function FocusedMatchCard({
         ) : (
           <span className="flex-1 text-sm text-muted-foreground italic">TBD</span>
         )}
-        <input
-          type="text"
-          inputMode="numeric"
-          value={homeStr}
-          onChange={e => handleScoreChange('home', e.target.value)}
-          disabled={disabled}
-          className="w-11 h-9 text-center text-xl font-bold rounded-lg border bg-background disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-primary flex-shrink-0"
-          placeholder="–"
-        />
+        <div className="flex items-center gap-0.5 flex-shrink-0">
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => {
+              const cur = parseInt(homeStr || '0') || 0;
+              handleScoreChange('home', String(Math.max(0, cur - 1)));
+            }}
+            className="h-10 w-10 flex items-center justify-center rounded-md border bg-muted hover:bg-muted/80 text-base font-bold select-none active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          >−</button>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={homeStr}
+            onChange={e => handleScoreChange('home', e.target.value)}
+            disabled={disabled}
+            className="w-11 h-9 text-center text-xl font-bold rounded-lg border bg-background disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-primary flex-shrink-0"
+            placeholder="–"
+          />
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => {
+              const cur = parseInt(homeStr || '0') || 0;
+              handleScoreChange('home', String(Math.min(99, cur + 1)));
+            }}
+            className="h-10 w-10 flex items-center justify-center rounded-md border bg-muted hover:bg-muted/80 text-base font-bold select-none active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          >+</button>
+        </div>
       </div>
 
       <div className="h-px bg-border" />
@@ -450,15 +470,35 @@ function FocusedMatchCard({
         ) : (
           <span className="flex-1 text-sm text-muted-foreground italic">TBD</span>
         )}
-        <input
-          type="text"
-          inputMode="numeric"
-          value={awayStr}
-          onChange={e => handleScoreChange('away', e.target.value)}
-          disabled={disabled}
-          className="w-11 h-9 text-center text-xl font-bold rounded-lg border bg-background disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-primary flex-shrink-0"
-          placeholder="–"
-        />
+        <div className="flex items-center gap-0.5 flex-shrink-0">
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => {
+              const cur = parseInt(awayStr || '0') || 0;
+              handleScoreChange('away', String(Math.max(0, cur - 1)));
+            }}
+            className="h-10 w-10 flex items-center justify-center rounded-md border bg-muted hover:bg-muted/80 text-base font-bold select-none active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          >−</button>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={awayStr}
+            onChange={e => handleScoreChange('away', e.target.value)}
+            disabled={disabled}
+            className="w-11 h-9 text-center text-xl font-bold rounded-lg border bg-background disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-primary flex-shrink-0"
+            placeholder="–"
+          />
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => {
+              const cur = parseInt(awayStr || '0') || 0;
+              handleScoreChange('away', String(Math.min(99, cur + 1)));
+            }}
+            className="h-10 w-10 flex items-center justify-center rounded-md border bg-muted hover:bg-muted/80 text-base font-bold select-none active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          >+</button>
+        </div>
       </div>
 
       {isDraw && homeTeam && awayTeam && (
@@ -786,12 +826,12 @@ function FocusedBracketView({
           </div>
         )}
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
           <button
             type="button"
             onClick={() => canGoPrev && goTo(currentIdx - 1)}
             disabled={!canGoPrev}
-            className="flex-shrink-0 h-10 w-10 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20"
+            className="hidden sm:flex flex-shrink-0 h-10 w-10 rounded-full border items-center justify-center transition-opacity disabled:opacity-20"
             aria-label="Previous match"
           >
             ←
@@ -816,13 +856,29 @@ function FocusedBracketView({
               scoringConfig={scoringConfig}
               predictedFirstRoundTeams={current.round === firstRound && !current.isBronze ? predictedFirstRoundMap[current.predKey] : undefined}
             />
+            <div className="mt-3 flex sm:hidden items-center justify-between">
+              <button
+                type="button"
+                onClick={() => canGoPrev && goTo(currentIdx - 1)}
+                disabled={!canGoPrev}
+                className="h-11 w-11 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20"
+                aria-label="Previous match"
+              >←</button>
+              <button
+                type="button"
+                onClick={() => showNextArrow && goTo(currentIdx + 1)}
+                disabled={!showNextArrow}
+                className={`h-11 w-11 rounded-full border flex items-center justify-center transition-all duration-200 ${showNextArrow ? 'border-primary text-primary hover:bg-primary/10 shadow-sm' : 'opacity-0 pointer-events-none'}`}
+                aria-label="Next match"
+              >→</button>
+            </div>
           </div>
 
           <button
             type="button"
             onClick={() => showNextArrow && goTo(currentIdx + 1)}
             disabled={!showNextArrow}
-            className={`flex-shrink-0 h-10 w-10 rounded-full border flex items-center justify-center transition-all duration-200 ${
+            className={`hidden sm:flex flex-shrink-0 h-10 w-10 rounded-full border items-center justify-center transition-all duration-200 ${
               showNextArrow
                 ? 'border-primary text-primary hover:bg-primary/10 shadow-sm'
                 : 'opacity-0 pointer-events-none'
