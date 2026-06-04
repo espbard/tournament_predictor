@@ -415,6 +415,9 @@ function FocusedMatchCard({
   }
 
   const isCompleted = actualMatch?.status === 'completed';
+  const isFlipped = isCompleted && !!prediction?.flipped;
+  const displayHomeScore = isFlipped ? prediction!.awayScore : prediction?.homeScore;
+  const displayAwayScore = isFlipped ? prediction!.homeScore : prediction?.awayScore;
 
   return (
     <div className="space-y-3 w-full">
@@ -452,7 +455,7 @@ function FocusedMatchCard({
             )}
             {isCompleted ? (
               <span className={`w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400 border border-amber-400 bg-amber-50/70 dark:bg-amber-900/30' : ''}`}>
-                {prediction != null ? prediction.homeScore : '—'}
+                {prediction != null ? displayHomeScore : '—'}
               </span>
             ) : (
               <div className="flex items-center gap-0.5 flex-shrink-0">
@@ -509,7 +512,7 @@ function FocusedMatchCard({
             )}
             {isCompleted ? (
               <span className={`w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400 border border-amber-400 bg-amber-50/70 dark:bg-amber-900/30' : ''}`}>
-                {prediction != null ? prediction.awayScore : '—'}
+                {prediction != null ? displayAwayScore : '—'}
               </span>
             ) : (
               <div className="flex items-center gap-0.5 flex-shrink-0">
@@ -575,6 +578,12 @@ function FocusedMatchCard({
           )}
         </div>
       </div>
+
+      {isFlipped && (
+        <p className="text-xs text-muted-foreground text-center px-2">
+          ⟳ {t('knockoutContent.predictionFlipped')}
+        </p>
+      )}
 
       {/* ── Actual result card ─────────────────────────────── */}
       {isCompleted && actualMatch && (

@@ -359,6 +359,7 @@ const translations = {
       correctWinner: 'correct winner',
       correctTeamInTie: 'correct team(s) in tie',
       whoAdvances: 'Who advances after extra time / penalties?',
+      predictionFlipped: 'Your prediction was adjusted because the teams ended up on opposite sides of the fixture.',
     },
     stages: {
       group: 'Group Stage',
@@ -766,6 +767,7 @@ const translations = {
       correctWinner: 'riktig vinner',
       correctTeamInTie: 'riktig lag i oppgjøret',
       whoAdvances: 'Hvem går videre etter ekstraomganger/straffespark?',
+      predictionFlipped: 'Tipset ditt ble justert fordi lagene endte opp på motsatte sider av kampen.',
     },
     stages: {
       group: 'Gruppespill',

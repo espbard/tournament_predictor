@@ -111,6 +111,7 @@ export const SaveBracketPredictionsSchema = z.object({
       homeScore: z.number().int().min(0).max(30),
       awayScore: z.number().int().min(0).max(30),
       progressingTeamId: z.string().nullable(),
+      flipped: z.boolean().optional(),
     }),
   ),
 });

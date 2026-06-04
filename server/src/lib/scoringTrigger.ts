@@ -17,7 +17,9 @@ import {
   computeGroupStandings,
   calculateGroupPositionPoints,
   calculateKnockoutPoints,
+  getUserPredictedTeamForKnockoutSlot,
   type TeamStat,
+  type KnockoutMatchSlot,
 } from './scoring.js';
 import type { KnockoutConfig, BracketPredictions, ScoringConfig } from '@tournament-predictor/shared';
 
@@ -68,6 +70,75 @@ async function scoreGroupMatchPredictions(
       config,
     );
     await db.update(predictions).set({ points: result.points }).where(eq(predictions.id, pred.id));
+  }
+}
+
+// ── Mark flipped predictions for a single knockout match ─────────────────────
+
+async function markFlippedKnockoutPredictions(
+  matchId: string,
+  match: { stage: string; homeTeamId: string | null; awayTeamId: string | null },
+  allKoMatches: KnockoutMatchSlot[],
+  firstRound: string,
+  competitionId: string,
+): Promise<void> {
+  if (match.stage === firstRound || match.stage === 'bronze_final') return;
+  if (!match.homeTeamId || !match.awayTeamId) return;
+
+  const matchesByStage = new Map<string, KnockoutMatchSlot[]>();
+  for (const m of allKoMatches) {
+    if (!matchesByStage.has(m.stage)) matchesByStage.set(m.stage, []);
+    matchesByStage.get(m.stage)!.push(m);
+  }
+
+  const stageMatches = matchesByStage.get(match.stage) ?? [];
+  const matchIndex = stageMatches.findIndex(sm => sm.id === matchId);
+  if (matchIndex < 0) return;
+
+  const predKey = `${match.stage}_${matchIndex}`;
+  const memberIds = await getMemberUserIds(competitionId);
+
+  for (const userId of memberIds) {
+    const [bpRow] = await db
+      .select()
+      .from(bracketPredictions)
+      .where(and(eq(bracketPredictions.competitionId, competitionId), eq(bracketPredictions.userId, userId)));
+    if (!bpRow) continue;
+
+    const userPreds: BracketPredictions = bpRow.predictions ?? {};
+    const pred = userPreds[predKey];
+    if (!pred) continue;
+
+    const predictedHome = getUserPredictedTeamForKnockoutSlot(
+      match.stage, matchIndex, 'home', firstRound, matchesByStage, userPreds,
+    );
+    const predictedAway = getUserPredictedTeamForKnockoutSlot(
+      match.stage, matchIndex, 'away', firstRound, matchesByStage, userPreds,
+    );
+
+    const homeInActualHome = predictedHome === match.homeTeamId;
+    const homeInActualAway = predictedHome === match.awayTeamId;
+    const awayInActualHome = predictedAway === match.homeTeamId;
+    const awayInActualAway = predictedAway === match.awayTeamId;
+    const homeCorrect = homeInActualHome || homeInActualAway;
+    const awayCorrect = awayInActualAway || awayInActualHome;
+    const correctCount = (homeCorrect ? 1 : 0) + (awayCorrect ? 1 : 0);
+
+    let shouldFlip = false;
+    if (correctCount === 2) shouldFlip = homeInActualAway && awayInActualHome;
+    else if (correctCount === 1) shouldFlip = homeCorrect ? homeInActualAway : awayInActualHome;
+
+    if (!shouldFlip) continue;
+
+    const updatedPreds: BracketPredictions = {
+      ...userPreds,
+      [predKey]: { ...pred, flipped: true },
+    };
+
+    await db
+      .update(bracketPredictions)
+      .set({ predictions: updatedPreds, updatedAt: new Date() })
+      .where(and(eq(bracketPredictions.competitionId, competitionId), eq(bracketPredictions.userId, userId)));
   }
 }
 
@@ -253,6 +324,18 @@ export async function triggerScoringForMatch(matchId: string, tournamentId: stri
   const firstRound = knockoutCfg?.firstRound ?? 'round_of_16';
   const bracketSlots = knockoutCfg?.bracketSlots ?? {};
 
+  // Build sorted knockout match list for bracket index lookups
+  const allKoMatches = await db
+    .select()
+    .from(matches)
+    .where(and(eq(matches.tournamentId, tournamentId), inArray(matches.stage, [...KNOCKOUT_STAGES])));
+  allKoMatches.sort((a, b) => {
+    if (!a.scheduledAt && !b.scheduledAt) return 0;
+    if (!a.scheduledAt) return 1;
+    if (!b.scheduledAt) return -1;
+    return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
+  });
+
   for (const comp of allComps) {
     const config = comp.scoringConfig as ScoringConfig;
 
@@ -263,6 +346,16 @@ export async function triggerScoringForMatch(matchId: string, tournamentId: stri
         { homeScore: match.homeScore, awayScore: match.awayScore, stage: match.stage, progressingTeamId: match.progressingTeamId },
         comp.id,
         config,
+      );
+    }
+
+    if (isKnockout) {
+      await markFlippedKnockoutPredictions(
+        matchId,
+        { stage: match.stage, homeTeamId: match.homeTeamId, awayTeamId: match.awayTeamId },
+        allKoMatches,
+        firstRound,
+        comp.id,
       );
     }
 
@@ -293,6 +386,20 @@ export async function recalculateAllScoresForTournament(tournamentId: string): P
     .from(matches)
     .where(and(eq(matches.tournamentId, tournamentId), eq(matches.stage, 'group'), eq(matches.status, 'completed')));
 
+  const allKoMatchesFull = await db
+    .select()
+    .from(matches)
+    .where(and(eq(matches.tournamentId, tournamentId), inArray(matches.stage, [...KNOCKOUT_STAGES])));
+  allKoMatchesFull.sort((a, b) => {
+    if (!a.scheduledAt && !b.scheduledAt) return 0;
+    if (!a.scheduledAt) return 1;
+    if (!b.scheduledAt) return -1;
+    return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
+  });
+  const completedKoMatches = allKoMatchesFull.filter(
+    m => m.status === 'completed' && m.homeTeamId && m.awayTeamId,
+  );
+
   for (const comp of allComps) {
     const config = comp.scoringConfig as ScoringConfig;
 
@@ -305,6 +412,16 @@ export async function recalculateAllScoresForTournament(tournamentId: string): P
           config,
         );
       }
+    }
+
+    for (const match of completedKoMatches) {
+      await markFlippedKnockoutPredictions(
+        match.id,
+        { stage: match.stage, homeTeamId: match.homeTeamId, awayTeamId: match.awayTeamId },
+        allKoMatchesFull,
+        firstRound,
+        comp.id,
+      );
     }
 
     await recomputeAllMemberBreakdowns(tournamentId, comp.id, config, firstRound, bracketSlotsFull);

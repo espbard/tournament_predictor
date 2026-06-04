@@ -123,6 +123,7 @@ export interface BracketMatchPrediction {
   homeScore: number;
   awayScore: number;
   progressingTeamId: string | null;
+  flipped?: boolean;
 }
 
 export type BracketPredictions = Record<string, BracketMatchPrediction>;
