@@ -439,35 +439,41 @@ function FocusedMatchCard({
         ) : (
           <span className="flex-1 text-sm text-muted-foreground italic">TBD</span>
         )}
-        <div className="flex items-center gap-0.5 flex-shrink-0">
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() => {
-              const cur = parseInt(homeStr || '0') || 0;
-              handleScoreChange('home', String(Math.max(0, cur - 1)));
-            }}
-            className="h-10 w-10 flex items-center justify-center rounded-md border bg-muted hover:bg-muted/80 text-base font-bold select-none active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-          >−</button>
-          <input
-            type="text"
-            inputMode="numeric"
-            value={homeStr}
-            onChange={e => handleScoreChange('home', e.target.value)}
-            disabled={disabled}
-            className={`w-11 h-9 text-center text-xl font-bold rounded-lg border bg-background disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-primary flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400 border-amber-400 bg-amber-50/70 dark:bg-amber-900/30' : ''}`}
-            placeholder="–"
-          />
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() => {
-              const cur = parseInt(homeStr || '0') || 0;
-              handleScoreChange('home', String(Math.min(99, cur + 1)));
-            }}
-            className="h-10 w-10 flex items-center justify-center rounded-md border bg-muted hover:bg-muted/80 text-base font-bold select-none active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-          >+</button>
-        </div>
+        {actualMatch?.status === 'completed' ? (
+          <span className={`w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400 border border-amber-400 bg-amber-50/70 dark:bg-amber-900/30' : ''}`}>
+            {prediction != null ? prediction.homeScore : '—'}
+          </span>
+        ) : (
+          <div className="flex items-center gap-0.5 flex-shrink-0">
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => {
+                const cur = parseInt(homeStr || '0') || 0;
+                handleScoreChange('home', String(Math.max(0, cur - 1)));
+              }}
+              className="h-10 w-10 flex items-center justify-center rounded-md border bg-muted hover:bg-muted/80 text-base font-bold select-none active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            >−</button>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={homeStr}
+              onChange={e => handleScoreChange('home', e.target.value)}
+              disabled={disabled}
+              className="w-11 h-9 text-center text-xl font-bold rounded-lg border bg-background disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-primary flex-shrink-0"
+              placeholder="–"
+            />
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => {
+                const cur = parseInt(homeStr || '0') || 0;
+                handleScoreChange('home', String(Math.min(99, cur + 1)));
+              }}
+              className="h-10 w-10 flex items-center justify-center rounded-md border bg-muted hover:bg-muted/80 text-base font-bold select-none active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            >+</button>
+          </div>
+        )}
       </div>
 
       <div className="h-px bg-border" />
@@ -495,38 +501,44 @@ function FocusedMatchCard({
         ) : (
           <span className="flex-1 text-sm text-muted-foreground italic">TBD</span>
         )}
-        <div className="flex items-center gap-0.5 flex-shrink-0">
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() => {
-              const cur = parseInt(awayStr || '0') || 0;
-              handleScoreChange('away', String(Math.max(0, cur - 1)));
-            }}
-            className="h-10 w-10 flex items-center justify-center rounded-md border bg-muted hover:bg-muted/80 text-base font-bold select-none active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-          >−</button>
-          <input
-            type="text"
-            inputMode="numeric"
-            value={awayStr}
-            onChange={e => handleScoreChange('away', e.target.value)}
-            disabled={disabled}
-            className={`w-11 h-9 text-center text-xl font-bold rounded-lg border bg-background disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-primary flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400 border-amber-400 bg-amber-50/70 dark:bg-amber-900/30' : ''}`}
-            placeholder="–"
-          />
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() => {
-              const cur = parseInt(awayStr || '0') || 0;
-              handleScoreChange('away', String(Math.min(99, cur + 1)));
-            }}
-            className="h-10 w-10 flex items-center justify-center rounded-md border bg-muted hover:bg-muted/80 text-base font-bold select-none active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-          >+</button>
-        </div>
+        {actualMatch?.status === 'completed' ? (
+          <span className={`w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400 border border-amber-400 bg-amber-50/70 dark:bg-amber-900/30' : ''}`}>
+            {prediction != null ? prediction.awayScore : '—'}
+          </span>
+        ) : (
+          <div className="flex items-center gap-0.5 flex-shrink-0">
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => {
+                const cur = parseInt(awayStr || '0') || 0;
+                handleScoreChange('away', String(Math.max(0, cur - 1)));
+              }}
+              className="h-10 w-10 flex items-center justify-center rounded-md border bg-muted hover:bg-muted/80 text-base font-bold select-none active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            >−</button>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={awayStr}
+              onChange={e => handleScoreChange('away', e.target.value)}
+              disabled={disabled}
+              className="w-11 h-9 text-center text-xl font-bold rounded-lg border bg-background disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-primary flex-shrink-0"
+              placeholder="–"
+            />
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => {
+                const cur = parseInt(awayStr || '0') || 0;
+                handleScoreChange('away', String(Math.min(99, cur + 1)));
+              }}
+              className="h-10 w-10 flex items-center justify-center rounded-md border bg-muted hover:bg-muted/80 text-base font-bold select-none active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            >+</button>
+          </div>
+        )}
       </div>
 
-      {isDraw && homeTeam && awayTeam && (
+      {isDraw && homeTeam && awayTeam && actualMatch?.status !== 'completed' && (
         <>
           <div className="h-px bg-border" />
           <div className="p-3 space-y-2">
