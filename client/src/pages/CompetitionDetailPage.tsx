@@ -159,6 +159,15 @@ export default function CompetitionDetailPage() {
   const saveTiebreakerChoicesMutation = useMutation({
     mutationFn: (body: { groupChoices?: DisciplinaryChoices; luckyLoserChoices?: DisciplinaryChoices }) =>
       api.post(`/competitions/${id}/tiebreak-choices`, body),
+    onSuccess: (_, variables) => {
+      queryClient.setQueryData(
+        ['competitions', id, 'tiebreak-choices'],
+        (old: { groupChoices: DisciplinaryChoices; luckyLoserChoices: DisciplinaryChoices } | undefined) => ({
+          groupChoices: variables.groupChoices ?? old?.groupChoices ?? {},
+          luckyLoserChoices: variables.luckyLoserChoices ?? old?.luckyLoserChoices ?? {},
+        })
+      );
+    },
   });
 
   const predMap = useMemo(
@@ -702,7 +711,7 @@ export default function CompetitionDetailPage() {
       )}
 
       {!user?.isAdmin && (<>
-      <div className="flex gap-1 mb-6 border-b">
+      <div className="flex flex-wrap gap-1 mb-6 border-b">
         {([
           ['group', t('competitionDetail.tabs.groupStage')],
           ['tables', t('competitionDetail.tabs.groupTables')],
@@ -719,7 +728,7 @@ export default function CompetitionDetailPage() {
                 if (allGroupFilled) setHasDeclined(true);
               }
             }}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            className={`whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
               activeTab === tab
                 ? 'border-primary text-primary'
                 : 'border-transparent text-muted-foreground hover:text-foreground'
@@ -1149,12 +1158,12 @@ export default function CompetitionDetailPage() {
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                     <button
                       type="button"
                       onClick={() => setCurrentGroupMatchIdx(i => Math.max(0, i - 1))}
                       disabled={!canGoPrev}
-                      className="flex-shrink-0 h-10 w-10 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20"
+                      className="hidden sm:flex flex-shrink-0 h-10 w-10 rounded-full border items-center justify-center transition-opacity disabled:opacity-20"
                       aria-label="Previous match"
                     >
                       ←
@@ -1175,18 +1184,40 @@ export default function CompetitionDetailPage() {
                           ) : isLocked ? (
                             <span className="w-11 h-9 flex items-center justify-center text-xl text-muted-foreground flex-shrink-0">{pred ? pred.homeScore : '—'}</span>
                           ) : (
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              value={edit?.home ?? ''}
-                              onChange={e => {
-                                const val = e.target.value.replace(/\D/g, '').slice(0, 2);
-                                setLocalEdits(prev => ({ ...prev, [match.id]: { home: val, away: prev[match.id]?.away ?? '' } }));
-                                scheduleAutoSave(match.id);
-                              }}
-                              placeholder="–"
-                              className="w-11 h-9 text-center text-xl font-bold rounded-lg border bg-background focus:outline-none focus:ring-2 focus:ring-primary flex-shrink-0"
-                            />
+                            <div className="flex items-center gap-0.5 flex-shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const cur = parseInt(edit?.home ?? '0') || 0;
+                                  const val = String(Math.max(0, cur - 1));
+                                  setLocalEdits(prev => ({ ...prev, [match.id]: { home: val, away: prev[match.id]?.away ?? '' } }));
+                                  scheduleAutoSave(match.id);
+                                }}
+                                className="h-10 w-10 flex items-center justify-center rounded-md border bg-muted hover:bg-muted/80 text-base font-bold select-none active:scale-95 transition-all"
+                              >−</button>
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                value={edit?.home ?? ''}
+                                onChange={e => {
+                                  const val = e.target.value.replace(/\D/g, '').slice(0, 2);
+                                  setLocalEdits(prev => ({ ...prev, [match.id]: { home: val, away: prev[match.id]?.away ?? '' } }));
+                                  scheduleAutoSave(match.id);
+                                }}
+                                placeholder="–"
+                                className="w-11 h-9 text-center text-xl font-bold rounded-lg border bg-background focus:outline-none focus:ring-2 focus:ring-primary flex-shrink-0"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const cur = parseInt(edit?.home ?? '0') || 0;
+                                  const val = String(Math.min(99, cur + 1));
+                                  setLocalEdits(prev => ({ ...prev, [match.id]: { home: val, away: prev[match.id]?.away ?? '' } }));
+                                  scheduleAutoSave(match.id);
+                                }}
+                                className="h-10 w-10 flex items-center justify-center rounded-md border bg-muted hover:bg-muted/80 text-base font-bold select-none active:scale-95 transition-all"
+                              >+</button>
+                            </div>
                           )}
                         </div>
                         <div className="h-px bg-border" />
@@ -1203,18 +1234,40 @@ export default function CompetitionDetailPage() {
                           ) : isLocked ? (
                             <span className="w-11 h-9 flex items-center justify-center text-xl text-muted-foreground flex-shrink-0">{pred ? pred.awayScore : '—'}</span>
                           ) : (
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              value={edit?.away ?? ''}
-                              onChange={e => {
-                                const val = e.target.value.replace(/\D/g, '').slice(0, 2);
-                                setLocalEdits(prev => ({ ...prev, [match.id]: { home: prev[match.id]?.home ?? '', away: val } }));
-                                scheduleAutoSave(match.id);
-                              }}
-                              placeholder="–"
-                              className="w-11 h-9 text-center text-xl font-bold rounded-lg border bg-background focus:outline-none focus:ring-2 focus:ring-primary flex-shrink-0"
-                            />
+                            <div className="flex items-center gap-0.5 flex-shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const cur = parseInt(edit?.away ?? '0') || 0;
+                                  const val = String(Math.max(0, cur - 1));
+                                  setLocalEdits(prev => ({ ...prev, [match.id]: { home: prev[match.id]?.home ?? '', away: val } }));
+                                  scheduleAutoSave(match.id);
+                                }}
+                                className="h-10 w-10 flex items-center justify-center rounded-md border bg-muted hover:bg-muted/80 text-base font-bold select-none active:scale-95 transition-all"
+                              >−</button>
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                value={edit?.away ?? ''}
+                                onChange={e => {
+                                  const val = e.target.value.replace(/\D/g, '').slice(0, 2);
+                                  setLocalEdits(prev => ({ ...prev, [match.id]: { home: prev[match.id]?.home ?? '', away: val } }));
+                                  scheduleAutoSave(match.id);
+                                }}
+                                placeholder="–"
+                                className="w-11 h-9 text-center text-xl font-bold rounded-lg border bg-background focus:outline-none focus:ring-2 focus:ring-primary flex-shrink-0"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const cur = parseInt(edit?.away ?? '0') || 0;
+                                  const val = String(Math.min(99, cur + 1));
+                                  setLocalEdits(prev => ({ ...prev, [match.id]: { home: prev[match.id]?.home ?? '', away: val } }));
+                                  scheduleAutoSave(match.id);
+                                }}
+                                className="h-10 w-10 flex items-center justify-center rounded-md border bg-muted hover:bg-muted/80 text-base font-bold select-none active:scale-95 transition-all"
+                              >+</button>
+                            </div>
                           )}
                         </div>
                       </div>
@@ -1256,13 +1309,29 @@ export default function CompetitionDetailPage() {
                         })()}
                         {saveErr && <p className="text-xs text-destructive">{saveErr}</p>}
                       </div>
+                      <div className="mt-3 flex sm:hidden items-center justify-between">
+                        <button
+                          type="button"
+                          onClick={() => setCurrentGroupMatchIdx(i => Math.max(0, i - 1))}
+                          disabled={!canGoPrev}
+                          className="h-11 w-11 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20"
+                          aria-label="Previous match"
+                        >←</button>
+                        <button
+                          type="button"
+                          onClick={() => setCurrentGroupMatchIdx(i => Math.min(allGroupMatchesList.length - 1, i + 1))}
+                          disabled={!canGoNext}
+                          className="h-11 w-11 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20"
+                          aria-label="Next match"
+                        >→</button>
+                      </div>
                     </div>
 
                     <button
                       type="button"
                       onClick={() => setCurrentGroupMatchIdx(i => Math.min(allGroupMatchesList.length - 1, i + 1))}
                       disabled={!canGoNext}
-                      className="flex-shrink-0 h-10 w-10 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20"
+                      className="hidden sm:flex flex-shrink-0 h-10 w-10 rounded-full border items-center justify-center transition-opacity disabled:opacity-20"
                       aria-label="Next match"
                     >
                       →
@@ -1375,6 +1444,7 @@ export default function CompetitionDetailPage() {
               </button>
               <button
                 onClick={() => {
+                  setHasDeclined(true);
                   setShowProceedPrompt(false);
                   setActiveTab('tables');
                 }}

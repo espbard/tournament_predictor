@@ -353,7 +353,7 @@ function FocusedAdminMatchCard({
   }
 
   return (
-    <div className={`rounded-xl border-2 shadow-sm overflow-hidden w-full max-w-xs mx-auto ${isQueued ? 'border-amber-400 bg-amber-50/10 dark:bg-amber-900/10' : 'bg-card'}`}>
+    <div className={`rounded-xl border-2 shadow-sm overflow-hidden w-full sm:max-w-xs sm:mx-auto ${isQueued ? 'border-amber-400 bg-amber-50/10 dark:bg-amber-900/10' : 'bg-card'}`}>
       {isQueued && (
         <div className="px-4 py-1.5 bg-amber-100/60 dark:bg-amber-900/30 text-[11px] font-medium text-amber-800 dark:text-amber-300 text-center tracking-wide">
           {t('knockout.stagedPending')}
@@ -369,19 +369,43 @@ function FocusedAdminMatchCard({
         <span className={`flex-1 text-sm truncate ${match.homeTeamName ? (homeWins ? 'font-semibold' : 'font-medium') : 'text-muted-foreground italic'}`}>
           {match.homeTeamName ?? 'TBD'}
         </span>
-        <input
-          type="text"
-          inputMode="numeric"
-          value={homeStr}
-          onChange={e => {
-            const val = e.target.value.replace(/\D/g, '').slice(0, 2);
-            setHomeStr(val);
-            tryAutoQueue(val, awayStr, selectedWinnerId);
-          }}
-          disabled={!hasTeams}
-          className="w-11 h-9 text-center text-xl font-bold rounded-lg border bg-background disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-primary flex-shrink-0"
-          placeholder="–"
-        />
+        <div className="flex items-center gap-0.5 flex-shrink-0">
+          <button
+            type="button"
+            disabled={!hasTeams}
+            onClick={() => {
+              const cur = parseInt(homeStr || '0') || 0;
+              const val = String(Math.max(0, cur - 1));
+              setHomeStr(val);
+              tryAutoQueue(val, awayStr, selectedWinnerId);
+            }}
+            className="h-10 w-10 flex items-center justify-center rounded-md border bg-muted hover:bg-muted/80 text-base font-bold select-none active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          >−</button>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={homeStr}
+            onChange={e => {
+              const val = e.target.value.replace(/\D/g, '').slice(0, 2);
+              setHomeStr(val);
+              tryAutoQueue(val, awayStr, selectedWinnerId);
+            }}
+            disabled={!hasTeams}
+            className="w-11 h-9 text-center text-xl font-bold rounded-lg border bg-background disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-primary flex-shrink-0"
+            placeholder="–"
+          />
+          <button
+            type="button"
+            disabled={!hasTeams}
+            onClick={() => {
+              const cur = parseInt(homeStr || '0') || 0;
+              const val = String(Math.min(99, cur + 1));
+              setHomeStr(val);
+              tryAutoQueue(val, awayStr, selectedWinnerId);
+            }}
+            className="h-10 w-10 flex items-center justify-center rounded-md border bg-muted hover:bg-muted/80 text-base font-bold select-none active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          >+</button>
+        </div>
       </div>
 
       <div className="h-px bg-border" />
@@ -395,19 +419,43 @@ function FocusedAdminMatchCard({
         <span className={`flex-1 text-sm truncate ${match.awayTeamName ? (awayWins ? 'font-semibold' : 'font-medium') : 'text-muted-foreground italic'}`}>
           {match.awayTeamName ?? 'TBD'}
         </span>
-        <input
-          type="text"
-          inputMode="numeric"
-          value={awayStr}
-          onChange={e => {
-            const val = e.target.value.replace(/\D/g, '').slice(0, 2);
-            setAwayStr(val);
-            tryAutoQueue(homeStr, val, selectedWinnerId);
-          }}
-          disabled={!hasTeams}
-          className="w-11 h-9 text-center text-xl font-bold rounded-lg border bg-background disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-primary flex-shrink-0"
-          placeholder="–"
-        />
+        <div className="flex items-center gap-0.5 flex-shrink-0">
+          <button
+            type="button"
+            disabled={!hasTeams}
+            onClick={() => {
+              const cur = parseInt(awayStr || '0') || 0;
+              const val = String(Math.max(0, cur - 1));
+              setAwayStr(val);
+              tryAutoQueue(homeStr, val, selectedWinnerId);
+            }}
+            className="h-10 w-10 flex items-center justify-center rounded-md border bg-muted hover:bg-muted/80 text-base font-bold select-none active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          >−</button>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={awayStr}
+            onChange={e => {
+              const val = e.target.value.replace(/\D/g, '').slice(0, 2);
+              setAwayStr(val);
+              tryAutoQueue(homeStr, val, selectedWinnerId);
+            }}
+            disabled={!hasTeams}
+            className="w-11 h-9 text-center text-xl font-bold rounded-lg border bg-background disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-primary flex-shrink-0"
+            placeholder="–"
+          />
+          <button
+            type="button"
+            disabled={!hasTeams}
+            onClick={() => {
+              const cur = parseInt(awayStr || '0') || 0;
+              const val = String(Math.min(99, cur + 1));
+              setAwayStr(val);
+              tryAutoQueue(homeStr, val, selectedWinnerId);
+            }}
+            className="h-10 w-10 flex items-center justify-center rounded-md border bg-muted hover:bg-muted/80 text-base font-bold select-none active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          >+</button>
+        </div>
       </div>
 
       {/* Tiebreaker picker — shown when scores are equal */}
@@ -643,18 +691,18 @@ function FocusedAdminResults({
           </div>
         )}
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
           <button
             type="button"
             onClick={() => canGoPrev && goTo(currentIdx - 1)}
             disabled={!canGoPrev}
-            className="flex-shrink-0 h-10 w-10 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20"
+            className="hidden sm:flex flex-shrink-0 h-10 w-10 rounded-full border items-center justify-center transition-opacity disabled:opacity-20"
             aria-label="Previous match"
           >
             ←
           </button>
 
-          <div key={animKey} className="flex-1" style={{ animation: `ko_slide_${slideDir} 0.22s ease-out` }}>
+          <div key={animKey} className="flex-1 min-w-0" style={{ animation: `ko_slide_${slideDir} 0.22s ease-out` }}>
             <FocusedAdminMatchCard
               match={currentMatch ?? null}
               onQueue={(home, away, progressingTeamId) => {
@@ -662,13 +710,29 @@ function FocusedAdminResults({
               }}
               queuedScore={currentMatch?.id ? pendingResults[currentMatch.id] ?? null : null}
             />
+            <div className="mt-3 flex sm:hidden items-center justify-between">
+              <button
+                type="button"
+                onClick={() => canGoPrev && goTo(currentIdx - 1)}
+                disabled={!canGoPrev}
+                className="h-11 w-11 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20"
+                aria-label="Previous match"
+              >←</button>
+              <button
+                type="button"
+                onClick={() => canGoNext && goTo(currentIdx + 1)}
+                disabled={!canGoNext}
+                className={`h-11 w-11 rounded-full border flex items-center justify-center transition-all duration-200 ${canGoNext ? 'border-primary text-primary hover:bg-primary/10 shadow-sm' : 'opacity-0 pointer-events-none'}`}
+                aria-label="Next match"
+              >→</button>
+            </div>
           </div>
 
           <button
             type="button"
             onClick={() => canGoNext && goTo(currentIdx + 1)}
             disabled={!canGoNext}
-            className={`flex-shrink-0 h-10 w-10 rounded-full border flex items-center justify-center transition-all duration-200 ${canGoNext ? 'border-primary text-primary hover:bg-primary/10 shadow-sm' : 'opacity-0 pointer-events-none'}`}
+            className={`hidden sm:flex flex-shrink-0 h-10 w-10 rounded-full border items-center justify-center transition-all duration-200 ${canGoNext ? 'border-primary text-primary hover:bg-primary/10 shadow-sm' : 'opacity-0 pointer-events-none'}`}
             aria-label="Next match"
           >
             →

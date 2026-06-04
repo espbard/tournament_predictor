@@ -387,6 +387,20 @@ const translations = {
       changePhoto: 'Change photo',
       saveChanges: 'Save changes',
     },
+    maintenance: {
+      title: 'Under Maintenance',
+      message: 'This site is currently being maintained. Please come back later.',
+      toggleOn: 'Enable Maintenance Mode',
+      toggleOff: 'Disable Maintenance Mode',
+      enabling: 'Enabling…',
+      disabling: 'Disabling…',
+      activeBanner: 'Maintenance mode is active — users cannot access the site.',
+    },
+    adminUsers: {
+      title: 'Users',
+      testAccount: 'Test account',
+      testAccountDesc: 'Can access the site during maintenance',
+    },
   },
 
   no: {
@@ -434,7 +448,7 @@ const translations = {
     },
     home: {
       welcome: 'Velkommen, {{name}}!',
-      subtitle: 'Tipp resultatene og klatr på poenglisten',
+      subtitle: 'Tipp resultatene og klatre på poengstigen',
       myCompetitions: 'Mine konkurranser',
       noCompetitions: 'Ingen konkurranser ennå. Skriv inn en invitasjonskode nedenfor for å bli med.',
       deadline: 'Frist',
@@ -707,16 +721,16 @@ const translations = {
       groupStageTab: 'Gruppespill',
       knockoutStageTitle: 'Sluttspill',
       rounds: {
-        round_of_32: 'Runde av 32',
-        round_of_16: 'Runde av 16',
+        round_of_32: 'Sekstendelsfinale',
+        round_of_16: 'Åttendelsfinale',
         quarter_final: 'Kvartfinaler',
         semi_final: 'Semifinaler',
         final: 'Finale',
         bronze_final: 'Bronsefinale',
       },
       roundOpts: {
-        round_of_32: 'Runde av 32 (32 lag)',
-        round_of_16: 'Runde av 16 (16 lag)',
+        round_of_32: 'Sekstendelsfinale (32 lag)',
+        round_of_16: 'Åttendelsfinale (16 lag)',
         quarter_final: 'Kvartfinaler (8 lag)',
         semi_final: 'Semifinaler (4 lag)',
         final: 'Kun finale (2 lag)',
@@ -747,8 +761,8 @@ const translations = {
     },
     stages: {
       group: 'Gruppespill',
-      round_of_32: 'Runde av 32',
-      round_of_16: 'Runde av 16',
+      round_of_32: 'Sekstendelsfinale',
+      round_of_16: 'Åttendelsfinale',
       quarter_final: 'Kvartfinaler',
       semi_final: 'Semifinaler',
       bronze_final: 'Bronsefinale',
@@ -775,6 +789,20 @@ const translations = {
       profilePicture: 'Profilbilde',
       changePhoto: 'Endre bilde',
       saveChanges: 'Lagre endringer',
+    },
+    maintenance: {
+      title: 'Under vedlikehold',
+      message: 'Siden er for øyeblikket under vedlikehold. Kom gjerne tilbake senere.',
+      toggleOn: 'Aktiver vedlikeholdsmodus',
+      toggleOff: 'Deaktiver vedlikeholdsmodus',
+      enabling: 'Aktiverer…',
+      disabling: 'Deaktiverer…',
+      activeBanner: 'Vedlikeholdsmodus er aktiv — brukere har ikke tilgang til siden.',
+    },
+    adminUsers: {
+      title: 'Brukere',
+      testAccount: 'Testkonto',
+      testAccountDesc: 'Kan bruke siden under vedlikehold',
     },
   },
 } as const;

@@ -24,6 +24,7 @@
     --input: 120 3% 83%;
     --ring: 231 54% 36%;
     --radius: 0.5rem;
+    color-scheme: light;
   }
 
   .dark {
@@ -46,6 +47,7 @@
     --border: 231 20% 22%;
     --input: 231 20% 22%;
     --ring: 231 54% 55%;
+    color-scheme: dark;
   }
 }
 
@@ -55,5 +57,17 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+  select,
+  textarea {
+    @apply bg-background text-foreground;
+  }
+
+  .dark input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+  .dark select,
+  .dark textarea {
+    background-color: hsl(var(--input));
+    color: hsl(var(--foreground));
   }
 }

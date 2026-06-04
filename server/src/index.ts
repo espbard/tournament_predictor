@@ -9,6 +9,7 @@ import { tournamentsRouter, matchesRouter, teamsRouter } from './routes/tourname
 import { uploadRouter } from './routes/upload';
 import { imagesRouter } from './routes/images';
 import { competitionsRouter } from './routes/competitions';
+import { settingsRouter } from './routes/settings';
 
 const app = express();
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
@@ -33,6 +34,7 @@ app.use('/api/teams', teamsRouter);
 app.use('/api/upload', uploadRouter);
 app.use('/api/images', imagesRouter);
 app.use('/api/competitions', competitionsRouter);
+app.use('/api/settings', settingsRouter);
 
 // Serve built React app in production
 if (process.env.NODE_ENV === 'production') {
