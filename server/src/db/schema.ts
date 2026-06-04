@@ -35,6 +35,11 @@ export const bonusAnswerTypeEnum = pgEnum('bonus_answer_type', ['text', 'number'
 
 // ── Tables ────────────────────────────────────────────────────────────────────
 
+export const appConfig = pgTable('app_config', {
+  id: text('id').primaryKey().default('singleton'),
+  maintenanceMode: boolean('maintenance_mode').notNull().default(false),
+});
+
 export const users = pgTable('users', {
   id: text('id').primaryKey(),
   username: text('username').notNull().unique(),
