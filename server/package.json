@@ -7,7 +7,7 @@
     "start": "node dist/index.js",
     "test": "vitest run",
     "db:generate": "drizzle-kit --env-file=../.env generate",
-    "db:migrate": "tsx --env-file=../.env src/db/migrate.ts"
+    "db:migrate": "tsx src/db/migrate.ts"
   },
   "tsup": {
     "entry": [
