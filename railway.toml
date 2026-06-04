@@ -1,10 +1,10 @@
 [build]
 builder = "NIXPACKS"
-buildCommand = "npm install --include=dev && npm run build && npm run db:migrate"
+buildCommand = "npm install --include=dev && npm run build"
 
 
 [deploy]
-startCommand = "npm run start"
+startCommand = "npm run db:migrate && npm run start"
 healthcheckPath = "/api/auth/me"
 healthcheckTimeout = 100
 restartPolicyType = "ON_FAILURE"
