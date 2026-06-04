@@ -3,12 +3,14 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import ImageUpload from '@/components/ImageUpload';
+import { useT } from '@/lib/useT';
 import type { Team, Group } from '@tournament-predictor/shared';
 
 export default function EditTeamPage() {
   const { teamId } = useParams<{ teamId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { t } = useT();
 
   const { data: team, isLoading } = useQuery({
     queryKey: ['team', teamId],
@@ -47,7 +49,7 @@ export default function EditTeamPage() {
       queryClient.invalidateQueries({ queryKey: ['teams', updated.tournamentId] });
       navigate(`/admin/tournaments/${updated.tournamentId}`);
     },
-    onError: (err: any) => setError(err instanceof ApiError ? err.message : 'Failed to save'),
+    onError: (err: any) => setError(err instanceof ApiError ? err.message : t('common.failedToSave')),
   });
 
   function handleSubmit(e: React.FormEvent) {
@@ -55,8 +57,8 @@ export default function EditTeamPage() {
     saveMutation.mutate();
   }
 
-  if (isLoading) return <div className="p-8 text-sm text-muted-foreground">Loading…</div>;
-  if (!team) return <div className="p-8 text-sm">Team not found.</div>;
+  if (isLoading) return <div className="p-8 text-sm text-muted-foreground">{t('common.loading')}</div>;
+  if (!team) return <div className="p-8 text-sm">{t('editTeam.notFound')}</div>;
 
   return (
     <main className="mx-auto max-w-sm px-4 py-8">
@@ -64,14 +66,14 @@ export default function EditTeamPage() {
         to={`/admin/tournaments/${team.tournamentId}`}
         className="mb-4 inline-block text-sm text-muted-foreground hover:text-foreground"
       >
-        ← Back to tournament
+        {t('editTeam.backToTournament')}
       </Link>
-      <h1 className="mb-6 text-2xl font-bold">Edit team</h1>
+      <h1 className="mb-6 text-2xl font-bold">{t('editTeam.title')}</h1>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="mb-1 block text-sm font-medium" htmlFor="name">
-            Name
+            {t('common.name')}
           </label>
           <input
             id="name"
@@ -86,7 +88,7 @@ export default function EditTeamPage() {
 
         <div>
           <label className="mb-1 block text-sm font-medium" htmlFor="group">
-            Group
+            {t('editTeam.group')}
           </label>
           <select
             id="group"
@@ -94,7 +96,7 @@ export default function EditTeamPage() {
             onChange={e => setGroupId(e.target.value)}
             className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
           >
-            <option value="">Uncategorized</option>
+            <option value="">{t('editTeam.uncategorized')}</option>
             {groupList.map(g => (
               <option key={g.id} value={g.id}>{g.name}</option>
             ))}
@@ -102,12 +104,12 @@ export default function EditTeamPage() {
         </div>
 
         <div>
-          <p className="mb-2 text-sm font-medium">Icon</p>
+          <p className="mb-2 text-sm font-medium">{t('editTeam.icon')}</p>
           <ImageUpload
             type="teams"
             currentUrl={imageUrl}
             onUploaded={setImageUrl}
-            label="Change icon"
+            label={t('editTeam.changeIcon')}
           />
         </div>
 
@@ -119,13 +121,13 @@ export default function EditTeamPage() {
             disabled={saveMutation.isPending || !name.trim()}
             className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
-            {saveMutation.isPending ? 'Saving…' : 'Save changes'}
+            {saveMutation.isPending ? t('common.saving') : t('common.saveChanges')}
           </button>
           <Link
             to={`/admin/tournaments/${team.tournamentId}`}
             className="rounded-md border px-4 py-2 text-sm hover:bg-muted"
           >
-            Cancel
+            {t('common.cancel')}
           </Link>
         </div>
       </form>

@@ -3,12 +3,14 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import ImageUpload from '@/components/ImageUpload';
+import { useT } from '@/lib/useT';
 import type { Tournament } from '@tournament-predictor/shared';
 
 export default function EditTournamentPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { t } = useT();
 
   const { data: tournament, isLoading } = useQuery({
     queryKey: ['tournament', id],
@@ -38,7 +40,7 @@ export default function EditTournamentPage() {
       queryClient.invalidateQueries({ queryKey: ['tournaments'] });
       navigate(`/admin/tournaments/${id}`);
     },
-    onError: (err: any) => setError(err instanceof ApiError ? err.message : 'Failed to save'),
+    onError: (err: any) => setError(err instanceof ApiError ? err.message : t('common.failedToSave')),
   });
 
   function handleSubmit(e: React.FormEvent) {
@@ -46,8 +48,8 @@ export default function EditTournamentPage() {
     saveMutation.mutate();
   }
 
-  if (isLoading) return <div className="p-8 text-sm text-muted-foreground">Loading…</div>;
-  if (!tournament) return <div className="p-8 text-sm">Tournament not found.</div>;
+  if (isLoading) return <div className="p-8 text-sm text-muted-foreground">{t('common.loading')}</div>;
+  if (!tournament) return <div className="p-8 text-sm">{t('tournamentDetail.notFound')}</div>;
 
   return (
     <main className="mx-auto max-w-sm px-4 py-8">
@@ -55,14 +57,14 @@ export default function EditTournamentPage() {
         to={`/admin/tournaments/${id}`}
         className="mb-4 inline-block text-sm text-muted-foreground hover:text-foreground"
       >
-        ← Back to tournament
+        {t('editTournament.backToTournament')}
       </Link>
-      <h1 className="mb-6 text-2xl font-bold">Edit tournament</h1>
+      <h1 className="mb-6 text-2xl font-bold">{t('editTournament.title')}</h1>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="mb-1 block text-sm font-medium" htmlFor="name">
-            Name
+            {t('common.name')}
           </label>
           <input
             id="name"
@@ -76,12 +78,12 @@ export default function EditTournamentPage() {
         </div>
 
         <div>
-          <p className="mb-2 text-sm font-medium">Logo</p>
+          <p className="mb-2 text-sm font-medium">{t('editTournament.logo')}</p>
           <ImageUpload
             type="tournaments"
             currentUrl={imageUrl}
             onUploaded={setImageUrl}
-            label="Change logo"
+            label={t('editTournament.changeLogo')}
           />
         </div>
 
@@ -93,13 +95,13 @@ export default function EditTournamentPage() {
             disabled={saveMutation.isPending || !name.trim()}
             className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
-            {saveMutation.isPending ? 'Saving…' : 'Save changes'}
+            {saveMutation.isPending ? t('common.saving') : t('common.saveChanges')}
           </button>
           <Link
             to={`/admin/tournaments/${id}`}
             className="rounded-md border px-4 py-2 text-sm hover:bg-muted"
           >
-            Cancel
+            {t('common.cancel')}
           </Link>
         </div>
       </form>
