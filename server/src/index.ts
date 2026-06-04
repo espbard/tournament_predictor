@@ -7,6 +7,7 @@ import { db } from './db/client';
 import { authRouter } from './routes/auth';
 import { tournamentsRouter, matchesRouter, teamsRouter } from './routes/tournaments';
 import { uploadRouter } from './routes/upload';
+import { imagesRouter } from './routes/images';
 import { competitionsRouter } from './routes/competitions';
 
 const app = express();
@@ -30,6 +31,7 @@ app.use('/api/tournaments', tournamentsRouter);
 app.use('/api/matches', matchesRouter);
 app.use('/api/teams', teamsRouter);
 app.use('/api/upload', uploadRouter);
+app.use('/api/images', imagesRouter);
 app.use('/api/competitions', competitionsRouter);
 
 // Serve built React app in production
