@@ -360,6 +360,8 @@ function FocusedMatchCard({
     return { exactScore, correctResult, correctTeamProgresses, correctTeamInKnockoutTie, correctTeamInFinal, correctWinner, total };
   }, [actualMatch, prediction, scoringConfig, homeTeam, awayTeam, isFinal, isFirstRound]);
   const { t } = useT();
+  const isCorrectResult = pointsInfo !== null && pointsInfo.correctResult > 0;
+  const isExactScore = pointsInfo !== null && pointsInfo.exactScore > 0;
   const homeWins = bothValid && homeNum! > awayNum!;
   const awayWins = bothValid && awayNum! > homeNum!;
   const isHomeChampion = isFinal && (homeWins || (isDraw && prediction?.progressingTeamId === homeTeam?.teamId));
@@ -390,7 +392,7 @@ function FocusedMatchCard({
   }
 
   return (
-    <div className="rounded-xl border-2 bg-card shadow-sm overflow-hidden w-full sm:max-w-xs sm:mx-auto">
+    <div className={`rounded-xl border-2 shadow-sm overflow-hidden w-full sm:max-w-xs sm:mx-auto ${isCorrectResult ? 'border-green-400 bg-green-50/60 dark:bg-green-950/25' : 'bg-card'}`}>
       <div
         className={`flex items-center gap-3 px-4 py-3.5 transition-colors ${homeWins && !isHomeChampion ? 'bg-primary/5' : ''}`}
         style={isHomeChampion ? { animation: 'ko_winner_glow 1.8s ease-in-out infinite' } : undefined}
@@ -430,7 +432,7 @@ function FocusedMatchCard({
             value={homeStr}
             onChange={e => handleScoreChange('home', e.target.value)}
             disabled={disabled}
-            className="w-11 h-9 text-center text-xl font-bold rounded-lg border bg-background disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-primary flex-shrink-0"
+            className={`w-11 h-9 text-center text-xl font-bold rounded-lg border bg-background disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-primary flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400' : ''}`}
             placeholder="–"
           />
           <button
@@ -486,7 +488,7 @@ function FocusedMatchCard({
             value={awayStr}
             onChange={e => handleScoreChange('away', e.target.value)}
             disabled={disabled}
-            className="w-11 h-9 text-center text-xl font-bold rounded-lg border bg-background disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-primary flex-shrink-0"
+            className={`w-11 h-9 text-center text-xl font-bold rounded-lg border bg-background disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-primary flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400' : ''}`}
             placeholder="–"
           />
           <button
