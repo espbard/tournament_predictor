@@ -1369,6 +1369,7 @@ export default function CompetitionDetailPage() {
               </button>
               <button
                 onClick={() => {
+                  setHasDeclined(true);
                   setShowProceedPrompt(false);
                   setActiveTab('tables');
                 }}
