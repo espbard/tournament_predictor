@@ -369,19 +369,43 @@ function FocusedAdminMatchCard({
         <span className={`flex-1 text-sm truncate ${match.homeTeamName ? (homeWins ? 'font-semibold' : 'font-medium') : 'text-muted-foreground italic'}`}>
           {match.homeTeamName ?? 'TBD'}
         </span>
-        <input
-          type="text"
-          inputMode="numeric"
-          value={homeStr}
-          onChange={e => {
-            const val = e.target.value.replace(/\D/g, '').slice(0, 2);
-            setHomeStr(val);
-            tryAutoQueue(val, awayStr, selectedWinnerId);
-          }}
-          disabled={!hasTeams}
-          className="w-11 h-9 text-center text-xl font-bold rounded-lg border bg-background disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-primary flex-shrink-0"
-          placeholder="–"
-        />
+        <div className="flex items-center gap-0.5 flex-shrink-0">
+          <button
+            type="button"
+            disabled={!hasTeams}
+            onClick={() => {
+              const cur = parseInt(homeStr || '0') || 0;
+              const val = String(Math.max(0, cur - 1));
+              setHomeStr(val);
+              tryAutoQueue(val, awayStr, selectedWinnerId);
+            }}
+            className="h-10 w-10 flex items-center justify-center rounded-md border bg-muted hover:bg-muted/80 text-base font-bold select-none active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          >−</button>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={homeStr}
+            onChange={e => {
+              const val = e.target.value.replace(/\D/g, '').slice(0, 2);
+              setHomeStr(val);
+              tryAutoQueue(val, awayStr, selectedWinnerId);
+            }}
+            disabled={!hasTeams}
+            className="w-11 h-9 text-center text-xl font-bold rounded-lg border bg-background disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-primary flex-shrink-0"
+            placeholder="–"
+          />
+          <button
+            type="button"
+            disabled={!hasTeams}
+            onClick={() => {
+              const cur = parseInt(homeStr || '0') || 0;
+              const val = String(Math.min(99, cur + 1));
+              setHomeStr(val);
+              tryAutoQueue(val, awayStr, selectedWinnerId);
+            }}
+            className="h-10 w-10 flex items-center justify-center rounded-md border bg-muted hover:bg-muted/80 text-base font-bold select-none active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          >+</button>
+        </div>
       </div>
 
       <div className="h-px bg-border" />
@@ -395,19 +419,43 @@ function FocusedAdminMatchCard({
         <span className={`flex-1 text-sm truncate ${match.awayTeamName ? (awayWins ? 'font-semibold' : 'font-medium') : 'text-muted-foreground italic'}`}>
           {match.awayTeamName ?? 'TBD'}
         </span>
-        <input
-          type="text"
-          inputMode="numeric"
-          value={awayStr}
-          onChange={e => {
-            const val = e.target.value.replace(/\D/g, '').slice(0, 2);
-            setAwayStr(val);
-            tryAutoQueue(homeStr, val, selectedWinnerId);
-          }}
-          disabled={!hasTeams}
-          className="w-11 h-9 text-center text-xl font-bold rounded-lg border bg-background disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-primary flex-shrink-0"
-          placeholder="–"
-        />
+        <div className="flex items-center gap-0.5 flex-shrink-0">
+          <button
+            type="button"
+            disabled={!hasTeams}
+            onClick={() => {
+              const cur = parseInt(awayStr || '0') || 0;
+              const val = String(Math.max(0, cur - 1));
+              setAwayStr(val);
+              tryAutoQueue(homeStr, val, selectedWinnerId);
+            }}
+            className="h-10 w-10 flex items-center justify-center rounded-md border bg-muted hover:bg-muted/80 text-base font-bold select-none active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          >−</button>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={awayStr}
+            onChange={e => {
+              const val = e.target.value.replace(/\D/g, '').slice(0, 2);
+              setAwayStr(val);
+              tryAutoQueue(homeStr, val, selectedWinnerId);
+            }}
+            disabled={!hasTeams}
+            className="w-11 h-9 text-center text-xl font-bold rounded-lg border bg-background disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-primary flex-shrink-0"
+            placeholder="–"
+          />
+          <button
+            type="button"
+            disabled={!hasTeams}
+            onClick={() => {
+              const cur = parseInt(awayStr || '0') || 0;
+              const val = String(Math.min(99, cur + 1));
+              setAwayStr(val);
+              tryAutoQueue(homeStr, val, selectedWinnerId);
+            }}
+            className="h-10 w-10 flex items-center justify-center rounded-md border bg-muted hover:bg-muted/80 text-base font-bold select-none active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          >+</button>
+        </div>
       </div>
 
       {/* Tiebreaker picker — shown when scores are equal */}
