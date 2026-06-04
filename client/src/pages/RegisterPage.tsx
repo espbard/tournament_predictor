@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import ImageUpload from '@/components/ImageUpload';
+import { useT } from '@/lib/useT';
 import type { User } from '@tournament-predictor/shared';
 
 export default function RegisterPage() {
@@ -16,6 +17,7 @@ export default function RegisterPage() {
   const { setUser } = useAuthStore();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { t } = useT();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -27,7 +29,7 @@ export default function RegisterPage() {
       queryClient.setQueryData(['me'], user);
       navigate('/');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Registration failed');
+      setError(err instanceof ApiError ? err.message : t('auth.registrationFailed'));
     } finally {
       setLoading(false);
     }
@@ -36,11 +38,11 @@ export default function RegisterPage() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center">
       <div className="w-full max-w-sm space-y-6 rounded-lg border bg-card p-8 shadow-sm">
-        <h1 className="text-2xl font-bold">Create account</h1>
+        <h1 className="text-2xl font-bold">{t('auth.createAccount')}</h1>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1">
             <label className="text-sm font-medium" htmlFor="username">
-              Username
+              {t('auth.username')}
             </label>
             <input
               id="username"
@@ -50,11 +52,11 @@ export default function RegisterPage() {
               required
               autoComplete="username"
             />
-            <p className="text-xs text-muted-foreground">Letters, numbers, underscores. 3–30 chars.</p>
+            <p className="text-xs text-muted-foreground">{t('auth.usernameHint')}</p>
           </div>
           <div className="space-y-1">
             <label className="text-sm font-medium" htmlFor="password">
-              Password
+              {t('auth.password')}
             </label>
             <input
               id="password"
@@ -65,10 +67,10 @@ export default function RegisterPage() {
               required
               autoComplete="new-password"
             />
-            <p className="text-xs text-muted-foreground">At least 6 characters.</p>
+            <p className="text-xs text-muted-foreground">{t('auth.passwordHint')}</p>
           </div>
           <div className="space-y-1">
-            <label className="text-sm font-medium">Profile picture (optional)</label>
+            <label className="text-sm font-medium">{t('auth.profilePicture')}</label>
             <ImageUpload
               type="users"
               currentUrl={imageUrl}
@@ -83,13 +85,13 @@ export default function RegisterPage() {
             disabled={loading}
             className="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
-            {loading ? 'Creating account…' : 'Create account'}
+            {loading ? t('auth.creatingAccount') : t('auth.createAccount')}
           </button>
         </form>
         <p className="text-center text-sm text-muted-foreground">
-          Already have an account?{' '}
+          {t('auth.alreadyHaveAccount')}{' '}
           <Link to="/login" className="font-medium text-primary hover:underline">
-            Sign in
+            {t('auth.signInLink')}
           </Link>
         </p>
       </div>

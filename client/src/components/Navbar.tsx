@@ -2,11 +2,15 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
+import { useLanguageStore } from '@/store/languageStore';
+import { useT } from '@/lib/useT';
 
 export default function Navbar() {
   const { user, setUser } = useAuthStore();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { language, setLanguage } = useLanguageStore();
+  const { t } = useT();
 
   async function handleLogout() {
     await api.post('/auth/logout', {});
@@ -21,7 +25,14 @@ export default function Navbar() {
         <Link to="/" className="text-base font-semibold text-primary-foreground hover:opacity-80">
           Tournament Predictor
         </Link>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setLanguage(language === 'no' ? 'en' : 'no')}
+            className="rounded-md border border-primary-foreground/30 px-2 py-1 text-xs font-semibold text-primary-foreground hover:bg-primary-foreground/10 tracking-wide"
+            title={language === 'no' ? 'Switch to English' : 'Bytt til norsk'}
+          >
+            {language === 'no' ? 'EN' : 'NO'}
+          </button>
           <Link
             to="/settings"
             className="flex items-center gap-2 text-sm text-primary-foreground/70 hover:text-primary-foreground"
@@ -43,7 +54,7 @@ export default function Navbar() {
             onClick={handleLogout}
             className="rounded-md border border-primary-foreground/30 px-3 py-1.5 text-sm text-primary-foreground hover:bg-primary-foreground/10"
           >
-            Log out
+            {t('nav.logOut')}
           </button>
         </div>
       </div>

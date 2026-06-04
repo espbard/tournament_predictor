@@ -241,6 +241,20 @@ export type CompletedKnockoutMatch = KnockoutMatchSlot & {
   status: string;
 };
 
+export interface KnockoutScoreBreakdown {
+  exactScore: number;
+  correctResult: number;
+  correctTeamProgresses: number;
+  correctTeamInKnockoutTie: number;
+  correctTeamInFinal: number;
+  correctWinner: number;
+}
+
+export interface KnockoutScoreResult {
+  total: number;
+  breakdown: KnockoutScoreBreakdown;
+}
+
 /**
  * Calculates all knockout points for one user across all completed knockout
  * matches. Includes exact_score, correct_result, correct_team_progresses
@@ -255,15 +269,22 @@ export function calculateKnockoutPoints(
   firstRound: string,
   userBracketPredictions: BracketPredictions,
   config: ScoringConfig,
-): number {
+): KnockoutScoreResult {
+  const breakdown: KnockoutScoreBreakdown = {
+    exactScore: 0,
+    correctResult: 0,
+    correctTeamProgresses: 0,
+    correctTeamInKnockoutTie: 0,
+    correctTeamInFinal: 0,
+    correctWinner: 0,
+  };
+
   // Build matchesByStage from ALL matches (needed for trajectory lookups)
   const matchesByStage = new Map<string, KnockoutMatchSlot[]>();
   for (const m of allKnockoutMatches) {
     if (!matchesByStage.has(m.stage)) matchesByStage.set(m.stage, []);
     matchesByStage.get(m.stage)!.push(m);
   }
-
-  let total = 0;
 
   for (const m of allKnockoutMatches) {
     if (m.status !== 'completed') continue;
@@ -273,46 +294,93 @@ export function calculateKnockoutPoints(
     const matchIndex = stageMatches.findIndex(sm => sm.id === m.id);
     if (matchIndex < 0) continue;
 
-    // bracket_predictions key is `${stage}_${matchIndex}` on the client
     const predKey = `${stage}_${matchIndex}`;
     const pred = userBracketPredictions[predKey];
 
+    // For non-first-round matches, resolve which teams the user predicted would
+    // be in this tie and detect whether the score should be evaluated "flipped".
+    // Flip applies when exactly one predicted team is in the match but on the
+    // opposite side, OR when both predicted teams are in the match but swapped.
+    // In those cases the user's home/away score prediction should be assessed
+    // against the mirrored actual scoreline.
+    let predictedHome: string | null = null;
+    let predictedAway: string | null = null;
+    let shouldFlip = false;
+
+    if (stage !== firstRound && stage !== 'bronze_final') {
+      predictedHome = getUserPredictedTeamForKnockoutSlot(
+        stage, matchIndex, 'home', firstRound, matchesByStage, userBracketPredictions,
+      );
+      predictedAway = getUserPredictedTeamForKnockoutSlot(
+        stage, matchIndex, 'away', firstRound, matchesByStage, userBracketPredictions,
+      );
+
+      if (m.homeTeamId && m.awayTeamId) {
+        const homeInActualHome = predictedHome === m.homeTeamId;
+        const homeInActualAway = predictedHome === m.awayTeamId;
+        const awayInActualHome = predictedAway === m.homeTeamId;
+        const awayInActualAway = predictedAway === m.awayTeamId;
+        const homeCorrect = homeInActualHome || homeInActualAway;
+        const awayCorrect = awayInActualAway || awayInActualHome;
+        const correctCount = (homeCorrect ? 1 : 0) + (awayCorrect ? 1 : 0);
+
+        if (correctCount === 2) {
+          shouldFlip = homeInActualAway && awayInActualHome;
+        } else if (correctCount === 1) {
+          if (homeCorrect) shouldFlip = homeInActualAway;
+          else shouldFlip = awayInActualHome;
+        }
+      }
+    }
+
     // 1. Basic match scoring (exact_score, correct_result, correct_team_progresses)
     if (pred) {
-      const result = calculateMatchPoints(
-        pred,
-        { homeScore: m.homeScore, awayScore: m.awayScore, stage, actualProgressingTeamId: m.progressingTeamId },
-        config,
-      );
-      total += result.points;
+      const scoredMatch = shouldFlip
+        ? { homeScore: m.awayScore, awayScore: m.homeScore, stage, actualProgressingTeamId: m.progressingTeamId }
+        : { homeScore: m.homeScore, awayScore: m.awayScore, stage, actualProgressingTeamId: m.progressingTeamId };
+      const result = calculateMatchPoints(pred, scoredMatch, config);
+      breakdown.exactScore += result.breakdown.exactScore;
+      breakdown.correctResult += result.breakdown.correctResult;
+      breakdown.correctTeamProgresses += result.breakdown.correctTeamProgresses;
     }
 
     // 2. Knockout tie scoring — skip first round (teams come from draw) and bronze_final
     if (stage === firstRound || stage === 'bronze_final') continue;
 
-    const predictedHome = getUserPredictedTeamForKnockoutSlot(
-      stage, matchIndex, 'home', firstRound, matchesByStage, userBracketPredictions,
-    );
-    const predictedAway = getUserPredictedTeamForKnockoutSlot(
-      stage, matchIndex, 'away', firstRound, matchesByStage, userBracketPredictions,
-    );
+    // Determine which team the user predicted to win the final (team identity, not home/away side).
+    // Must match both: correct team in the final AND correct team to win.
+    let userPredictedWinner: string | null = null;
+    if (stage === 'final' && pred) {
+      if (pred.progressingTeamId) {
+        userPredictedWinner = pred.progressingTeamId;
+      } else if (!shouldFlip) {
+        if (pred.homeScore > pred.awayScore) userPredictedWinner = predictedHome;
+        else if (pred.awayScore > pred.homeScore) userPredictedWinner = predictedAway;
+      } else {
+        // shouldFlip: user's home maps to the actual away team, so invert which predicted team wins
+        if (pred.homeScore > pred.awayScore) userPredictedWinner = predictedAway;
+        else if (pred.awayScore > pred.homeScore) userPredictedWinner = predictedHome;
+      }
+    }
 
     for (const actualTeamId of [m.homeTeamId, m.awayTeamId]) {
       if (!actualTeamId) continue;
       if (predictedHome !== actualTeamId && predictedAway !== actualTeamId) continue;
 
       if (stage === 'final') {
-        // correct_winner replaces correct_team_in_final for the winning team
-        if (actualTeamId === m.progressingTeamId) {
-          total += config.correct_winner;
+        if (actualTeamId === m.progressingTeamId && actualTeamId === userPredictedWinner) {
+          breakdown.correctWinner += config.correct_winner;
         } else {
-          total += config.correct_team_in_final;
+          breakdown.correctTeamInFinal += config.correct_team_in_final;
         }
       } else {
-        total += config.correct_team_in_knockout_tie;
+        breakdown.correctTeamInKnockoutTie += config.correct_team_in_knockout_tie;
       }
     }
   }
 
-  return total;
+  const total = breakdown.exactScore + breakdown.correctResult + breakdown.correctTeamProgresses
+    + breakdown.correctTeamInKnockoutTie + breakdown.correctTeamInFinal + breakdown.correctWinner;
+
+  return { total, breakdown };
 }

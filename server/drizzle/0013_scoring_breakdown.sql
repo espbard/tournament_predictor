@@ -1,0 +1,10 @@
+ALTER TABLE "competition_members" ADD COLUMN "exact_score_points" integer NOT NULL DEFAULT 0;
+ALTER TABLE "competition_members" ADD COLUMN "correct_result_points" integer NOT NULL DEFAULT 0;
+ALTER TABLE "competition_members" ADD COLUMN "correct_team_progresses_points" integer NOT NULL DEFAULT 0;
+ALTER TABLE "competition_members" ADD COLUMN "correct_group_position_points" integer NOT NULL DEFAULT 0;
+ALTER TABLE "competition_members" ADD COLUMN "correct_team_in_knockout_tie_points" integer NOT NULL DEFAULT 0;
+ALTER TABLE "competition_members" ADD COLUMN "correct_team_in_final_points" integer NOT NULL DEFAULT 0;
+ALTER TABLE "competition_members" ADD COLUMN "correct_winner_points" integer NOT NULL DEFAULT 0;
+ALTER TABLE "competition_members" ADD COLUMN "bonus_question_points" integer NOT NULL DEFAULT 0;
+ALTER TABLE "competition_members" DROP COLUMN "group_position_points";
+ALTER TABLE "competition_members" DROP COLUMN "knockout_points";

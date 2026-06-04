@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { eq, inArray, and, isNotNull } from 'drizzle-orm';
 import { db } from '../db/client';
-import { tournaments, teams, matches, groups } from '../db/schema';
+import { tournaments, teams, matches, groups, bonusQuestions } from '../db/schema';
 import { requireAuth, requireAdmin } from '../middleware/auth';
 import {
   CreateTournamentSchema,
@@ -12,9 +12,12 @@ import {
   UpdateMatchSchema,
   CreateGroupSchema,
   UpdateKnockoutConfigSchema,
+  CreateBonusQuestionSchema,
+  UpdateBonusQuestionSchema,
 } from '@tournament-predictor/shared';
 import type { KnockoutConfig } from '@tournament-predictor/shared';
-import { triggerScoringForMatch } from '../lib/scoringTrigger';
+import { triggerScoringForMatch, triggerBonusScoring, recalculateAllScoresForTournament } from '../lib/scoringTrigger';
+import { generateId } from 'lucia';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -51,7 +54,11 @@ function computeH2HStats(teamIds: string[], matches: RawMatch[]): Map<string, H2
   return stats;
 }
 
-function sortGroupTeamsWithH2H(teams: TeamStat[], groupMatches: RawMatch[]): TeamStat[] {
+function sortGroupTeamsWithH2H(
+  teams: TeamStat[],
+  groupMatches: RawMatch[],
+  disciplinaryChoices: Record<string, string[]> = {},
+): TeamStat[] {
   if (teams.length <= 1) return [...teams];
 
   const byPoints = new Map<number, TeamStat[]>();
@@ -64,6 +71,8 @@ function sortGroupTeamsWithH2H(teams: TeamStat[], groupMatches: RawMatch[]): Tea
   for (const [, group] of [...byPoints].sort(([a], [b]) => b - a)) {
     if (group.length === 1) { result.push(group[0]); continue; }
     const h2h = computeH2HStats(group.map(t => t.teamId), groupMatches);
+    const key = [...group.map(t => t.teamId)].sort().join('|');
+    const ranking = disciplinaryChoices[key];
     const sorted = [...group].sort((a, b) => {
       const ha = h2h.get(a.teamId)!; const hb = h2h.get(b.teamId)!;
       if (hb.points !== ha.points) return hb.points - ha.points;
@@ -71,6 +80,11 @@ function sortGroupTeamsWithH2H(teams: TeamStat[], groupMatches: RawMatch[]): Tea
       if (hb.gf !== ha.gf) return hb.gf - ha.gf;
       if (b.gd !== a.gd) return b.gd - a.gd;
       if (b.gf !== a.gf) return b.gf - a.gf;
+      if (ranking) {
+        const da = ranking.indexOf(a.teamId);
+        const db = ranking.indexOf(b.teamId);
+        if (da !== -1 && db !== -1 && da !== db) return da - db;
+      }
       return a.teamId.localeCompare(b.teamId);
     });
     result.push(...sorted);
@@ -81,6 +95,7 @@ function sortGroupTeamsWithH2H(teams: TeamStat[], groupMatches: RawMatch[]): Tea
 function computeGroupStandings(
   completedMatches: RawMatch[],
   teamGroupMap: Map<string, string>,
+  disciplinaryChoices: Record<string, string[]> = {},
 ): Map<string, TeamStat[]> {
   const groupStats = new Map<string, Map<string, TeamStat>>();
   const groupMatchesMap = new Map<string, RawMatch[]>();
@@ -113,7 +128,7 @@ function computeGroupStandings(
   const result = new Map<string, TeamStat[]>();
   for (const [groupName, statsMap] of groupStats) {
     const groupMatches = groupMatchesMap.get(groupName) ?? [];
-    result.set(groupName, sortGroupTeamsWithH2H([...statsMap.values()], groupMatches));
+    result.set(groupName, sortGroupTeamsWithH2H([...statsMap.values()], groupMatches, disciplinaryChoices));
   }
   return result;
 }
@@ -124,6 +139,8 @@ async function generateFirstRoundKnockout(tournamentId: string): Promise<void> {
 
   const cfg = tournament.knockoutConfig as KnockoutConfig;
   const { firstRound, bracketSlots, directQualifiers, luckyLosers, hasBronzeFinal } = cfg;
+  const groupDisciplinaryChoices = cfg.groupDisciplinaryChoices ?? {};
+  const luckyLoserDisciplinaryChoices = cfg.luckyLoserDisciplinaryChoices ?? {};
   const matchCount = FIRST_ROUND_MATCH_COUNTS[firstRound] ?? 0;
   if (matchCount === 0) return;
 
@@ -144,7 +161,7 @@ async function generateFirstRoundKnockout(tournamentId: string): Promise<void> {
     and(eq(matches.tournamentId, tournamentId), eq(matches.stage, 'group'))
   );
   const completedGroupMatches = allGroupMatches.filter(m => m.status === 'completed');
-  const standings = computeGroupStandings(completedGroupMatches, teamGroupMap);
+  const standings = computeGroupStandings(completedGroupMatches, teamGroupMap, groupDisciplinaryChoices);
 
   // Resolve direct qualifier label (e.g. "1A") → teamId
   function qualifierToTeamId(label: string): string | null {
@@ -163,7 +180,18 @@ async function generateFirstRoundKnockout(tournamentId: string): Promise<void> {
   luckyLoserCandidates.sort((a, b) => {
     if (b.points !== a.points) return b.points - a.points;
     if (b.gd !== a.gd) return b.gd - a.gd;
-    return b.gf - a.gf;
+    if (b.gf !== a.gf) return b.gf - a.gf;
+    const tied = luckyLoserCandidates.filter(
+      t => t.points === a.points && t.gd === a.gd && t.gf === a.gf,
+    );
+    const key = [...tied.map(t => t.teamId)].sort().join('|');
+    const ranking = luckyLoserDisciplinaryChoices[key];
+    if (ranking) {
+      const da = ranking.indexOf(a.teamId);
+      const db = ranking.indexOf(b.teamId);
+      if (da !== -1 && db !== -1 && da !== db) return da - db;
+    }
+    return a.teamId.localeCompare(b.teamId);
   });
   const selectedLuckyLosers = luckyLoserCandidates.slice(0, luckyLosers).map(t => t.teamId);
 
@@ -628,6 +656,20 @@ tournamentsRouter.post('/:id/simulate-group-stage', requireAdmin, async (req, re
   }
 });
 
+tournamentsRouter.post('/:id/recalculate-scores', requireAdmin, async (req, res) => {
+  try {
+    const tournamentId = req.params.id;
+    const [exists] = await db.select({ id: tournaments.id }).from(tournaments).where(eq(tournaments.id, tournamentId)).limit(1);
+    if (!exists) return res.status(404).json({ error: 'Tournament not found' });
+
+    await recalculateAllScoresForTournament(tournamentId);
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('Recalculate scores error:', err);
+    return res.status(500).json({ error: 'Failed to recalculate scores' });
+  }
+});
+
 tournamentsRouter.post('/:id/clear-group-stage', requireAdmin, async (req, res) => {
   try {
     const tournamentId = req.params.id;
@@ -644,6 +686,20 @@ tournamentsRouter.post('/:id/clear-group-stage', requireAdmin, async (req, res) 
       and(eq(matches.tournamentId, tournamentId), inArray(matches.stage, [...KNOCKOUT_STAGES]))
     );
 
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+tournamentsRouter.post('/:id/regenerate-knockout', requireAdmin, async (req, res) => {
+  try {
+    const tournamentId = req.params.id;
+    const [exists] = await db.select({ id: tournaments.id }).from(tournaments).where(eq(tournaments.id, tournamentId)).limit(1);
+    if (!exists) return res.status(404).json({ error: 'Tournament not found' });
+
+    await generateFirstRoundKnockout(tournamentId);
     return res.json({ ok: true });
   } catch (err) {
     console.error(err);
@@ -792,6 +848,100 @@ tournamentsRouter.delete('/:id/groups/:groupId', requireAdmin, async (req, res) 
   }
 });
 
+// ── Bonus questions ───────────────────────────────────────────────────────────
+
+tournamentsRouter.get('/:id/bonus-questions', requireAuth, async (req, res) => {
+  try {
+    const questions = await db
+      .select()
+      .from(bonusQuestions)
+      .where(eq(bonusQuestions.tournamentId, req.params.id));
+    return res.json(questions);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+tournamentsRouter.post('/:id/bonus-questions', requireAdmin, async (req, res) => {
+  try {
+    const [exists] = await db.select({ id: tournaments.id }).from(tournaments).where(eq(tournaments.id, req.params.id)).limit(1);
+    if (!exists) return res.status(404).json({ error: 'Tournament not found' });
+
+    const result = CreateBonusQuestionSchema.safeParse(req.body);
+    if (!result.success) {
+      return res.status(400).json({ error: 'Validation failed', details: result.error.flatten() });
+    }
+    const { question, answerType, points } = result.data;
+    const qid = generateId(15);
+    const [created] = await db
+      .insert(bonusQuestions)
+      .values({ id: qid, tournamentId: req.params.id, question, answerType, points })
+      .returning();
+    return res.status(201).json(created);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+tournamentsRouter.patch('/:id/bonus-questions/:qid', requireAdmin, async (req, res) => {
+  try {
+    const { id, qid } = req.params;
+    const [existing] = await db
+      .select()
+      .from(bonusQuestions)
+      .where(and(eq(bonusQuestions.id, qid), eq(bonusQuestions.tournamentId, id)));
+    if (!existing) return res.status(404).json({ error: 'Question not found' });
+
+    const result = UpdateBonusQuestionSchema.safeParse(req.body);
+    if (!result.success) {
+      return res.status(400).json({ error: 'Validation failed', details: result.error.flatten() });
+    }
+    const updates: Record<string, unknown> = {};
+    if (result.data.question !== undefined) updates.question = result.data.question;
+    if (result.data.answerType !== undefined) updates.answerType = result.data.answerType;
+    if (result.data.points !== undefined) updates.points = result.data.points;
+    if (result.data.correctAnswer !== undefined) updates.correctAnswer = result.data.correctAnswer;
+
+    if (Object.keys(updates).length === 0) return res.status(400).json({ error: 'No updates provided' });
+
+    const [updated] = await db
+      .update(bonusQuestions)
+      .set(updates)
+      .where(eq(bonusQuestions.id, qid))
+      .returning();
+
+    if (result.data.correctAnswer !== undefined) {
+      await triggerBonusScoring(qid, id).catch(err =>
+        console.error('Bonus scoring error:', err),
+      );
+    }
+
+    return res.json(updated);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+tournamentsRouter.delete('/:id/bonus-questions/:qid', requireAdmin, async (req, res) => {
+  try {
+    const { id, qid } = req.params;
+    const [existing] = await db
+      .select()
+      .from(bonusQuestions)
+      .where(and(eq(bonusQuestions.id, qid), eq(bonusQuestions.tournamentId, id)));
+    if (!existing) return res.status(404).json({ error: 'Question not found' });
+
+    await db.delete(bonusQuestions).where(eq(bonusQuestions.id, qid));
+    return res.status(204).send();
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 matchesRouter.patch('/:id', requireAdmin, async (req, res) => {
   try {
     const updates = UpdateMatchSchema.parse(req.body);
@@ -864,9 +1014,11 @@ matchesRouter.patch('/:id', requireAdmin, async (req, res) => {
 
     // Trigger scoring after the match (and knockout advancement) is fully settled
     if (setData.status === 'completed') {
-      triggerScoringForMatch(updated.id, updated.tournamentId).catch(err =>
-        console.error('Scoring trigger error:', err)
-      );
+      try {
+        await triggerScoringForMatch(updated.id, updated.tournamentId);
+      } catch (err) {
+        console.error('Scoring trigger error:', err);
+      }
     }
 
     return res.json(updated);

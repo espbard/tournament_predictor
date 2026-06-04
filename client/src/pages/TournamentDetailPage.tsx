@@ -14,7 +14,18 @@ import { CSS } from '@dnd-kit/utilities';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import ImageUpload from '@/components/ImageUpload';
+import BonusQuestionsTab from './BonusQuestionsTab';
+import { TournamentKnockoutTabContent } from './TournamentKnockoutPage';
 import type { Tournament, Team, Match, MatchStage, Group } from '@tournament-predictor/shared';
+import {
+  sortGroupTeams,
+  sortLuckyLosers,
+  findGroupDisciplinaryTies,
+  findLuckyLoserDisciplinaryTies,
+  makeDisciplinaryKey,
+  type MatchResult as TbMatchResult,
+  type TeamTiebreakerStat,
+} from '@/lib/tiebreakers';
 
 type MatchWithTeams = Match & {
   homeTeamName: string | null;
@@ -203,6 +214,8 @@ export default function TournamentDetailPage() {
   const [scoreMatchId, setScoreMatchId] = useState<string | null>(null);
   const [activeTeamId, setActiveTeamId] = useState<string | null>(null);
 
+  const [activeTab, setActiveTab] = useState<'group' | 'standings' | 'knockout' | 'bonus'>('group');
+
   const [showAddGroup, setShowAddGroup] = useState(false);
   const [groupName, setGroupName] = useState('');
   const [addGroupError, setAddGroupError] = useState('');
@@ -235,9 +248,10 @@ export default function TournamentDetailPage() {
   const [homeScore, setHomeScore] = useState('');
   const [awayScore, setAwayScore] = useState('');
 
+  const [pendingResults, setPendingResults] = useState<Record<string, { home: number; away: number }>>({});
+
   const [addTeamError, setAddTeamError] = useState('');
   const [addMatchError, setAddMatchError] = useState('');
-  const [scoreError, setScoreError] = useState('');
 
   const { data: tournament, isLoading: tournamentLoading } = useQuery({
     queryKey: ['tournament', id],
@@ -350,17 +364,18 @@ export default function TournamentDetailPage() {
     onError: (err: any) => setAddMatchError(err.message),
   });
 
-  const updateScoreMutation = useMutation({
-    mutationFn: ({ matchId, home, away }: { matchId: string; home: number; away: number }) =>
-      api.patch<Match>(`/matches/${matchId}`, { homeScore: home, awayScore: away }),
+  const confirmResultsMutation = useMutation({
+    mutationFn: async () => {
+      for (const [matchId, { home, away }] of Object.entries(pendingResults)) {
+        await api.patch<Match>(`/matches/${matchId}`, { homeScore: home, awayScore: away });
+      }
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['matches', id] });
+      setPendingResults({});
       setScoreMatchId(null);
-      setHomeScore('');
-      setAwayScore('');
-      setScoreError('');
     },
-    onError: (err: any) => setScoreError(err.message),
+    onError: (err: any) => console.error('Confirm results error:', err),
   });
 
   const editMatchMutation = useMutation({
@@ -374,14 +389,33 @@ export default function TournamentDetailPage() {
     onError: (err: any) => setEditError(err.message),
   });
 
-  const simulateGroupStageMutation = useMutation({
-    mutationFn: () => api.post(`/tournaments/${id}/simulate-group-stage`, {}),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['matches', id] }),
+  function simulateGroupStage() {
+    const scheduled = matchList.filter(m => m.stage === 'group' && m.status === 'scheduled');
+    const staged: Record<string, { home: number; away: number }> = {};
+    for (const m of scheduled) {
+      staged[m.id] = {
+        home: Math.floor(Math.random() * 5),
+        away: Math.floor(Math.random() * 5),
+      };
+    }
+    setPendingResults(prev => ({ ...prev, ...staged }));
+  }
+
+  const recalculateScoresMutation = useMutation({
+    mutationFn: () => api.post(`/tournaments/${id}/recalculate-scores`, {}),
   });
 
   const clearGroupStageMutation = useMutation({
     mutationFn: () => api.post(`/tournaments/${id}/clear-group-stage`, {}),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['matches', id] }),
+  });
+
+  const saveChoicesMutation = useMutation({
+    mutationFn: (body: {
+      groupDisciplinaryChoices?: Record<string, string[]>;
+      luckyLoserDisciplinaryChoices?: Record<string, string[]>;
+    }) => api.patch(`/tournaments/${id}/knockout-config`, body),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tournament', id] }),
   });
 
   // ── DnD handlers ────────────────────────────────────────────────────────────
@@ -479,21 +513,29 @@ export default function TournamentDetailPage() {
     });
   }
 
-  function handleEnterScore(e: React.FormEvent) {
-    e.preventDefault();
-    if (!scoreMatchId) return;
-    updateScoreMutation.mutate({
-      matchId: scoreMatchId,
-      home: parseInt(homeScore, 10),
-      away: parseInt(awayScore, 10),
-    });
+  function autoStageScore(matchId: string, homeVal: string, awayVal: string) {
+    const home = parseInt(homeVal, 10);
+    const away = parseInt(awayVal, 10);
+    if (homeVal === '' || awayVal === '' || isNaN(home) || isNaN(away) || home < 0 || away < 0) return;
+    setPendingResults(prev => ({ ...prev, [matchId]: { home, away } }));
+    setScoreMatchId(null);
+    setHomeScore('');
+    setAwayScore('');
   }
 
   function openScoreForm(matchId: string) {
     setScoreMatchId(matchId);
-    setHomeScore('');
-    setAwayScore('');
-    setScoreError('');
+    const p = pendingResults[matchId];
+    setHomeScore(p ? String(p.home) : '');
+    setAwayScore(p ? String(p.away) : '');
+  }
+
+  function removePendingResult(matchId: string) {
+    setPendingResults(prev => {
+      const n = { ...prev };
+      delete n[matchId];
+      return n;
+    });
   }
 
   if (tournamentLoading) {
@@ -502,6 +544,77 @@ export default function TournamentDetailPage() {
   if (!tournament) {
     return <div className="p-8 text-sm">Tournament not found.</div>;
   }
+
+  // ── Standings computation ─────────────────────────────────────────────────────
+
+  type FullRow = {
+    team: Team;
+    mp: number; w: number; d: number; l: number;
+    gf: number; ga: number; gd: number; pts: number;
+    stat: TeamTiebreakerStat;
+  };
+
+  const gdChoices: Record<string, string[]> = tournament.knockoutConfig?.groupDisciplinaryChoices ?? {};
+  const llChoices: Record<string, string[]> = tournament.knockoutConfig?.luckyLoserDisciplinaryChoices ?? {};
+  const directQualifiers = tournament.knockoutConfig?.directQualifiers ?? 2;
+  const numLuckyLosers = tournament.knockoutConfig?.luckyLosers ?? 0;
+
+  const groupStandingData = groupList.map(group => {
+    const teamsInGroup = teamsByGroup.get(group.id) ?? [];
+    const groupTeamIds = new Set(teamsInGroup.map(t => t.id));
+    const statMap = new Map<string, { mp: number; w: number; d: number; l: number; gf: number; ga: number; gd: number; pts: number }>();
+    const matchResultsList: TbMatchResult[] = [];
+
+    for (const team of teamsInGroup) {
+      statMap.set(team.id, { mp: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, gd: 0, pts: 0 });
+    }
+    for (const match of matchList) {
+      if (match.stage !== 'group' || !match.homeTeamId || !match.awayTeamId) continue;
+      if (!groupTeamIds.has(match.homeTeamId) || !groupTeamIds.has(match.awayTeamId)) continue;
+      const p = pendingResults[match.id];
+      let hS: number | null = null, aS: number | null = null;
+      if (p) { hS = p.home; aS = p.away; }
+      else if (match.status === 'completed' && match.homeScore !== null && match.awayScore !== null) {
+        hS = match.homeScore; aS = match.awayScore;
+      }
+      if (hS === null || aS === null) continue;
+      matchResultsList.push({ homeTeamId: match.homeTeamId, awayTeamId: match.awayTeamId, homeScore: hS, awayScore: aS });
+      const home = statMap.get(match.homeTeamId)!;
+      const away = statMap.get(match.awayTeamId)!;
+      home.mp++; away.mp++;
+      home.gf += hS; home.ga += aS;
+      away.gf += aS; away.ga += hS;
+      if (hS > aS) { home.w++; home.pts += 3; away.l++; }
+      else if (hS < aS) { away.w++; away.pts += 3; home.l++; }
+      else { home.d++; home.pts++; away.d++; away.pts++; }
+      home.gd = home.gf - home.ga;
+      away.gd = away.gf - away.ga;
+    }
+
+    const tbStats: TeamTiebreakerStat[] = teamsInGroup.map(t => {
+      const s = statMap.get(t.id) ?? { pts: 0, gd: 0, gf: 0 };
+      return { teamId: t.id, points: s.pts, gd: s.gd, gf: s.gf };
+    });
+    const sorted = sortGroupTeams(tbStats, matchResultsList, gdChoices);
+    const rows: FullRow[] = sorted.map(stat => {
+      const s = statMap.get(stat.teamId)!;
+      const team = teamsInGroup.find(t => t.id === stat.teamId)!;
+      return { team, ...s, stat };
+    });
+
+    return { group, rows, matchResults: matchResultsList };
+  });
+
+  const llCandidates: TeamTiebreakerStat[] = groupStandingData
+    .map(gd => gd.rows[directQualifiers]?.stat)
+    .filter((s): s is TeamTiebreakerStat => s !== undefined);
+  const sortedLL = sortLuckyLosers(llCandidates, llChoices);
+  const luckyLoserIds = new Set(sortedLL.slice(0, numLuckyLosers).map(s => s.teamId));
+
+  const groupDisciplinaryTies = groupStandingData
+    .map(gd => ({ group: gd.group, ties: findGroupDisciplinaryTies(gd.rows.map(r => r.stat), gd.matchResults) }))
+    .filter(g => g.ties.length > 0);
+  const llDisciplinaryTies = findLuckyLoserDisciplinaryTies(llCandidates);
 
   // Group matches by calendar date for display — group stage only (knockout shown in Knockout tab)
   const groupStageMatches = matchList.filter(m => m.stage === 'group');
@@ -656,15 +769,38 @@ export default function TournamentDetailPage() {
 
       {/* Stage tabs */}
       <div className="flex border-b mb-6">
-        <div className="px-4 py-2 text-sm font-medium border-b-2 border-primary -mb-px">
+        <button
+          onClick={() => setActiveTab('group')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            activeTab === 'group' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
+        >
           Group Stage
-        </div>
-        <Link
-          to={`/admin/tournaments/${id}/knockout`}
-          className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground"
+        </button>
+        <button
+          onClick={() => setActiveTab('standings')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            activeTab === 'standings' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          Group Tables
+        </button>
+        <button
+          onClick={() => setActiveTab('knockout')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            activeTab === 'knockout' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
         >
           Knockout Stage
-        </Link>
+        </button>
+        <button
+          onClick={() => setActiveTab('bonus')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            activeTab === 'bonus' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          Bonus Questions
+        </button>
       </div>
 
       {/* Header */}
@@ -694,6 +830,13 @@ export default function TournamentDetailPage() {
               <option value="active">Active</option>
               <option value="completed">Completed</option>
             </select>
+            <button
+              onClick={() => recalculateScoresMutation.mutate()}
+              disabled={recalculateScoresMutation.isPending}
+              className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
+            >
+              {recalculateScoresMutation.isPending ? 'Recalculating…' : 'Recalculate Scores'}
+            </button>
             <Link
               to={`/admin/tournaments/${id}/edit`}
               className="ml-auto rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
@@ -703,6 +846,223 @@ export default function TournamentDetailPage() {
           </>
         )}
       </div>
+
+      {activeTab === 'standings' && (
+        <section className="space-y-8">
+          {groupList.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No groups created yet.</p>
+          ) : (<>
+            {/* Group tables */}
+            <div className="grid gap-6 sm:grid-cols-2">
+              {groupStandingData.map(({ group, rows }) => {
+                const hasPending = Object.keys(pendingResults).length > 0;
+                return (
+                  <div key={group.id} className="rounded-lg border overflow-hidden">
+                    <div className="flex items-center justify-between border-b px-4 py-2.5 bg-muted/30">
+                      <h3 className="font-semibold text-sm">Group {group.name}</h3>
+                      {hasPending && (
+                        <span className="text-xs text-amber-600 dark:text-amber-400">provisional</span>
+                      )}
+                    </div>
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b text-xs text-muted-foreground">
+                          <th className="w-1 py-1.5" />
+                          <th className="px-3 py-1.5 text-left w-6">#</th>
+                          <th className="px-3 py-1.5 text-left">Team</th>
+                          <th className="px-2 py-1.5 text-center w-8" title="Played">MP</th>
+                          <th className="px-2 py-1.5 text-center w-8" title="Won">W</th>
+                          <th className="px-2 py-1.5 text-center w-8" title="Drawn">D</th>
+                          <th className="px-2 py-1.5 text-center w-8" title="Lost">L</th>
+                          <th className="px-2 py-1.5 text-center w-8" title="Goal Difference">GD</th>
+                          <th className="px-2 py-1.5 text-center w-10 font-bold" title="Points">Pts</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.length === 0 ? (
+                          <tr>
+                            <td colSpan={9} className="px-3 py-3 text-xs text-muted-foreground text-center">
+                              No teams in this group
+                            </td>
+                          </tr>
+                        ) : rows.map((row, i) => {
+                          const isDirect = i < directQualifiers;
+                          const isLL = i === directQualifiers && luckyLoserIds.has(row.team.id);
+                          const stripe = isDirect
+                            ? 'bg-green-500'
+                            : isLL
+                            ? 'bg-yellow-400'
+                            : 'bg-transparent';
+                          return (
+                            <tr key={row.team.id} className="border-b last:border-0 hover:bg-muted/20">
+                              <td className={`w-1 ${stripe}`} />
+                              <td className="px-3 py-2 text-muted-foreground text-xs">{i + 1}</td>
+                              <td className="px-3 py-2">
+                                <span className="flex items-center gap-2">
+                                  {row.team.imageUrl ? (
+                                    <img src={row.team.imageUrl} alt={row.team.name} className="h-5 w-5 rounded-sm object-cover flex-shrink-0" />
+                                  ) : (
+                                    <span className="h-5 w-5 rounded-sm bg-muted inline-block flex-shrink-0" />
+                                  )}
+                                  <span className="truncate">{row.team.name}</span>
+                                </span>
+                              </td>
+                              <td className="px-2 py-2 text-center tabular-nums">{row.mp}</td>
+                              <td className="px-2 py-2 text-center tabular-nums">{row.w}</td>
+                              <td className="px-2 py-2 text-center tabular-nums">{row.d}</td>
+                              <td className="px-2 py-2 text-center tabular-nums">{row.l}</td>
+                              <td className="px-2 py-2 text-center tabular-nums">{row.gd > 0 ? `+${row.gd}` : row.gd}</td>
+                              <td className="px-2 py-2 text-center tabular-nums font-bold">{row.pts}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Legend */}
+            <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-sm bg-green-500" /> Direct qualifier
+              </span>
+              {numLuckyLosers > 0 && (
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-sm bg-yellow-400" /> Lucky loser
+                </span>
+              )}
+            </div>
+
+            {/* Admin tiebreaker resolution */}
+            {isAdmin && (groupDisciplinaryTies.length > 0 || (numLuckyLosers > 0 && llDisciplinaryTies.length > 0)) && (
+              <div>
+                <h3 className="mb-1 text-sm font-semibold">Tiebreaker Resolution</h3>
+                <p className="mb-4 text-xs text-muted-foreground">
+                  These teams are equal on all objective criteria. Set the order manually — position 1 ranks highest.
+                </p>
+
+                {groupDisciplinaryTies.map(({ group, ties }) => (
+                  <div key={group.id} className="mb-5">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Group {group.name}
+                    </p>
+                    {ties.map(tied => {
+                      const key = makeDisciplinaryKey(tied.map(t => t.teamId));
+                      const currentOrder = gdChoices[key] ?? tied.map(t => t.teamId);
+                      return (
+                        <div key={key} className="mb-3 rounded-lg border p-3 space-y-1.5">
+                          {currentOrder.map((teamId, idx) => {
+                            const team = teams.find(t => t.id === teamId);
+                            if (!team) return null;
+                            return (
+                              <div key={teamId} className="flex items-center gap-2 rounded-md border bg-muted/20 px-2.5 py-1.5">
+                                <span className="w-5 text-xs font-bold tabular-nums text-muted-foreground">{idx + 1}.</span>
+                                {team.imageUrl ? (
+                                  <img src={team.imageUrl} alt={team.name} className="h-5 w-5 rounded-sm object-cover flex-shrink-0" />
+                                ) : (
+                                  <span className="h-5 w-5 rounded-sm bg-muted inline-block flex-shrink-0" />
+                                )}
+                                <span className="flex-1 text-sm">{team.name}</span>
+                                <div className="flex gap-0.5">
+                                  <button
+                                    type="button"
+                                    disabled={idx === 0 || saveChoicesMutation.isPending}
+                                    onClick={() => {
+                                      const next = [...currentOrder];
+                                      [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+                                      saveChoicesMutation.mutate({ groupDisciplinaryChoices: { ...gdChoices, [key]: next } });
+                                    }}
+                                    className="rounded px-1 py-0.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
+                                  >↑</button>
+                                  <button
+                                    type="button"
+                                    disabled={idx === currentOrder.length - 1 || saveChoicesMutation.isPending}
+                                    onClick={() => {
+                                      const next = [...currentOrder];
+                                      [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+                                      saveChoicesMutation.mutate({ groupDisciplinaryChoices: { ...gdChoices, [key]: next } });
+                                    }}
+                                    className="rounded px-1 py-0.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
+                                  >↓</button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+
+                {numLuckyLosers > 0 && llDisciplinaryTies.length > 0 && (
+                  <div className="mb-5">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Lucky Loser tiebreakers
+                    </p>
+                    {llDisciplinaryTies.map(tied => {
+                      const key = makeDisciplinaryKey(tied.map(t => t.teamId));
+                      const currentOrder = llChoices[key] ?? tied.map(t => t.teamId);
+                      return (
+                        <div key={key} className="mb-3 rounded-lg border p-3 space-y-1.5">
+                          {currentOrder.map((teamId, idx) => {
+                            const team = teams.find(t => t.id === teamId);
+                            if (!team) return null;
+                            return (
+                              <div key={teamId} className="flex items-center gap-2 rounded-md border bg-muted/20 px-2.5 py-1.5">
+                                <span className="w-5 text-xs font-bold tabular-nums text-muted-foreground">{idx + 1}.</span>
+                                {team.imageUrl ? (
+                                  <img src={team.imageUrl} alt={team.name} className="h-5 w-5 rounded-sm object-cover flex-shrink-0" />
+                                ) : (
+                                  <span className="h-5 w-5 rounded-sm bg-muted inline-block flex-shrink-0" />
+                                )}
+                                <span className="flex-1 text-sm">{team.name}</span>
+                                <div className="flex gap-0.5">
+                                  <button
+                                    type="button"
+                                    disabled={idx === 0 || saveChoicesMutation.isPending}
+                                    onClick={() => {
+                                      const next = [...currentOrder];
+                                      [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+                                      saveChoicesMutation.mutate({ luckyLoserDisciplinaryChoices: { ...llChoices, [key]: next } });
+                                    }}
+                                    className="rounded px-1 py-0.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
+                                  >↑</button>
+                                  <button
+                                    type="button"
+                                    disabled={idx === currentOrder.length - 1 || saveChoicesMutation.isPending}
+                                    onClick={() => {
+                                      const next = [...currentOrder];
+                                      [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+                                      saveChoicesMutation.mutate({ luckyLoserDisciplinaryChoices: { ...llChoices, [key]: next } });
+                                    }}
+                                    className="rounded px-1 py-0.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
+                                  >↓</button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </>)}
+        </section>
+      )}
+
+      {activeTab === 'bonus' && (
+        <BonusQuestionsTab tournamentId={id!} deadlinePassed={false} />
+      )}
+
+      {activeTab === 'knockout' && (
+        <TournamentKnockoutTabContent tournamentId={id!} />
+      )}
+
+      {activeTab === 'group' && <>
 
       {/* Teams */}
       <section className="mb-8">
@@ -879,14 +1239,22 @@ export default function TournamentDetailPage() {
           <h2 className="text-lg font-semibold">Matches ({groupStageMatches.length})</h2>
           {isAdmin && (
             <div className="flex flex-wrap gap-2">
+              <button
+                  onClick={() => confirmResultsMutation.mutate()}
+                  disabled={confirmResultsMutation.isPending || Object.keys(pendingResults).length === 0}
+                  className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {confirmResultsMutation.isPending
+                    ? 'Confirming…'
+                    : `Confirm Results (${Object.keys(pendingResults).length})`}
+                </button>
               {matchList.some(m => m.stage === 'group') && (
                 <>
                   <button
-                    onClick={() => simulateGroupStageMutation.mutate()}
-                    disabled={simulateGroupStageMutation.isPending}
-                    className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
+                    onClick={simulateGroupStage}
+                    className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
                   >
-                    {simulateGroupStageMutation.isPending ? 'Simulating…' : 'Simulate Group Stage'}
+                    Simulate Group Stage
                   </button>
                   <button
                     onClick={() => clearGroupStageMutation.mutate()}
@@ -951,11 +1319,15 @@ export default function TournamentDetailPage() {
                         </div>
                       </div>
 
-                      {/* Teams + score button */}
+                      {/* Teams + score */}
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <TeamBadge name={match.homeTeamName} imageUrl={match.homeTeamImageUrl} />
-                          {match.status === 'completed' ? (
+                          {pendingResults[match.id] ? (
+                            <span className="rounded bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 text-sm font-bold tabular-nums text-amber-800 dark:text-amber-200">
+                              {pendingResults[match.id].home} – {pendingResults[match.id].away}
+                            </span>
+                          ) : match.status === 'completed' ? (
                             <span className="rounded bg-muted px-2 py-0.5 text-sm font-bold tabular-nums">
                               {match.homeScore} – {match.awayScore}
                             </span>
@@ -965,27 +1337,50 @@ export default function TournamentDetailPage() {
                           <TeamBadge name={match.awayTeamName} imageUrl={match.awayTeamImageUrl} />
                         </div>
 
-                        {isAdmin && match.status === 'scheduled' && scoreMatchId !== match.id && (
-                          <button
-                            onClick={() => openScoreForm(match.id)}
-                            className="rounded-md border px-3 py-1 text-xs hover:bg-muted"
-                          >
-                            Enter Score
-                          </button>
+                        {isAdmin && scoreMatchId !== match.id && (
+                          <div className="flex items-center gap-1.5">
+                            {pendingResults[match.id] ? (
+                              <>
+                                <button
+                                  onClick={() => openScoreForm(match.id)}
+                                  className="rounded-md border px-2.5 py-1 text-xs hover:bg-muted"
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  onClick={() => removePendingResult(match.id)}
+                                  className="rounded-md border px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
+                                  title="Remove staged result"
+                                >
+                                  ×
+                                </button>
+                              </>
+                            ) : match.status === 'scheduled' ? (
+                              <button
+                                onClick={() => openScoreForm(match.id)}
+                                className="rounded-md border px-3 py-1 text-xs hover:bg-muted"
+                              >
+                                Enter Score
+                              </button>
+                            ) : null}
+                          </div>
                         )}
                       </div>
 
                       {/* Score form */}
                       {scoreMatchId === match.id && (
-                        <form onSubmit={handleEnterScore} className="mt-3 flex flex-wrap items-center gap-2">
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
                           <input
                             type="number"
                             min="0"
                             value={homeScore}
-                            onChange={e => setHomeScore(e.target.value)}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setHomeScore(val);
+                              autoStageScore(match.id, val, awayScore);
+                            }}
                             className="w-14 rounded-md border px-2 py-1.5 text-center text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                             placeholder="0"
-                            required
                             autoFocus
                           />
                           <span className="text-sm font-medium">–</span>
@@ -993,27 +1388,22 @@ export default function TournamentDetailPage() {
                             type="number"
                             min="0"
                             value={awayScore}
-                            onChange={e => setAwayScore(e.target.value)}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setAwayScore(val);
+                              autoStageScore(match.id, homeScore, val);
+                            }}
                             className="w-14 rounded-md border px-2 py-1.5 text-center text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                             placeholder="0"
-                            required
                           />
-                          {scoreError && <span className="text-xs text-red-600">{scoreError}</span>}
-                          <button
-                            type="submit"
-                            disabled={updateScoreMutation.isPending}
-                            className="rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                          >
-                            {updateScoreMutation.isPending ? 'Saving…' : 'Save'}
-                          </button>
                           <button
                             type="button"
-                            onClick={() => { setScoreMatchId(null); setScoreError(''); }}
+                            onClick={() => setScoreMatchId(null)}
                             className="rounded-md border px-3 py-1.5 text-xs hover:bg-muted"
                           >
                             Cancel
                           </button>
-                        </form>
+                        </div>
                       )}
 
                       {/* Inline edit form */}
@@ -1142,6 +1532,7 @@ export default function TournamentDetailPage() {
           </div>
         )}
       </section>
+      </>}
     </main>
   );
 }

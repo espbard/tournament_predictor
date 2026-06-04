@@ -49,20 +49,9 @@ function computeH2HStats(
   return stats;
 }
 
-function disciplinaryRank(
-  teamId: string,
-  tiedGroup: TeamTiebreakerStat[],
-  choices: DisciplinaryChoices,
-): number {
-  const key = makeDisciplinaryKey(tiedGroup.map(t => t.teamId));
-  const ranking = choices[key];
-  if (!ranking) return Infinity;
-  const pos = ranking.indexOf(teamId);
-  return pos === -1 ? Infinity : pos;
-}
-
-// Sort group teams using H2H tiebreakers (rules 1–5), then disciplinary
-// groupMatches: all effective scored matches in the group
+// Sort group teams. Within each equal-points group, applies criteria in order:
+//   1. H2H points  2. H2H GD  3. H2H GF  4. overall GD  5. overall GF
+// Teams still equal on all five → disciplinary choices (manual, keyed by sub-group).
 export function sortGroupTeams(
   teams: TeamTiebreakerStat[],
   groupMatches: MatchResult[],
@@ -70,6 +59,7 @@ export function sortGroupTeams(
 ): TeamTiebreakerStat[] {
   if (teams.length <= 1) return [...teams];
 
+  // Group by overall points
   const byPoints = new Map<number, TeamTiebreakerStat[]>();
   for (const t of teams) {
     if (!byPoints.has(t.points)) byPoints.set(t.points, []);
@@ -77,54 +67,104 @@ export function sortGroupTeams(
   }
 
   const result: TeamTiebreakerStat[] = [];
-  for (const [, group] of [...byPoints].sort(([a], [b]) => b - a)) {
-    if (group.length === 1) {
-      result.push(group[0]);
+  for (const [, pointsGroup] of [...byPoints].sort(([a], [b]) => b - a)) {
+    if (pointsGroup.length === 1) {
+      result.push(pointsGroup[0]);
       continue;
     }
 
-    const h2h = computeH2HStats(group.map(t => t.teamId), groupMatches);
-    const sorted = [...group].sort((a, b) => {
-      const ha = h2h.get(a.teamId)!;
-      const hb = h2h.get(b.teamId)!;
-      // H2H points → H2H GD → H2H GF
+    // H2H stats computed among all teams in this equal-points group
+    const h2h = computeH2HStats(pointsGroup.map(t => t.teamId), groupMatches);
+
+    // Group by all 5 criteria to find truly tied sub-groups
+    const criteriaGroups = new Map<string, TeamTiebreakerStat[]>();
+    for (const t of pointsGroup) {
+      const h = h2h.get(t.teamId)!;
+      const key = `${h.points}|${h.gd}|${h.gf}|${t.gd}|${t.gf}`;
+      if (!criteriaGroups.has(key)) criteriaGroups.set(key, []);
+      criteriaGroups.get(key)!.push(t);
+    }
+
+    // Sort sub-groups by the same criteria order (all teams in a sub-group are identical)
+    const sortedSubGroups = [...criteriaGroups.values()].sort((ga, gb) => {
+      const ha = h2h.get(ga[0].teamId)!;
+      const hb = h2h.get(gb[0].teamId)!;
       if (hb.points !== ha.points) return hb.points - ha.points;
       if (hb.gd !== ha.gd) return hb.gd - ha.gd;
       if (hb.gf !== ha.gf) return hb.gf - ha.gf;
-      // Overall GD → overall GF
-      if (b.gd !== a.gd) return b.gd - a.gd;
-      if (b.gf !== a.gf) return b.gf - a.gf;
-      // Disciplinary
-      const da = disciplinaryRank(a.teamId, group, choices);
-      const db = disciplinaryRank(b.teamId, group, choices);
-      if (da !== db) return da - db;
-      return a.teamId.localeCompare(b.teamId); // stable fallback
+      if (gb[0].gd !== ga[0].gd) return gb[0].gd - ga[0].gd;
+      return gb[0].gf - ga[0].gf;
     });
-    result.push(...sorted);
+
+    for (const subGroup of sortedSubGroups) {
+      if (subGroup.length === 1) {
+        result.push(subGroup[0]);
+        continue;
+      }
+      // Disciplinary rank — key is the sub-group's teams, matching findGroupDisciplinaryTies
+      const subKey = makeDisciplinaryKey(subGroup.map(t => t.teamId));
+      const ranked = choices[subKey] ?? [];
+      result.push(
+        ...[...subGroup].sort((a, b) => {
+          const ra = ranked.indexOf(a.teamId);
+          const rb = ranked.indexOf(b.teamId);
+          const da = ra === -1 ? Infinity : ra;
+          const db = rb === -1 ? Infinity : rb;
+          if (da !== db) return da - db;
+          return a.teamId.localeCompare(b.teamId);
+        }),
+      );
+    }
   }
   return result;
 }
 
-// Sort lucky loser candidates using overall stats only (they're from different groups)
-// Tiebreaker order: points → overall GD → overall GF → disciplinary
+// Sort lucky loser candidates. Criteria in order:
+//   1. overall points  2. overall GD  3. overall GF
+// Teams still equal on all three → disciplinary choices (manual).
 export function sortLuckyLosers(
   teams: TeamTiebreakerStat[],
   choices: DisciplinaryChoices = {},
 ): TeamTiebreakerStat[] {
-  return [...teams].sort((a, b) => {
-    if (b.points !== a.points) return b.points - a.points;
-    if (b.gd !== a.gd) return b.gd - a.gd;
-    if (b.gf !== a.gf) return b.gf - a.gf;
-    // Find tied group: same points, gd, gf
-    const tiedGroup = teams.filter(t => t.points === a.points && t.gd === a.gd && t.gf === a.gf);
-    const da = disciplinaryRank(a.teamId, tiedGroup, choices);
-    const db = disciplinaryRank(b.teamId, tiedGroup, choices);
-    if (da !== db) return da - db;
-    return a.teamId.localeCompare(b.teamId);
+  if (teams.length <= 1) return [...teams];
+
+  // Group by all 3 criteria to find truly tied sub-groups
+  const criteriaGroups = new Map<string, TeamTiebreakerStat[]>();
+  for (const t of teams) {
+    const key = `${t.points}|${t.gd}|${t.gf}`;
+    if (!criteriaGroups.has(key)) criteriaGroups.set(key, []);
+    criteriaGroups.get(key)!.push(t);
+  }
+
+  const sortedSubGroups = [...criteriaGroups.values()].sort((ga, gb) => {
+    if (gb[0].points !== ga[0].points) return gb[0].points - ga[0].points;
+    if (gb[0].gd !== ga[0].gd) return gb[0].gd - ga[0].gd;
+    return gb[0].gf - ga[0].gf;
   });
+
+  const result: TeamTiebreakerStat[] = [];
+  for (const subGroup of sortedSubGroups) {
+    if (subGroup.length === 1) {
+      result.push(subGroup[0]);
+      continue;
+    }
+    const subKey = makeDisciplinaryKey(subGroup.map(t => t.teamId));
+    const ranked = choices[subKey] ?? [];
+    result.push(
+      ...[...subGroup].sort((a, b) => {
+        const ra = ranked.indexOf(a.teamId);
+        const rb = ranked.indexOf(b.teamId);
+        const da = ra === -1 ? Infinity : ra;
+        const db = rb === -1 ? Infinity : rb;
+        if (da !== db) return da - db;
+        return a.teamId.localeCompare(b.teamId);
+      }),
+    );
+  }
+  return result;
 }
 
-// Detect which teams in a group need disciplinary resolution (equal on all 5 criteria)
+// Detect which teams in a group need disciplinary resolution (equal on all 5 criteria).
 export function findGroupDisciplinaryTies(
   teams: TeamTiebreakerStat[],
   groupMatches: MatchResult[],
@@ -154,7 +194,7 @@ export function findGroupDisciplinaryTies(
   return tiedGroups;
 }
 
-// Detect which lucky loser candidates need disciplinary resolution (equal on GD and GF)
+// Detect which lucky loser candidates need disciplinary resolution (equal on pts, GD, GF).
 export function findLuckyLoserDisciplinaryTies(
   teams: TeamTiebreakerStat[],
 ): TeamTiebreakerStat[][] {

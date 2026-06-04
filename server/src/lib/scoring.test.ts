@@ -275,9 +275,11 @@ describe('calculateKnockoutPoints', () => {
     const preds: BracketPredictions = {
       'round_of_16_0': { homeScore: 2, awayScore: 1, progressingTeamId: null }, // exact
     };
-    const points = calculateKnockoutPoints(allMatches, firstRound, preds, CONFIG);
+    const result = calculateKnockoutPoints(allMatches, firstRound, preds, CONFIG);
     // R16-0: exact(3) + result(1) = 4; R16-1: no prediction; QF-0: no bracket pred
-    expect(points).toBeGreaterThanOrEqual(4);
+    expect(result.total).toBeGreaterThanOrEqual(4);
+    expect(result.breakdown.exactScore).toBe(3);
+    expect(result.breakdown.correctResult).toBe(1);
   });
 
   it('awards correct_team_in_knockout_tie for correctly predicted QF team', () => {
@@ -286,9 +288,10 @@ describe('calculateKnockoutPoints', () => {
       'round_of_16_1': { homeScore: 0, awayScore: 1, progressingTeamId: null }, // team-d advances
       'quarter_final_0': { homeScore: 1, awayScore: 0, progressingTeamId: null }, // team-a wins QF
     };
-    const points = calculateKnockoutPoints(allMatches, firstRound, preds, CONFIG);
+    const result = calculateKnockoutPoints(allMatches, firstRound, preds, CONFIG);
     // R16-0: result(1); R16-1: result(1); QF-0: result(1) + team-a predicted(1) + team-d predicted(1)
-    expect(points).toBe(5);
+    expect(result.total).toBe(5);
+    expect(result.breakdown.correctTeamInKnockoutTie).toBe(2);
   });
 
   it('does not award knockout_tie for first round (teams are from draw)', () => {
@@ -297,27 +300,115 @@ describe('calculateKnockoutPoints', () => {
     const preds: BracketPredictions = {
       'round_of_16_0': { homeScore: 2, awayScore: 1, progressingTeamId: null },
     };
-    const points = calculateKnockoutPoints(onlyR16, firstRound, preds, CONFIG);
+    const result = calculateKnockoutPoints(onlyR16, firstRound, preds, CONFIG);
     // R16-0: exact(3) + result(1) = 4; no knockout_tie for first round
-    expect(points).toBe(4);
+    expect(result.total).toBe(4);
+    expect(result.breakdown.correctTeamInKnockoutTie).toBe(0);
   });
 
   it('awards correct_winner for correct final winner prediction via trajectory', () => {
-    const finalMatches = [
-      ...allMatches.slice(0, 3),
-      { id: 'f-0', stage: 'final', homeTeamId: 'team-a', awayTeamId: 'team-d', homeScore: 1, awayScore: 0, progressingTeamId: 'team-a', status: 'completed' },
+    // Use semi_final as firstRound so the bracket is symmetric (2 SF → 1 Final)
+    const sfFirstRound = 'semi_final';
+    const sfMatches = [
+      { id: 'sf-0', stage: 'semi_final', homeTeamId: 'team-a', awayTeamId: 'team-b', homeScore: 2, awayScore: 0, progressingTeamId: 'team-a', status: 'completed' },
+      { id: 'sf-1', stage: 'semi_final', homeTeamId: 'team-c', awayTeamId: 'team-d', homeScore: 0, awayScore: 1, progressingTeamId: 'team-d', status: 'completed' },
     ];
+    const finalMatch = { id: 'f-0', stage: 'final', homeTeamId: 'team-a', awayTeamId: 'team-d', homeScore: 1, awayScore: 0, progressingTeamId: 'team-a', status: 'completed' };
+    const matchesForTest = [...sfMatches, finalMatch];
     const preds: BracketPredictions = {
-      'round_of_16_0': { homeScore: 1, awayScore: 0, progressingTeamId: null }, // team-a
-      'round_of_16_1': { homeScore: 0, awayScore: 1, progressingTeamId: null }, // team-d
-      'quarter_final_0': { homeScore: 1, awayScore: 0, progressingTeamId: null }, // team-a
-      'semi_final_0': { homeScore: 1, awayScore: 0, progressingTeamId: null }, // would need team-a here
-      'final_0': { homeScore: 1, awayScore: 0, progressingTeamId: null }, // team-a wins
+      'semi_final_0': { homeScore: 1, awayScore: 0, progressingTeamId: null }, // team-a wins SF-0
+      'semi_final_1': { homeScore: 0, awayScore: 1, progressingTeamId: null }, // team-d wins SF-1
+      'final_0': { homeScore: 1, awayScore: 0, progressingTeamId: null }, // team-a wins final
     };
-    const points = calculateKnockoutPoints(finalMatches, firstRound, preds, CONFIG);
-    // Final: team-a predicted via trajectory (correct_winner=10) + team-d predicted (correct_team_in_final=5)
-    // + basic match scoring for R16, QF, Final
-    expect(points).toBeGreaterThan(0);
+    const result = calculateKnockoutPoints(matchesForTest, sfFirstRound, preds, CONFIG);
+    // Final: team-a via trajectory → correct_winner(10), team-d via trajectory → correct_team_in_final(5)
+    expect(result.breakdown.correctWinner).toBe(CONFIG.correct_winner); // 10
+    expect(result.breakdown.correctTeamInFinal).toBe(CONFIG.correct_team_in_final); // 5
+  });
+
+  // ── flip logic tests ────────────────────────────────────────────────────────
+  // User's bracket trajectory predicts Germany (home) vs Italy (away) at QF.
+  // r16-0: germany beats france 2-0; r16-1: italy beats portugal 0-2.
+  // User preds for r16 match actuals exactly, so baseline = exactScore:6, correctResult:2.
+  describe('score flip logic (predicted Germany 2-1 Italy at QF)', () => {
+    const flipFirstRound = 'round_of_16';
+    const flipR16: typeof allMatches = [
+      { id: 'fr16-0', stage: 'round_of_16', homeTeamId: 'germany', awayTeamId: 'france', homeScore: 2, awayScore: 0, progressingTeamId: 'germany', status: 'completed' },
+      { id: 'fr16-1', stage: 'round_of_16', homeTeamId: 'portugal', awayTeamId: 'italy', homeScore: 0, awayScore: 2, progressingTeamId: 'italy', status: 'completed' },
+    ];
+    const flipPreds: BracketPredictions = {
+      'round_of_16_0': { homeScore: 2, awayScore: 0, progressingTeamId: null }, // germany wins → predictedHome at QF
+      'round_of_16_1': { homeScore: 0, awayScore: 2, progressingTeamId: null }, // italy wins  → predictedAway at QF
+      'quarter_final_0': { homeScore: 2, awayScore: 1, progressingTeamId: null },
+    };
+    function makeFlipMatches(homeId: string, awayId: string, hs: number, as_: number, prog: string | null) {
+      return [
+        ...flipR16,
+        { id: 'fqf-0', stage: 'quarter_final', homeTeamId: homeId, awayTeamId: awayId, homeScore: hs, awayScore: as_, progressingTeamId: prog, status: 'completed' as const },
+      ];
+    }
+
+    it('case 1: Germany 2-1 Italy — exact + result + both teams bonus (no flip)', () => {
+      const r = calculateKnockoutPoints(makeFlipMatches('germany', 'italy', 2, 1, 'germany'), flipFirstRound, flipPreds, CONFIG);
+      expect(r.breakdown.exactScore).toBe(9);        // r16×2 + qf
+      expect(r.breakdown.correctResult).toBe(3);     // r16×2 + qf
+      expect(r.breakdown.correctTeamInKnockoutTie).toBe(2); // germany + italy
+    });
+
+    it('case 2: Italy 1-2 Germany — still perfect (both teams swapped → flip)', () => {
+      const r = calculateKnockoutPoints(makeFlipMatches('italy', 'germany', 1, 2, 'germany'), flipFirstRound, flipPreds, CONFIG);
+      expect(r.breakdown.exactScore).toBe(9);
+      expect(r.breakdown.correctResult).toBe(3);
+      expect(r.breakdown.correctTeamInKnockoutTie).toBe(2);
+    });
+
+    it('case 3: Germany 1-2 Italy — team bonuses only, no score/result points', () => {
+      const r = calculateKnockoutPoints(makeFlipMatches('germany', 'italy', 1, 2, 'italy'), flipFirstRound, flipPreds, CONFIG);
+      expect(r.breakdown.exactScore).toBe(6);        // only r16 baseline
+      expect(r.breakdown.correctResult).toBe(2);
+      expect(r.breakdown.correctTeamInKnockoutTie).toBe(2);
+    });
+
+    it('case 4: Spain 1-2 Germany — almost perfect (1 correct team on wrong side → flip)', () => {
+      const r = calculateKnockoutPoints(makeFlipMatches('spain', 'germany', 1, 2, 'germany'), flipFirstRound, flipPreds, CONFIG);
+      expect(r.breakdown.exactScore).toBe(9);        // flipped 2-1 matches prediction
+      expect(r.breakdown.correctResult).toBe(3);
+      expect(r.breakdown.correctTeamInKnockoutTie).toBe(1); // only germany
+    });
+
+    it('case 5: Spain 2-1 England — exact score + result, no team bonuses', () => {
+      const r = calculateKnockoutPoints(makeFlipMatches('spain', 'england', 2, 1, 'spain'), flipFirstRound, flipPreds, CONFIG);
+      expect(r.breakdown.exactScore).toBe(9);
+      expect(r.breakdown.correctResult).toBe(3);
+      expect(r.breakdown.correctTeamInKnockoutTie).toBe(0);
+    });
+
+    it('case 6: Spain 1-2 England — zero points from QF match', () => {
+      const r = calculateKnockoutPoints(makeFlipMatches('spain', 'england', 1, 2, 'england'), flipFirstRound, flipPreds, CONFIG);
+      expect(r.breakdown.exactScore).toBe(6);        // only r16 baseline
+      expect(r.breakdown.correctResult).toBe(2);
+      expect(r.breakdown.correctTeamInKnockoutTie).toBe(0);
+    });
+  });
+
+  it('does not award correct_winner when user predicted correct finalist but wrong winner', () => {
+    const sfFirstRound = 'semi_final';
+    const sfMatches = [
+      { id: 'sf-0', stage: 'semi_final', homeTeamId: 'team-a', awayTeamId: 'team-b', homeScore: 2, awayScore: 0, progressingTeamId: 'team-a', status: 'completed' },
+      { id: 'sf-1', stage: 'semi_final', homeTeamId: 'team-c', awayTeamId: 'team-d', homeScore: 0, awayScore: 1, progressingTeamId: 'team-d', status: 'completed' },
+    ];
+    // Final: team-a wins, but user predicted team-d to win
+    const finalMatch = { id: 'f-0', stage: 'final', homeTeamId: 'team-a', awayTeamId: 'team-d', homeScore: 1, awayScore: 0, progressingTeamId: 'team-a', status: 'completed' };
+    const matchesForTest = [...sfMatches, finalMatch];
+    const preds: BracketPredictions = {
+      'semi_final_0': { homeScore: 1, awayScore: 0, progressingTeamId: null }, // team-a wins SF-0
+      'semi_final_1': { homeScore: 0, awayScore: 1, progressingTeamId: null }, // team-d wins SF-1
+      'final_0': { homeScore: 0, awayScore: 1, progressingTeamId: null },      // user predicts away (team-d) to win
+    };
+    const result = calculateKnockoutPoints(matchesForTest, sfFirstRound, preds, CONFIG);
+    // Both teams predicted in final correctly, but user picked team-d to win (wrong) → no correct_winner
+    expect(result.breakdown.correctWinner).toBe(0);
+    expect(result.breakdown.correctTeamInFinal).toBe(CONFIG.correct_team_in_final * 2);
   });
 
   it('awards correct_team_in_final for correctly predicted finalist who loses', () => {
@@ -336,9 +427,10 @@ describe('calculateKnockoutPoints', () => {
       'semi_final_0': { homeScore: 1, awayScore: 0, progressingTeamId: null }, // home = team-d (from QF away win) → team-d to Final
       'final_0': { homeScore: 0, awayScore: 1, progressingTeamId: null }, // team-d wins final
     };
-    const points = calculateKnockoutPoints(matchesWithFinal, firstRound, preds, CONFIG);
+    const result = calculateKnockoutPoints(matchesWithFinal, firstRound, preds, CONFIG);
     // Final: user predicted team-d to be in final (correct, but they lose) → correct_team_in_final(5)
     // team-a: user didn't predict team-a to reach the final (user had team-d winning QF)
-    expect(points).toBeGreaterThanOrEqual(5);
+    expect(result.total).toBeGreaterThanOrEqual(5);
+    expect(result.breakdown.correctTeamInFinal).toBeGreaterThanOrEqual(5);
   });
 });

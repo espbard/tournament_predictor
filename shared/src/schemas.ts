@@ -99,6 +99,8 @@ export const UpdateKnockoutConfigSchema = z.object({
   directQualifiers: z.number().int().min(1).max(4).optional(),
   luckyLosers: z.number().int().min(0).optional(),
   bracketSlots: z.record(z.string()).optional(),
+  groupDisciplinaryChoices: z.record(z.array(z.string())).optional(),
+  luckyLoserDisciplinaryChoices: z.record(z.array(z.string())).optional(),
 });
 
 export type UpdateKnockoutConfigInput = z.infer<typeof UpdateKnockoutConfigSchema>;

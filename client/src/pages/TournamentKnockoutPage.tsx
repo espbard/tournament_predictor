@@ -281,12 +281,12 @@ interface FlatAdminMatch {
 
 function FocusedAdminMatchCard({
   match,
-  onSave,
-  isSaving,
+  onQueue,
+  queuedScore,
 }: {
   match: MatchWithTeams | null;
-  onSave: (home: number, away: number, progressingTeamId: string | null) => void;
-  isSaving: boolean;
+  onQueue: (home: number, away: number, progressingTeamId: string | null) => void;
+  queuedScore?: { home: number; away: number; progressingTeamId: string | null } | null;
 }) {
   const [homeStr, setHomeStr] = useState('');
   const [awayStr, setAwayStr] = useState('');
@@ -296,16 +296,24 @@ function FocusedAdminMatchCard({
   useEffect(() => {
     if (match?.id !== prevMatchIdRef.current) {
       prevMatchIdRef.current = match?.id ?? null;
-      setHomeStr(match?.homeScore != null ? String(match.homeScore) : '');
-      setAwayStr(match?.awayScore != null ? String(match.awayScore) : '');
-      setSelectedWinnerId(null);
+      if (queuedScore) {
+        setHomeStr(String(queuedScore.home));
+        setAwayStr(String(queuedScore.away));
+        setSelectedWinnerId(queuedScore.progressingTeamId);
+      } else {
+        setHomeStr(match?.homeScore != null ? String(match.homeScore) : '');
+        setAwayStr(match?.awayScore != null ? String(match.awayScore) : '');
+        setSelectedWinnerId(null);
+      }
     }
-  }, [match?.id]);
+  }, [match?.id]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    setHomeStr(match?.homeScore != null ? String(match.homeScore) : '');
-    setAwayStr(match?.awayScore != null ? String(match.awayScore) : '');
-  }, [match?.homeScore, match?.awayScore]);
+    if (!queuedScore) {
+      setHomeStr(match?.homeScore != null ? String(match.homeScore) : '');
+      setAwayStr(match?.awayScore != null ? String(match.awayScore) : '');
+    }
+  }, [match?.homeScore, match?.awayScore, queuedScore]);
 
   const homeNum = homeStr === '' ? null : parseInt(homeStr, 10);
   const awayNum = awayStr === '' ? null : parseInt(awayStr, 10);
@@ -322,9 +330,15 @@ function FocusedAdminMatchCard({
     (isCompleted && match!.homeScore === match!.awayScore && !match!.progressingTeamId)
   );
 
-  function handleSave() {
-    if (!bothValid) return;
-    onSave(homeNum!, awayNum!, isDrawEntry ? (selectedWinnerId ?? null) : null);
+  const isQueued = !!queuedScore;
+
+  function tryAutoQueue(hStr: string, aStr: string, winnerId: string | null) {
+    const h = hStr === '' ? null : parseInt(hStr, 10);
+    const a = aStr === '' ? null : parseInt(aStr, 10);
+    if (h === null || a === null || isNaN(h) || isNaN(a) || h < 0 || a < 0) return;
+    const isDraw = h === a;
+    if (isDraw && !winnerId) return;
+    onQueue(h, a, isDraw ? winnerId : null);
   }
 
   if (!match) {
@@ -336,7 +350,13 @@ function FocusedAdminMatchCard({
   }
 
   return (
-    <div className="rounded-xl border-2 bg-card shadow-sm overflow-hidden w-full max-w-xs mx-auto">
+    <div className={`rounded-xl border-2 shadow-sm overflow-hidden w-full max-w-xs mx-auto ${isQueued ? 'border-amber-400 bg-amber-50/10 dark:bg-amber-900/10' : 'bg-card'}`}>
+      {isQueued && (
+        <div className="px-4 py-1.5 bg-amber-100/60 dark:bg-amber-900/30 text-[11px] font-medium text-amber-800 dark:text-amber-300 text-center tracking-wide">
+          Staged — pending confirmation
+        </div>
+      )}
+
       {/* Home */}
       <div className={`flex items-center gap-3 px-4 py-3.5 ${homeWins ? 'bg-primary/5' : ''}`}>
         {match.homeTeamImageUrl
@@ -350,9 +370,12 @@ function FocusedAdminMatchCard({
           type="text"
           inputMode="numeric"
           value={homeStr}
-          onChange={e => setHomeStr(e.target.value.replace(/\D/g, '').slice(0, 2))}
-          onKeyDown={e => e.key === 'Enter' && !showTiebreaker && bothValid && handleSave()}
-          disabled={!hasTeams || isSaving}
+          onChange={e => {
+            const val = e.target.value.replace(/\D/g, '').slice(0, 2);
+            setHomeStr(val);
+            tryAutoQueue(val, awayStr, selectedWinnerId);
+          }}
+          disabled={!hasTeams}
           className="w-11 h-9 text-center text-xl font-bold rounded-lg border bg-background disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-primary flex-shrink-0"
           placeholder="–"
         />
@@ -373,9 +396,12 @@ function FocusedAdminMatchCard({
           type="text"
           inputMode="numeric"
           value={awayStr}
-          onChange={e => setAwayStr(e.target.value.replace(/\D/g, '').slice(0, 2))}
-          onKeyDown={e => e.key === 'Enter' && !showTiebreaker && bothValid && handleSave()}
-          disabled={!hasTeams || isSaving}
+          onChange={e => {
+            const val = e.target.value.replace(/\D/g, '').slice(0, 2);
+            setAwayStr(val);
+            tryAutoQueue(homeStr, val, selectedWinnerId);
+          }}
+          disabled={!hasTeams}
           className="w-11 h-9 text-center text-xl font-bold rounded-lg border bg-background disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-primary flex-shrink-0"
           placeholder="–"
         />
@@ -397,7 +423,10 @@ function FocusedAdminMatchCard({
                 <button
                   key={team.id}
                   type="button"
-                  onClick={() => setSelectedWinnerId(team.id)}
+                  onClick={() => {
+                    setSelectedWinnerId(team.id);
+                    tryAutoQueue(homeStr, awayStr, team.id);
+                  }}
                   className={`flex-1 text-xs py-2 rounded-lg border font-medium transition-colors truncate px-1 ${
                     selectedWinnerId === team.id
                       ? 'bg-primary text-primary-foreground border-primary'
@@ -412,23 +441,8 @@ function FocusedAdminMatchCard({
         </>
       )}
 
-      {/* Save button */}
-      {hasTeams && (
-        <>
-          <div className="h-px bg-border" />
-          <div className="px-4 py-3">
-            <button
-              onClick={handleSave}
-              disabled={!bothValid || isSaving || (isDrawEntry && !selectedWinnerId)}
-              className="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
-            >
-              {isSaving ? 'Saving…' : isCompleted ? 'Update Result' : 'Save Result'}
-            </button>
-            {isDrawEntry && !selectedWinnerId && (
-              <p className="text-[11px] text-muted-foreground text-center mt-1.5">Select who advances to save</p>
-            )}
-          </div>
-        </>
+      {isDrawEntry && !selectedWinnerId && hasTeams && (
+        <p className="text-[11px] text-muted-foreground text-center px-4 pb-3">Select who advances to stage</p>
       )}
     </div>
   );
@@ -449,7 +463,6 @@ function FocusedAdminResults({
   const [currentIdx, setCurrentIdx] = useState(0);
   const [slideDir, setSlideDir] = useState<'fromRight' | 'fromLeft'>('fromRight');
   const [animKey, setAnimKey] = useState(0);
-  const autoAdvanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initedRef = useRef(false);
 
   const startIdx = ROUND_ORDER.indexOf(firstRound);
@@ -496,22 +509,23 @@ function FocusedAdminResults({
     if (firstIncomplete > 0) setCurrentIdx(firstIncomplete);
   }, [knockoutMatches.length, allFlatMatches]);
 
-  const updateScoreMutation = useMutation({
-    mutationFn: ({ matchId, home, away, progressingTeamId }: { matchId: string; home: number; away: number; progressingTeamId: string | null }) =>
-      api.patch<Match>(`/matches/${matchId}`, { homeScore: home, awayScore: away, progressingTeamId }),
+  const [pendingResults, setPendingResults] = useState<Record<string, { home: number; away: number; progressingTeamId: string | null }>>({});
+
+  const confirmResultsMutation = useMutation({
+    mutationFn: async () => {
+      for (const [matchId, { home, away, progressingTeamId }] of Object.entries(pendingResults)) {
+        await api.patch<Match>(`/matches/${matchId}`, { homeScore: home, awayScore: away, progressingTeamId });
+      }
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['matches', tournamentId] });
-      if (autoAdvanceTimer.current) clearTimeout(autoAdvanceTimer.current);
-      autoAdvanceTimer.current = setTimeout(() => {
-        setCurrentIdx(prev => {
-          const next = allFlatMatches.findIndex((m, idx) => idx > prev && m.match?.status !== 'completed' && m.match?.homeTeamId && m.match?.awayTeamId);
-          return next !== -1 ? next : Math.min(prev + 1, allFlatMatches.length - 1);
-        });
-        setSlideDir('fromRight');
-        setAnimKey(k => k + 1);
-      }, 500);
+      setPendingResults({});
     },
   });
+
+  function queueResult(matchId: string, home: number, away: number, progressingTeamId: string | null) {
+    setPendingResults(prev => ({ ...prev, [matchId]: { home, away, progressingTeamId } }));
+  }
 
   function goTo(idx: number) {
     setSlideDir(idx > currentIdx ? 'fromRight' : 'fromLeft');
@@ -525,9 +539,9 @@ function FocusedAdminResults({
   const currentMatch = current.match;
   const isCompleted = currentMatch?.status === 'completed';
   const hasTbdTeams = !currentMatch?.homeTeamId || !currentMatch?.awayTeamId;
-  const canGoNext = currentIdx < allFlatMatches.length - 1 && (isCompleted || hasTbdTeams);
+  const canGoNext = currentIdx < allFlatMatches.length - 1 && (isCompleted || hasTbdTeams || (currentMatch?.id ? !!pendingResults[currentMatch.id] : false));
   const canGoPrev = currentIdx > 0;
-  const isSaving = updateScoreMutation.isPending;
+  const pendingCount = Object.keys(pendingResults).length;
 
   const currentStageLabel = current.isBronze ? 'Bronze Final' : ROUND_LABELS[current.stage as KnockoutFirstRound];
   const roundMatchesForDots = current.isBronze ? [] : allFlatMatches.filter(m => m.stage === current.stage && !m.isBronze);
@@ -538,6 +552,19 @@ function FocusedAdminResults({
         @keyframes ko_slide_fromRight { from { opacity: 0; transform: translateX(36px); } to { opacity: 1; transform: translateX(0); } }
         @keyframes ko_slide_fromLeft  { from { opacity: 0; transform: translateX(-36px); } to { opacity: 1; transform: translateX(0); } }
       `}</style>
+
+      {/* Confirm Results button */}
+      {pendingCount > 0 && (
+        <div className="flex justify-end">
+          <button
+            onClick={() => confirmResultsMutation.mutate()}
+            disabled={confirmResultsMutation.isPending}
+            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          >
+            {confirmResultsMutation.isPending ? 'Confirming…' : `Confirm Results (${pendingCount})`}
+          </button>
+        </div>
+      )}
 
       {/* Round tabs */}
       <div className="flex gap-1.5 flex-wrap">
@@ -594,12 +621,13 @@ function FocusedAdminResults({
               const flatIdx = allFlatMatches.indexOf(m);
               const isCurrent = flatIdx === currentIdx;
               const isDone = m.match?.status === 'completed';
+              const isStaged = m.match?.id ? !!pendingResults[m.match.id] : false;
               return (
                 <button
                   key={m.match?.id ?? flatIdx}
                   type="button"
                   onClick={() => goTo(flatIdx)}
-                  className={`rounded-full transition-all duration-200 ${isCurrent ? 'w-5 h-2.5 bg-primary' : isDone ? 'w-2.5 h-2.5 bg-green-500' : 'w-2.5 h-2.5 bg-muted-foreground/30 hover:bg-muted-foreground/50'}`}
+                  className={`rounded-full transition-all duration-200 ${isCurrent ? 'w-5 h-2.5 bg-primary' : isDone ? 'w-2.5 h-2.5 bg-green-500' : isStaged ? 'w-2.5 h-2.5 bg-amber-400' : 'w-2.5 h-2.5 bg-muted-foreground/30 hover:bg-muted-foreground/50'}`}
                   aria-label={`Match ${m.matchIdxInRound + 1}`}
                 />
               );
@@ -621,8 +649,10 @@ function FocusedAdminResults({
           <div key={animKey} className="flex-1" style={{ animation: `ko_slide_${slideDir} 0.22s ease-out` }}>
             <FocusedAdminMatchCard
               match={currentMatch ?? null}
-              onSave={(home, away, progressingTeamId) => currentMatch && updateScoreMutation.mutate({ matchId: currentMatch.id, home, away, progressingTeamId })}
-              isSaving={isSaving}
+              onQueue={(home, away, progressingTeamId) => {
+                if (currentMatch) queueResult(currentMatch.id, home, away, progressingTeamId);
+              }}
+              queuedScore={currentMatch?.id ? pendingResults[currentMatch.id] ?? null : null}
             />
           </div>
 
@@ -641,36 +671,31 @@ function FocusedAdminResults({
   );
 }
 
-// ── Main page ─────────────────────────────────────────────────────────────────
+// ── Knockout tab content (used both inline and on the standalone page) ─────────
 
-export default function TournamentKnockoutPage() {
-  const { id } = useParams<{ id: string }>();
+export function TournamentKnockoutTabContent({ tournamentId }: { tournamentId: string }) {
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
   const isAdmin = user?.isAdmin ?? false;
 
   const { data: tournament, isLoading } = useQuery({
-    queryKey: ['tournament', id],
-    queryFn: () => api.get<Tournament>(`/tournaments/${id}`),
-    enabled: !!id,
+    queryKey: ['tournament', tournamentId],
+    queryFn: () => api.get<Tournament>(`/tournaments/${tournamentId}`),
   });
 
   const { data: groupList = [] } = useQuery({
-    queryKey: ['groups', id],
-    queryFn: () => api.get<Group[]>(`/tournaments/${id}/groups`),
-    enabled: !!id,
+    queryKey: ['groups', tournamentId],
+    queryFn: () => api.get<Group[]>(`/tournaments/${tournamentId}/groups`),
   });
 
   const { data: allMatches = [] } = useQuery({
-    queryKey: ['matches', id],
-    queryFn: () => api.get<MatchWithTeams[]>(`/tournaments/${id}/matches`),
-    enabled: !!id,
+    queryKey: ['matches', tournamentId],
+    queryFn: () => api.get<MatchWithTeams[]>(`/tournaments/${tournamentId}/matches`),
   });
 
   const knockoutStages = new Set(['round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'bronze_final', 'final']);
   const knockoutMatches = allMatches.filter(m => knockoutStages.has(m.stage as string));
 
-  // Config state
   const [firstRound, setFirstRound] = useState<KnockoutFirstRound>(DEFAULT_CONFIG.firstRound);
   const [hasBronzeFinal, setHasBronzeFinal] = useState(DEFAULT_CONFIG.hasBronzeFinal);
   const [directQualifiers, setDirectQualifiers] = useState(DEFAULT_CONFIG.directQualifiers);
@@ -696,22 +721,27 @@ export default function TournamentKnockoutPage() {
 
   const saveConfigMutation = useMutation({
     mutationFn: (config: Partial<KnockoutConfig>) =>
-      api.patch<KnockoutConfig>(`/tournaments/${id}/knockout-config`, config),
+      api.patch<KnockoutConfig>(`/tournaments/${tournamentId}/knockout-config`, config),
     onSuccess: data => {
-      queryClient.setQueryData<Tournament>(['tournament', id], old =>
+      queryClient.setQueryData<Tournament>(['tournament', tournamentId], old =>
         old ? { ...old, knockoutConfig: data } : old
       );
     },
   });
 
+  const regenerateKnockoutMutation = useMutation({
+    mutationFn: () => api.post(`/tournaments/${tournamentId}/regenerate-knockout`, {}),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['matches', tournamentId] }),
+  });
+
   const simulateKnockoutMutation = useMutation({
-    mutationFn: () => api.post(`/tournaments/${id}/simulate-knockout`, {}),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['matches', id] }),
+    mutationFn: () => api.post(`/tournaments/${tournamentId}/simulate-knockout`, {}),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['matches', tournamentId] }),
   });
 
   const clearKnockoutMutation = useMutation({
-    mutationFn: () => api.post(`/tournaments/${id}/clear-knockout`, {}),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['matches', id] }),
+    mutationFn: () => api.post(`/tournaments/${tournamentId}/clear-knockout`, {}),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['matches', tournamentId] }),
   });
 
   const sortedGroups = useMemo(
@@ -771,52 +801,38 @@ export default function TournamentKnockoutPage() {
     saveConfigMutation.mutate({ bracketSlots: newSlots });
   }
 
-  if (isLoading) return <div className="p-8 text-sm text-muted-foreground">Loading…</div>;
-  if (!tournament) return <div className="p-8 text-sm">Tournament not found.</div>;
+  if (isLoading) return <div className="py-8 text-sm text-muted-foreground">Loading…</div>;
+  if (!tournament) return null;
 
   const qualifiersMatch = qualifierLabels.length + luckyLosers === totalSlots;
 
   return (
-    <main className="mx-auto max-w-5xl px-4 py-8">
-      <Link to="/admin/tournaments" className="mb-4 inline-block text-sm text-muted-foreground hover:text-foreground">
-        ← Back to Tournaments
-      </Link>
-
-      {/* Stage tabs */}
-      <div className="flex border-b mb-6">
-        <Link to={`/admin/tournaments/${id}`} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground">
-          Group Stage
-        </Link>
-        <div className="px-4 py-2 text-sm font-medium border-b-2 border-primary -mb-px">
-          Knockout Stage
+    <>
+      {isAdmin && (
+        <div className="flex justify-end gap-2 mb-6">
+          <button
+            onClick={() => regenerateKnockoutMutation.mutate()}
+            disabled={regenerateKnockoutMutation.isPending}
+            className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
+          >
+            {regenerateKnockoutMutation.isPending ? 'Regenerating…' : 'Regenerate Knockout'}
+          </button>
+          <button
+            onClick={() => simulateKnockoutMutation.mutate()}
+            disabled={simulateKnockoutMutation.isPending}
+            className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
+          >
+            {simulateKnockoutMutation.isPending ? 'Simulating…' : 'Simulate Knockout Results'}
+          </button>
+          <button
+            onClick={() => clearKnockoutMutation.mutate()}
+            disabled={clearKnockoutMutation.isPending}
+            className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
+          >
+            {clearKnockoutMutation.isPending ? 'Clearing…' : 'Clear Knockout Results'}
+          </button>
         </div>
-      </div>
-
-      {/* Header */}
-      <div className="mb-8 flex flex-wrap items-center gap-3">
-        {tournament.imageUrl && (
-          <img src={tournament.imageUrl} alt={tournament.name} className="h-10 w-10 rounded-lg object-cover" />
-        )}
-        <h1 className="text-2xl font-bold">{tournament.name} — Knockout Stage</h1>
-        {isAdmin && (
-          <div className="ml-auto flex gap-2">
-            <button
-              onClick={() => simulateKnockoutMutation.mutate()}
-              disabled={simulateKnockoutMutation.isPending}
-              className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
-            >
-              {simulateKnockoutMutation.isPending ? 'Simulating…' : 'Simulate Knockout Results'}
-            </button>
-            <button
-              onClick={() => clearKnockoutMutation.mutate()}
-              disabled={clearKnockoutMutation.isPending}
-              className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
-            >
-              {clearKnockoutMutation.isPending ? 'Clearing…' : 'Clear Knockout Results'}
-            </button>
-          </div>
-        )}
-      </div>
+      )}
 
       {/* Settings panel */}
       <section className="mb-8 rounded-lg border p-5">
@@ -947,13 +963,53 @@ export default function TournamentKnockoutPage() {
           </p>
         ) : (
           <FocusedAdminResults
-            tournamentId={id!}
+            tournamentId={tournamentId}
             knockoutMatches={knockoutMatches}
             firstRound={firstRound}
             hasBronzeFinal={hasBronzeFinal}
           />
         )}
       </section>
+    </>
+  );
+}
+
+// ── Standalone page (keeps the /admin/tournaments/:id/knockout route working) ──
+
+export default function TournamentKnockoutPage() {
+  const { id } = useParams<{ id: string }>();
+  const { data: tournament, isLoading } = useQuery({
+    queryKey: ['tournament', id],
+    queryFn: () => api.get<Tournament>(`/tournaments/${id}`),
+    enabled: !!id,
+  });
+
+  if (isLoading) return <div className="p-8 text-sm text-muted-foreground">Loading…</div>;
+  if (!tournament) return <div className="p-8 text-sm">Tournament not found.</div>;
+
+  return (
+    <main className="mx-auto max-w-5xl px-4 py-8">
+      <Link to="/admin/tournaments" className="mb-4 inline-block text-sm text-muted-foreground hover:text-foreground">
+        ← Back to Tournaments
+      </Link>
+
+      <div className="flex border-b mb-6">
+        <Link to={`/admin/tournaments/${id}`} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground">
+          Group Stage
+        </Link>
+        <div className="px-4 py-2 text-sm font-medium border-b-2 border-primary -mb-px">
+          Knockout Stage
+        </div>
+      </div>
+
+      <div className="mb-8 flex flex-wrap items-center gap-3">
+        {tournament.imageUrl && (
+          <img src={tournament.imageUrl} alt={tournament.name} className="h-10 w-10 rounded-lg object-cover" />
+        )}
+        <h1 className="text-2xl font-bold">{tournament.name} — Knockout Stage</h1>
+      </div>
+
+      <TournamentKnockoutTabContent tournamentId={id!} />
     </main>
   );
 }

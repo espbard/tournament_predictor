@@ -7,8 +7,8 @@ import TeamSelectInput from '@/components/TeamSelectInput';
 import type { BonusAnswerType, BonusQuestion, BonusAnswer, Team } from '@tournament-predictor/shared';
 
 interface Props {
-  competitionId: string;
   tournamentId: string;
+  competitionId?: string;
   deadlinePassed: boolean;
 }
 
@@ -50,13 +50,14 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
   const [saveErrors, setSaveErrors] = useState<Record<string, string>>({});
 
   const { data: questions = [], isLoading } = useQuery({
-    queryKey: ['competitions', competitionId, 'bonus-questions'],
-    queryFn: () => api.get<BonusQuestion[]>(`/competitions/${competitionId}/bonus-questions`),
+    queryKey: ['tournaments', tournamentId, 'bonus-questions'],
+    queryFn: () => api.get<BonusQuestion[]>(`/tournaments/${tournamentId}/bonus-questions`),
   });
 
   const { data: myAnswers = [] } = useQuery({
     queryKey: ['competitions', competitionId, 'bonus-answers'],
     queryFn: () => api.get<BonusAnswer[]>(`/competitions/${competitionId}/bonus-answers`),
+    enabled: !!competitionId,
   });
 
   const { data: teams = [] } = useQuery({
@@ -71,41 +72,41 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
 
   const addMutation = useMutation({
     mutationFn: (body: { question: string; answerType: BonusAnswerType; points: number }) =>
-      api.post<BonusQuestion>(`/competitions/${competitionId}/bonus-questions`, body),
+      api.post<BonusQuestion>(`/tournaments/${tournamentId}/bonus-questions`, body),
     onSuccess: () => {
       setNewQuestion('');
       setNewPoints('');
       setAddError('');
-      queryClient.invalidateQueries({ queryKey: ['competitions', competitionId, 'bonus-questions'] });
+      queryClient.invalidateQueries({ queryKey: ['tournaments', tournamentId, 'bonus-questions'] });
     },
     onError: (err) => setAddError(err instanceof ApiError ? err.message : 'Failed to add question'),
   });
 
   const editMutation = useMutation({
     mutationFn: ({ qid, ...body }: { qid: string; question: string; answerType: BonusAnswerType; points: number }) =>
-      api.patch<BonusQuestion>(`/competitions/${competitionId}/bonus-questions/${qid}`, body),
+      api.patch<BonusQuestion>(`/tournaments/${tournamentId}/bonus-questions/${qid}`, body),
     onSuccess: () => {
       setEditingId(null);
       setEditError('');
-      queryClient.invalidateQueries({ queryKey: ['competitions', competitionId, 'bonus-questions'] });
+      queryClient.invalidateQueries({ queryKey: ['tournaments', tournamentId, 'bonus-questions'] });
     },
     onError: (err) => setEditError(err instanceof ApiError ? err.message : 'Failed to update question'),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (qid: string) =>
-      api.delete(`/competitions/${competitionId}/bonus-questions/${qid}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['competitions', competitionId, 'bonus-questions'] }),
+      api.delete(`/tournaments/${tournamentId}/bonus-questions/${qid}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tournaments', tournamentId, 'bonus-questions'] }),
   });
 
   const setAnswerMutation = useMutation({
     mutationFn: ({ qid, correctAnswer }: { qid: string; correctAnswer: string | null }) =>
-      api.patch<BonusQuestion>(`/competitions/${competitionId}/bonus-questions/${qid}`, { correctAnswer }),
+      api.patch<BonusQuestion>(`/tournaments/${tournamentId}/bonus-questions/${qid}`, { correctAnswer }),
     onSuccess: () => {
       setSettingAnswerFor(null);
       setCorrectAnswerInput('');
       setSetAnswerError('');
-      queryClient.invalidateQueries({ queryKey: ['competitions', competitionId, 'bonus-questions'] });
+      queryClient.invalidateQueries({ queryKey: ['tournaments', tournamentId, 'bonus-questions'] });
     },
     onError: (err) => setSetAnswerError(err instanceof ApiError ? err.message : 'Failed to set answer'),
   });
@@ -148,6 +149,7 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
   }
 
   async function saveAnswer(questionId: string, value?: string) {
+    if (!competitionId) return;
     const answer = value ?? localAnswers[questionId];
     if (!answer?.trim()) return;
     setSavingIds(prev => new Set([...prev, questionId]));

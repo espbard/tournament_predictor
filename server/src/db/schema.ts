@@ -120,8 +120,14 @@ export const competitionMembers = pgTable('competition_members', {
     .references(() => users.id, { onDelete: 'cascade' }),
   joinedAt: timestamp('joined_at').notNull().defaultNow(),
   groupStageLocked: boolean('group_stage_locked').notNull().default(false),
-  groupPositionPoints: integer('group_position_points').notNull().default(0),
-  knockoutPoints: integer('knockout_points').notNull().default(0),
+  exactScorePoints: integer('exact_score_points').notNull().default(0),
+  correctResultPoints: integer('correct_result_points').notNull().default(0),
+  correctTeamProgressesPoints: integer('correct_team_progresses_points').notNull().default(0),
+  correctGroupPositionPoints: integer('correct_group_position_points').notNull().default(0),
+  correctTeamInKnockoutTiePoints: integer('correct_team_in_knockout_tie_points').notNull().default(0),
+  correctTeamInFinalPoints: integer('correct_team_in_final_points').notNull().default(0),
+  correctWinnerPoints: integer('correct_winner_points').notNull().default(0),
+  bonusQuestionPoints: integer('bonus_question_points').notNull().default(0),
   groupDisciplinaryChoices: json('group_disciplinary_choices').$type<Record<string, string[]>>(),
   luckyLoserChoices: json('lucky_loser_choices').$type<Record<string, string[]>>(),
   knockoutCompleteSeen: boolean('knockout_complete_seen').notNull().default(false),
@@ -165,9 +171,9 @@ export const bracketPredictions = pgTable(
 
 export const bonusQuestions = pgTable('bonus_questions', {
   id: text('id').primaryKey(),
-  competitionId: text('competition_id')
+  tournamentId: text('tournament_id')
     .notNull()
-    .references(() => competitions.id, { onDelete: 'cascade' }),
+    .references(() => tournaments.id, { onDelete: 'cascade' }),
   question: text('question').notNull(),
   answerType: bonusAnswerTypeEnum('answer_type').notNull().default('text').$type<BonusAnswerType>(),
   points: integer('points').notNull(),
@@ -204,6 +210,7 @@ export const tournamentsRelations = relations(tournaments, ({ many }) => ({
   groups: many(groups),
   matches: many(matches),
   competitions: many(competitions),
+  bonusQuestions: many(bonusQuestions),
 }));
 
 export const groupsRelations = relations(groups, ({ one, many }) => ({
@@ -236,13 +243,12 @@ export const competitionsRelations = relations(competitions, ({ one, many }) => 
   }),
   members: many(competitionMembers),
   predictions: many(predictions),
-  bonusQuestions: many(bonusQuestions),
 }));
 
 export const bonusQuestionsRelations = relations(bonusQuestions, ({ one, many }) => ({
-  competition: one(competitions, {
-    fields: [bonusQuestions.competitionId],
-    references: [competitions.id],
+  tournament: one(tournaments, {
+    fields: [bonusQuestions.tournamentId],
+    references: [tournaments.id],
   }),
   answers: many(bonusAnswers),
 }));

@@ -13,6 +13,8 @@ export interface KnockoutConfig {
   directQualifiers: number;
   luckyLosers: number;
   bracketSlots: Record<string, string>;
+  groupDisciplinaryChoices?: Record<string, string[]>;
+  luckyLoserDisciplinaryChoices?: Record<string, string[]>;
 }
 
 export interface Tournament {
@@ -67,8 +69,8 @@ export const DEFAULT_SCORING_CONFIG: ScoringConfig = {
   exact_score: 3,
   correct_result: 1,
   correct_group_position: 2,
-  correct_team_progresses: 3,
-  correct_team_in_knockout_tie: 2,
+  correct_team_progresses: 2,
+  correct_team_in_knockout_tie: 1,
   correct_team_in_final: 5,
   correct_winner: 10,
 };
@@ -96,11 +98,24 @@ export interface Prediction {
   createdAt: string;
 }
 
+export interface ScoreBreakdown {
+  exactScorePoints: number;
+  correctResultPoints: number;
+  correctTeamProgressesPoints: number;
+  correctGroupPositionPoints: number;
+  correctTeamInKnockoutTiePoints: number;
+  correctTeamInFinalPoints: number;
+  correctWinnerPoints: number;
+  bonusQuestionPoints: number;
+}
+
 export interface LeaderboardEntry {
   userId: string;
   username: string;
+  imageUrl?: string | null;
   totalPoints: number;
   rank: number;
+  breakdown: ScoreBreakdown;
 }
 
 export interface BracketMatchPrediction {
@@ -115,7 +130,7 @@ export type BonusAnswerType = 'number' | 'player' | 'team' | 'yes_no';
 
 export interface BonusQuestion {
   id: string;
-  competitionId: string;
+  tournamentId: string;
   question: string;
   answerType: BonusAnswerType;
   points: number;

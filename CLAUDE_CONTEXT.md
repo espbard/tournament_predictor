@@ -98,6 +98,8 @@ A web application for predicting sports tournament outcomes. Used by a small pri
 │   │   ├── 0010_scoring_columns.sql
 │   │   ├── 0011_tiebreak_choices.sql
 │   │   ├── 0012_knockout_complete_seen.sql
+│   │   ├── 0013_scoring_breakdown.sql
+│   │   ├── 0014_bonus_questions_tournament.sql
 │   │   └── meta
 │   │       ├── 0000_snapshot.json
 │   │       ├── 0001_snapshot.json
@@ -119,11 +121,13 @@ A web application for predicting sports tournament outcomes. Used by a small pri
 │   │   │   └── scoringTrigger.ts
 │   │   ├── middleware
 │   │   │   └── auth.ts
-│   │   └── routes
-│   │       ├── auth.ts
-│   │       ├── competitions.ts
-│   │       ├── tournaments.ts
-│   │       └── upload.ts
+│   │   ├── routes
+│   │   │   ├── auth.ts
+│   │   │   ├── competitions.ts
+│   │   │   ├── tournaments.ts
+│   │   │   └── upload.ts
+│   │   └── scripts
+│   │       └── reset-points.ts
 │   └── tsconfig.json
 └── shared
     ├── package.json
@@ -373,8 +377,8 @@ competition. The scoring engine lives in `server/src/lib/scoring.ts` as a pure f
   "correct_team_progresses": 2, // Points if the user guesses that the correct team win the tie (user can guess draw and select which team they believe will progress from extra time/penalties)
   "correct_team_in_knockout_tie": 1, // Points if the predictions the user has made up to this point results in the correct team' being in the specific knockout tie.
   "correct_team_in_final": 5, // Replaces "correct_team_in_knockout_tie" for the final game 
-  "correct_winner": 10 // Bonus if user guesses correct tournament winner replaces "correct_team_in_final"
-  // More score sources will be added later. Bonus questions that can have different scores based on difficulty of question will be one of them
+  "correct_winner": 10, // Bonus if user guesses correct tournament winner replaces "correct_team_in_final"
+  "bonus_question": 0 // Customizable value, some questions can be worth more points than others.
 }
 ```
 
@@ -438,9 +442,12 @@ CLIENT_URL=http://localhost:5173   # Only used in dev for CORS
 - [x] Improve tournament creation and qualification logic
 - [x] Fully implement knockout results
 - [x] Finalize prediction layout
+- [x] Live score calculations
 
 
 ### In Progress#
+1. Add multiple language support
+1. General improvements
 
 ### Known Issues / Tech Debt
 -
@@ -463,11 +470,8 @@ CLIENT_URL=http://localhost:5173   # Only used in dev for CORS
 [UPDATE AS YOU BUILD — or keep this in a separate TODO.md and paste it here]
 
 ### Next Session
-1. Score calculation trigger — admin marks match complete → points calculated
 
 ### Backlog (in order)
-1. Leaderboard — ranked view per competition
-2. Polish — UI improvements, mobile layout
 
 ---
 

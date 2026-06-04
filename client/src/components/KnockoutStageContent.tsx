@@ -10,6 +10,7 @@ import type {
   KnockoutConfig,
   BracketMatchPrediction,
   BracketPredictions,
+  ScoringConfig,
 } from '@tournament-predictor/shared';
 import {
   sortGroupTeams,
@@ -37,6 +38,7 @@ interface MatchWithTeams {
   status: 'scheduled' | 'completed';
   homeScore: number | null;
   awayScore: number | null;
+  progressingTeamId: string | null;
   groupName: string | null;
 }
 
@@ -106,6 +108,14 @@ function parseQualifierLabel(label: string): { position: number; groups: string[
   const m = label.match(/^(\d+)([A-Z]+)$/);
   if (!m) return { position: 1, groups: [] };
   return { position: parseInt(m[1], 10), groups: m[2].split('') };
+}
+
+// Resolve "1A" / "2B" bracket label against predicted standings → team ID
+function resolveQualLabel(label: string, standings: Map<string, TeamStat[]>): string | null {
+  const m = label.match(/^(\d+)([A-Z])$/);
+  if (!m) return null;
+  const pos = parseInt(m[1], 10) - 1;
+  return standings.get(m[2])?.[pos]?.teamId ?? null;
 }
 
 function computeLuckyLoserLabels(
@@ -255,6 +265,10 @@ function FocusedMatchCard({
   prediction,
   onUpdate,
   isFinal,
+  actualMatch,
+  isFirstRound,
+  scoringConfig,
+  predictedFirstRoundTeams,
 }: {
   matchKey: string;
   homeTeam: TeamStat | null;
@@ -262,6 +276,10 @@ function FocusedMatchCard({
   prediction: BracketMatchPrediction | undefined;
   onUpdate: (key: string, pred: BracketMatchPrediction) => void;
   isFinal?: boolean;
+  actualMatch?: MatchWithTeams;
+  isFirstRound?: boolean;
+  scoringConfig?: ScoringConfig;
+  predictedFirstRoundTeams?: { predHomeId: string | null; predAwayId: string | null };
 }) {
   const [homeStr, setHomeStr] = useState('');
   const [awayStr, setAwayStr] = useState('');
@@ -280,6 +298,66 @@ function FocusedMatchCard({
   const bothValid = homeNum !== null && awayNum !== null && !isNaN(homeNum) && !isNaN(awayNum);
   const isDraw = bothValid && homeNum === awayNum;
   const disabled = !homeTeam || !awayTeam;
+
+  // Compute points awarded for this match once result is in
+  const pointsInfo = useMemo(() => {
+    if (!actualMatch || actualMatch.status !== 'completed' || !prediction || !scoringConfig) return null;
+    const h = actualMatch.homeScore ?? 0;
+    const a = actualMatch.awayScore ?? 0;
+
+    // Determine if predicted home/away are flipped relative to actual match sides
+    let predH = prediction.homeScore;
+    let predA = prediction.awayScore;
+    const predHomeId = homeTeam?.teamId ?? null;
+    const predAwayId = awayTeam?.teamId ?? null;
+    const actHomeId = actualMatch.homeTeamId;
+    const actAwayId = actualMatch.awayTeamId;
+
+    if (!isFirstRound && actHomeId && actAwayId && predHomeId && predAwayId) {
+      const hInActHome = predHomeId === actHomeId;
+      const hInActAway = predHomeId === actAwayId;
+      const aInActHome = predAwayId === actHomeId;
+      const aInActAway = predAwayId === actAwayId;
+      const correct = ((hInActHome || hInActAway) ? 1 : 0) + ((aInActAway || aInActHome) ? 1 : 0);
+      let flip = false;
+      if (correct === 2) flip = hInActAway && aInActHome;
+      else if (correct === 1) flip = hInActHome || hInActAway ? hInActAway : aInActHome;
+      if (flip) { predH = prediction.awayScore; predA = prediction.homeScore; }
+    }
+
+    const exactScore = predH === h && predA === a ? scoringConfig.exact_score : 0;
+    const correctResult = Math.sign(predH - predA) === Math.sign(h - a) ? scoringConfig.correct_result : 0;
+    const correctTeamProgresses =
+      actualMatch.progressingTeamId && prediction.progressingTeamId === actualMatch.progressingTeamId
+        ? scoringConfig.correct_team_progresses : 0;
+
+    let correctTeamInKnockoutTie = 0, correctTeamInFinal = 0, correctWinner = 0;
+    const isBronzeFinal = matchKey.startsWith('bronze_final');
+
+    if (!isBronzeFinal) {
+      // For the first knockout round, compare against predicted qualifiers derived from
+      // the user's group stage score predictions. For later rounds, use bracket trajectory.
+      const effectivePredHomeId = isFirstRound ? (predictedFirstRoundTeams?.predHomeId ?? null) : predHomeId;
+      const effectivePredAwayId = isFirstRound ? (predictedFirstRoundTeams?.predAwayId ?? null) : predAwayId;
+      const hasPreds = isFirstRound ? !!predictedFirstRoundTeams : true;
+
+      if (hasPreds) {
+        for (const teamId of [actHomeId, actAwayId]) {
+          if (!teamId) continue;
+          if (effectivePredHomeId !== teamId && effectivePredAwayId !== teamId) continue;
+          if (isFinal) {
+            if (teamId === actualMatch.progressingTeamId) correctWinner = scoringConfig.correct_winner;
+            else correctTeamInFinal += scoringConfig.correct_team_in_final;
+          } else {
+            correctTeamInKnockoutTie += scoringConfig.correct_team_in_knockout_tie;
+          }
+        }
+      }
+    }
+
+    const total = exactScore + correctResult + correctTeamProgresses + correctTeamInKnockoutTie + correctTeamInFinal + correctWinner;
+    return { exactScore, correctResult, correctTeamProgresses, correctTeamInKnockoutTie, correctTeamInFinal, correctWinner, total };
+  }, [actualMatch, prediction, scoringConfig, homeTeam, awayTeam, isFinal, isFirstRound]);
   const homeWins = bothValid && homeNum! > awayNum!;
   const awayWins = bothValid && awayNum! > homeNum!;
   const isHomeChampion = isFinal && (homeWins || (isDraw && prediction?.progressingTeamId === homeTeam?.teamId));
@@ -415,6 +493,40 @@ function FocusedMatchCard({
           </div>
         </>
       )}
+
+      {actualMatch?.status === 'completed' && (
+        <>
+          <div className="h-px bg-border" />
+          <div className="px-4 py-3 bg-muted/30 space-y-1.5">
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-xs text-muted-foreground font-medium shrink-0">Result</span>
+              <span className="font-bold tabular-nums">
+                {actualMatch.homeScore} – {actualMatch.awayScore}
+              </span>
+              {actualMatch.homeScore === actualMatch.awayScore && actualMatch.progressingTeamId && (
+                <span className="text-xs text-muted-foreground">
+                  ({actualMatch.progressingTeamId === actualMatch.homeTeamId
+                    ? actualMatch.homeTeamName
+                    : actualMatch.awayTeamName} adv.)
+                </span>
+              )}
+            </div>
+            {pointsInfo !== null && (
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
+                <span className={`font-semibold ${pointsInfo.total > 0 ? 'text-green-700 dark:text-green-400' : 'text-muted-foreground'}`}>
+                  {pointsInfo.total > 0 ? `+${pointsInfo.total} pts` : '0 pts'}
+                </span>
+                {pointsInfo.correctResult > 0 && <span className="text-muted-foreground">+{pointsInfo.correctResult} correct result</span>}
+                {pointsInfo.exactScore > 0 && <span className="text-muted-foreground">+{pointsInfo.exactScore} correct exact score</span>}
+                {pointsInfo.correctTeamProgresses > 0 && <span className="text-muted-foreground">+{pointsInfo.correctTeamProgresses} advances</span>}
+                {pointsInfo.correctTeamInKnockoutTie > 0 && <span className="text-muted-foreground">+{pointsInfo.correctTeamInKnockoutTie} correct team(s) in tie</span>}
+                {pointsInfo.correctTeamInFinal > 0 && <span className="text-muted-foreground">+{pointsInfo.correctTeamInFinal} correct team predicted in final</span>}
+                {pointsInfo.correctWinner > 0 && <span className="text-muted-foreground">+{pointsInfo.correctWinner} correct winner</span>}
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -427,12 +539,18 @@ function FocusedBracketView({
   bracketPreds,
   onUpdate,
   predsLoaded,
+  actualMatchMap,
+  scoringConfig,
+  predictedFirstRoundMap,
 }: {
   knockoutConfig: KnockoutConfig;
   resolvedSlots: Record<string, TeamStat | null>;
   bracketPreds: BracketPredictions;
   onUpdate: (key: string, pred: BracketMatchPrediction) => void;
   predsLoaded: boolean;
+  actualMatchMap: Record<string, MatchWithTeams>;
+  scoringConfig: ScoringConfig;
+  predictedFirstRoundMap: Record<string, { predHomeId: string | null; predAwayId: string | null }>;
 }) {
   const { firstRound, hasBronzeFinal } = knockoutConfig;
   const startIdx = ROUND_ORDER.indexOf(firstRound);
@@ -688,6 +806,10 @@ function FocusedBracketView({
               prediction={currentPred}
               onUpdate={handleUpdate}
               isFinal={current.round === 'final' && !current.isBronze}
+              actualMatch={actualMatchMap[current.predKey]}
+              isFirstRound={current.round === firstRound || current.isBronze}
+              scoringConfig={scoringConfig}
+              predictedFirstRoundTeams={current.round === firstRound && !current.isBronze ? predictedFirstRoundMap[current.predKey] : undefined}
             />
           </div>
 
@@ -783,10 +905,6 @@ export default function KnockoutStageContent({
     }
   }, [savedTiebreakerChoices, tiebreakerInitialized]);
 
-  const saveTiebreakerChoicesMutation = useMutation({
-    mutationFn: (body: { groupChoices?: DisciplinaryChoices; luckyLoserChoices?: DisciplinaryChoices }) =>
-      api.post(`/competitions/${id}/tiebreak-choices`, body),
-  });
 
   const saveMutation = useMutation({
     mutationFn: (predictions: BracketPredictions) =>
@@ -865,6 +983,87 @@ export default function KnockoutStageContent({
   }, [matchList, predMap, groupDisciplinaryChoices]);
 
   const knockoutConfig = tournament?.knockoutConfig ?? null;
+
+  // Predicted group standings based solely on the user's group score predictions (not actual results).
+  // Used to determine which teams the user expected to qualify for each first-round knockout slot.
+  const predictedGroupStandings = useMemo<Map<string, TeamStat[]>>(() => {
+    const groupMatches = matchList.filter(m => m.stage === 'group');
+    const teamMap = new Map<string, TeamStat>();
+    for (const m of groupMatches) {
+      const g = m.groupName;
+      if (!g) continue;
+      if (m.homeTeamId && m.homeTeamName && !teamMap.has(m.homeTeamId))
+        teamMap.set(m.homeTeamId, { teamId: m.homeTeamId, teamName: m.homeTeamName, imageUrl: m.homeTeamImageUrl, group: g, P: 0, W: 0, D: 0, L: 0, GF: 0, GA: 0 });
+      if (m.awayTeamId && m.awayTeamName && !teamMap.has(m.awayTeamId))
+        teamMap.set(m.awayTeamId, { teamId: m.awayTeamId, teamName: m.awayTeamName, imageUrl: m.awayTeamImageUrl, group: g, P: 0, W: 0, D: 0, L: 0, GF: 0, GA: 0 });
+    }
+    const groupResultsMap = new Map<string, MatchResult[]>();
+    for (const m of groupMatches) {
+      if (!m.homeTeamId || !m.awayTeamId || !m.groupName) continue;
+      const pred = predMap[m.id];
+      if (!pred) continue;
+      const hs = pred.homeScore, as_ = pred.awayScore;
+      const home = teamMap.get(m.homeTeamId);
+      const away = teamMap.get(m.awayTeamId);
+      if (home) { home.P++; home.GF += hs; home.GA += as_; if (hs > as_) home.W++; else if (hs === as_) home.D++; else home.L++; }
+      if (away) { away.P++; away.GF += as_; away.GA += hs; if (as_ > hs) away.W++; else if (hs === as_) away.D++; else away.L++; }
+      if (!groupResultsMap.has(m.groupName)) groupResultsMap.set(m.groupName, []);
+      groupResultsMap.get(m.groupName)!.push({ homeTeamId: m.homeTeamId, awayTeamId: m.awayTeamId, homeScore: hs, awayScore: as_ });
+    }
+    const byGroup = new Map<string, TeamStat[]>();
+    for (const t of teamMap.values()) {
+      if (!byGroup.has(t.group)) byGroup.set(t.group, []);
+      byGroup.get(t.group)!.push(t);
+    }
+    for (const [groupName, teams] of byGroup) {
+      const results = groupResultsMap.get(groupName) ?? [];
+      const stats = teams.map(t => ({ teamId: t.teamId, points: t.W * 3 + t.D, gd: t.GF - t.GA, gf: t.GF }));
+      const sortedIds = sortGroupTeams(stats, results, {}).map(s => s.teamId);
+      teams.sort((a, b) => sortedIds.indexOf(a.teamId) - sortedIds.indexOf(b.teamId));
+    }
+    return byGroup;
+  }, [matchList, predMap]);
+
+  // Maps each first-round predKey (e.g. "round_of_16_0") to the teams the user predicted
+  // would qualify for that slot based on their group stage score predictions.
+  const predictedFirstRoundMap = useMemo<Record<string, { predHomeId: string | null; predAwayId: string | null }>>(() => {
+    if (!knockoutConfig) return {};
+    const { bracketSlots, firstRound } = knockoutConfig;
+    const count = FIRST_ROUND_COUNTS[firstRound];
+    const result: Record<string, { predHomeId: string | null; predAwayId: string | null }> = {};
+    for (let i = 0; i < count; i++) {
+      const homeLabel = bracketSlots[`m${i + 1}_home`];
+      const awayLabel = bracketSlots[`m${i + 1}_away`];
+      result[`${firstRound}_${i}`] = {
+        predHomeId: homeLabel ? resolveQualLabel(homeLabel, predictedGroupStandings) : null,
+        predAwayId: awayLabel ? resolveQualLabel(awayLabel, predictedGroupStandings) : null,
+      };
+    }
+    return result;
+  }, [knockoutConfig, predictedGroupStandings]);
+
+  const knockoutMatchMap = useMemo(() => {
+    const koStages = new Set(['round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'bronze_final', 'final']);
+    const byStage = new Map<string, MatchWithTeams[]>();
+    for (const m of matchList) {
+      if (!koStages.has(m.stage)) continue;
+      if (!byStage.has(m.stage)) byStage.set(m.stage, []);
+      byStage.get(m.stage)!.push(m);
+    }
+    for (const ms of byStage.values()) {
+      ms.sort((a, b) => {
+        if (!a.scheduledAt && !b.scheduledAt) return 0;
+        if (!a.scheduledAt) return 1;
+        if (!b.scheduledAt) return -1;
+        return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
+      });
+    }
+    const result: Record<string, MatchWithTeams> = {};
+    for (const [stage, ms] of byStage) {
+      ms.forEach((m, i) => { result[`${stage}_${i}`] = m; });
+    }
+    return result;
+  }, [matchList]);
 
   const expectedMatchCount = useMemo(() => {
     if (!knockoutConfig) return 0;
@@ -949,35 +1148,6 @@ export default function KnockoutStageContent({
       }));
   }, [groupStandings, knockoutConfig, luckyLoserDisciplinaryChoices]);
 
-  function handleDisciplinaryChoice(
-    choices: DisciplinaryChoices,
-    setChoices: (c: DisciplinaryChoices) => void,
-    key: string,
-    teamId: string,
-  ) {
-    const ranking = [...(choices[key] ?? [])];
-    const idx = ranking.indexOf(teamId);
-    if (idx !== -1) ranking.splice(idx, 1);
-    else ranking.push(teamId);
-    setChoices({ ...choices, [key]: ranking });
-  }
-
-  function confirmGroupTiebreaker(key: string, allTeamIds: string[]) {
-    const ranked = groupDisciplinaryChoices[key] ?? [];
-    const remaining = allTeamIds.filter(id => !ranked.includes(id)).sort();
-    const next = { ...groupDisciplinaryChoices, [key]: [...ranked, ...remaining] };
-    setGroupDisciplinaryChoices(next);
-    saveTiebreakerChoicesMutation.mutate({ groupChoices: next });
-  }
-
-  function confirmLuckyLoserTiebreaker(key: string, allTeamIds: string[]) {
-    const ranked = luckyLoserDisciplinaryChoices[key] ?? [];
-    const remaining = allTeamIds.filter(id => !ranked.includes(id)).sort();
-    const next = { ...luckyLoserDisciplinaryChoices, [key]: [...ranked, ...remaining] };
-    setLuckyLoserDisciplinaryChoices(next);
-    saveTiebreakerChoicesMutation.mutate({ luckyLoserChoices: next });
-  }
-
   if (isLoading) return <p className="py-4 text-sm text-muted-foreground">Loading…</p>;
   if (error) {
     const msg = error instanceof ApiError ? error.message : 'Failed to load';
@@ -1023,106 +1193,11 @@ export default function KnockoutStageContent({
       </div>
 
       {hasPendingTies && (
-        <div className="mb-6 space-y-3">
-          {groupDisciplinaryTies.map(tie => {
-            const ranked = groupDisciplinaryChoices[tie.key] ?? [];
-            const enoughRanked = ranked.length >= tie.requiredRankings;
-            return (
-              <div key={tie.key} className="rounded-lg border border-amber-400/40 bg-amber-50/10 p-3 text-xs">
-                <p className="font-semibold text-amber-700 dark:text-amber-400 mb-1">
-                  Disciplinary tiebreaker — Group {tie.groupName}
-                </p>
-                <p className="text-muted-foreground mb-2">
-                  {enoughRanked
-                    ? `Selected: ${ranked.slice(0, tie.requiredRankings).map(id => tie.teams.find(t => t.teamId === id)?.teamName).join(' › ')}`
-                    : `Select ${tie.requiredRankings} team${tie.requiredRankings > 1 ? 's' : ''} with the best fair play record (fewest cards), in order:`}
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {tie.teams.map(t => {
-                    const rank = ranked.indexOf(t.teamId);
-                    const isRanked = rank !== -1;
-                    const isLocked = !isRanked && enoughRanked;
-                    return (
-                      <button
-                        key={t.teamId}
-                        onClick={() => !isLocked && handleDisciplinaryChoice(groupDisciplinaryChoices, setGroupDisciplinaryChoices, tie.key, t.teamId)}
-                        disabled={isLocked}
-                        className={`flex items-center gap-1 rounded border px-2 py-1 transition-colors ${
-                          isRanked
-                            ? 'border-amber-500 bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300'
-                            : isLocked
-                            ? 'border-border opacity-30 cursor-not-allowed'
-                            : 'border-border hover:border-amber-400 hover:bg-amber-50/20'
-                        }`}
-                      >
-                        {isRanked && <span className="font-bold text-amber-600 dark:text-amber-400">{rank + 1}.</span>}
-                        {t.imageUrl && <img src={t.imageUrl} alt="" className="h-3.5 w-3.5 rounded-sm" />}
-                        {t.teamName}
-                      </button>
-                    );
-                  })}
-                  {enoughRanked && (
-                    <button
-                      onClick={() => confirmGroupTiebreaker(tie.key, tie.teams.map(t => t.teamId))}
-                      className="rounded border border-green-500/50 bg-green-50/20 px-2 py-1 font-medium text-green-700 dark:text-green-400 hover:bg-green-50/40 transition-colors"
-                    >
-                      Confirm ✓
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-          {luckyLoserDisciplinaryTies.map(tie => {
-            const ranked = luckyLoserDisciplinaryChoices[tie.key] ?? [];
-            const requiredRankings = Math.max(1, tie.teams.length - 1);
-            const enoughRanked = ranked.length >= requiredRankings;
-            return (
-              <div key={tie.key} className="rounded-lg border border-amber-400/40 bg-amber-50/10 p-3 text-xs">
-                <p className="font-semibold text-amber-700 dark:text-amber-400 mb-1">
-                  Disciplinary tiebreaker — Lucky Losers
-                </p>
-                <p className="text-muted-foreground mb-2">
-                  {enoughRanked
-                    ? `Selected: ${ranked.slice(0, requiredRankings).map(id => tie.teams.find(t => t.teamId === id)?.teamName).join(' › ')}`
-                    : `Select ${requiredRankings} team${requiredRankings > 1 ? 's' : ''} with the best fair play record (fewest cards), in order:`}
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {tie.teams.map(t => {
-                    const rank = ranked.indexOf(t.teamId);
-                    const isRanked = rank !== -1;
-                    const isLocked = !isRanked && enoughRanked;
-                    return (
-                      <button
-                        key={t.teamId}
-                        onClick={() => !isLocked && handleDisciplinaryChoice(luckyLoserDisciplinaryChoices, setLuckyLoserDisciplinaryChoices, tie.key, t.teamId)}
-                        disabled={isLocked}
-                        className={`flex items-center gap-1 rounded border px-2 py-1 transition-colors ${
-                          isRanked
-                            ? 'border-amber-500 bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300'
-                            : isLocked
-                            ? 'border-border opacity-30 cursor-not-allowed'
-                            : 'border-border hover:border-amber-400 hover:bg-amber-50/20'
-                        }`}
-                      >
-                        {isRanked && <span className="font-bold text-amber-600 dark:text-amber-400">{rank + 1}.</span>}
-                        {t.imageUrl && <img src={t.imageUrl} alt="" className="h-3.5 w-3.5 rounded-sm" />}
-                        {t.teamName}
-                      </button>
-                    );
-                  })}
-                  {enoughRanked && (
-                    <button
-                      onClick={() => confirmLuckyLoserTiebreaker(tie.key, tie.teams.map(t => t.teamId))}
-                      className="rounded border border-green-500/50 bg-green-50/20 px-2 py-1 font-medium text-green-700 dark:text-green-400 hover:bg-green-50/40 transition-colors"
-                    >
-                      Confirm ✓
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+        <div className="mb-4 rounded-lg border border-amber-400/40 bg-amber-50/10 px-4 py-3 text-sm">
+          <p className="font-medium text-amber-700 dark:text-amber-400">Tiebreakers need to be resolved.</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Go to the Group Tables tab to rank the tied teams before filling in knockout predictions.
+          </p>
         </div>
       )}
 
@@ -1134,11 +1209,14 @@ export default function KnockoutStageContent({
             bracketPreds={localPreds}
             onUpdate={updatePrediction}
             predsLoaded={initialized}
+            actualMatchMap={knockoutMatchMap}
+            scoringConfig={competition.scoringConfig}
+            predictedFirstRoundMap={predictedFirstRoundMap}
           />
           {hasPendingTies && (
             <div className="absolute inset-0 bg-background/70 rounded-xl flex items-center justify-center backdrop-blur-[2px]">
               <p className="text-sm font-medium text-muted-foreground text-center px-6">
-                Resolve the tiebreakers above before filling in knockout predictions.
+                Go to the Group Tables tab to resolve tiebreakers before filling in knockout predictions.
               </p>
             </div>
           )}

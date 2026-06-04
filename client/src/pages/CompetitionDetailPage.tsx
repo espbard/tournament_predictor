@@ -6,11 +6,12 @@ import { useAuthStore } from '@/store/authStore';
 import ImageUpload from '@/components/ImageUpload';
 import KnockoutStageContent from '@/components/KnockoutStageContent';
 import BonusQuestionsTab from './BonusQuestionsTab';
-import type { Competition, Tournament, Prediction, MatchStage } from '@tournament-predictor/shared';
+import type { Competition, Tournament, Prediction, MatchStage, LeaderboardEntry } from '@tournament-predictor/shared';
 import {
   sortGroupTeams,
   sortLuckyLosers,
   findGroupDisciplinaryTies,
+  findLuckyLoserDisciplinaryTies,
   makeDisciplinaryKey,
   type MatchResult,
   type DisciplinaryChoices,
@@ -62,25 +63,25 @@ export default function CompetitionDetailPage() {
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [saveErrors, setSaveErrors] = useState<Record<string, string>>({});
 
-  const [activeTab, setActiveTab] = useState<'group' | 'knockout' | 'bonus'>('group');
+  const [activeTab, setActiveTab] = useState<'group' | 'tables' | 'knockout' | 'bonus' | 'leaderboard'>('group');
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
 
   const [hasDeclined, setHasDeclined] = useState(false);
   const [showProceedPrompt, setShowProceedPrompt] = useState(false);
-  const [showTiebreakerPrompt, setShowTiebreakerPrompt] = useState(false);
   const [showKnockoutCompletePrompt, setShowKnockoutCompletePrompt] = useState(false);
   const [hasDeclinedKnockout, setHasDeclinedKnockout] = useState(false);
 
   const [groupDisciplinaryChoices, setGroupDisciplinaryChoices] = useState<DisciplinaryChoices>({});
-  const [luckyLoserDisciplinaryChoices] = useState<DisciplinaryChoices>({});
+  const [luckyLoserDisciplinaryChoices, setLuckyLoserDisciplinaryChoices] = useState<DisciplinaryChoices>({});
 
   const localEditsRef = useRef(localEdits);
   useEffect(() => { localEditsRef.current = localEdits; }, [localEdits]);
 
   const debounceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const firstGroupUnfilledRef = useRef(false);
+  const groupFillInitializedRef = useRef(false);
   useEffect(() => {
     const timers = debounceTimers.current;
     return () => { Object.values(timers).forEach(clearTimeout); };
@@ -106,25 +107,31 @@ export default function CompetitionDetailPage() {
   const { data: matchList = [] } = useQuery({
     queryKey: ['tournaments', competition?.tournamentId, 'matches'],
     queryFn: () => api.get<MatchWithTeams[]>(`/tournaments/${competition!.tournamentId}/matches`),
-    enabled: !!competition,
+    enabled: !!competition && !user?.isAdmin,
   });
 
-  const { data: savedPredictions = [] } = useQuery({
+  const { data: savedPredictions = [], isFetched: predictionsFetched } = useQuery({
     queryKey: ['competitions', id, 'predictions'],
     queryFn: () => api.get<Prediction[]>(`/competitions/${id}/predictions`),
-    enabled: !!competition,
+    enabled: !!competition && !user?.isAdmin,
   });
 
   const { data: savedTiebreakerChoices } = useQuery({
     queryKey: ['competitions', id, 'tiebreak-choices'],
     queryFn: () => api.get<{ groupChoices: DisciplinaryChoices; luckyLoserChoices: DisciplinaryChoices }>(`/competitions/${id}/tiebreak-choices`),
-    enabled: !!competition,
+    enabled: !!competition && !user?.isAdmin,
   });
 
   const { data: myStatus } = useQuery({
     queryKey: ['competitions', id, 'my-status'],
     queryFn: () => api.get<{ groupStageLocked: boolean; knockoutCompleteSeen: boolean }>(`/competitions/${id}/my-status`),
-    enabled: !!competition,
+    enabled: !!competition && !user?.isAdmin,
+  });
+
+  const { data: leaderboard = [] } = useQuery({
+    queryKey: ['competitions', id, 'leaderboard'],
+    queryFn: () => api.get<LeaderboardEntry[]>(`/competitions/${id}/leaderboard`),
+    enabled: !!competition && !user?.isAdmin && activeTab === 'leaderboard',
   });
 
 
@@ -155,11 +162,14 @@ export default function CompetitionDetailPage() {
     if (savedTiebreakerChoices?.groupChoices) {
       setGroupDisciplinaryChoices(savedTiebreakerChoices.groupChoices);
     }
+    if (savedTiebreakerChoices?.luckyLoserChoices) {
+      setLuckyLoserDisciplinaryChoices(savedTiebreakerChoices.luckyLoserChoices);
+    }
   }, [savedTiebreakerChoices]);
 
   const saveTiebreakerChoicesMutation = useMutation({
-    mutationFn: (groupChoices: DisciplinaryChoices) =>
-      api.post(`/competitions/${id}/tiebreak-choices`, { groupChoices }),
+    mutationFn: (body: { groupChoices?: DisciplinaryChoices; luckyLoserChoices?: DisciplinaryChoices }) =>
+      api.post(`/competitions/${id}/tiebreak-choices`, body),
   });
 
   const predMap = useMemo(
@@ -197,14 +207,13 @@ export default function CompetitionDetailPage() {
       if (!m.homeTeamId || !m.awayTeamId || !m.groupName) continue;
       let hs: number | null = null;
       let as_: number | null = null;
-      if (m.status === 'completed') {
-        hs = m.homeScore; as_ = m.awayScore;
+      const edit = localEdits[m.id];
+      if (edit) {
+        const h = parseInt(edit.home, 10); const a = parseInt(edit.away, 10);
+        if (!isNaN(h) && !isNaN(a) && h >= 0 && a >= 0) { hs = h; as_ = a; }
       } else {
-        const edit = localEdits[m.id];
-        if (edit) {
-          const h = parseInt(edit.home, 10); const a = parseInt(edit.away, 10);
-          if (!isNaN(h) && !isNaN(a) && h >= 0 && a >= 0) { hs = h; as_ = a; }
-        }
+        const pred = predMap[m.id];
+        if (pred) { hs = pred.homeScore; as_ = pred.awayScore; }
       }
       if (hs === null || as_ === null) continue;
       const home = teamMap.get(m.homeTeamId);
@@ -232,7 +241,7 @@ export default function CompetitionDetailPage() {
       groupStandings: [...byGroup.entries()].sort(([a], [b]) => a.localeCompare(b)),
       effectiveGroupResults: groupResultsMap,
     };
-  }, [matchList, localEdits, groupDisciplinaryChoices]);
+  }, [matchList, localEdits, predMap, groupDisciplinaryChoices]);
 
   const qualifyingThirdPlaceIds = useMemo(() => {
     const third = groupStandings
@@ -360,16 +369,44 @@ export default function CompetitionDetailPage() {
     return result;
   }, [groupStandings, effectiveGroupResults, groupDisciplinaryChoices, tournament]);
 
+  const luckyLoserDisciplinaryTies = useMemo(() => {
+    if (!tournament?.knockoutConfig) return [];
+    const { directQualifiers } = tournament.knockoutConfig;
+    const third = groupStandings
+      .filter(([, t]) => t.length > directQualifiers)
+      .map(([, t]) => t[directQualifiers]);
+    const tiebreakerStats = third.map(t => ({ teamId: t.teamId, points: t.W * 3 + t.D, gd: t.GF - t.GA, gf: t.GF }));
+    return findLuckyLoserDisciplinaryTies(tiebreakerStats)
+      .filter(group => {
+        const key = makeDisciplinaryKey(group.map(t => t.teamId));
+        return (luckyLoserDisciplinaryChoices[key] ?? []).length < group.length;
+      })
+      .map(group => ({
+        key: makeDisciplinaryKey(group.map(t => t.teamId)),
+        teams: group.map(s => third.find(t => t.teamId === s.teamId)!).filter(Boolean),
+      }));
+  }, [groupStandings, tournament?.knockoutConfig, luckyLoserDisciplinaryChoices]);
+
   const groupStageLocked = myStatus?.groupStageLocked ?? false;
 
   useEffect(() => {
+    if (allGroupMatchesList.length === 0 || !predictionsFetched) return;
+
+    if (!groupFillInitializedRef.current) {
+      groupFillInitializedRef.current = true;
+      if (allGroupFilled && !groupStageLocked) {
+        setActiveTab('tables');
+      }
+      return;
+    }
+
     if (allGroupFilled && !groupStageLocked && !hasDeclined) {
       setShowProceedPrompt(true);
     }
     if (!allGroupFilled) {
       setHasDeclined(false);
     }
-  }, [allGroupFilled, groupStageLocked, hasDeclined]);
+  }, [allGroupMatchesList, allGroupFilled, groupStageLocked, hasDeclined, predictionsFetched]);
 
   // Jump to first unfilled match once predictions load
   useEffect(() => {
@@ -453,7 +490,11 @@ export default function CompetitionDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['competitions', id, 'predictions'] });
       queryClient.invalidateQueries({ queryKey: ['competitions', id, 'bracket-predictions'] });
+      queryClient.invalidateQueries({ queryKey: ['competitions', id, 'tiebreak-choices'] });
+      queryClient.invalidateQueries({ queryKey: ['competitions', id, 'my-status'] });
       setLocalEdits({});
+      setGroupDisciplinaryChoices({});
+      setLuckyLoserDisciplinaryChoices({});
       setCurrentGroupMatchIdx(0);
       setShowClearConfirm(false);
     },
@@ -531,7 +572,15 @@ export default function CompetitionDetailPage() {
     const remaining = allTeamIds.filter(id => !ranked.includes(id)).sort();
     const next = { ...groupDisciplinaryChoices, [key]: [...ranked, ...remaining] };
     setGroupDisciplinaryChoices(next);
-    saveTiebreakerChoicesMutation.mutate(next);
+    saveTiebreakerChoicesMutation.mutate({ groupChoices: next });
+  }
+
+  function confirmLuckyLoserTiebreaker(key: string, allTeamIds: string[]) {
+    const ranked = luckyLoserDisciplinaryChoices[key] ?? [];
+    const remaining = allTeamIds.filter(id => !ranked.includes(id)).sort();
+    const next = { ...luckyLoserDisciplinaryChoices, [key]: [...ranked, ...remaining] };
+    setLuckyLoserDisciplinaryChoices(next);
+    saveTiebreakerChoicesMutation.mutate({ luckyLoserChoices: next });
   }
 
   if (isLoading) return <p className="p-8 text-sm text-muted-foreground">Loading…</p>;
@@ -654,10 +703,14 @@ export default function CompetitionDetailPage() {
         </form>
       )}
 
-      {/* Tab navigation */}
+      {!user?.isAdmin && (<>
       <div className="flex gap-1 mb-6 border-b">
         <button
-          onClick={() => setActiveTab('group')}
+          onClick={() => {
+            setActiveTab('group');
+            setShowProceedPrompt(false);
+            if (allGroupFilled) setHasDeclined(true);
+          }}
           className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
             activeTab === 'group'
               ? 'border-primary text-primary'
@@ -665,6 +718,16 @@ export default function CompetitionDetailPage() {
           }`}
         >
           Group Stage
+        </button>
+        <button
+          onClick={() => setActiveTab('tables')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            activeTab === 'tables'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          Group Tables
         </button>
         <button
           onClick={() => setActiveTab('knockout')}
@@ -686,7 +749,237 @@ export default function CompetitionDetailPage() {
         >
           Bonus Questions
         </button>
+        <button
+          onClick={() => setActiveTab('leaderboard')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            activeTab === 'leaderboard'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          Leaderboard
+        </button>
       </div>
+
+      {activeTab === 'tables' && (
+        <div>
+          {groupStandings.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No group stage matches configured yet.</p>
+          ) : (
+            <div className="space-y-6">
+              {!allGroupFilled && scheduledGroupMatches.length > 0 && (
+                <p className="text-sm text-muted-foreground">
+                  {groupFillCount} / {allGroupMatchesList.length} predictions filled — tables update as you predict.
+                </p>
+              )}
+
+              <div className="grid gap-6 sm:grid-cols-2">
+                {groupStandings.map(([groupName, teams]) => {
+                  const groupTies = allGroupFilled
+                    ? groupDisciplinaryTies.filter(t => t.groupName === groupName)
+                    : [];
+                  return (
+                    <div key={groupName} className="space-y-3">
+                      <div className="rounded-lg border overflow-hidden">
+                        <div className="bg-muted/50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                          Group {groupName}
+                        </div>
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="border-b text-muted-foreground">
+                              <th className="pl-3 py-1.5 text-left w-6">#</th>
+                              <th className="py-1.5 text-left">Team</th>
+                              <th className="py-1.5 text-center w-6">P</th>
+                              <th className="py-1.5 text-center w-6">W</th>
+                              <th className="py-1.5 text-center w-6">D</th>
+                              <th className="py-1.5 text-center w-6">L</th>
+                              <th className="py-1.5 text-center w-8">GF</th>
+                              <th className="py-1.5 text-center w-8">GA</th>
+                              <th className="pr-3 py-1.5 text-center w-8 font-bold text-foreground">Pts</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y">
+                            {teams.map((t, i) => (
+                              <tr key={t.teamId} className={
+                                i < 2
+                                  ? 'bg-green-50 dark:bg-green-950/30'
+                                  : i === 2 && qualifyingThirdPlaceIds.has(t.teamId)
+                                  ? 'bg-yellow-50 dark:bg-yellow-950/30'
+                                  : ''
+                              }>
+                                <td className="pl-3 py-1.5 text-muted-foreground">{i + 1}</td>
+                                <td className="py-1.5 pr-2">
+                                  <div className="flex items-center gap-1.5">
+                                    {t.imageUrl ? (
+                                      <img src={t.imageUrl} alt="" className="h-4 w-4 rounded-full object-cover flex-shrink-0" />
+                                    ) : (
+                                      <div className="h-4 w-4 rounded-full bg-muted flex-shrink-0" />
+                                    )}
+                                    <span className="truncate">{t.teamName}</span>
+                                  </div>
+                                </td>
+                                <td className="py-1.5 text-center text-muted-foreground">{t.P}</td>
+                                <td className="py-1.5 text-center text-muted-foreground">{t.W}</td>
+                                <td className="py-1.5 text-center text-muted-foreground">{t.D}</td>
+                                <td className="py-1.5 text-center text-muted-foreground">{t.L}</td>
+                                <td className="py-1.5 text-center text-muted-foreground">{t.GF}</td>
+                                <td className="py-1.5 text-center text-muted-foreground">{t.GA}</td>
+                                <td className="pr-3 py-1.5 text-center font-bold">{t.W * 3 + t.D}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Tiebreaker cards for this group */}
+                      {groupTies.map(tie => {
+                        const ranked = groupDisciplinaryChoices[tie.key] ?? [];
+                        const enoughRanked = ranked.length >= tie.requiredRankings;
+                        return (
+                          <div key={tie.key} className="rounded-lg border border-amber-400/40 bg-amber-50/10 p-3 text-xs">
+                            <p className="font-semibold text-amber-700 dark:text-amber-400 mb-1">
+                              Disciplinary tiebreaker
+                            </p>
+                            <p className="text-muted-foreground mb-2">
+                              {enoughRanked
+                                ? `Selected: ${ranked.slice(0, tie.requiredRankings).map(tid => tie.teams.find(t => t.teamId === tid)?.teamName).join(' › ')}`
+                                : `Select ${tie.requiredRankings} team${tie.requiredRankings > 1 ? 's' : ''} with the best fair play record (fewest cards), in order:`}
+                            </p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {tie.teams.map(t => {
+                                const rank = ranked.indexOf(t.teamId);
+                                const isRanked = rank !== -1;
+                                const isLockedBtn = !isRanked && enoughRanked;
+                                return (
+                                  <button
+                                    key={t.teamId}
+                                    onClick={() => !isLockedBtn && handleDisciplinaryChoice(groupDisciplinaryChoices, setGroupDisciplinaryChoices, tie.key, t.teamId)}
+                                    disabled={isLockedBtn}
+                                    className={`flex items-center gap-1 rounded border px-2 py-1 transition-colors ${isRanked ? 'border-amber-500 bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300' : isLockedBtn ? 'border-border opacity-30 cursor-not-allowed' : 'border-border hover:border-amber-400 hover:bg-amber-50/20'}`}
+                                  >
+                                    {isRanked && <span className="font-bold text-amber-600 dark:text-amber-400">{rank + 1}.</span>}
+                                    {t.imageUrl && <img src={t.imageUrl} alt="" className="h-3.5 w-3.5 rounded-sm" />}
+                                    {t.teamName}
+                                  </button>
+                                );
+                              })}
+                              {enoughRanked && (
+                                <button
+                                  onClick={() => confirmGroupTiebreaker(tie.key, tie.teams.map(t => t.teamId))}
+                                  className="rounded border border-green-500/50 bg-green-50/20 px-2 py-1 font-medium text-green-700 dark:text-green-400 hover:bg-green-50/40 transition-colors"
+                                >
+                                  Confirm ✓
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Legend */}
+              <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-sm bg-green-500/70 inline-block" /> Qualifying
+                </span>
+                {(tournament?.knockoutConfig?.luckyLosers ?? 0) > 0 && (
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-sm bg-yellow-400/70 inline-block" /> Lucky loser (best 3rd place)
+                  </span>
+                )}
+              </div>
+
+              {/* Lucky loser tiebreakers — at the bottom */}
+              {allGroupFilled && luckyLoserDisciplinaryTies.length > 0 && (
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-sm font-semibold">Lucky Loser Tiebreakers</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      These third-place teams are equal on all statistical criteria. Select them in order of best disciplinary record (fewest cards).
+                    </p>
+                  </div>
+                  {luckyLoserDisciplinaryTies.map(tie => {
+                    const ranked = luckyLoserDisciplinaryChoices[tie.key] ?? [];
+                    const requiredRankings = Math.max(1, tie.teams.length - 1);
+                    const enoughRanked = ranked.length >= requiredRankings;
+                    return (
+                      <div key={tie.key} className="rounded-lg border border-amber-400/40 bg-amber-50/10 p-3 text-xs">
+                        <p className="font-semibold text-amber-700 dark:text-amber-400 mb-1">
+                          Disciplinary tiebreaker — Lucky Losers
+                        </p>
+                        <p className="text-muted-foreground mb-2">
+                          {enoughRanked
+                            ? `Selected: ${ranked.slice(0, requiredRankings).map(tid => tie.teams.find(t => t.teamId === tid)?.teamName).join(' › ')}`
+                            : `Select ${requiredRankings} team${requiredRankings > 1 ? 's' : ''} with the best fair play record (fewest cards), in order:`}
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {tie.teams.map(t => {
+                            const rank = ranked.indexOf(t.teamId);
+                            const isRanked = rank !== -1;
+                            const isLockedBtn = !isRanked && enoughRanked;
+                            return (
+                              <button
+                                key={t.teamId}
+                                onClick={() => !isLockedBtn && handleDisciplinaryChoice(luckyLoserDisciplinaryChoices, setLuckyLoserDisciplinaryChoices, tie.key, t.teamId)}
+                                disabled={isLockedBtn}
+                                className={`flex items-center gap-1 rounded border px-2 py-1 transition-colors ${isRanked ? 'border-amber-500 bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300' : isLockedBtn ? 'border-border opacity-30 cursor-not-allowed' : 'border-border hover:border-amber-400 hover:bg-amber-50/20'}`}
+                              >
+                                {isRanked && <span className="font-bold text-amber-600 dark:text-amber-400">{rank + 1}.</span>}
+                                {t.imageUrl && <img src={t.imageUrl} alt="" className="h-3.5 w-3.5 rounded-sm" />}
+                                {t.teamName}
+                              </button>
+                            );
+                          })}
+                          {enoughRanked && (
+                            <button
+                              onClick={() => confirmLuckyLoserTiebreaker(tie.key, tie.teams.map(t => t.teamId))}
+                              className="rounded border border-green-500/50 bg-green-50/20 px-2 py-1 font-medium text-green-700 dark:text-green-400 hover:bg-green-50/40 transition-colors"
+                            >
+                              Confirm ✓
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Proceed to knockout */}
+              {allGroupFilled && !groupStageLocked && groupDisciplinaryTies.length === 0 && luckyLoserDisciplinaryTies.length === 0 && (
+                <div className="pt-4 border-t">
+                  <p className="text-sm text-muted-foreground mb-3">All predictions are in — ready to proceed to the knockout stage.</p>
+                  <button
+                    onClick={handleProceedToKnockout}
+                    disabled={lockMutation.isPending}
+                    className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                  >
+                    {lockMutation.isPending ? 'Locking…' : 'Proceed to Knockout Stage →'}
+                  </button>
+                  <p className="mt-1.5 text-xs text-muted-foreground">This will lock your group stage predictions.</p>
+                </div>
+              )}
+              {allGroupFilled && (groupDisciplinaryTies.length > 0 || luckyLoserDisciplinaryTies.length > 0) && (
+                <p className="text-xs text-amber-600 dark:text-amber-400">Resolve all tiebreakers above before proceeding to the knockout stage.</p>
+              )}
+              {groupStageLocked && (
+                <div className="pt-4 border-t flex items-center gap-3">
+                  <p className="text-sm text-muted-foreground">Group stage is locked.</p>
+                  <button
+                    onClick={() => setActiveTab('knockout')}
+                    className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+                  >
+                    Go to Knockout Stage →
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {activeTab === 'bonus' && competition.tournamentId && (
         <BonusQuestionsTab
@@ -694,6 +987,69 @@ export default function CompetitionDetailPage() {
           tournamentId={competition.tournamentId}
           deadlinePassed={deadlinePassed}
         />
+      )}
+
+      {activeTab === 'leaderboard' && (
+        leaderboard.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-4 text-center">No scores yet.</p>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b bg-muted/50 text-muted-foreground">
+                  <th className="pl-3 pr-2 py-2 text-left w-6">#</th>
+                  <th className="px-3 py-2 text-left min-w-[110px]">Player</th>
+                  <th className="px-2 py-2 text-center whitespace-nowrap">Exact</th>
+                  <th className="px-2 py-2 text-center whitespace-nowrap">Result</th>
+                  <th className="px-2 py-2 text-center whitespace-nowrap">Prog.</th>
+                  <th className="px-2 py-2 text-center whitespace-nowrap">Group</th>
+                  <th className="px-2 py-2 text-center whitespace-nowrap">KO tie</th>
+                  <th className="px-2 py-2 text-center whitespace-nowrap">Final</th>
+                  <th className="px-2 py-2 text-center whitespace-nowrap">Winner</th>
+                  <th className="px-2 py-2 text-center whitespace-nowrap">Bonus</th>
+                  <th className="pl-2 pr-3 py-2 text-center whitespace-nowrap font-bold text-foreground border-l">Total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {leaderboard.map((entry, i) => {
+                  const isMe = entry.userId === user?.id;
+                  const prev = leaderboard[i - 1];
+                  const showRank = i === 0 || entry.rank !== prev?.rank;
+                  const b = entry.breakdown;
+                  return (
+                    <tr key={entry.userId} className={isMe ? 'bg-primary/5' : ''}>
+                      <td className={`pl-3 pr-2 py-2.5 font-bold text-center ${entry.rank === 1 ? 'text-amber-500' : 'text-muted-foreground'}`}>
+                        {showRank ? entry.rank : ''}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <div className="flex items-center gap-2 min-w-0">
+                          {entry.imageUrl ? (
+                            <img src={entry.imageUrl} alt="" className="h-5 w-5 rounded-full object-cover flex-shrink-0" />
+                          ) : (
+                            <div className="h-5 w-5 rounded-full bg-muted flex-shrink-0" />
+                          )}
+                          <span className={`font-medium truncate ${isMe ? 'text-primary' : ''}`}>
+                            {entry.username}
+                            {isMe && <span className="ml-1 font-normal text-muted-foreground">(you)</span>}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-2 py-2.5 text-center text-muted-foreground">{b.exactScorePoints}</td>
+                      <td className="px-2 py-2.5 text-center text-muted-foreground">{b.correctResultPoints}</td>
+                      <td className="px-2 py-2.5 text-center text-muted-foreground">{b.correctTeamProgressesPoints}</td>
+                      <td className="px-2 py-2.5 text-center text-muted-foreground">{b.correctGroupPositionPoints}</td>
+                      <td className="px-2 py-2.5 text-center text-muted-foreground">{b.correctTeamInKnockoutTiePoints}</td>
+                      <td className="px-2 py-2.5 text-center text-muted-foreground">{b.correctTeamInFinalPoints}</td>
+                      <td className="px-2 py-2.5 text-center text-muted-foreground">{b.correctWinnerPoints}</td>
+                      <td className="px-2 py-2.5 text-center text-muted-foreground">{b.bonusQuestionPoints}</td>
+                      <td className="pl-2 pr-3 py-2.5 text-center font-bold text-sm border-l">{entry.totalPoints}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )
       )}
 
       {activeTab === 'knockout' && id && (
@@ -731,12 +1087,19 @@ export default function CompetitionDetailPage() {
       <div className="mb-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-semibold">Predictions</h2>
-          {!isLocked && scheduledGroupMatches.length > 0 && (
-            <div className="flex gap-2">
+          <div className="flex gap-2">
+            {!isLocked && scheduledGroupMatches.length > 0 && (
               <button onClick={simulatePredictions} className="text-xs rounded border px-2.5 py-1 hover:bg-muted">Simulate</button>
-              <button onClick={() => setShowClearConfirm(true)} className="text-xs rounded border px-2.5 py-1 hover:bg-muted">Clear</button>
-            </div>
-          )}
+            )}
+            {allGroupMatchesList.length > 0 && (
+              <button
+                onClick={() => setShowClearConfirm(true)}
+                className="text-xs rounded border px-2.5 py-1 text-destructive border-destructive/30 hover:bg-destructive/5"
+              >
+                Reset all predictions
+              </button>
+            )}
+          </div>
         </div>
 
         {allGroupMatchesList.length === 0 ? (
@@ -890,14 +1253,33 @@ export default function CompetitionDetailPage() {
                         {match.status === 'scheduled' && !isLocked && justSaved && !saving && (
                           <p className="text-xs text-green-600">Saved</p>
                         )}
-                        {match.status === 'completed' && pred && (
-                          <p className="text-xs text-muted-foreground">
-                            Your prediction: {pred.homeScore}–{pred.awayScore}
-                            {pred.points !== null && (
-                              <span className="ml-1 font-medium text-foreground">+{pred.points} pts</span>
-                            )}
-                          </p>
-                        )}
+                        {match.status === 'completed' && pred && (() => {
+                          const cfg = competition.scoringConfig;
+                          const hasActual = match.homeScore !== null && match.awayScore !== null;
+                          const exactScore = hasActual &&
+                            pred.homeScore === match.homeScore && pred.awayScore === match.awayScore
+                            ? cfg.exact_score : 0;
+                          const correctResult = hasActual &&
+                            Math.sign(pred.homeScore - pred.awayScore) === Math.sign(match.homeScore! - match.awayScore!)
+                            ? cfg.correct_result : 0;
+                          const total = exactScore + correctResult;
+                          return (
+                            <div className="space-y-0.5">
+                              <p className="text-xs text-muted-foreground">
+                                Your prediction: {pred.homeScore}–{pred.awayScore}
+                              </p>
+                              {pred.points !== null && (
+                                <div className="flex flex-wrap justify-center items-center gap-x-2 gap-y-0.5 text-xs">
+                                  <span className={`font-semibold ${total > 0 ? 'text-green-700 dark:text-green-400' : 'text-muted-foreground'}`}>
+                                    {total > 0 ? `+${total} pts` : '0 pts'}
+                                  </span>
+                                  {correctResult > 0 && <span className="text-muted-foreground">+{correctResult} correct result</span>}
+                                  {exactScore > 0 && <span className="text-muted-foreground">+{exactScore} correct exact score</span>}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
                         {saveErr && <p className="text-xs text-destructive">{saveErr}</p>}
                       </div>
                     </div>
@@ -919,194 +1301,29 @@ export default function CompetitionDetailPage() {
         )}
       </div>
 
-      {/* Inline group standings for current match */}
-      {(() => {
-        const currentMatch = allGroupMatchesList[currentGroupMatchIdx];
-        if (!currentMatch?.groupName) return null;
-        const groupEntry = groupStandings.find(([name]) => name === currentMatch.groupName);
-        if (!groupEntry) return null;
-        const [groupName, teams] = groupEntry;
-        return (
-          <div className="mt-4 space-y-3">
-            <div className="rounded-lg border overflow-hidden">
-              <div className="bg-muted/50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Group {groupName}
-              </div>
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b text-muted-foreground">
-                    <th className="pl-3 py-1.5 text-left w-6">#</th>
-                    <th className="py-1.5 text-left">Team</th>
-                    <th className="py-1.5 text-center w-6">P</th>
-                    <th className="py-1.5 text-center w-6">W</th>
-                    <th className="py-1.5 text-center w-6">D</th>
-                    <th className="py-1.5 text-center w-6">L</th>
-                    <th className="py-1.5 text-center w-8">GF</th>
-                    <th className="py-1.5 text-center w-8">GA</th>
-                    <th className="pr-3 py-1.5 text-center w-8 font-bold text-foreground">Pts</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {teams.map((t, i) => (
-                    <tr key={t.teamId} className={
-                      i < 2
-                        ? 'bg-green-50 dark:bg-green-950/30'
-                        : i === 2 && qualifyingThirdPlaceIds.has(t.teamId)
-                        ? 'bg-yellow-50 dark:bg-yellow-950/30'
-                        : ''
-                    }>
-                      <td className="pl-3 py-1.5 text-muted-foreground">{i + 1}</td>
-                      <td className="py-1.5 pr-2">
-                        <div className="flex items-center gap-1.5">
-                          {t.imageUrl ? (
-                            <img src={t.imageUrl} alt="" className="h-4 w-4 rounded-full object-cover flex-shrink-0" />
-                          ) : (
-                            <div className="h-4 w-4 rounded-full bg-muted flex-shrink-0" />
-                          )}
-                          <span className="truncate">{t.teamName}</span>
-                        </div>
-                      </td>
-                      <td className="py-1.5 text-center text-muted-foreground">{t.P}</td>
-                      <td className="py-1.5 text-center text-muted-foreground">{t.W}</td>
-                      <td className="py-1.5 text-center text-muted-foreground">{t.D}</td>
-                      <td className="py-1.5 text-center text-muted-foreground">{t.L}</td>
-                      <td className="py-1.5 text-center text-muted-foreground">{t.GF}</td>
-                      <td className="py-1.5 text-center text-muted-foreground">{t.GA}</td>
-                      <td className="pr-3 py-1.5 text-center font-bold">{t.W * 3 + t.D}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* Tiebreaker section — shown only when all predictions are filled */}
-      {allGroupFilled && groupDisciplinaryTies.length > 0 && (
-        <div className="mt-6 space-y-4">
-          <p className="text-sm font-semibold">Tiebreakers to resolve</p>
-          {Array.from(new Set(groupDisciplinaryTies.map(t => t.groupName))).map(groupName => {
-            const groupEntry = groupStandings.find(([name]) => name === groupName);
-            if (!groupEntry) return null;
-            const [, teams] = groupEntry;
-            const ties = groupDisciplinaryTies.filter(t => t.groupName === groupName);
-            return (
-              <div key={groupName} className="space-y-3">
-                <div className="rounded-lg border overflow-hidden">
-                  <div className="bg-muted/50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Group {groupName}
-                  </div>
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="border-b text-muted-foreground">
-                        <th className="pl-3 py-1.5 text-left w-6">#</th>
-                        <th className="py-1.5 text-left">Team</th>
-                        <th className="py-1.5 text-center w-6">P</th>
-                        <th className="py-1.5 text-center w-6">W</th>
-                        <th className="py-1.5 text-center w-6">D</th>
-                        <th className="py-1.5 text-center w-6">L</th>
-                        <th className="py-1.5 text-center w-8">GF</th>
-                        <th className="py-1.5 text-center w-8">GA</th>
-                        <th className="pr-3 py-1.5 text-center w-8 font-bold text-foreground">Pts</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {teams.map((t, i) => (
-                        <tr key={t.teamId} className={
-                          i < 2
-                            ? 'bg-green-50 dark:bg-green-950/30'
-                            : i === 2 && qualifyingThirdPlaceIds.has(t.teamId)
-                            ? 'bg-yellow-50 dark:bg-yellow-950/30'
-                            : ''
-                        }>
-                          <td className="pl-3 py-1.5 text-muted-foreground">{i + 1}</td>
-                          <td className="py-1.5 pr-2">
-                            <div className="flex items-center gap-1.5">
-                              {t.imageUrl ? (
-                                <img src={t.imageUrl} alt="" className="h-4 w-4 rounded-full object-cover flex-shrink-0" />
-                              ) : (
-                                <div className="h-4 w-4 rounded-full bg-muted flex-shrink-0" />
-                              )}
-                              <span className="truncate">{t.teamName}</span>
-                            </div>
-                          </td>
-                          <td className="py-1.5 text-center text-muted-foreground">{t.P}</td>
-                          <td className="py-1.5 text-center text-muted-foreground">{t.W}</td>
-                          <td className="py-1.5 text-center text-muted-foreground">{t.D}</td>
-                          <td className="py-1.5 text-center text-muted-foreground">{t.L}</td>
-                          <td className="py-1.5 text-center text-muted-foreground">{t.GF}</td>
-                          <td className="py-1.5 text-center text-muted-foreground">{t.GA}</td>
-                          <td className="pr-3 py-1.5 text-center font-bold">{t.W * 3 + t.D}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                {ties.map(tie => {
-                  const ranked = groupDisciplinaryChoices[tie.key] ?? [];
-                  const enoughRanked = ranked.length >= tie.requiredRankings;
-                  return (
-                    <div key={tie.key} className="rounded-lg border border-amber-400/40 bg-amber-50/10 p-3 text-xs">
-                      <p className="font-semibold text-amber-700 dark:text-amber-400 mb-1">
-                        Disciplinary tiebreaker — Group {groupName}
-                      </p>
-                      <p className="text-muted-foreground mb-2">
-                        {enoughRanked
-                          ? `Selected: ${ranked.slice(0, tie.requiredRankings).map(id => tie.teams.find(t => t.teamId === id)?.teamName).join(' › ')}`
-                          : `Select ${tie.requiredRankings} team${tie.requiredRankings > 1 ? 's' : ''} with the best fair play record (fewest cards), in order:`}
-                      </p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {tie.teams.map(t => {
-                          const rank = ranked.indexOf(t.teamId);
-                          const isRanked = rank !== -1;
-                          const isLocked = !isRanked && enoughRanked;
-                          return (
-                            <button
-                              key={t.teamId}
-                              onClick={() => !isLocked && handleDisciplinaryChoice(groupDisciplinaryChoices, setGroupDisciplinaryChoices, tie.key, t.teamId)}
-                              disabled={isLocked}
-                              className={`flex items-center gap-1 rounded border px-2 py-1 transition-colors ${
-                                isRanked
-                                  ? 'border-amber-500 bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300'
-                                  : isLocked
-                                  ? 'border-border opacity-30 cursor-not-allowed'
-                                  : 'border-border hover:border-amber-400 hover:bg-amber-50/20'
-                              }`}
-                            >
-                              {isRanked && <span className="font-bold text-amber-600 dark:text-amber-400">{rank + 1}.</span>}
-                              {t.imageUrl && <img src={t.imageUrl} alt="" className="h-3.5 w-3.5 rounded-sm" />}
-                              {t.teamName}
-                            </button>
-                          );
-                        })}
-                        {enoughRanked && (
-                          <button
-                            onClick={() => confirmGroupTiebreaker(tie.key, tie.teams.map(t => t.teamId))}
-                            className="rounded border border-green-500/50 bg-green-50/20 px-2 py-1 font-medium text-green-700 dark:text-green-400 hover:bg-green-50/40 transition-colors"
-                          >
-                            Confirm ✓
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })}
+      {allGroupFilled && (groupDisciplinaryTies.length > 0 || luckyLoserDisciplinaryTies.length > 0) && (
+        <div className="mt-6 rounded-lg border border-amber-400/40 bg-amber-50/10 px-4 py-3 text-sm">
+          <p className="font-medium text-amber-700 dark:text-amber-400">Tiebreakers need to be resolved.</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Go to the{' '}
+            <button onClick={() => setActiveTab('tables')} className="underline hover:text-foreground">
+              Group Tables
+            </button>{' '}
+            tab to rank the tied teams before proceeding to the knockout stage.
+          </p>
         </div>
       )}
       </>}
+      </>)}
       </div>
 
       {/* Clear predictions confirm */}
       {showClearConfirm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-background rounded-lg border p-6 max-w-sm w-full shadow-xl">
-            <p className="font-semibold mb-1">Clear all predictions?</p>
+            <p className="font-semibold mb-1">Reset all predictions?</p>
             <p className="text-sm text-muted-foreground mb-6">
-              All your group stage predictions will be permanently deleted and cannot be recovered.
+              All your match predictions and knockout stage selections will be permanently deleted. Bonus question answers are not affected.
             </p>
             {clearPredictionsMutation.isError && (
               <p className="mb-4 text-sm text-destructive">
@@ -1128,7 +1345,7 @@ export default function CompetitionDetailPage() {
                 disabled={clearPredictionsMutation.isPending}
                 className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
               >
-                {clearPredictionsMutation.isPending ? 'Clearing…' : 'Clear all'}
+                {clearPredictionsMutation.isPending ? 'Resetting…' : 'Reset all'}
               </button>
             </div>
           </div>
@@ -1168,115 +1385,29 @@ export default function CompetitionDetailPage() {
         </div>
       )}
 
-      {/* Proceed to knockout prompt */}
+      {/* All group predictions filled — go to Group Tables */}
       {showProceedPrompt && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-background rounded-lg border p-6 max-w-md w-full shadow-xl">
             <p className="font-semibold mb-1">All group stage results registered.</p>
-            <p className="text-sm text-muted-foreground mb-1">Do you want to progress to the knockout stage predictions?</p>
             <p className="text-sm text-muted-foreground mb-6">
-              If you do, you will not be able to adjust your group stage predictions any more.
+              Go to Group Tables to review your predicted standings before proceeding to the knockout stage.
             </p>
             <div className="flex gap-3 justify-end">
               <button
                 onClick={handleDeclineProceed}
                 className="rounded-md border px-4 py-2 text-sm hover:bg-muted"
               >
-                No
+                Stay here
               </button>
               <button
                 onClick={() => {
                   setShowProceedPrompt(false);
-                  if (groupDisciplinaryTies.length > 0) {
-                    setShowTiebreakerPrompt(true);
-                  } else {
-                    handleProceedToKnockout();
-                  }
+                  setActiveTab('tables');
                 }}
                 className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
               >
-                Yes, I am sure
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Tiebreaker prompt before proceeding to knockout */}
-      {showTiebreakerPrompt && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-background rounded-lg border p-6 max-w-md w-full shadow-xl max-h-[90vh] overflow-y-auto">
-            <p className="font-semibold mb-1">One more thing before you proceed.</p>
-            <p className="text-sm text-muted-foreground mb-4">
-              Some groups have teams that are equal on all statistical criteria. Please rank them by disciplinary record (fewest cards) before continuing.
-            </p>
-            <div className="space-y-3 mb-6">
-              {groupDisciplinaryTies.map(tie => {
-                const ranked = groupDisciplinaryChoices[tie.key] ?? [];
-                const enoughRanked = ranked.length >= tie.requiredRankings;
-                return (
-                  <div key={tie.key} className="rounded-lg border border-amber-400/40 bg-amber-50/10 p-3 text-xs">
-                    <p className="font-semibold text-amber-700 dark:text-amber-400 mb-1">
-                      Group {tie.groupName}
-                    </p>
-                    <p className="text-muted-foreground mb-2">
-                      {enoughRanked
-                        ? `Selected: ${ranked.slice(0, tie.requiredRankings).map(tid => tie.teams.find(t => t.teamId === tid)?.teamName).join(' › ')}`
-                        : `Select ${tie.requiredRankings} team${tie.requiredRankings > 1 ? 's' : ''} with the best fair play record (fewest cards), in order:`}
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {tie.teams.map(t => {
-                        const rank = ranked.indexOf(t.teamId);
-                        const isRanked = rank !== -1;
-                        const isLocked = !isRanked && enoughRanked;
-                        return (
-                          <button
-                            key={t.teamId}
-                            onClick={() => !isLocked && handleDisciplinaryChoice(groupDisciplinaryChoices, setGroupDisciplinaryChoices, tie.key, t.teamId)}
-                            disabled={isLocked}
-                            className={`flex items-center gap-1 rounded border px-2 py-1 transition-colors ${
-                              isRanked
-                                ? 'border-amber-500 bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300'
-                                : isLocked
-                                ? 'border-border opacity-30 cursor-not-allowed'
-                                : 'border-border hover:border-amber-400 hover:bg-amber-50/20'
-                            }`}
-                          >
-                            {isRanked && <span className="font-bold text-amber-600 dark:text-amber-400">{rank + 1}.</span>}
-                            {t.imageUrl && <img src={t.imageUrl} alt="" className="h-3.5 w-3.5 rounded-sm" />}
-                            {t.teamName}
-                          </button>
-                        );
-                      })}
-                      {enoughRanked && (
-                        <button
-                          onClick={() => confirmGroupTiebreaker(tie.key, tie.teams.map(t => t.teamId))}
-                          className="rounded border border-green-500/50 bg-green-50/20 px-2 py-1 font-medium text-green-700 dark:text-green-400 hover:bg-green-50/40 transition-colors"
-                        >
-                          Confirm ✓
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => {
-                  setShowTiebreakerPrompt(false);
-                  setShowProceedPrompt(true);
-                }}
-                className="rounded-md border px-4 py-2 text-sm hover:bg-muted"
-              >
-                Back
-              </button>
-              <button
-                onClick={handleProceedToKnockout}
-                disabled={groupDisciplinaryTies.length > 0 || lockMutation.isPending}
-                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-              >
-                {lockMutation.isPending ? 'Locking…' : 'Confirm & proceed'}
+                Go to Group Tables
               </button>
             </div>
           </div>

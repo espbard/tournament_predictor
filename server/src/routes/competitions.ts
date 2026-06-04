@@ -1,10 +1,11 @@
 import { Router } from 'express';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { generateId } from 'lucia';
 import { db } from '../db/client.js';
 import { competitions, competitionMembers, users, tournaments, predictions, matches, bracketPredictions, bonusQuestions, bonusAnswers } from '../db/schema.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
-import { CreateCompetitionSchema, CreatePredictionSchema, SaveBracketPredictionsSchema, DEFAULT_SCORING_CONFIG, CreateBonusQuestionSchema, UpdateBonusQuestionSchema, SaveBonusAnswerSchema } from '@tournament-predictor/shared';
+import { CreateCompetitionSchema, CreatePredictionSchema, SaveBracketPredictionsSchema, DEFAULT_SCORING_CONFIG, SaveBonusAnswerSchema } from '@tournament-predictor/shared';
+import { recalculateAllScoresForTournament } from '../lib/scoringTrigger.js';
 
 const router = Router();
 
@@ -239,30 +240,53 @@ router.get('/:id/leaderboard', requireAuth, async (req, res) => {
         userId: users.id,
         username: users.username,
         imageUrl: users.imageUrl,
-        matchPoints: sql<number>`COALESCE(SUM(${predictions.points}), 0)`,
-        groupPositionPoints: competitionMembers.groupPositionPoints,
-        knockoutPoints: competitionMembers.knockoutPoints,
+        exactScorePoints: competitionMembers.exactScorePoints,
+        correctResultPoints: competitionMembers.correctResultPoints,
+        correctTeamProgressesPoints: competitionMembers.correctTeamProgressesPoints,
+        correctGroupPositionPoints: competitionMembers.correctGroupPositionPoints,
+        correctTeamInKnockoutTiePoints: competitionMembers.correctTeamInKnockoutTiePoints,
+        correctTeamInFinalPoints: competitionMembers.correctTeamInFinalPoints,
+        correctWinnerPoints: competitionMembers.correctWinnerPoints,
+        bonusQuestionPoints: competitionMembers.bonusQuestionPoints,
       })
       .from(competitionMembers)
       .innerJoin(users, eq(competitionMembers.userId, users.id))
-      .leftJoin(
-        predictions,
-        and(eq(predictions.competitionId, id), eq(predictions.userId, users.id))
-      )
-      .where(eq(competitionMembers.competitionId, id))
-      .groupBy(users.id, users.username, users.imageUrl, competitionMembers.groupPositionPoints, competitionMembers.knockoutPoints)
-      .orderBy(sql`COALESCE(SUM(${predictions.points}), 0) + ${competitionMembers.groupPositionPoints} + ${competitionMembers.knockoutPoints} DESC`);
+      .where(eq(competitionMembers.competitionId, id));
 
     const rowsWithTotal = rows.map(row => ({
       ...row,
-      totalPoints: row.matchPoints + row.groupPositionPoints + row.knockoutPoints,
+      totalPoints:
+        row.exactScorePoints +
+        row.correctResultPoints +
+        row.correctTeamProgressesPoints +
+        row.correctGroupPositionPoints +
+        row.correctTeamInKnockoutTiePoints +
+        row.correctTeamInFinalPoints +
+        row.correctWinnerPoints +
+        row.bonusQuestionPoints,
     }));
     rowsWithTotal.sort((a, b) => b.totalPoints - a.totalPoints);
 
     let rank = 1;
     const leaderboard = rowsWithTotal.map((row, i) => {
       if (i > 0 && row.totalPoints < rowsWithTotal[i - 1].totalPoints) rank = i + 1;
-      return { userId: row.userId, username: row.username, imageUrl: row.imageUrl, totalPoints: row.totalPoints, rank };
+      return {
+        userId: row.userId,
+        username: row.username,
+        imageUrl: row.imageUrl,
+        totalPoints: row.totalPoints,
+        rank,
+        breakdown: {
+          exactScorePoints: row.exactScorePoints,
+          correctResultPoints: row.correctResultPoints,
+          correctTeamProgressesPoints: row.correctTeamProgressesPoints,
+          correctGroupPositionPoints: row.correctGroupPositionPoints,
+          correctTeamInKnockoutTiePoints: row.correctTeamInKnockoutTiePoints,
+          correctTeamInFinalPoints: row.correctTeamInFinalPoints,
+          correctWinnerPoints: row.correctWinnerPoints,
+          bonusQuestionPoints: row.bonusQuestionPoints,
+        },
+      };
     });
 
     res.json(leaderboard);
@@ -451,7 +475,6 @@ router.delete('/:id/predictions', requireAuth, async (req, res) => {
         .from(competitionMembers)
         .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
       if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
-      if (membership.groupStageLocked) return res.status(400).json({ error: 'Group stage predictions are locked' });
     }
 
     await db
@@ -461,6 +484,11 @@ router.delete('/:id/predictions', requireAuth, async (req, res) => {
     await db
       .delete(bracketPredictions)
       .where(and(eq(bracketPredictions.competitionId, id), eq(bracketPredictions.userId, user.id)));
+
+    await db
+      .update(competitionMembers)
+      .set({ groupStageLocked: false, groupDisciplinaryChoices: {}, luckyLoserChoices: {} })
+      .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
 
     res.status(204).send();
   } catch (err) {
@@ -532,6 +560,11 @@ router.post('/:id/bracket-predictions', requireAuth, async (req, res) => {
         set: { predictions: result.data.predictions, updatedAt: new Date() },
       });
 
+    // Recalculate scores so knockout tie / progresses points reflect the new predictions
+    recalculateAllScoresForTournament(competition.tournamentId).catch(err =>
+      console.error('Scoring recalculate error (bracket save):', err),
+    );
+
     res.json({ ok: true });
   } catch (err) {
     console.error('Save bracket predictions error:', err);
@@ -595,7 +628,7 @@ router.post('/:id/tiebreak-choices', requireAuth, async (req, res) => {
   }
 });
 
-// ── Bonus questions ───────────────────────────────────────────────────────────
+// ── Bonus questions (read-only via competition — questions live on tournament) ─
 
 router.get('/:id/bonus-questions', requireAuth, async (req, res) => {
   try {
@@ -616,85 +649,11 @@ router.get('/:id/bonus-questions', requireAuth, async (req, res) => {
     const questions = await db
       .select()
       .from(bonusQuestions)
-      .where(eq(bonusQuestions.competitionId, id));
+      .where(eq(bonusQuestions.tournamentId, competition.tournamentId));
     res.json(questions);
   } catch (err) {
     console.error('Get bonus questions error:', err);
     res.status(500).json({ error: 'Failed to fetch bonus questions' });
-  }
-});
-
-router.post('/:id/bonus-questions', requireAdmin, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
-    if (!competition) return res.status(404).json({ error: 'Competition not found' });
-
-    const result = CreateBonusQuestionSchema.safeParse(req.body);
-    if (!result.success) {
-      return res.status(400).json({ error: 'Validation failed', details: result.error.flatten() });
-    }
-    const { question, answerType, points } = result.data;
-
-    const qid = generateId(15);
-    const [created] = await db
-      .insert(bonusQuestions)
-      .values({ id: qid, competitionId: id, question, answerType, points })
-      .returning();
-    res.status(201).json(created);
-  } catch (err) {
-    console.error('Create bonus question error:', err);
-    res.status(500).json({ error: 'Failed to create bonus question' });
-  }
-});
-
-router.patch('/:id/bonus-questions/:qid', requireAdmin, async (req, res) => {
-  try {
-    const { id, qid } = req.params;
-    const [existing] = await db
-      .select()
-      .from(bonusQuestions)
-      .where(and(eq(bonusQuestions.id, qid), eq(bonusQuestions.competitionId, id)));
-    if (!existing) return res.status(404).json({ error: 'Question not found' });
-
-    const result = UpdateBonusQuestionSchema.safeParse(req.body);
-    if (!result.success) {
-      return res.status(400).json({ error: 'Validation failed', details: result.error.flatten() });
-    }
-    const updates: Record<string, unknown> = {};
-    if (result.data.question !== undefined) updates.question = result.data.question;
-    if (result.data.answerType !== undefined) updates.answerType = result.data.answerType;
-    if (result.data.points !== undefined) updates.points = result.data.points;
-    if (result.data.correctAnswer !== undefined) updates.correctAnswer = result.data.correctAnswer;
-
-    if (Object.keys(updates).length === 0) return res.status(400).json({ error: 'No updates provided' });
-
-    const [updated] = await db
-      .update(bonusQuestions)
-      .set(updates)
-      .where(eq(bonusQuestions.id, qid))
-      .returning();
-    res.json(updated);
-  } catch (err) {
-    console.error('Update bonus question error:', err);
-    res.status(500).json({ error: 'Failed to update bonus question' });
-  }
-});
-
-router.delete('/:id/bonus-questions/:qid', requireAdmin, async (req, res) => {
-  try {
-    const { id, qid } = req.params;
-    const [existing] = await db
-      .select()
-      .from(bonusQuestions)
-      .where(and(eq(bonusQuestions.id, qid), eq(bonusQuestions.competitionId, id)));
-    if (!existing) return res.status(404).json({ error: 'Question not found' });
-
-    await db.delete(bonusQuestions).where(eq(bonusQuestions.id, qid));
-    res.status(204).send();
-  } catch (err) {
-    console.error('Delete bonus question error:', err);
-    res.status(500).json({ error: 'Failed to delete bonus question' });
   }
 });
 
@@ -751,7 +710,7 @@ router.post('/:id/bonus-answers', requireAuth, async (req, res) => {
     const [question] = await db
       .select()
       .from(bonusQuestions)
-      .where(and(eq(bonusQuestions.id, questionId), eq(bonusQuestions.competitionId, id)));
+      .where(and(eq(bonusQuestions.id, questionId), eq(bonusQuestions.tournamentId, competition.tournamentId)));
     if (!question) return res.status(404).json({ error: 'Question not found' });
 
     const [existing] = await db
