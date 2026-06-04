@@ -702,7 +702,7 @@ export default function CompetitionDetailPage() {
       )}
 
       {!user?.isAdmin && (<>
-      <div className="flex gap-1 mb-6 border-b">
+      <div className="flex flex-wrap gap-1 mb-6 border-b">
         {([
           ['group', t('competitionDetail.tabs.groupStage')],
           ['tables', t('competitionDetail.tabs.groupTables')],
@@ -719,7 +719,7 @@ export default function CompetitionDetailPage() {
                 if (allGroupFilled) setHasDeclined(true);
               }
             }}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            className={`whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
               activeTab === tab
                 ? 'border-primary text-primary'
                 : 'border-transparent text-muted-foreground hover:text-foreground'
@@ -1154,7 +1154,7 @@ export default function CompetitionDetailPage() {
                       ←
                     </button>
 
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <div className="rounded-xl border-2 bg-card shadow-sm overflow-hidden w-full max-w-xs mx-auto">
                         {/* Home row */}
                         <div className="flex items-center gap-3 px-4 py-3.5">
