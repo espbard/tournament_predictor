@@ -314,7 +314,7 @@ function FocusedMatchCard({
     const actHomeId = actualMatch.homeTeamId;
     const actAwayId = actualMatch.awayTeamId;
 
-    if (!isFirstRound && actHomeId && actAwayId) {
+    if (actHomeId && actAwayId) {
       const flip =
         (predHomeId !== null && predHomeId === actAwayId) ||
         (predAwayId !== null && predAwayId === actHomeId);
@@ -365,23 +365,21 @@ function FocusedMatchCard({
     const a = actualMatch.awayScore ?? 0;
     let predH = prediction.homeScore;
     let predA = prediction.awayScore;
-    if (!isFirstRound) {
-      const predHomeId = homeTeam?.teamId ?? null;
-      const predAwayId = awayTeam?.teamId ?? null;
-      const actHomeId = actualMatch.homeTeamId;
-      const actAwayId = actualMatch.awayTeamId;
-      if (actHomeId && actAwayId) {
-        const flip =
-          (predHomeId !== null && predHomeId === actAwayId) ||
-          (predAwayId !== null && predAwayId === actHomeId);
-        if (flip) { predH = prediction.awayScore; predA = prediction.homeScore; }
-      }
+    const predHomeId = homeTeam?.teamId ?? null;
+    const predAwayId = awayTeam?.teamId ?? null;
+    const actHomeId = actualMatch.homeTeamId;
+    const actAwayId = actualMatch.awayTeamId;
+    if (actHomeId && actAwayId) {
+      const flip =
+        (predHomeId !== null && predHomeId === actAwayId) ||
+        (predAwayId !== null && predAwayId === actHomeId);
+      if (flip) { predH = prediction.awayScore; predA = prediction.homeScore; }
     }
     return {
       isExactScore: predH === h && predA === a,
       isCorrectResult: Math.sign(predH - predA) === Math.sign(h - a),
     };
-  }, [actualMatch, prediction, homeTeam, awayTeam, isFirstRound]);
+  }, [actualMatch, prediction, homeTeam, awayTeam]);
   const homeWins = bothValid && homeNum! > awayNum!;
   const awayWins = bothValid && awayNum! > homeNum!;
   const isHomeChampion = isFinal && (homeWins || (isDraw && prediction?.progressingTeamId === homeTeam?.teamId));
@@ -412,9 +410,25 @@ function FocusedMatchCard({
   }
 
   const isCompleted = actualMatch?.status === 'completed';
-  const isFlipped = isCompleted && !!prediction?.flipped;
-  const displayHomeScore = isFlipped ? prediction!.awayScore : prediction?.homeScore;
-  const displayAwayScore = isFlipped ? prediction!.homeScore : prediction?.awayScore;
+
+  // Detect flip client-side (same rule as server): a team from the actual match
+  // was predicted on the opposite side.
+  const clientSideFlip = useMemo(() => {
+    if (!isCompleted || !actualMatch || !prediction) return false;
+    const predHomeId = homeTeam?.teamId ?? null;
+    const predAwayId = awayTeam?.teamId ?? null;
+    const actHomeId = actualMatch.homeTeamId;
+    const actAwayId = actualMatch.awayTeamId;
+    if (!actHomeId || !actAwayId) return false;
+    return (
+      (predHomeId !== null && predHomeId === actAwayId) ||
+      (predAwayId !== null && predAwayId === actHomeId)
+    );
+  }, [isCompleted, actualMatch, prediction, homeTeam, awayTeam]);
+
+  const isFlipped = isCompleted && (!!prediction?.flipped || clientSideFlip);
+  const displayHomeScore = isFlipped ? prediction?.awayScore : prediction?.homeScore;
+  const displayAwayScore = isFlipped ? prediction?.homeScore : prediction?.awayScore;
 
   return (
     <div className="space-y-3 w-full">

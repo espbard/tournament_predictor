@@ -255,6 +255,8 @@ export interface KnockoutScoreResult {
   breakdown: KnockoutScoreBreakdown;
 }
 
+export type FirstRoundPredTeams = Record<string, { predHomeId: string | null; predAwayId: string | null }>;
+
 /**
  * Calculates all knockout points for one user across all completed knockout
  * matches. Includes exact_score, correct_result, correct_team_progresses
@@ -269,6 +271,7 @@ export function calculateKnockoutPoints(
   firstRound: string,
   userBracketPredictions: BracketPredictions,
   config: ScoringConfig,
+  predictedFirstRoundTeams?: FirstRoundPredTeams,
 ): KnockoutScoreResult {
   const breakdown: KnockoutScoreBreakdown = {
     exactScore: 0,
@@ -297,23 +300,31 @@ export function calculateKnockoutPoints(
     const predKey = `${stage}_${matchIndex}`;
     const pred = userBracketPredictions[predKey];
 
-    // For non-first-round matches, resolve which teams the user predicted would
-    // be in this tie and detect whether the score should be evaluated "flipped".
-    // Flip applies when exactly one predicted team is in the match but on the
-    // opposite side, OR when both predicted teams are in the match but swapped.
-    // In those cases the user's home/away score prediction should be assessed
-    // against the mirrored actual scoreline.
+    // Resolve which teams the user predicted for each slot, then detect whether
+    // the score should be evaluated "flipped". Flip applies when a team that
+    // appears in the actual match was predicted on the opposite side
+    // (predictedHome === actualAway OR predictedAway === actualHome).
+    // For the first round, predicted teams come from the caller-supplied
+    // predictedFirstRoundTeams map (resolved from bracket slots + group standings).
+    // For later rounds they are traced through the user's bracket picks.
     let predictedHome: string | null = null;
     let predictedAway: string | null = null;
     let shouldFlip = false;
 
-    if (stage !== firstRound && stage !== 'bronze_final') {
-      predictedHome = getUserPredictedTeamForKnockoutSlot(
-        stage, matchIndex, 'home', firstRound, matchesByStage, userBracketPredictions,
-      );
-      predictedAway = getUserPredictedTeamForKnockoutSlot(
-        stage, matchIndex, 'away', firstRound, matchesByStage, userBracketPredictions,
-      );
+    if (stage !== 'bronze_final') {
+      if (stage === firstRound) {
+        if (predictedFirstRoundTeams) {
+          predictedHome = predictedFirstRoundTeams[predKey]?.predHomeId ?? null;
+          predictedAway = predictedFirstRoundTeams[predKey]?.predAwayId ?? null;
+        }
+      } else {
+        predictedHome = getUserPredictedTeamForKnockoutSlot(
+          stage, matchIndex, 'home', firstRound, matchesByStage, userBracketPredictions,
+        );
+        predictedAway = getUserPredictedTeamForKnockoutSlot(
+          stage, matchIndex, 'away', firstRound, matchesByStage, userBracketPredictions,
+        );
+      }
 
       if (m.homeTeamId && m.awayTeamId) {
         // Flip when a team from the actual match is predicted on the wrong side:
