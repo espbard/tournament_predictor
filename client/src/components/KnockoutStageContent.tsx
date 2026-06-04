@@ -799,7 +799,7 @@ function FocusedBracketView({
 
           <div
             key={animKey}
-            className="flex-1"
+            className="flex-1 min-w-0"
             style={{
               animation: `ko_slide_${slideDir} 0.22s ease-out`,
             }}
