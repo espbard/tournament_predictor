@@ -940,9 +940,11 @@ function FocusedBracketView({
 export default function KnockoutStageContent({
   competitionId,
   onAllComplete,
+  onGoToGroupStage,
 }: {
   competitionId: string;
   onAllComplete?: () => void;
+  onGoToGroupStage?: () => void;
 }) {
   const id = competitionId;
   const { t } = useT();
@@ -1103,8 +1105,16 @@ export default function KnockoutStageContent({
     for (const m of groupMatches) {
       if (!m.homeTeamId || !m.awayTeamId || !m.groupName) continue;
       const pred = predMap[m.id];
-      if (!pred) continue;
-      const hs = pred.homeScore, as_ = pred.awayScore;
+      // Prefer the user's prediction; fall back to actual result so the bracket
+      // never shows TBD just because predictions haven't synced yet.
+      let hs: number, as_: number;
+      if (pred) {
+        hs = pred.homeScore; as_ = pred.awayScore;
+      } else if (m.status === 'completed' && m.homeScore !== null && m.awayScore !== null) {
+        hs = m.homeScore; as_ = m.awayScore;
+      } else {
+        continue;
+      }
       const home = teamMap.get(m.homeTeamId);
       const away = teamMap.get(m.awayTeamId);
       if (home) { home.P++; home.GF += hs; home.GA += as_; if (hs > as_) home.W++; else if (hs === as_) home.D++; else home.L++; }
@@ -1256,6 +1266,33 @@ export default function KnockoutStageContent({
     return <p className="py-4 text-sm text-destructive">{msg}</p>;
   }
   if (!competition) return null;
+
+  // Count group matches that require a prediction (both teams assigned)
+  const groupMatchesWithTeams = matchList.filter(
+    m => m.stage === 'group' && m.homeTeamId && m.awayTeamId
+  );
+  const savedPredMatchIds = new Set(savedGroupPredictions.map(p => p.matchId));
+  const missingPredictions = groupMatchesWithTeams.some(m => !savedPredMatchIds.has(m.id));
+
+  if (missingPredictions) {
+    return (
+      <div className="rounded-xl border bg-muted/20 p-6 text-center space-y-3">
+        <p className="font-semibold">{t('knockoutContent.missingGroupPreds')}</p>
+        <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+          {t('knockoutContent.missingGroupPredsDetail')}
+        </p>
+        {onGoToGroupStage && (
+          <button
+            type="button"
+            onClick={onGoToGroupStage}
+            className="mt-1 rounded-md border px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
+          >
+            {t('knockoutContent.goToGroupStage')}
+          </button>
+        )}
+      </div>
+    );
+  }
 
   const hasPendingTies = groupDisciplinaryTies.length > 0 || luckyLoserDisciplinaryTies.length > 0;
 

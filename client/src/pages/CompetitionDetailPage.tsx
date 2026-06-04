@@ -1092,6 +1092,7 @@ export default function CompetitionDetailPage() {
           onAllComplete={() => {
             if (!hasDeclinedKnockout) setShowKnockoutCompletePrompt(true);
           }}
+          onGoToGroupStage={() => setActiveTab('group')}
         />
       )}
 
