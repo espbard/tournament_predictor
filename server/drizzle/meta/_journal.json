@@ -92,6 +92,13 @@
       "when": 1749772800000,
       "tag": "0014_bonus_questions_tournament",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1780617600000,
+      "tag": "0015_maintenance_mode",
+      "breakpoints": true
     }
   ]
 }
