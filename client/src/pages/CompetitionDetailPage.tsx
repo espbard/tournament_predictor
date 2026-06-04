@@ -240,6 +240,54 @@ export default function CompetitionDetailPage() {
     };
   }, [matchList, localEdits, predMap, groupDisciplinaryChoices]);
 
+  // Actual standings from completed matches only — used to detect correct group position predictions
+  const { actualGroupStandings, completedGroupMatchCounts } = useMemo(() => {
+    const groupMatches = matchList.filter(m => m.stage === 'group');
+    const teamMap = new Map<string, TeamStat>();
+    const matchCounts = new Map<string, { total: number; completed: number }>();
+
+    for (const m of groupMatches) {
+      const g = m.groupName;
+      if (!g) continue;
+      if (m.homeTeamId && m.homeTeamName && !teamMap.has(m.homeTeamId))
+        teamMap.set(m.homeTeamId, { teamId: m.homeTeamId, teamName: m.homeTeamName, imageUrl: m.homeTeamImageUrl, group: g, P: 0, W: 0, D: 0, L: 0, GF: 0, GA: 0 });
+      if (m.awayTeamId && m.awayTeamName && !teamMap.has(m.awayTeamId))
+        teamMap.set(m.awayTeamId, { teamId: m.awayTeamId, teamName: m.awayTeamName, imageUrl: m.awayTeamImageUrl, group: g, P: 0, W: 0, D: 0, L: 0, GF: 0, GA: 0 });
+    }
+
+    const groupResultsMap = new Map<string, MatchResult[]>();
+    for (const m of groupMatches) {
+      if (!m.homeTeamId || !m.awayTeamId || !m.groupName) continue;
+      // Update counts only for matches with real teams assigned
+      if (!matchCounts.has(m.groupName)) matchCounts.set(m.groupName, { total: 0, completed: 0 });
+      const cnt2 = matchCounts.get(m.groupName)!;
+      cnt2.total++;
+      if (m.status === 'completed') cnt2.completed++;
+      if (m.status !== 'completed' || m.homeScore === null || m.awayScore === null) continue;
+      const hs = m.homeScore, as_ = m.awayScore;
+      const home = teamMap.get(m.homeTeamId);
+      const away = teamMap.get(m.awayTeamId);
+      if (home) { home.P++; home.GF += hs; home.GA += as_; if (hs > as_) home.W++; else if (hs === as_) home.D++; else home.L++; }
+      if (away) { away.P++; away.GF += as_; away.GA += hs; if (as_ > hs) away.W++; else if (hs === as_) away.D++; else away.L++; }
+      if (!groupResultsMap.has(m.groupName)) groupResultsMap.set(m.groupName, []);
+      groupResultsMap.get(m.groupName)!.push({ homeTeamId: m.homeTeamId, awayTeamId: m.awayTeamId, homeScore: hs, awayScore: as_ });
+    }
+
+    const byGroup = new Map<string, TeamStat[]>();
+    for (const tm of teamMap.values()) {
+      if (!byGroup.has(tm.group)) byGroup.set(tm.group, []);
+      byGroup.get(tm.group)!.push(tm);
+    }
+    for (const [groupName, teams] of byGroup) {
+      const results = groupResultsMap.get(groupName) ?? [];
+      const stats = teams.map(tm => ({ teamId: tm.teamId, points: tm.W * 3 + tm.D, gd: tm.GF - tm.GA, gf: tm.GF }));
+      const sortedIds = sortGroupTeams(stats, results, {}).map(s => s.teamId);
+      teams.sort((a, b) => sortedIds.indexOf(a.teamId) - sortedIds.indexOf(b.teamId));
+    }
+
+    return { actualGroupStandings: byGroup, completedGroupMatchCounts: matchCounts };
+  }, [matchList]);
+
   const qualifyingThirdPlaceIds = useMemo(() => {
     const third = groupStandings
       .filter(([, teams]) => teams.length >= 3)
@@ -405,12 +453,7 @@ export default function CompetitionDetailPage() {
   useEffect(() => {
     if (firstGroupUnfilledRef.current || !savedPredictions.length) return;
     firstGroupUnfilledRef.current = true;
-    const idx = allGroupMatchesList.findIndex(m => {
-      if (m.status === 'completed') return false;
-      return !predMap[m.id];
-    });
-    if (idx > 0) setCurrentGroupMatchIdx(idx);
-  }, [savedPredictions, allGroupMatchesList, predMap]);
+  }, [savedPredictions]);
 
   const deadlinePassed = competition?.predictionDeadline
     ? new Date() > new Date(competition.predictionDeadline)
@@ -773,11 +816,17 @@ export default function CompetitionDetailPage() {
                               <th className="py-1.5 text-center w-6">L</th>
                               <th className="py-1.5 text-center w-8">GF</th>
                               <th className="py-1.5 text-center w-8">GA</th>
-                              <th className="pr-3 py-1.5 text-center w-8 font-bold text-foreground">Pts</th>
+                              <th className="py-1.5 text-center w-8 font-bold text-foreground">Pts</th>
+                              <th className="pr-3 py-1.5 w-12" />
                             </tr>
                           </thead>
                           <tbody className="divide-y">
-                            {teams.map((tm, i) => (
+                            {teams.map((tm, i) => {
+                              const counts = completedGroupMatchCounts.get(groupName);
+                              const groupComplete = counts && counts.total > 0 && counts.completed === counts.total;
+                              const actualTeams = actualGroupStandings.get(groupName) ?? [];
+                              const positionCorrect = groupComplete && actualTeams[i]?.teamId === tm.teamId;
+                              return (
                               <tr key={tm.teamId} className={
                                 i < 2
                                   ? 'bg-green-50 dark:bg-green-950/30'
@@ -802,9 +851,17 @@ export default function CompetitionDetailPage() {
                                 <td className="py-1.5 text-center text-muted-foreground">{tm.L}</td>
                                 <td className="py-1.5 text-center text-muted-foreground">{tm.GF}</td>
                                 <td className="py-1.5 text-center text-muted-foreground">{tm.GA}</td>
-                                <td className="pr-3 py-1.5 text-center font-bold">{tm.W * 3 + tm.D}</td>
+                                <td className="py-1.5 text-center font-bold">{tm.W * 3 + tm.D}</td>
+                                <td className="pr-3 py-1.5 text-right">
+                                  {positionCorrect && (
+                                    <span className="text-green-600 dark:text-green-400 font-semibold whitespace-nowrap">
+                                      +{competition.scoringConfig.correct_group_position}
+                                    </span>
+                                  )}
+                                </td>
                               </tr>
-                            ))}
+                              );
+                            })}
                           </tbody>
                         </table>
                       </div>
@@ -1035,6 +1092,7 @@ export default function CompetitionDetailPage() {
           onAllComplete={() => {
             if (!hasDeclinedKnockout) setShowKnockoutCompletePrompt(true);
           }}
+          onGoToGroupStage={() => setActiveTab('group')}
         />
       )}
 
@@ -1134,6 +1192,12 @@ export default function CompetitionDetailPage() {
               const canGoPrev = currentGroupMatchIdx > 0;
               const canGoNext = currentGroupMatchIdx < allGroupMatchesList.length - 1;
 
+              const hasActual = match.status === 'completed' && match.homeScore !== null && match.awayScore !== null;
+              const isCorrectResult = hasActual && pred != null &&
+                Math.sign(pred.homeScore - pred.awayScore) === Math.sign(match.homeScore! - match.awayScore!);
+              const isExactScore = hasActual && pred != null &&
+                pred.homeScore === match.homeScore && pred.awayScore === match.awayScore;
+
               return (
                 <div className="rounded-xl border bg-muted/20 p-5">
                   <div className="text-center mb-4">
@@ -1163,8 +1227,8 @@ export default function CompetitionDetailPage() {
                       ←
                     </button>
 
-                    <div className="flex-1 min-w-0">
-                      <div className="rounded-xl border-2 bg-card shadow-sm overflow-hidden w-full sm:max-w-xs sm:mx-auto">
+                    <div className="flex-1">
+                      <div className={`rounded-xl border-2 shadow-sm overflow-hidden w-full max-w-xs mx-auto ${isCorrectResult ? 'border-green-400 bg-green-50/60 dark:bg-green-950/25' : 'bg-card'}`}>
                         {/* Home row */}
                         <div className="flex items-center gap-3 px-4 py-3.5">
                           {match.homeTeamImageUrl ? (
@@ -1174,7 +1238,7 @@ export default function CompetitionDetailPage() {
                           )}
                           <span className="flex-1 text-sm font-medium truncate">{match.homeTeamName ?? 'TBD'}</span>
                           {match.status === 'completed' ? (
-                            <span className="w-11 h-9 flex items-center justify-center text-xl font-bold flex-shrink-0">{match.homeScore}</span>
+                            <span className={`w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400 border border-amber-400 bg-amber-50/70 dark:bg-amber-900/30' : ''}`}>{pred ? pred.homeScore : match.homeScore}</span>
                           ) : isLocked ? (
                             <span className="w-11 h-9 flex items-center justify-center text-xl text-muted-foreground flex-shrink-0">{pred ? pred.homeScore : '—'}</span>
                           ) : (
@@ -1224,7 +1288,7 @@ export default function CompetitionDetailPage() {
                           )}
                           <span className="flex-1 text-sm font-medium truncate">{match.awayTeamName ?? 'TBD'}</span>
                           {match.status === 'completed' ? (
-                            <span className="w-11 h-9 flex items-center justify-center text-xl font-bold flex-shrink-0">{match.awayScore}</span>
+                            <span className={`w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400 border border-amber-400 bg-amber-50/70 dark:bg-amber-900/30' : ''}`}>{pred ? pred.awayScore : match.awayScore}</span>
                           ) : isLocked ? (
                             <span className="w-11 h-9 flex items-center justify-center text-xl text-muted-foreground flex-shrink-0">{pred ? pred.awayScore : '—'}</span>
                           ) : (
@@ -1287,7 +1351,7 @@ export default function CompetitionDetailPage() {
                           return (
                             <div className="space-y-0.5">
                               <p className="text-xs text-muted-foreground">
-                                {t('competitionDetail.predictions.yourPrediction')}: {pred.homeScore}–{pred.awayScore}
+                                {t('competitionDetail.predictions.actualResult')}: {match.homeScore}–{match.awayScore}
                               </p>
                               {pred.points !== null && (
                                 <div className="flex flex-wrap justify-center items-center gap-x-2 gap-y-0.5 text-xs">

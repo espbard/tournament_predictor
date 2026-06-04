@@ -17,7 +17,10 @@ import {
   computeGroupStandings,
   calculateGroupPositionPoints,
   calculateKnockoutPoints,
+  getUserPredictedTeamForKnockoutSlot,
   type TeamStat,
+  type KnockoutMatchSlot,
+  type FirstRoundPredTeams,
 } from './scoring.js';
 import type { KnockoutConfig, BracketPredictions, ScoringConfig } from '@tournament-predictor/shared';
 
@@ -174,7 +177,79 @@ async function recomputeAllMemberBreakdowns(
       .select()
       .from(bracketPredictions)
       .where(and(eq(bracketPredictions.competitionId, competitionId), eq(bracketPredictions.userId, userId)));
-    const userBracketPreds: BracketPredictions = bpRow?.predictions ?? {};
+    let userBracketPreds: BracketPredictions = bpRow?.predictions ?? {};
+
+    // Build per-user first-round predicted teams (bracket slot labels → team IDs
+    // using this user's predicted group standings).
+    const firstRoundPredTeams: FirstRoundPredTeams = {};
+    const allFirstRoundMatches = allKoMatches.filter(m => m.stage === firstRound);
+    allFirstRoundMatches.forEach((match, i) => {
+      const homeLabel = bracketSlots[`m${i + 1}_home`];
+      const awayLabel = bracketSlots[`m${i + 1}_away`];
+      firstRoundPredTeams[`${firstRound}_${i}`] = {
+        predHomeId: homeLabel ? resolveQualLabel(homeLabel, predictedStandings) : null,
+        predAwayId: awayLabel ? resolveQualLabel(awayLabel, predictedStandings) : null,
+      };
+    });
+
+    // Mark flipped predictions for all completed knockout matches (all rounds).
+    // Done here so we have access to per-user predicted standings for first-round
+    // slot resolution without an extra DB query loop.
+    if (bpRow) {
+      const matchesByStageForFlip = new Map<string, KnockoutMatchSlot[]>();
+      for (const m of allKoMatches) {
+        if (!matchesByStageForFlip.has(m.stage)) matchesByStageForFlip.set(m.stage, []);
+        matchesByStageForFlip.get(m.stage)!.push(m);
+      }
+
+      let bracketPredsChanged = false;
+      let updatedBracketPreds = { ...userBracketPreds };
+
+      for (const m of allKoMatches) {
+        if (m.status !== 'completed' || !m.homeTeamId || !m.awayTeamId) continue;
+        if (m.stage === 'bronze_final') continue;
+
+        const stageMatches = matchesByStageForFlip.get(m.stage) ?? [];
+        const matchIdx = stageMatches.findIndex(sm => sm.id === m.id);
+        if (matchIdx < 0) continue;
+
+        const predKey = `${m.stage}_${matchIdx}`;
+        const pred = updatedBracketPreds[predKey];
+        if (!pred || pred.flipped) continue;
+
+        let predHome: string | null = null;
+        let predAway: string | null = null;
+
+        if (m.stage === firstRound) {
+          predHome = firstRoundPredTeams[predKey]?.predHomeId ?? null;
+          predAway = firstRoundPredTeams[predKey]?.predAwayId ?? null;
+        } else {
+          predHome = getUserPredictedTeamForKnockoutSlot(
+            m.stage, matchIdx, 'home', firstRound, matchesByStageForFlip, updatedBracketPreds,
+          );
+          predAway = getUserPredictedTeamForKnockoutSlot(
+            m.stage, matchIdx, 'away', firstRound, matchesByStageForFlip, updatedBracketPreds,
+          );
+        }
+
+        const shouldFlip =
+          (predHome !== null && predHome === m.awayTeamId) ||
+          (predAway !== null && predAway === m.homeTeamId);
+
+        if (shouldFlip) {
+          updatedBracketPreds = { ...updatedBracketPreds, [predKey]: { ...pred, flipped: true } };
+          bracketPredsChanged = true;
+        }
+      }
+
+      if (bracketPredsChanged) {
+        userBracketPreds = updatedBracketPreds;
+        await db
+          .update(bracketPredictions)
+          .set({ predictions: updatedBracketPreds, updatedAt: new Date() })
+          .where(and(eq(bracketPredictions.competitionId, competitionId), eq(bracketPredictions.userId, userId)));
+      }
+    }
 
     const koResult = calculateKnockoutPoints(
       allKoMatches.map(m => ({
@@ -190,17 +265,14 @@ async function recomputeAllMemberBreakdowns(
       firstRound,
       userBracketPreds,
       config,
+      firstRoundPredTeams,
     );
 
     // --- First-round knockout tie points (based on predicted group qualifiers) ---
     let correctTeamInFirstRound = 0;
-    const allFirstRoundMatches = allKoMatches.filter(m => m.stage === firstRound);
     allFirstRoundMatches.forEach((match, i) => {
       if (match.status !== 'completed') return;
-      const homeLabel = bracketSlots[`m${i + 1}_home`];
-      const awayLabel = bracketSlots[`m${i + 1}_away`];
-      const predHomeId = homeLabel ? resolveQualLabel(homeLabel, predictedStandings) : null;
-      const predAwayId = awayLabel ? resolveQualLabel(awayLabel, predictedStandings) : null;
+      const { predHomeId, predAwayId } = firstRoundPredTeams[`${firstRound}_${i}`] ?? {};
       for (const actualTeamId of [match.homeTeamId, match.awayTeamId]) {
         if (!actualTeamId) continue;
         if (predHomeId !== actualTeamId && predAwayId !== actualTeamId) continue;
@@ -266,7 +338,7 @@ export async function triggerScoringForMatch(matchId: string, tournamentId: stri
       );
     }
 
-    // Recompute all per-source breakdown columns for all members
+    // Flip marking and full breakdown recompute (flip marking integrated inside)
     await recomputeAllMemberBreakdowns(tournamentId, comp.id, config, firstRound, bracketSlots);
   }
 }
@@ -307,6 +379,7 @@ export async function recalculateAllScoresForTournament(tournamentId: string): P
       }
     }
 
+    // Flip marking is integrated into recomputeAllMemberBreakdowns
     await recomputeAllMemberBreakdowns(tournamentId, comp.id, config, firstRound, bracketSlotsFull);
   }
 }
