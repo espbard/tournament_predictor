@@ -386,6 +386,20 @@ const translations = {
       changePhoto: 'Change photo',
       saveChanges: 'Save changes',
     },
+    maintenance: {
+      title: 'Under Maintenance',
+      message: 'This site is currently being maintained. Please come back later.',
+      toggleOn: 'Enable Maintenance Mode',
+      toggleOff: 'Disable Maintenance Mode',
+      enabling: 'Enabling…',
+      disabling: 'Disabling…',
+      activeBanner: 'Maintenance mode is active — users cannot access the site.',
+    },
+    adminUsers: {
+      title: 'Users',
+      testAccount: 'Test account',
+      testAccountDesc: 'Can access the site during maintenance',
+    },
   },
 
   no: {
@@ -773,6 +787,20 @@ const translations = {
       profilePicture: 'Profilbilde',
       changePhoto: 'Endre bilde',
       saveChanges: 'Lagre endringer',
+    },
+    maintenance: {
+      title: 'Under vedlikehold',
+      message: 'Siden er for øyeblikket under vedlikehold. Kom gjerne tilbake senere.',
+      toggleOn: 'Aktiver vedlikeholdsmodus',
+      toggleOff: 'Deaktiver vedlikeholdsmodus',
+      enabling: 'Aktiverer…',
+      disabling: 'Deaktiverer…',
+      activeBanner: 'Vedlikeholdsmodus er aktiv — brukere har ikke tilgang til siden.',
+    },
+    adminUsers: {
+      title: 'Brukere',
+      testAccount: 'Testkonto',
+      testAccountDesc: 'Kan bruke siden under vedlikehold',
     },
   },
 } as const;
