@@ -17,11 +17,14 @@ import EditUserPage from '@/pages/EditUserPage';
 import EditTournamentPage from '@/pages/EditTournamentPage';
 import EditTeamPage from '@/pages/EditTeamPage';
 import TournamentKnockoutPage from '@/pages/TournamentKnockoutPage';
+import MaintenancePage from '@/pages/MaintenancePage';
 
-function PrivateRoute({ children }: { children: React.ReactNode }) {
+function PrivateRoute({ children, maintenanceMode }: { children: React.ReactNode; maintenanceMode: boolean }) {
   const { user, isLoading } = useAuthStore();
   if (isLoading) return null;
-  return user ? <AppLayout>{children}</AppLayout> : <Navigate to="/login" replace />;
+  if (!user) return <Navigate to="/login" replace />;
+  if (maintenanceMode && !user.isAdmin) return <MaintenancePage />;
+  return <AppLayout>{children}</AppLayout>;
 }
 
 function AdminRoute({ children }: { children: React.ReactNode }) {
@@ -41,6 +44,15 @@ export default function App() {
     retry: false,
   });
 
+  const { data: maintenanceData } = useQuery({
+    queryKey: ['maintenance'],
+    queryFn: () => api.get<{ maintenanceMode: boolean }>('/settings/maintenance'),
+    retry: false,
+    refetchInterval: 30_000,
+  });
+
+  const maintenanceMode = maintenanceData?.maintenanceMode ?? false;
+
   useEffect(() => {
     setUser(data ?? null);
     setLoading(isLoading);
@@ -53,7 +65,7 @@ export default function App() {
       <Route
         path="/"
         element={
-          <PrivateRoute>
+          <PrivateRoute maintenanceMode={maintenanceMode}>
             <HomePage />
           </PrivateRoute>
         }
@@ -62,14 +74,14 @@ export default function App() {
         path="/admin"
         element={
           <AdminRoute>
-            <AdminHomePage />
+            <AdminHomePage maintenanceMode={maintenanceMode} />
           </AdminRoute>
         }
       />
       <Route
         path="/settings"
         element={
-          <PrivateRoute>
+          <PrivateRoute maintenanceMode={maintenanceMode}>
             <EditUserPage />
           </PrivateRoute>
         }
@@ -85,7 +97,7 @@ export default function App() {
       <Route
         path="/competitions/:id"
         element={
-          <PrivateRoute>
+          <PrivateRoute maintenanceMode={maintenanceMode}>
             <CompetitionDetailPage />
           </PrivateRoute>
         }
