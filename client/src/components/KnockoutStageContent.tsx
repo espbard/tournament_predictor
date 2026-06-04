@@ -1190,26 +1190,26 @@ export default function KnockoutStageContent({
 
   const luckyLoserLabels = useMemo(() => {
     if (!knockoutConfig || !knockoutConfig.luckyLosers) return {};
-    const groupNames = groupStandings.map(([name]) => name);
+    const groupNames = [...predictedGroupStandings.keys()];
     return computeLuckyLoserLabels(
       FIRST_ROUND_COUNTS[knockoutConfig.firstRound],
       knockoutConfig.bracketSlots,
       groupNames,
       knockoutConfig.directQualifiers,
     );
-  }, [knockoutConfig, groupStandings]);
+  }, [knockoutConfig, predictedGroupStandings]);
 
   const resolvedSlots = useMemo(() => {
     if (!knockoutConfig) return {};
     return resolveSlots(
       knockoutConfig.bracketSlots,
       luckyLoserLabels,
-      groupStandings,
+      [...predictedGroupStandings.entries()],
       knockoutConfig.directQualifiers,
       FIRST_ROUND_COUNTS[knockoutConfig.firstRound],
       luckyLoserDisciplinaryChoices,
     );
-  }, [knockoutConfig, luckyLoserLabels, groupStandings, luckyLoserDisciplinaryChoices]);
+  }, [knockoutConfig, luckyLoserLabels, predictedGroupStandings, luckyLoserDisciplinaryChoices]);
 
   const groupDisciplinaryTies = useMemo(() => {
     const directQualifiers = knockoutConfig?.directQualifiers ?? 2;
