@@ -432,7 +432,7 @@ function FocusedMatchCard({
             value={homeStr}
             onChange={e => handleScoreChange('home', e.target.value)}
             disabled={disabled}
-            className={`w-11 h-9 text-center text-xl font-bold rounded-lg border bg-background disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-primary flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400' : ''}`}
+            className={`w-11 h-9 text-center text-xl font-bold rounded-lg border bg-background disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-primary flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400 border-amber-400 bg-amber-50/70 dark:bg-amber-900/30' : ''}`}
             placeholder="–"
           />
           <button
@@ -488,7 +488,7 @@ function FocusedMatchCard({
             value={awayStr}
             onChange={e => handleScoreChange('away', e.target.value)}
             disabled={disabled}
-            className={`w-11 h-9 text-center text-xl font-bold rounded-lg border bg-background disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-primary flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400' : ''}`}
+            className={`w-11 h-9 text-center text-xl font-bold rounded-lg border bg-background disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-primary flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400 border-amber-400 bg-amber-50/70 dark:bg-amber-900/30' : ''}`}
             placeholder="–"
           />
           <button
