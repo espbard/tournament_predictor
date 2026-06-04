@@ -1,6 +1,9 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
+import { migrate } from 'drizzle-orm/postgres-js/migrator';
+import { db } from './db/client';
 import { authRouter } from './routes/auth';
 import { tournamentsRouter, matchesRouter, teamsRouter } from './routes/tournaments';
 import { uploadRouter } from './routes/upload';
@@ -38,6 +41,18 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+app.get('/api/health', (_req, res) => res.json({ ok: true }));
+
+async function start() {
+  console.log('Running migrations…');
+  await migrate(db, { migrationsFolder: path.join(__dirname, '../drizzle') });
+  console.log('Migrations complete.');
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}
+
+start().catch((err) => {
+  console.error('Startup failed:', err);
+  process.exit(1);
 });
