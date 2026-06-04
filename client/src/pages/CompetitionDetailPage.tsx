@@ -1125,6 +1125,12 @@ export default function CompetitionDetailPage() {
               const canGoPrev = currentGroupMatchIdx > 0;
               const canGoNext = currentGroupMatchIdx < allGroupMatchesList.length - 1;
 
+              const hasActual = match.status === 'completed' && match.homeScore !== null && match.awayScore !== null;
+              const isCorrectResult = hasActual && pred != null &&
+                Math.sign(pred.homeScore - pred.awayScore) === Math.sign(match.homeScore! - match.awayScore!);
+              const isExactScore = hasActual && pred != null &&
+                pred.homeScore === match.homeScore && pred.awayScore === match.awayScore;
+
               return (
                 <div className="rounded-xl border bg-muted/20 p-5">
                   <div className="text-center mb-4">
@@ -1155,7 +1161,7 @@ export default function CompetitionDetailPage() {
                     </button>
 
                     <div className="flex-1">
-                      <div className="rounded-xl border-2 bg-card shadow-sm overflow-hidden w-full max-w-xs mx-auto">
+                      <div className={`rounded-xl border-2 shadow-sm overflow-hidden w-full max-w-xs mx-auto ${isCorrectResult ? 'border-green-400 bg-green-50/60 dark:bg-green-950/25' : 'bg-card'}`}>
                         {/* Home row */}
                         <div className="flex items-center gap-3 px-4 py-3.5">
                           {match.homeTeamImageUrl ? (
@@ -1165,7 +1171,7 @@ export default function CompetitionDetailPage() {
                           )}
                           <span className="flex-1 text-sm font-medium truncate">{match.homeTeamName ?? 'TBD'}</span>
                           {match.status === 'completed' ? (
-                            <span className="w-11 h-9 flex items-center justify-center text-xl font-bold flex-shrink-0">{match.homeScore}</span>
+                            <span className={`w-11 h-9 flex items-center justify-center text-xl font-bold flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400' : ''}`}>{pred ? pred.homeScore : match.homeScore}</span>
                           ) : isLocked ? (
                             <span className="w-11 h-9 flex items-center justify-center text-xl text-muted-foreground flex-shrink-0">{pred ? pred.homeScore : '—'}</span>
                           ) : (
@@ -1193,7 +1199,7 @@ export default function CompetitionDetailPage() {
                           )}
                           <span className="flex-1 text-sm font-medium truncate">{match.awayTeamName ?? 'TBD'}</span>
                           {match.status === 'completed' ? (
-                            <span className="w-11 h-9 flex items-center justify-center text-xl font-bold flex-shrink-0">{match.awayScore}</span>
+                            <span className={`w-11 h-9 flex items-center justify-center text-xl font-bold flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400' : ''}`}>{pred ? pred.awayScore : match.awayScore}</span>
                           ) : isLocked ? (
                             <span className="w-11 h-9 flex items-center justify-center text-xl text-muted-foreground flex-shrink-0">{pred ? pred.awayScore : '—'}</span>
                           ) : (
@@ -1234,7 +1240,7 @@ export default function CompetitionDetailPage() {
                           return (
                             <div className="space-y-0.5">
                               <p className="text-xs text-muted-foreground">
-                                {t('competitionDetail.predictions.yourPrediction')}: {pred.homeScore}–{pred.awayScore}
+                                {t('competitionDetail.predictions.actualResult')}: {match.homeScore}–{match.awayScore}
                               </p>
                               {pred.points !== null && (
                                 <div className="flex flex-wrap justify-center items-center gap-x-2 gap-y-0.5 text-xs">
