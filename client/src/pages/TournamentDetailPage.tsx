@@ -14,6 +14,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import ImageUpload from '@/components/ImageUpload';
+import { useT } from '@/lib/useT';
 import BonusQuestionsTab from './BonusQuestionsTab';
 import { TournamentKnockoutTabContent } from './TournamentKnockoutPage';
 import type { Tournament, Team, Match, MatchStage, Group } from '@tournament-predictor/shared';
@@ -34,15 +35,6 @@ type MatchWithTeams = Match & {
   awayTeamImageUrl?: string | null;
 };
 
-const STAGE_LABELS: Record<MatchStage, string> = {
-  group: 'Group',
-  round_of_32: 'Round of 32',
-  round_of_16: 'Round of 16',
-  quarter_final: 'Quarter-final',
-  semi_final: 'Semi-final',
-  bronze_final: 'Bronze Final',
-  final: 'Final',
-};
 
 const STATUS_COLORS: Record<Tournament['status'], string> = {
   upcoming: 'bg-primary/10 text-primary',
@@ -209,6 +201,17 @@ export default function TournamentDetailPage() {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const isAdmin = user?.isAdmin ?? false;
+  const { t } = useT();
+
+  const STAGE_LABELS: Record<MatchStage, string> = {
+    group: t('stages.group'),
+    round_of_32: t('stages.round_of_32'),
+    round_of_16: t('stages.round_of_16'),
+    quarter_final: t('stages.quarter_final'),
+    semi_final: t('stages.semi_final'),
+    bronze_final: t('stages.bronze_final'),
+    final: t('stages.final'),
+  };
 
   const [showAddTeam, setShowAddTeam] = useState(false);
   const [scoreMatchId, setScoreMatchId] = useState<string | null>(null);
@@ -539,10 +542,10 @@ export default function TournamentDetailPage() {
   }
 
   if (tournamentLoading) {
-    return <div className="p-8 text-sm text-muted-foreground">Loading…</div>;
+    return <div className="p-8 text-sm text-muted-foreground">{t('common.loading')}</div>;
   }
   if (!tournament) {
-    return <div className="p-8 text-sm">Tournament not found.</div>;
+    return <div className="p-8 text-sm">{t('tournamentDetail.notFound')}</div>;
   }
 
   // ── Standings computation ─────────────────────────────────────────────────────
@@ -631,7 +634,7 @@ export default function TournamentDetailPage() {
       : '__none__';
     const dateLabel = match.scheduledAt
       ? new Date(match.scheduledAt).toLocaleDateString(undefined, { dateStyle: 'long' })
-      : 'No date';
+      : t('common.noDate');
     const last = matchGroups[matchGroups.length - 1];
     if (last && last.isoDate === isoDate) {
       last.matches.push(match);
@@ -664,7 +667,7 @@ export default function TournamentDetailPage() {
       <form onSubmit={handleAddMatch} className="mt-3 rounded-lg border p-4">
         <div className="mb-3 grid grid-cols-2 gap-3">
           <div>
-            <label className="mb-1 block text-xs font-medium text-muted-foreground">Stage</label>
+            <label className="mb-1 block text-xs font-medium text-muted-foreground">{t('tournamentDetail.matchForm.stage')}</label>
             <select
               value={matchStage}
               onChange={e => {
@@ -694,7 +697,7 @@ export default function TournamentDetailPage() {
                 }}
                 className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
               >
-                <option value="">All groups</option>
+                <option value="">{t('tournamentDetail.matchForm.allGroups')}</option>
                 {groupList.map(g => (
                   <option key={g.id} value={g.id}>{g.name}</option>
                 ))}
@@ -702,7 +705,7 @@ export default function TournamentDetailPage() {
             </div>
           )}
           <div>
-            <label className="mb-1 block text-xs font-medium text-muted-foreground">Home Team</label>
+            <label className="mb-1 block text-xs font-medium text-muted-foreground">{t('tournamentDetail.matchForm.homeTeam')}</label>
             <select
               value={matchHomeTeamId}
               onChange={e => setMatchHomeTeamId(e.target.value)}
@@ -715,7 +718,7 @@ export default function TournamentDetailPage() {
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-muted-foreground">Away Team</label>
+            <label className="mb-1 block text-xs font-medium text-muted-foreground">{t('tournamentDetail.matchForm.awayTeam')}</label>
             <select
               value={matchAwayTeamId}
               onChange={e => setMatchAwayTeamId(e.target.value)}
@@ -744,7 +747,7 @@ export default function TournamentDetailPage() {
             disabled={addMatchMutation.isPending}
             className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
-            {addMatchMutation.isPending ? 'Adding…' : 'Add Match'}
+            {addMatchMutation.isPending ? t('tournamentDetail.matchForm.addingMatch') : t('tournamentDetail.matchForm.addMatch')}
           </button>
           <button
             type="button"
@@ -764,43 +767,27 @@ export default function TournamentDetailPage() {
         to="/admin/tournaments"
         className="mb-4 inline-block text-sm text-muted-foreground hover:text-foreground"
       >
-        ← Back to Tournaments
+        {t('tournamentDetail.backToTournaments')}
       </Link>
 
       {/* Stage tabs */}
       <div className="flex border-b mb-6">
-        <button
-          onClick={() => setActiveTab('group')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-            activeTab === 'group' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          Group Stage
-        </button>
-        <button
-          onClick={() => setActiveTab('standings')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-            activeTab === 'standings' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          Group Tables
-        </button>
-        <button
-          onClick={() => setActiveTab('knockout')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-            activeTab === 'knockout' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          Knockout Stage
-        </button>
-        <button
-          onClick={() => setActiveTab('bonus')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-            activeTab === 'bonus' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          Bonus Questions
-        </button>
+        {([
+          ['group', t('tournamentDetail.tabs.groupStage')],
+          ['standings', t('tournamentDetail.tabs.groupTables')],
+          ['knockout', t('tournamentDetail.tabs.knockoutStage')],
+          ['bonus', t('tournamentDetail.tabs.bonusQuestions')],
+        ] as const).map(([tab, label]) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              activeTab === tab ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       {/* Header */}
@@ -835,7 +822,7 @@ export default function TournamentDetailPage() {
               disabled={recalculateScoresMutation.isPending}
               className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
             >
-              {recalculateScoresMutation.isPending ? 'Recalculating…' : 'Recalculate Scores'}
+              {recalculateScoresMutation.isPending ? t('tournamentDetail.recalculating') : t('tournamentDetail.recalculate')}
             </button>
             <Link
               to={`/admin/tournaments/${id}/edit`}
@@ -850,7 +837,7 @@ export default function TournamentDetailPage() {
       {activeTab === 'standings' && (
         <section className="space-y-8">
           {groupList.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No groups created yet.</p>
+            <p className="text-sm text-muted-foreground">{t('tournamentDetail.standings.noGroups')}</p>
           ) : (<>
             {/* Group tables */}
             <div className="grid gap-6 sm:grid-cols-2">
@@ -861,7 +848,7 @@ export default function TournamentDetailPage() {
                     <div className="flex items-center justify-between border-b px-4 py-2.5 bg-muted/30">
                       <h3 className="font-semibold text-sm">Group {group.name}</h3>
                       {hasPending && (
-                        <span className="text-xs text-amber-600 dark:text-amber-400">provisional</span>
+                        <span className="text-xs text-amber-600 dark:text-amber-400">{t('tournamentDetail.standings.provisional')}</span>
                       )}
                     </div>
                     <table className="w-full text-sm">
@@ -882,7 +869,7 @@ export default function TournamentDetailPage() {
                         {rows.length === 0 ? (
                           <tr>
                             <td colSpan={9} className="px-3 py-3 text-xs text-muted-foreground text-center">
-                              No teams in this group
+                              {t('tournamentDetail.standings.noTeamsInGroup')}
                             </td>
                           </tr>
                         ) : rows.map((row, i) => {
@@ -926,11 +913,11 @@ export default function TournamentDetailPage() {
             {/* Legend */}
             <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
               <span className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-sm bg-green-500" /> Direct qualifier
+                <span className="w-2.5 h-2.5 rounded-sm bg-green-500" /> {t('tournamentDetail.standings.directQualifier')}
               </span>
               {numLuckyLosers > 0 && (
                 <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-sm bg-yellow-400" /> Lucky loser
+                  <span className="w-2.5 h-2.5 rounded-sm bg-yellow-400" /> {t('tournamentDetail.standings.luckyLoser')}
                 </span>
               )}
             </div>
@@ -938,7 +925,7 @@ export default function TournamentDetailPage() {
             {/* Admin tiebreaker resolution */}
             {isAdmin && (groupDisciplinaryTies.length > 0 || (numLuckyLosers > 0 && llDisciplinaryTies.length > 0)) && (
               <div>
-                <h3 className="mb-1 text-sm font-semibold">Tiebreaker Resolution</h3>
+                <h3 className="mb-1 text-sm font-semibold">{t('tournamentDetail.standings.tiebreakerResolution')}</h3>
                 <p className="mb-4 text-xs text-muted-foreground">
                   These teams are equal on all objective criteria. Set the order manually — position 1 ranks highest.
                 </p>
@@ -1067,7 +1054,7 @@ export default function TournamentDetailPage() {
       {/* Teams */}
       <section className="mb-8">
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          <h2 className="text-lg font-semibold">Teams ({teams.length})</h2>
+          <h2 className="text-lg font-semibold">{t('tournamentDetail.teams')} ({teams.length})</h2>
           {isAdmin && (
             <div className="ml-auto flex gap-2">
               {!showAddGroup && (
@@ -1075,7 +1062,7 @@ export default function TournamentDetailPage() {
                   onClick={() => setShowAddGroup(true)}
                   className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
                 >
-                  Add Group
+                  {t('tournamentDetail.addGroup')}
                 </button>
               )}
               {!showAddTeam && (
@@ -1083,7 +1070,7 @@ export default function TournamentDetailPage() {
                   onClick={() => setShowAddTeam(true)}
                   className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
                 >
-                  Add Team
+                  {t('tournamentDetail.addTeam')}
                 </button>
               )}
             </div>
@@ -1096,7 +1083,7 @@ export default function TournamentDetailPage() {
             <div className="mb-3 flex gap-2">
               <input
                 type="text"
-                placeholder="Group name (e.g. A, B, Group A)"
+                placeholder={t('tournamentDetail.groupNamePlaceholder')}
                 value={groupName}
                 onChange={e => setGroupName(e.target.value)}
                 className="flex-1 rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
@@ -1112,7 +1099,7 @@ export default function TournamentDetailPage() {
                 disabled={addGroupMutation.isPending}
                 className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
               >
-                {addGroupMutation.isPending ? 'Adding…' : 'Add Group'}
+                {addGroupMutation.isPending ? t('tournamentDetail.addingGroup') : t('tournamentDetail.addGroupBtn')}
               </button>
               <button
                 type="button"
@@ -1131,7 +1118,7 @@ export default function TournamentDetailPage() {
             <div className="mb-3 flex gap-2">
               <input
                 type="text"
-                placeholder="Team name"
+                placeholder={t('tournamentDetail.teamNamePlaceholder')}
                 value={teamName}
                 onChange={e => setTeamName(e.target.value)}
                 className="flex-1 rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
@@ -1143,14 +1130,14 @@ export default function TournamentDetailPage() {
                 onChange={e => setTeamGroupId(e.target.value)}
                 className="w-36 rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
               >
-                <option value="">Uncategorized</option>
+                <option value="">{t('tournamentDetail.uncategorized')}</option>
                 {groupList.map(g => (
                   <option key={g.id} value={g.id}>{g.name}</option>
                 ))}
               </select>
             </div>
             <div className="mb-3">
-              <p className="mb-1 text-xs font-medium text-muted-foreground">Team icon (optional)</p>
+              <p className="mb-1 text-xs font-medium text-muted-foreground">{t('tournamentDetail.teamIcon')}</p>
               <ImageUpload
                 type="teams"
                 currentUrl={teamImageUrl}
@@ -1165,7 +1152,7 @@ export default function TournamentDetailPage() {
                 disabled={addTeamMutation.isPending}
                 className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
               >
-                {addTeamMutation.isPending ? 'Adding…' : 'Add Team'}
+                {addTeamMutation.isPending ? t('tournamentDetail.addingTeam') : t('tournamentDetail.addTeamBtn')}
               </button>
               <button
                 type="button"
@@ -1179,14 +1166,14 @@ export default function TournamentDetailPage() {
         )}
 
         {teams.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No teams added yet.</p>
+          <p className="text-sm text-muted-foreground">{t('tournamentDetail.noTeams')}</p>
         ) : isAdmin ? (
           /* Drag-and-drop board for admins */
           <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
             <div className="flex flex-wrap gap-3">
               <DroppableZone
                 id="uncategorized"
-                label="Uncategorized"
+                label={t('tournamentDetail.uncategorized')}
                 teams={teamsByGroup.get(null) ?? []}
               />
               {groupList.map(group => (
@@ -1236,7 +1223,7 @@ export default function TournamentDetailPage() {
       {/* Matches */}
       <section>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-lg font-semibold">Matches ({groupStageMatches.length})</h2>
+          <h2 className="text-lg font-semibold">{t('tournamentDetail.matches')} ({groupStageMatches.length})</h2>
           {isAdmin && (
             <div className="flex flex-wrap gap-2">
               <button
@@ -1245,8 +1232,8 @@ export default function TournamentDetailPage() {
                   className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                 >
                   {confirmResultsMutation.isPending
-                    ? 'Confirming…'
-                    : `Confirm Results (${Object.keys(pendingResults).length})`}
+                    ? t('tournamentDetail.confirming')
+                    : t('tournamentDetail.confirmResults', { n: Object.keys(pendingResults).length })}
                 </button>
               {matchList.some(m => m.stage === 'group') && (
                 <>
@@ -1254,14 +1241,14 @@ export default function TournamentDetailPage() {
                     onClick={simulateGroupStage}
                     className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
                   >
-                    Simulate Group Stage
+                    {t('tournamentDetail.simulateGroupStage')}
                   </button>
                   <button
                     onClick={() => clearGroupStageMutation.mutate()}
                     disabled={clearGroupStageMutation.isPending}
                     className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
                   >
-                    {clearGroupStageMutation.isPending ? 'Clearing…' : 'Clear Group Stage Results'}
+                    {clearGroupStageMutation.isPending ? t('tournamentDetail.clearing') : t('tournamentDetail.clearGroupStage')}
                   </button>
                 </>
               )}
@@ -1270,7 +1257,7 @@ export default function TournamentDetailPage() {
                   onClick={() => openAddMatch()}
                   className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
                 >
-                  Add Match
+                  {t('tournamentDetail.addMatch')}
                 </button>
               )}
             </div>
@@ -1281,7 +1268,7 @@ export default function TournamentDetailPage() {
         {isAdmin && addMatchForDate === '' && renderAddMatchForm()}
 
         {matchList.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No matches added yet.</p>
+          <p className="text-sm text-muted-foreground">{t('tournamentDetail.noMatches')}</p>
         ) : (
           <div className="space-y-6">
             {matchGroups.map(({ dateLabel, isoDate, matches }) => (
@@ -1303,7 +1290,7 @@ export default function TournamentDetailPage() {
                         <div className="flex items-center gap-2">
                           {match.status === 'completed' && (
                             <span className="rounded-full bg-accent/15 px-2 py-0.5 text-xs font-medium text-accent">
-                              Final
+                              {t('tournamentDetail.final')}
                             </span>
                           )}
                           {isAdmin && (
@@ -1360,7 +1347,7 @@ export default function TournamentDetailPage() {
                                 onClick={() => openScoreForm(match.id)}
                                 className="rounded-md border px-3 py-1 text-xs hover:bg-muted"
                               >
-                                Enter Score
+                                {t('tournamentDetail.enterScore')}
                               </button>
                             ) : null}
                           </div>
@@ -1441,7 +1428,7 @@ export default function TournamentDetailPage() {
                                   }}
                                   className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                                 >
-                                  <option value="">All groups</option>
+                                  <option value="">{t('tournamentDetail.matchForm.allGroups')}</option>
                                   {groupList.map(g => (
                                     <option key={g.id} value={g.id}>{g.name}</option>
                                   ))}
@@ -1449,7 +1436,7 @@ export default function TournamentDetailPage() {
                               </div>
                             )}
                             <div>
-                              <label className="mb-1 block text-xs font-medium text-muted-foreground">Home Team</label>
+                              <label className="mb-1 block text-xs font-medium text-muted-foreground">{t('tournamentDetail.matchForm.homeTeam')}</label>
                               <select
                                 value={editHomeTeamId}
                                 onChange={e => setEditHomeTeamId(e.target.value)}
@@ -1465,7 +1452,7 @@ export default function TournamentDetailPage() {
                               </select>
                             </div>
                             <div>
-                              <label className="mb-1 block text-xs font-medium text-muted-foreground">Away Team</label>
+                              <label className="mb-1 block text-xs font-medium text-muted-foreground">{t('tournamentDetail.matchForm.awayTeam')}</label>
                               <select
                                 value={editAwayTeamId}
                                 onChange={e => setEditAwayTeamId(e.target.value)}
@@ -1497,7 +1484,7 @@ export default function TournamentDetailPage() {
                               disabled={editMatchMutation.isPending}
                               className="rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                             >
-                              {editMatchMutation.isPending ? 'Saving…' : 'Save changes'}
+                              {editMatchMutation.isPending ? t('tournamentDetail.matchForm.saving') : t('tournamentDetail.matchForm.saveChanges')}
                             </button>
                             <button
                               type="button"
@@ -1523,7 +1510,7 @@ export default function TournamentDetailPage() {
                         onClick={() => openAddMatch(isoDate)}
                         className="mt-2 w-full rounded-md border border-dashed px-3 py-1.5 text-xs text-muted-foreground hover:border-solid hover:bg-muted hover:text-foreground"
                       >
-                        + Add match on this day
+                        {t('tournamentDetail.addMatchOnDay')}
                       </button>
                     )
                 )}

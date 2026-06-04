@@ -12,6 +12,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
+import { useT } from '@/lib/useT';
 import type { Tournament, Group, KnockoutConfig, KnockoutFirstRound, Match } from '@tournament-predictor/shared';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -341,6 +342,8 @@ function FocusedAdminMatchCard({
     onQueue(h, a, isDraw ? winnerId : null);
   }
 
+  const { t } = useT();
+
   if (!match) {
     return (
       <div className="rounded-xl border-2 bg-card/50 shadow-sm p-8 w-full max-w-xs mx-auto text-center text-sm text-muted-foreground italic">
@@ -353,7 +356,7 @@ function FocusedAdminMatchCard({
     <div className={`rounded-xl border-2 shadow-sm overflow-hidden w-full max-w-xs mx-auto ${isQueued ? 'border-amber-400 bg-amber-50/10 dark:bg-amber-900/10' : 'bg-card'}`}>
       {isQueued && (
         <div className="px-4 py-1.5 bg-amber-100/60 dark:bg-amber-900/30 text-[11px] font-medium text-amber-800 dark:text-amber-300 text-center tracking-wide">
-          Staged — pending confirmation
+          {t('knockout.stagedPending')}
         </div>
       )}
 
@@ -413,7 +416,7 @@ function FocusedAdminMatchCard({
           <div className="h-px bg-border" />
           <div className="p-3 space-y-2">
             <p className="text-[11px] text-muted-foreground text-center font-medium">
-              Who advances after extra time / penalties?
+              {t('knockout.whoAdvances')}
             </p>
             <div className="flex gap-2">
               {[
@@ -442,7 +445,7 @@ function FocusedAdminMatchCard({
       )}
 
       {isDrawEntry && !selectedWinnerId && hasTeams && (
-        <p className="text-[11px] text-muted-foreground text-center px-4 pb-3">Select who advances to stage</p>
+        <p className="text-[11px] text-muted-foreground text-center px-4 pb-3">{t('knockout.selectToStage')}</p>
       )}
     </div>
   );
@@ -460,10 +463,14 @@ function FocusedAdminResults({
   hasBronzeFinal: boolean;
 }) {
   const queryClient = useQueryClient();
+  const { t } = useT();
   const [currentIdx, setCurrentIdx] = useState(0);
   const [slideDir, setSlideDir] = useState<'fromRight' | 'fromLeft'>('fromRight');
   const [animKey, setAnimKey] = useState(0);
   const initedRef = useRef(false);
+
+  const getRoundLabel = (round: string) =>
+    t(`knockout.rounds.${round}` as any) || ROUND_LABELS[round as KnockoutFirstRound] || round;
 
   const startIdx = ROUND_ORDER.indexOf(firstRound);
   const stages = ROUND_ORDER.slice(startIdx);
@@ -534,7 +541,8 @@ function FocusedAdminResults({
   }
 
   const current = allFlatMatches[currentIdx];
-  if (!current) return <p className="text-sm text-muted-foreground">No knockout matches yet.</p>;
+  const noMatchesLabel = t('knockout.noKnockoutMatches');
+  if (!current) return <p className="text-sm text-muted-foreground">{noMatchesLabel}</p>;
 
   const currentMatch = current.match;
   const isCompleted = currentMatch?.status === 'completed';
@@ -543,7 +551,7 @@ function FocusedAdminResults({
   const canGoPrev = currentIdx > 0;
   const pendingCount = Object.keys(pendingResults).length;
 
-  const currentStageLabel = current.isBronze ? 'Bronze Final' : ROUND_LABELS[current.stage as KnockoutFirstRound];
+  const currentStageLabel = current.isBronze ? t('knockout.rounds.bronze_final') : getRoundLabel(current.stage);
   const roundMatchesForDots = current.isBronze ? [] : allFlatMatches.filter(m => m.stage === current.stage && !m.isBronze);
 
   return (
@@ -561,7 +569,7 @@ function FocusedAdminResults({
             disabled={confirmResultsMutation.isPending}
             className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
-            {confirmResultsMutation.isPending ? 'Confirming…' : `Confirm Results (${pendingCount})`}
+            {confirmResultsMutation.isPending ? t('knockout.confirming') : t('knockout.confirmResults', { n: pendingCount })}
           </button>
         </div>
       )}
@@ -580,7 +588,7 @@ function FocusedAdminResults({
               onClick={() => firstIdx !== -1 && goTo(firstIdx)}
               className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${isActive ? 'bg-primary text-primary-foreground' : allDone ? 'bg-green-500/15 text-green-700 border border-green-500/30' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}
             >
-              {ROUND_LABELS[stage as KnockoutFirstRound]}
+              {getRoundLabel(stage)}
               {allDone && <span className="ml-1 text-green-600">✓</span>}
             </button>
           );
@@ -594,7 +602,7 @@ function FocusedAdminResults({
                 onClick={() => bronzeIdx !== -1 && goTo(bronzeIdx)}
                 className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${current.isBronze ? 'bg-primary text-primary-foreground' : bronzeDone ? 'bg-green-500/15 text-green-700 border border-green-500/30' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}
               >
-                Bronze Final
+                {t('knockout.rounds.bronze_final')}
                 {bronzeDone && <span className="ml-1 text-green-600">✓</span>}
               </button>
             );
@@ -677,6 +685,7 @@ export function TournamentKnockoutTabContent({ tournamentId }: { tournamentId: s
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
   const isAdmin = user?.isAdmin ?? false;
+  const { t } = useT();
 
   const { data: tournament, isLoading } = useQuery({
     queryKey: ['tournament', tournamentId],
@@ -801,7 +810,7 @@ export function TournamentKnockoutTabContent({ tournamentId }: { tournamentId: s
     saveConfigMutation.mutate({ bracketSlots: newSlots });
   }
 
-  if (isLoading) return <div className="py-8 text-sm text-muted-foreground">Loading…</div>;
+  if (isLoading) return <div className="py-8 text-sm text-muted-foreground">{t('common.loading')}</div>;
   if (!tournament) return null;
 
   const qualifiersMatch = qualifierLabels.length + luckyLosers === totalSlots;
@@ -815,21 +824,21 @@ export function TournamentKnockoutTabContent({ tournamentId }: { tournamentId: s
             disabled={regenerateKnockoutMutation.isPending}
             className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
           >
-            {regenerateKnockoutMutation.isPending ? 'Regenerating…' : 'Regenerate Knockout'}
+            {regenerateKnockoutMutation.isPending ? t('knockout.regenerating') : t('knockout.regenerate')}
           </button>
           <button
             onClick={() => simulateKnockoutMutation.mutate()}
             disabled={simulateKnockoutMutation.isPending}
             className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
           >
-            {simulateKnockoutMutation.isPending ? 'Simulating…' : 'Simulate Knockout Results'}
+            {simulateKnockoutMutation.isPending ? t('knockout.simulating') : t('knockout.simulate')}
           </button>
           <button
             onClick={() => clearKnockoutMutation.mutate()}
             disabled={clearKnockoutMutation.isPending}
             className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
           >
-            {clearKnockoutMutation.isPending ? 'Clearing…' : 'Clear Knockout Results'}
+            {clearKnockoutMutation.isPending ? t('knockout.clearing') : t('knockout.clearResults')}
           </button>
         </div>
       )}
@@ -837,31 +846,31 @@ export function TournamentKnockoutTabContent({ tournamentId }: { tournamentId: s
       {/* Settings panel */}
       <section className="mb-8 rounded-lg border p-5">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">
-          Knockout Settings
+          {t('knockout.knockoutSettings')}
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-4">
           <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1.5">First Knockout Round</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1.5">{t('knockout.firstKnockoutRound')}</label>
             <select
               value={firstRound}
               onChange={e => { setFirstRound(e.target.value as KnockoutFirstRound); setConfigDirty(true); }}
               className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
             >
-              <option value="round_of_32">Round of 32 (32 teams)</option>
-              <option value="round_of_16">Round of 16 (16 teams)</option>
-              <option value="quarter_final">Quarter-finals (8 teams)</option>
-              <option value="semi_final">Semi-finals (4 teams)</option>
-              <option value="final">Final only (2 teams)</option>
+              <option value="round_of_32">{t('knockout.roundOpts.round_of_32')}</option>
+              <option value="round_of_16">{t('knockout.roundOpts.round_of_16')}</option>
+              <option value="quarter_final">{t('knockout.roundOpts.quarter_final')}</option>
+              <option value="semi_final">{t('knockout.roundOpts.semi_final')}</option>
+              <option value="final">{t('knockout.roundOpts.final')}</option>
             </select>
           </div>
           <div className="flex items-end pb-0.5">
             <label className="flex items-center gap-2.5 cursor-pointer">
               <input type="checkbox" checked={hasBronzeFinal} onChange={e => { setHasBronzeFinal(e.target.checked); setConfigDirty(true); }} className="h-4 w-4 rounded" />
-              <span className="text-sm">Bronze Final (3rd place match)</span>
+              <span className="text-sm">{t('knockout.bronzeFinal')}</span>
             </label>
           </div>
           <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1.5">Direct Qualifiers per Group</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1.5">{t('knockout.directQualifiers')}</label>
             <div className="flex gap-2">
               {[1, 2, 3, 4].map(n => (
                 <button key={n} type="button" onClick={() => { setDirectQualifiers(n); setConfigDirty(true); }}
@@ -873,7 +882,7 @@ export function TournamentKnockoutTabContent({ tournamentId }: { tournamentId: s
           </div>
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-1.5">
-              Lucky Losers <span className="font-normal">(best teams just outside direct spots)</span>
+              {t('knockout.luckyLosers')} <span className="font-normal">{t('knockout.luckyLosersDesc')}</span>
             </label>
             <input type="number" min="0" max="32" value={luckyLosers}
               onChange={e => { setLuckyLosers(Math.max(0, parseInt(e.target.value) || 0)); setConfigDirty(true); }}
@@ -884,7 +893,7 @@ export function TournamentKnockoutTabContent({ tournamentId }: { tournamentId: s
         <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t">
           <div className="text-sm">
             {sortedGroups.length === 0 ? (
-              <span className="text-muted-foreground">Add groups first to configure qualifiers</span>
+              <span className="text-muted-foreground">{t('knockout.addGroupsFirst')}</span>
             ) : (
               <>
                 <span className={`font-medium ${qualifiersMatch ? 'text-green-600' : 'text-amber-600'}`}>
@@ -904,7 +913,7 @@ export function TournamentKnockoutTabContent({ tournamentId }: { tournamentId: s
           {configDirty && (
             <button onClick={handleConfigSave} disabled={saveConfigMutation.isPending}
               className="rounded-md bg-primary px-4 py-1.5 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
-              {saveConfigMutation.isPending ? 'Saving…' : 'Save Settings'}
+              {saveConfigMutation.isPending ? t('knockout.saving') : t('knockout.saveSettings')}
             </button>
           )}
           {!configDirty && saveConfigMutation.isSuccess && <span className="text-xs text-green-600">Saved</span>}
@@ -915,10 +924,10 @@ export function TournamentKnockoutTabContent({ tournamentId }: { tournamentId: s
         {/* Bracket Setup */}
         <section className="mb-8">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Bracket Setup</h2>
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('knockout.bracketSetup')}</h2>
             {Object.keys(bracketSlots).length > 0 && (
               <button type="button" onClick={() => { setBracketSlots({}); saveConfigMutation.mutate({ bracketSlots: {} }); }} className="text-xs text-muted-foreground hover:text-destructive">
-                Clear all slots
+                {t('knockout.clearAllSlots')}
               </button>
             )}
           </div>
@@ -928,9 +937,9 @@ export function TournamentKnockoutTabContent({ tournamentId }: { tournamentId: s
         {/* Qualifier pool */}
         {qualifierLabels.length > 0 && (
           <section className="mb-8">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Direct Qualifiers</h2>
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">{t('knockout.directQualifiersPool')}</h2>
             <p className="text-xs text-muted-foreground mb-3">
-              Drag into bracket slots above.{' '}
+              {t('knockout.dragToBracket')}{' '}
               <span className="font-medium text-foreground">{usedQualifiers.size}/{qualifierLabels.length} placed</span>
               {luckyLosers > 0 && <span> · Lucky loser slots auto-fill in the bracket</span>}
             </p>
@@ -955,11 +964,11 @@ export function TournamentKnockoutTabContent({ tournamentId }: { tournamentId: s
 
       {/* Results */}
       <section className="mt-8">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Results</h2>
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">{t('knockout.results')}</h2>
 
         {knockoutMatches.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No knockout matches yet. Generate the first round from the Group Stage tab once all group matches are complete.
+            {t('knockout.noKnockoutMatches')}
           </p>
         ) : (
           <FocusedAdminResults
@@ -978,27 +987,28 @@ export function TournamentKnockoutTabContent({ tournamentId }: { tournamentId: s
 
 export default function TournamentKnockoutPage() {
   const { id } = useParams<{ id: string }>();
+  const { t } = useT();
   const { data: tournament, isLoading } = useQuery({
     queryKey: ['tournament', id],
     queryFn: () => api.get<Tournament>(`/tournaments/${id}`),
     enabled: !!id,
   });
 
-  if (isLoading) return <div className="p-8 text-sm text-muted-foreground">Loading…</div>;
-  if (!tournament) return <div className="p-8 text-sm">Tournament not found.</div>;
+  if (isLoading) return <div className="p-8 text-sm text-muted-foreground">{t('common.loading')}</div>;
+  if (!tournament) return <div className="p-8 text-sm">{t('knockout.notFound')}</div>;
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-8">
       <Link to="/admin/tournaments" className="mb-4 inline-block text-sm text-muted-foreground hover:text-foreground">
-        ← Back to Tournaments
+        {t('knockout.backToTournaments')}
       </Link>
 
       <div className="flex border-b mb-6">
         <Link to={`/admin/tournaments/${id}`} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground">
-          Group Stage
+          {t('knockout.groupStageTab')}
         </Link>
         <div className="px-4 py-2 text-sm font-medium border-b-2 border-primary -mb-px">
-          Knockout Stage
+          {t('knockout.knockoutStageTitle')}
         </div>
       </div>
 
@@ -1006,7 +1016,7 @@ export default function TournamentKnockoutPage() {
         {tournament.imageUrl && (
           <img src={tournament.imageUrl} alt={tournament.name} className="h-10 w-10 rounded-lg object-cover" />
         )}
-        <h1 className="text-2xl font-bold">{tournament.name} — Knockout Stage</h1>
+        <h1 className="text-2xl font-bold">{tournament.name} — {t('knockout.knockoutStageTitle')}</h1>
       </div>
 
       <TournamentKnockoutTabContent tournamentId={id!} />

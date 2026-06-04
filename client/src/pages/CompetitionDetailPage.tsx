@@ -6,6 +6,7 @@ import { useAuthStore } from '@/store/authStore';
 import ImageUpload from '@/components/ImageUpload';
 import KnockoutStageContent from '@/components/KnockoutStageContent';
 import BonusQuestionsTab from './BonusQuestionsTab';
+import { useT } from '@/lib/useT';
 import type { Competition, Tournament, Prediction, MatchStage, LeaderboardEntry } from '@tournament-predictor/shared';
 import {
   sortGroupTeams,
@@ -34,21 +35,12 @@ interface MatchWithTeams {
   groupName: string | null;
 }
 
-const STAGE_LABELS: Record<MatchStage, string> = {
-  group: 'Group Stage',
-  round_of_32: 'Round of 32',
-  round_of_16: 'Round of 16',
-  quarter_final: 'Quarter-finals',
-  semi_final: 'Semi-finals',
-  bronze_final: 'Bronze Final',
-  final: 'Final',
-};
-
 export default function CompetitionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { t } = useT();
 
   const [editName, setEditName] = useState('');
   const [editImageUrl, setEditImageUrl] = useState<string | null>(null);
@@ -66,7 +58,6 @@ export default function CompetitionDetailPage() {
   const [activeTab, setActiveTab] = useState<'group' | 'tables' | 'knockout' | 'bonus' | 'leaderboard'>('group');
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
-
 
   const [hasDeclined, setHasDeclined] = useState(false);
   const [showProceedPrompt, setShowProceedPrompt] = useState(false);
@@ -134,14 +125,12 @@ export default function CompetitionDetailPage() {
     enabled: !!competition && !user?.isAdmin && activeTab === 'leaderboard',
   });
 
-
   const lockMutation = useMutation({
     mutationFn: () => api.post<{ groupStageLocked: boolean }>(`/competitions/${id}/lock-group-stage`, {}),
     onSuccess: () => {
       queryClient.setQueryData(['competitions', id, 'my-status'], { groupStageLocked: true });
     },
   });
-
 
   useEffect(() => {
     if (!savedPredictions.length) return;
@@ -185,7 +174,6 @@ export default function CompetitionDetailPage() {
     P: number; W: number; D: number; L: number; GF: number; GA: number;
   };
 
-  // effectiveGroupResults[groupName] holds the scored match results for H2H computation
   const { groupStandings, effectiveGroupResults } = useMemo(() => {
     const groupMatches = matchList.filter(m => m.stage === 'group');
     const teamMap = new Map<string, TeamStat>();
@@ -225,14 +213,14 @@ export default function CompetitionDetailPage() {
     }
 
     const byGroup = new Map<string, TeamStat[]>();
-    for (const t of teamMap.values()) {
-      if (!byGroup.has(t.group)) byGroup.set(t.group, []);
-      byGroup.get(t.group)!.push(t);
+    for (const tm of teamMap.values()) {
+      if (!byGroup.has(tm.group)) byGroup.set(tm.group, []);
+      byGroup.get(tm.group)!.push(tm);
     }
 
     for (const [groupName, teams] of byGroup) {
       const results = groupResultsMap.get(groupName) ?? [];
-      const tiebreakerStats = teams.map(t => ({ teamId: t.teamId, points: t.W * 3 + t.D, gd: t.GF - t.GA, gf: t.GF }));
+      const tiebreakerStats = teams.map(tm => ({ teamId: tm.teamId, points: tm.W * 3 + tm.D, gd: tm.GF - tm.GA, gf: tm.GF }));
       const sortedIds = sortGroupTeams(tiebreakerStats, results, groupDisciplinaryChoices).map(s => s.teamId);
       teams.sort((a, b) => sortedIds.indexOf(a.teamId) - sortedIds.indexOf(b.teamId));
     }
@@ -247,20 +235,20 @@ export default function CompetitionDetailPage() {
     const third = groupStandings
       .filter(([, teams]) => teams.length >= 3)
       .map(([, teams]) => teams[2]);
-    const tiebreakerStats = third.map(t => ({ teamId: t.teamId, points: t.W * 3 + t.D, gd: t.GF - t.GA, gf: t.GF }));
+    const tiebreakerStats = third.map(tm => ({ teamId: tm.teamId, points: tm.W * 3 + tm.D, gd: tm.GF - tm.GA, gf: tm.GF }));
     const sortedIds = sortLuckyLosers(tiebreakerStats, luckyLoserDisciplinaryChoices).map(s => s.teamId);
-    const sortedThird = sortedIds.map(id => third.find(t => t.teamId === id)!).filter(Boolean);
+    const sortedThird = sortedIds.map(sid => third.find(tm => tm.teamId === sid)!).filter(Boolean);
     const qualifying = sortedThird.slice(0, 8);
     if (qualifying.length === 8 && sortedThird.length > 8) {
       const edge = qualifying[7];
       const edgePts = edge.W * 3 + edge.D; const edgeGD = edge.GF - edge.GA;
-      for (const t of sortedThird.slice(8)) {
-        const pts = t.W * 3 + t.D; const gd = t.GF - t.GA;
-        if (pts === edgePts && gd === edgeGD && t.GF === edge.GF) qualifying.push(t);
+      for (const tm of sortedThird.slice(8)) {
+        const pts = tm.W * 3 + tm.D; const gd = tm.GF - tm.GA;
+        if (pts === edgePts && gd === edgeGD && tm.GF === edge.GF) qualifying.push(tm);
         else break;
       }
     }
-    return new Set(qualifying.map(t => t.teamId));
+    return new Set(qualifying.map(tm => tm.teamId));
   }, [groupStandings, luckyLoserDisciplinaryChoices]);
 
   const matchesByDate = useMemo(() => {
@@ -283,7 +271,7 @@ export default function CompetitionDetailPage() {
         dateLabel = d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
       } else {
         dateKey = 'unscheduled';
-        dateLabel = 'Unscheduled';
+        dateLabel = t('common.noDate');
       }
       if (!indexByKey.has(dateKey)) {
         indexByKey.set(dateKey, groups.length);
@@ -293,7 +281,7 @@ export default function CompetitionDetailPage() {
     }
 
     return groups;
-  }, [matchList]);
+  }, [matchList, t]);
 
   const groupMatchesByDate = useMemo(
     () => matchesByDate
@@ -340,29 +328,26 @@ export default function CompetitionDetailPage() {
 
   const tournament = useMemo(
     () => user?.isAdmin
-      ? tournamentsData.find(t => t.id === competition?.tournamentId)
+      ? tournamentsData.find(tm => tm.id === competition?.tournamentId)
       : tournamentData,
     [user?.isAdmin, tournamentsData, tournamentData, competition?.tournamentId]
   );
 
-
-
-  // Detect which group standings still need disciplinary resolution
   const groupDisciplinaryTies = useMemo(() => {
     const directQualifiers = tournament?.knockoutConfig?.directQualifiers ?? 2;
     const result: Array<{ groupName: string; teams: TeamStat[]; key: string; requiredRankings: number }> = [];
     for (const [groupName, teams] of groupStandings) {
       const results = effectiveGroupResults.get(groupName) ?? [];
-      const tiebreakerStats = teams.map(t => ({ teamId: t.teamId, points: t.W * 3 + t.D, gd: t.GF - t.GA, gf: t.GF }));
+      const tiebreakerStats = teams.map(tm => ({ teamId: tm.teamId, points: tm.W * 3 + tm.D, gd: tm.GF - tm.GA, gf: tm.GF }));
       const tiedGroups = findGroupDisciplinaryTies(tiebreakerStats, results);
       for (const tiedGroup of tiedGroups) {
-        const key = makeDisciplinaryKey(tiedGroup.map(t => t.teamId));
+        const key = makeDisciplinaryKey(tiedGroup.map(tm => tm.teamId));
         const existing = groupDisciplinaryChoices[key] ?? [];
         if (existing.length < tiedGroup.length) {
-          const startIndex = Math.min(...tiedGroup.map(t => teams.findIndex(tt => tt.teamId === t.teamId)));
+          const startIndex = Math.min(...tiedGroup.map(tm => teams.findIndex(tt => tt.teamId === tm.teamId)));
           const K = Math.max(1, Math.min(directQualifiers, startIndex + tiedGroup.length) - startIndex);
           const requiredRankings = Math.min(K, tiedGroup.length - 1);
-          result.push({ groupName, teams: tiedGroup.map(s => teams.find(t => t.teamId === s.teamId)!).filter(Boolean), key, requiredRankings });
+          result.push({ groupName, teams: tiedGroup.map(s => teams.find(tm => tm.teamId === s.teamId)!).filter(Boolean), key, requiredRankings });
         }
       }
     }
@@ -373,17 +358,17 @@ export default function CompetitionDetailPage() {
     if (!tournament?.knockoutConfig) return [];
     const { directQualifiers } = tournament.knockoutConfig;
     const third = groupStandings
-      .filter(([, t]) => t.length > directQualifiers)
-      .map(([, t]) => t[directQualifiers]);
-    const tiebreakerStats = third.map(t => ({ teamId: t.teamId, points: t.W * 3 + t.D, gd: t.GF - t.GA, gf: t.GF }));
+      .filter(([, tms]) => tms.length > directQualifiers)
+      .map(([, tms]) => tms[directQualifiers]);
+    const tiebreakerStats = third.map(tm => ({ teamId: tm.teamId, points: tm.W * 3 + tm.D, gd: tm.GF - tm.GA, gf: tm.GF }));
     return findLuckyLoserDisciplinaryTies(tiebreakerStats)
       .filter(group => {
-        const key = makeDisciplinaryKey(group.map(t => t.teamId));
+        const key = makeDisciplinaryKey(group.map(tm => tm.teamId));
         return (luckyLoserDisciplinaryChoices[key] ?? []).length < group.length;
       })
       .map(group => ({
-        key: makeDisciplinaryKey(group.map(t => t.teamId)),
-        teams: group.map(s => third.find(t => t.teamId === s.teamId)!).filter(Boolean),
+        key: makeDisciplinaryKey(group.map(tm => tm.teamId)),
+        teams: group.map(s => third.find(tm => tm.teamId === s.teamId)!).filter(Boolean),
       }));
   }, [groupStandings, tournament?.knockoutConfig, luckyLoserDisciplinaryChoices]);
 
@@ -408,7 +393,6 @@ export default function CompetitionDetailPage() {
     }
   }, [allGroupMatchesList, allGroupFilled, groupStageLocked, hasDeclined, predictionsFetched]);
 
-  // Jump to first unfilled match once predictions load
   useEffect(() => {
     if (firstGroupUnfilledRef.current || !savedPredictions.length) return;
     firstGroupUnfilledRef.current = true;
@@ -443,7 +427,7 @@ export default function CompetitionDetailPage() {
     } catch (err) {
       setSaveErrors(prev => ({
         ...prev,
-        [matchId]: err instanceof ApiError ? err.message : 'Failed to save',
+        [matchId]: err instanceof ApiError ? err.message : t('common.failedToSave'),
       }));
     } finally {
       setSavingIds(prev => { const n = new Set(prev); n.delete(matchId); return n; });
@@ -471,8 +455,6 @@ export default function CompetitionDetailPage() {
       savePrediction(m.id);
     }
   }
-
-
 
   function handleProceedToKnockout() {
     lockMutation.mutate(undefined, {
@@ -526,7 +508,7 @@ export default function CompetitionDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['competitions'] });
     },
     onError: (err) => {
-      setEditError(err instanceof ApiError ? err.message : 'Failed to update');
+      setEditError(err instanceof ApiError ? err.message : t('competitionDetail.failedToUpdate'));
     },
   });
 
@@ -560,16 +542,16 @@ export default function CompetitionDetailPage() {
     const ranking = [...(choices[key] ?? [])];
     const idx = ranking.indexOf(teamId);
     if (idx !== -1) {
-      ranking.splice(idx, 1); // undo
+      ranking.splice(idx, 1);
     } else {
-      ranking.push(teamId); // rank next
+      ranking.push(teamId);
     }
     setChoices({ ...choices, [key]: ranking });
   }
 
   function confirmGroupTiebreaker(key: string, allTeamIds: string[]) {
     const ranked = groupDisciplinaryChoices[key] ?? [];
-    const remaining = allTeamIds.filter(id => !ranked.includes(id)).sort();
+    const remaining = allTeamIds.filter(tid => !ranked.includes(tid)).sort();
     const next = { ...groupDisciplinaryChoices, [key]: [...ranked, ...remaining] };
     setGroupDisciplinaryChoices(next);
     saveTiebreakerChoicesMutation.mutate({ groupChoices: next });
@@ -577,15 +559,29 @@ export default function CompetitionDetailPage() {
 
   function confirmLuckyLoserTiebreaker(key: string, allTeamIds: string[]) {
     const ranked = luckyLoserDisciplinaryChoices[key] ?? [];
-    const remaining = allTeamIds.filter(id => !ranked.includes(id)).sort();
+    const remaining = allTeamIds.filter(tid => !ranked.includes(tid)).sort();
     const next = { ...luckyLoserDisciplinaryChoices, [key]: [...ranked, ...remaining] };
     setLuckyLoserDisciplinaryChoices(next);
     saveTiebreakerChoicesMutation.mutate({ luckyLoserChoices: next });
   }
 
-  if (isLoading) return <p className="p-8 text-sm text-muted-foreground">Loading…</p>;
+  const stageLabel = (stage: MatchStage, groupName?: string | null) => {
+    if (stage === 'group' && groupName) return `Group ${groupName}`;
+    const map: Record<MatchStage, string> = {
+      group: t('stages.group'),
+      round_of_32: t('stages.round_of_32'),
+      round_of_16: t('stages.round_of_16'),
+      quarter_final: t('stages.quarter_final'),
+      semi_final: t('stages.semi_final'),
+      bronze_final: t('stages.bronze_final'),
+      final: t('stages.final'),
+    };
+    return map[stage];
+  };
+
+  if (isLoading) return <p className="p-8 text-sm text-muted-foreground">{t('common.loading')}</p>;
   if (error) {
-    const msg = error instanceof ApiError ? error.message : 'Failed to load competition';
+    const msg = error instanceof ApiError ? error.message : t('competitionDetail.failedToLoad');
     return <p className="p-8 text-sm text-destructive">{msg}</p>;
   }
   if (!competition) return null;
@@ -595,7 +591,7 @@ export default function CompetitionDetailPage() {
       <div>
       <div className="mb-2 text-sm text-muted-foreground">
         <Link to={user?.isAdmin ? '/competitions' : '/'} className="hover:underline">
-          ← {user?.isAdmin ? 'Competitions' : 'Home'}
+          {user?.isAdmin ? t('competitionDetail.backToCompetitions') : t('competitionDetail.backToHome')}
         </Link>
       </div>
 
@@ -616,7 +612,9 @@ export default function CompetitionDetailPage() {
               <h2 className="text-2xl font-bold">{competition.name}</h2>
               {tournament && <p className="mt-1 text-sm text-muted-foreground">{tournament.name}</p>}
               {!user?.isAdmin && (
-                <p className="mt-1 text-xs text-muted-foreground font-mono tracking-wider">Invite code: {competition.inviteCode}</p>
+                <p className="mt-1 text-xs text-muted-foreground font-mono tracking-wider">
+                  {t('competitionDetail.inviteCodeLabel')}: {competition.inviteCode}
+                </p>
               )}
             </div>
             {user?.isAdmin && !showEdit && (
@@ -624,7 +622,7 @@ export default function CompetitionDetailPage() {
                 onClick={openEdit}
                 className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted flex-shrink-0"
               >
-                Edit
+                {t('common.edit')}
               </button>
             )}
             {!user?.isAdmin && (
@@ -632,7 +630,7 @@ export default function CompetitionDetailPage() {
                 onClick={() => setShowLeaveConfirm(true)}
                 className="rounded-md border px-3 py-1.5 text-sm flex-shrink-0 text-destructive border-destructive/30 hover:bg-destructive/5"
               >
-                Leave
+                {t('competitionDetail.leave')}
               </button>
             )}
           </div>
@@ -642,18 +640,18 @@ export default function CompetitionDetailPage() {
       {/* Admin: invite code */}
       {user?.isAdmin && (
         <div className="mb-8 rounded-lg border bg-muted/30 p-4">
-          <p className="text-sm font-medium">Invite Code</p>
+          <p className="text-sm font-medium">{t('competitionDetail.inviteCode')}</p>
           <p className="mt-1 font-mono text-3xl font-bold tracking-widest">{competition.inviteCode}</p>
-          <p className="mt-1 text-xs text-muted-foreground">Share this code with players so they can join</p>
+          <p className="mt-1 text-xs text-muted-foreground">{t('competitionDetail.shareCode')}</p>
         </div>
       )}
 
       {/* Admin: edit form */}
       {showEdit && (
         <form onSubmit={handleUpdate} className="mb-8 rounded-lg border p-5 space-y-4">
-          <h2 className="font-semibold">Edit Competition</h2>
+          <h2 className="font-semibold">{t('competitionDetail.editCompetition')}</h2>
           <div>
-            <label className="mb-1 block text-sm font-medium">Name</label>
+            <label className="mb-1 block text-sm font-medium">{t('common.name')}</label>
             <input
               type="text"
               value={editName}
@@ -663,7 +661,7 @@ export default function CompetitionDetailPage() {
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium">
-              Logo <span className="text-muted-foreground">(optional)</span>
+              {t('competitions.logo')} <span className="text-muted-foreground">{t('common.optional')}</span>
             </label>
             <ImageUpload
               type="competitions"
@@ -674,7 +672,7 @@ export default function CompetitionDetailPage() {
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium">
-              Prediction Deadline <span className="text-muted-foreground">(optional)</span>
+              {t('competitions.predictionDeadline')} <span className="text-muted-foreground">{t('common.optional')}</span>
             </label>
             <input
               type="datetime-local"
@@ -690,14 +688,14 @@ export default function CompetitionDetailPage() {
               disabled={updateMutation.isPending}
               className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             >
-              {updateMutation.isPending ? 'Saving…' : 'Save'}
+              {updateMutation.isPending ? t('common.saving') : t('common.save')}
             </button>
             <button
               type="button"
               onClick={() => { setShowEdit(false); setEditError(''); }}
               className="rounded-md border px-4 py-2 text-sm hover:bg-muted"
             >
-              Cancel
+              {t('common.cancel')}
             </button>
           </div>
         </form>
@@ -705,78 +703,49 @@ export default function CompetitionDetailPage() {
 
       {!user?.isAdmin && (<>
       <div className="flex gap-1 mb-6 border-b">
-        <button
-          onClick={() => {
-            setActiveTab('group');
-            setShowProceedPrompt(false);
-            if (allGroupFilled) setHasDeclined(true);
-          }}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-            activeTab === 'group'
-              ? 'border-primary text-primary'
-              : 'border-transparent text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          Group Stage
-        </button>
-        <button
-          onClick={() => setActiveTab('tables')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-            activeTab === 'tables'
-              ? 'border-primary text-primary'
-              : 'border-transparent text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          Group Tables
-        </button>
-        <button
-          onClick={() => setActiveTab('knockout')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-            activeTab === 'knockout'
-              ? 'border-primary text-primary'
-              : 'border-transparent text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          Knockout Stage
-        </button>
-        <button
-          onClick={() => setActiveTab('bonus')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-            activeTab === 'bonus'
-              ? 'border-primary text-primary'
-              : 'border-transparent text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          Bonus Questions
-        </button>
-        <button
-          onClick={() => setActiveTab('leaderboard')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-            activeTab === 'leaderboard'
-              ? 'border-primary text-primary'
-              : 'border-transparent text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          Leaderboard
-        </button>
+        {([
+          ['group', t('competitionDetail.tabs.groupStage')],
+          ['tables', t('competitionDetail.tabs.groupTables')],
+          ['knockout', t('competitionDetail.tabs.knockoutStage')],
+          ['bonus', t('competitionDetail.tabs.bonusQuestions')],
+          ['leaderboard', t('competitionDetail.tabs.leaderboard')],
+        ] as const).map(([tab, label]) => (
+          <button
+            key={tab}
+            onClick={() => {
+              setActiveTab(tab);
+              if (tab === 'group') {
+                setShowProceedPrompt(false);
+                if (allGroupFilled) setHasDeclined(true);
+              }
+            }}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              activeTab === tab
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       {activeTab === 'tables' && (
         <div>
           {groupStandings.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No group stage matches configured yet.</p>
+            <p className="text-sm text-muted-foreground">{t('competitionDetail.noGroupMatches')}</p>
           ) : (
             <div className="space-y-6">
               {!allGroupFilled && scheduledGroupMatches.length > 0 && (
                 <p className="text-sm text-muted-foreground">
-                  {groupFillCount} / {allGroupMatchesList.length} predictions filled — tables update as you predict.
+                  {t('competitionDetail.tables.predictionsFilled', { filled: groupFillCount, total: allGroupMatchesList.length })}
                 </p>
               )}
 
               <div className="grid gap-6 sm:grid-cols-2">
                 {groupStandings.map(([groupName, teams]) => {
                   const groupTies = allGroupFilled
-                    ? groupDisciplinaryTies.filter(t => t.groupName === groupName)
+                    ? groupDisciplinaryTies.filter(tie => tie.groupName === groupName)
                     : [];
                   return (
                     <div key={groupName} className="space-y-3">
@@ -799,76 +768,75 @@ export default function CompetitionDetailPage() {
                             </tr>
                           </thead>
                           <tbody className="divide-y">
-                            {teams.map((t, i) => (
-                              <tr key={t.teamId} className={
+                            {teams.map((tm, i) => (
+                              <tr key={tm.teamId} className={
                                 i < 2
                                   ? 'bg-green-50 dark:bg-green-950/30'
-                                  : i === 2 && qualifyingThirdPlaceIds.has(t.teamId)
+                                  : i === 2 && qualifyingThirdPlaceIds.has(tm.teamId)
                                   ? 'bg-yellow-50 dark:bg-yellow-950/30'
                                   : ''
                               }>
                                 <td className="pl-3 py-1.5 text-muted-foreground">{i + 1}</td>
                                 <td className="py-1.5 pr-2">
                                   <div className="flex items-center gap-1.5">
-                                    {t.imageUrl ? (
-                                      <img src={t.imageUrl} alt="" className="h-4 w-4 rounded-full object-cover flex-shrink-0" />
+                                    {tm.imageUrl ? (
+                                      <img src={tm.imageUrl} alt="" className="h-4 w-4 rounded-full object-cover flex-shrink-0" />
                                     ) : (
                                       <div className="h-4 w-4 rounded-full bg-muted flex-shrink-0" />
                                     )}
-                                    <span className="truncate">{t.teamName}</span>
+                                    <span className="truncate">{tm.teamName}</span>
                                   </div>
                                 </td>
-                                <td className="py-1.5 text-center text-muted-foreground">{t.P}</td>
-                                <td className="py-1.5 text-center text-muted-foreground">{t.W}</td>
-                                <td className="py-1.5 text-center text-muted-foreground">{t.D}</td>
-                                <td className="py-1.5 text-center text-muted-foreground">{t.L}</td>
-                                <td className="py-1.5 text-center text-muted-foreground">{t.GF}</td>
-                                <td className="py-1.5 text-center text-muted-foreground">{t.GA}</td>
-                                <td className="pr-3 py-1.5 text-center font-bold">{t.W * 3 + t.D}</td>
+                                <td className="py-1.5 text-center text-muted-foreground">{tm.P}</td>
+                                <td className="py-1.5 text-center text-muted-foreground">{tm.W}</td>
+                                <td className="py-1.5 text-center text-muted-foreground">{tm.D}</td>
+                                <td className="py-1.5 text-center text-muted-foreground">{tm.L}</td>
+                                <td className="py-1.5 text-center text-muted-foreground">{tm.GF}</td>
+                                <td className="py-1.5 text-center text-muted-foreground">{tm.GA}</td>
+                                <td className="pr-3 py-1.5 text-center font-bold">{tm.W * 3 + tm.D}</td>
                               </tr>
                             ))}
                           </tbody>
                         </table>
                       </div>
 
-                      {/* Tiebreaker cards for this group */}
                       {groupTies.map(tie => {
                         const ranked = groupDisciplinaryChoices[tie.key] ?? [];
                         const enoughRanked = ranked.length >= tie.requiredRankings;
                         return (
                           <div key={tie.key} className="rounded-lg border border-amber-400/40 bg-amber-50/10 p-3 text-xs">
                             <p className="font-semibold text-amber-700 dark:text-amber-400 mb-1">
-                              Disciplinary tiebreaker
+                              {t('competitionDetail.tables.disciplinaryTiebreaker')}
                             </p>
                             <p className="text-muted-foreground mb-2">
                               {enoughRanked
-                                ? `Selected: ${ranked.slice(0, tie.requiredRankings).map(tid => tie.teams.find(t => t.teamId === tid)?.teamName).join(' › ')}`
-                                : `Select ${tie.requiredRankings} team${tie.requiredRankings > 1 ? 's' : ''} with the best fair play record (fewest cards), in order:`}
+                                ? `${t('competitionDetail.tables.selected')}: ${ranked.slice(0, tie.requiredRankings).map(tid => tie.teams.find(tm => tm.teamId === tid)?.teamName).join(' › ')}`
+                                : t('competitionDetail.tables.selectTeams', { n: tie.requiredRankings, s: tie.requiredRankings > 1 ? 's' : '' })}
                             </p>
                             <div className="flex flex-wrap gap-1.5">
-                              {tie.teams.map(t => {
-                                const rank = ranked.indexOf(t.teamId);
+                              {tie.teams.map(tm => {
+                                const rank = ranked.indexOf(tm.teamId);
                                 const isRanked = rank !== -1;
                                 const isLockedBtn = !isRanked && enoughRanked;
                                 return (
                                   <button
-                                    key={t.teamId}
-                                    onClick={() => !isLockedBtn && handleDisciplinaryChoice(groupDisciplinaryChoices, setGroupDisciplinaryChoices, tie.key, t.teamId)}
+                                    key={tm.teamId}
+                                    onClick={() => !isLockedBtn && handleDisciplinaryChoice(groupDisciplinaryChoices, setGroupDisciplinaryChoices, tie.key, tm.teamId)}
                                     disabled={isLockedBtn}
                                     className={`flex items-center gap-1 rounded border px-2 py-1 transition-colors ${isRanked ? 'border-amber-500 bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300' : isLockedBtn ? 'border-border opacity-30 cursor-not-allowed' : 'border-border hover:border-amber-400 hover:bg-amber-50/20'}`}
                                   >
                                     {isRanked && <span className="font-bold text-amber-600 dark:text-amber-400">{rank + 1}.</span>}
-                                    {t.imageUrl && <img src={t.imageUrl} alt="" className="h-3.5 w-3.5 rounded-sm" />}
-                                    {t.teamName}
+                                    {tm.imageUrl && <img src={tm.imageUrl} alt="" className="h-3.5 w-3.5 rounded-sm" />}
+                                    {tm.teamName}
                                   </button>
                                 );
                               })}
                               {enoughRanked && (
                                 <button
-                                  onClick={() => confirmGroupTiebreaker(tie.key, tie.teams.map(t => t.teamId))}
+                                  onClick={() => confirmGroupTiebreaker(tie.key, tie.teams.map(tm => tm.teamId))}
                                   className="rounded border border-green-500/50 bg-green-50/20 px-2 py-1 font-medium text-green-700 dark:text-green-400 hover:bg-green-50/40 transition-colors"
                                 >
-                                  Confirm ✓
+                                  {t('common.confirm')}
                                 </button>
                               )}
                             </div>
@@ -883,22 +851,22 @@ export default function CompetitionDetailPage() {
               {/* Legend */}
               <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
                 <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-sm bg-green-500/70 inline-block" /> Qualifying
+                  <span className="w-2.5 h-2.5 rounded-sm bg-green-500/70 inline-block" /> {t('competitionDetail.tables.qualifying')}
                 </span>
                 {(tournament?.knockoutConfig?.luckyLosers ?? 0) > 0 && (
                   <span className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-sm bg-yellow-400/70 inline-block" /> Lucky loser (best 3rd place)
+                    <span className="w-2.5 h-2.5 rounded-sm bg-yellow-400/70 inline-block" /> {t('competitionDetail.tables.luckyLoser')}
                   </span>
                 )}
               </div>
 
-              {/* Lucky loser tiebreakers — at the bottom */}
+              {/* Lucky loser tiebreakers */}
               {allGroupFilled && luckyLoserDisciplinaryTies.length > 0 && (
                 <div className="space-y-3">
                   <div>
-                    <p className="text-sm font-semibold">Lucky Loser Tiebreakers</p>
+                    <p className="text-sm font-semibold">{t('competitionDetail.tables.luckyLoserTiebreakers')}</p>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      These third-place teams are equal on all statistical criteria. Select them in order of best disciplinary record (fewest cards).
+                      {t('competitionDetail.tables.luckyLoserTiebreakerDesc')}
                     </p>
                   </div>
                   {luckyLoserDisciplinaryTies.map(tie => {
@@ -908,37 +876,37 @@ export default function CompetitionDetailPage() {
                     return (
                       <div key={tie.key} className="rounded-lg border border-amber-400/40 bg-amber-50/10 p-3 text-xs">
                         <p className="font-semibold text-amber-700 dark:text-amber-400 mb-1">
-                          Disciplinary tiebreaker — Lucky Losers
+                          {t('competitionDetail.tables.disciplinaryTiebreakerLL')}
                         </p>
                         <p className="text-muted-foreground mb-2">
                           {enoughRanked
-                            ? `Selected: ${ranked.slice(0, requiredRankings).map(tid => tie.teams.find(t => t.teamId === tid)?.teamName).join(' › ')}`
-                            : `Select ${requiredRankings} team${requiredRankings > 1 ? 's' : ''} with the best fair play record (fewest cards), in order:`}
+                            ? `${t('competitionDetail.tables.selected')}: ${ranked.slice(0, requiredRankings).map(tid => tie.teams.find(tm => tm.teamId === tid)?.teamName).join(' › ')}`
+                            : t('competitionDetail.tables.selectTeams', { n: requiredRankings, s: requiredRankings > 1 ? 's' : '' })}
                         </p>
                         <div className="flex flex-wrap gap-1.5">
-                          {tie.teams.map(t => {
-                            const rank = ranked.indexOf(t.teamId);
+                          {tie.teams.map(tm => {
+                            const rank = ranked.indexOf(tm.teamId);
                             const isRanked = rank !== -1;
                             const isLockedBtn = !isRanked && enoughRanked;
                             return (
                               <button
-                                key={t.teamId}
-                                onClick={() => !isLockedBtn && handleDisciplinaryChoice(luckyLoserDisciplinaryChoices, setLuckyLoserDisciplinaryChoices, tie.key, t.teamId)}
+                                key={tm.teamId}
+                                onClick={() => !isLockedBtn && handleDisciplinaryChoice(luckyLoserDisciplinaryChoices, setLuckyLoserDisciplinaryChoices, tie.key, tm.teamId)}
                                 disabled={isLockedBtn}
                                 className={`flex items-center gap-1 rounded border px-2 py-1 transition-colors ${isRanked ? 'border-amber-500 bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300' : isLockedBtn ? 'border-border opacity-30 cursor-not-allowed' : 'border-border hover:border-amber-400 hover:bg-amber-50/20'}`}
                               >
                                 {isRanked && <span className="font-bold text-amber-600 dark:text-amber-400">{rank + 1}.</span>}
-                                {t.imageUrl && <img src={t.imageUrl} alt="" className="h-3.5 w-3.5 rounded-sm" />}
-                                {t.teamName}
+                                {tm.imageUrl && <img src={tm.imageUrl} alt="" className="h-3.5 w-3.5 rounded-sm" />}
+                                {tm.teamName}
                               </button>
                             );
                           })}
                           {enoughRanked && (
                             <button
-                              onClick={() => confirmLuckyLoserTiebreaker(tie.key, tie.teams.map(t => t.teamId))}
+                              onClick={() => confirmLuckyLoserTiebreaker(tie.key, tie.teams.map(tm => tm.teamId))}
                               className="rounded border border-green-500/50 bg-green-50/20 px-2 py-1 font-medium text-green-700 dark:text-green-400 hover:bg-green-50/40 transition-colors"
                             >
-                              Confirm ✓
+                              {t('common.confirm')}
                             </button>
                           )}
                         </div>
@@ -951,28 +919,28 @@ export default function CompetitionDetailPage() {
               {/* Proceed to knockout */}
               {allGroupFilled && !groupStageLocked && groupDisciplinaryTies.length === 0 && luckyLoserDisciplinaryTies.length === 0 && (
                 <div className="pt-4 border-t">
-                  <p className="text-sm text-muted-foreground mb-3">All predictions are in — ready to proceed to the knockout stage.</p>
+                  <p className="text-sm text-muted-foreground mb-3">{t('competitionDetail.tables.allPredictionsIn')}</p>
                   <button
                     onClick={handleProceedToKnockout}
                     disabled={lockMutation.isPending}
                     className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                   >
-                    {lockMutation.isPending ? 'Locking…' : 'Proceed to Knockout Stage →'}
+                    {lockMutation.isPending ? t('competitionDetail.tables.locking') : t('competitionDetail.tables.proceedToKnockout')}
                   </button>
-                  <p className="mt-1.5 text-xs text-muted-foreground">This will lock your group stage predictions.</p>
+                  <p className="mt-1.5 text-xs text-muted-foreground">{t('competitionDetail.tables.lockNote')}</p>
                 </div>
               )}
               {allGroupFilled && (groupDisciplinaryTies.length > 0 || luckyLoserDisciplinaryTies.length > 0) && (
-                <p className="text-xs text-amber-600 dark:text-amber-400">Resolve all tiebreakers above before proceeding to the knockout stage.</p>
+                <p className="text-xs text-amber-600 dark:text-amber-400">{t('competitionDetail.tables.resolveTiebreakers')}</p>
               )}
               {groupStageLocked && (
                 <div className="pt-4 border-t flex items-center gap-3">
-                  <p className="text-sm text-muted-foreground">Group stage is locked.</p>
+                  <p className="text-sm text-muted-foreground">{t('competitionDetail.tables.groupStageLockedMsg')}</p>
                   <button
                     onClick={() => setActiveTab('knockout')}
                     className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
                   >
-                    Go to Knockout Stage →
+                    {t('competitionDetail.tables.goToKnockout')}
                   </button>
                 </div>
               )}
@@ -991,23 +959,23 @@ export default function CompetitionDetailPage() {
 
       {activeTab === 'leaderboard' && (
         leaderboard.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-4 text-center">No scores yet.</p>
+          <p className="text-sm text-muted-foreground py-4 text-center">{t('competitionDetail.leaderboard.noScores')}</p>
         ) : (
           <div className="overflow-x-auto rounded-lg border">
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b bg-muted/50 text-muted-foreground">
                   <th className="pl-3 pr-2 py-2 text-left w-6">#</th>
-                  <th className="px-3 py-2 text-left min-w-[110px]">Player</th>
-                  <th className="px-2 py-2 text-center whitespace-nowrap">Exact</th>
-                  <th className="px-2 py-2 text-center whitespace-nowrap">Result</th>
-                  <th className="px-2 py-2 text-center whitespace-nowrap">Prog.</th>
-                  <th className="px-2 py-2 text-center whitespace-nowrap">Group</th>
-                  <th className="px-2 py-2 text-center whitespace-nowrap">KO tie</th>
-                  <th className="px-2 py-2 text-center whitespace-nowrap">Final</th>
-                  <th className="px-2 py-2 text-center whitespace-nowrap">Winner</th>
-                  <th className="px-2 py-2 text-center whitespace-nowrap">Bonus</th>
-                  <th className="pl-2 pr-3 py-2 text-center whitespace-nowrap font-bold text-foreground border-l">Total</th>
+                  <th className="px-3 py-2 text-left min-w-[110px]">{t('competitionDetail.leaderboard.player')}</th>
+                  <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.exact')}</th>
+                  <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.result')}</th>
+                  <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.progresses')}</th>
+                  <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.group')}</th>
+                  <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.koTie')}</th>
+                  <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.final')}</th>
+                  <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.winner')}</th>
+                  <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.bonus')}</th>
+                  <th className="pl-2 pr-3 py-2 text-center whitespace-nowrap font-bold text-foreground border-l">{t('competitionDetail.leaderboard.total')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -1030,7 +998,7 @@ export default function CompetitionDetailPage() {
                           )}
                           <span className={`font-medium truncate ${isMe ? 'text-primary' : ''}`}>
                             {entry.username}
-                            {isMe && <span className="ml-1 font-normal text-muted-foreground">(you)</span>}
+                            {isMe && <span className="ml-1 font-normal text-muted-foreground">{t('competitionDetail.leaderboard.you')}</span>}
                           </span>
                         </div>
                       </td>
@@ -1071,39 +1039,41 @@ export default function CompetitionDetailPage() {
             : 'border border-amber-200 bg-amber-50 text-amber-800'
         }`}>
           {deadlinePassed
-            ? `Predictions closed · ${new Date(competition.predictionDeadline).toLocaleString()}`
-            : `Open until ${new Date(competition.predictionDeadline).toLocaleString()}`}
+            ? `${t('competitionDetail.deadline.closed')} · ${new Date(competition.predictionDeadline).toLocaleString()}`
+            : `${t('competitionDetail.deadline.openUntil')} ${new Date(competition.predictionDeadline).toLocaleString()}`}
         </div>
       )}
 
       {/* Group stage locked banner */}
       {groupStageLocked && (
         <div className="mb-4 rounded-lg bg-muted px-4 py-2.5 text-sm text-muted-foreground">
-          Group stage predictions are locked.
+          {t('competitionDetail.groupStageLocked')}
         </div>
       )}
 
       {/* Predictions */}
       <div className="mb-6">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold">Predictions</h2>
+          <h2 className="font-semibold">{t('competitionDetail.predictions.title')}</h2>
           <div className="flex gap-2">
             {!isLocked && scheduledGroupMatches.length > 0 && (
-              <button onClick={simulatePredictions} className="text-xs rounded border px-2.5 py-1 hover:bg-muted">Simulate</button>
+              <button onClick={simulatePredictions} className="text-xs rounded border px-2.5 py-1 hover:bg-muted">
+                {t('competitionDetail.predictions.simulate')}
+              </button>
             )}
             {allGroupMatchesList.length > 0 && (
               <button
                 onClick={() => setShowClearConfirm(true)}
                 className="text-xs rounded border px-2.5 py-1 text-destructive border-destructive/30 hover:bg-destructive/5"
               >
-                Reset all predictions
+                {t('competitionDetail.predictions.resetAll')}
               </button>
             )}
           </div>
         </div>
 
         {allGroupMatchesList.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No group stage matches scheduled yet.</p>
+          <p className="text-sm text-muted-foreground">{t('competitionDetail.predictions.noMatches')}</p>
         ) : (
           <>
             {/* Match dots */}
@@ -1139,7 +1109,7 @@ export default function CompetitionDetailPage() {
                 })}
               </div>
               {groupFillCount === allGroupMatchesList.length && (
-                <p className="text-xs text-green-600 font-medium">All done ✓</p>
+                <p className="text-xs text-green-600 font-medium">{t('competitionDetail.predictions.allDone')}</p>
               )}
             </div>
 
@@ -1157,10 +1127,9 @@ export default function CompetitionDetailPage() {
 
               return (
                 <div className="rounded-xl border bg-muted/20 p-5">
-                  {/* Match context */}
                   <div className="text-center mb-4">
                     <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-                      {match.stage === 'group' && match.groupName ? `Group ${match.groupName}` : STAGE_LABELS[match.stage]}
+                      {stageLabel(match.stage, match.groupName)}
                     </p>
                     {match.scheduledAt && (
                       <p className="text-xs text-muted-foreground mt-0.5">
@@ -1174,7 +1143,6 @@ export default function CompetitionDetailPage() {
                     </p>
                   </div>
 
-                  {/* Card + arrows */}
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
@@ -1251,7 +1219,7 @@ export default function CompetitionDetailPage() {
                           <p className="text-xs text-muted-foreground">…</p>
                         )}
                         {match.status === 'scheduled' && !isLocked && justSaved && !saving && (
-                          <p className="text-xs text-green-600">Saved</p>
+                          <p className="text-xs text-green-600">{t('competitionDetail.predictions.saved')}</p>
                         )}
                         {match.status === 'completed' && pred && (() => {
                           const cfg = competition.scoringConfig;
@@ -1266,15 +1234,15 @@ export default function CompetitionDetailPage() {
                           return (
                             <div className="space-y-0.5">
                               <p className="text-xs text-muted-foreground">
-                                Your prediction: {pred.homeScore}–{pred.awayScore}
+                                {t('competitionDetail.predictions.yourPrediction')}: {pred.homeScore}–{pred.awayScore}
                               </p>
                               {pred.points !== null && (
                                 <div className="flex flex-wrap justify-center items-center gap-x-2 gap-y-0.5 text-xs">
                                   <span className={`font-semibold ${total > 0 ? 'text-green-700 dark:text-green-400' : 'text-muted-foreground'}`}>
                                     {total > 0 ? `+${total} pts` : '0 pts'}
                                   </span>
-                                  {correctResult > 0 && <span className="text-muted-foreground">+{correctResult} correct result</span>}
-                                  {exactScore > 0 && <span className="text-muted-foreground">+{exactScore} correct exact score</span>}
+                                  {correctResult > 0 && <span className="text-muted-foreground">+{correctResult} {t('competitionDetail.predictions.correctResult')}</span>}
+                                  {exactScore > 0 && <span className="text-muted-foreground">+{exactScore} {t('competitionDetail.predictions.correctExactScore')}</span>}
                                 </div>
                               )}
                             </div>
@@ -1303,13 +1271,16 @@ export default function CompetitionDetailPage() {
 
       {allGroupFilled && (groupDisciplinaryTies.length > 0 || luckyLoserDisciplinaryTies.length > 0) && (
         <div className="mt-6 rounded-lg border border-amber-400/40 bg-amber-50/10 px-4 py-3 text-sm">
-          <p className="font-medium text-amber-700 dark:text-amber-400">Tiebreakers need to be resolved.</p>
+          <p className="font-medium text-amber-700 dark:text-amber-400">{t('competitionDetail.tiebreakers.title')}</p>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Go to the{' '}
+            {t('competitionDetail.tiebreakers.tabNote').replace(
+              t('competitionDetail.tiebreakers.tabNote'),
+              ''
+            )}
             <button onClick={() => setActiveTab('tables')} className="underline hover:text-foreground">
-              Group Tables
+              {t('competitionDetail.tiebreakers.goToGroupTablesLink')}
             </button>{' '}
-            tab to rank the tied teams before proceeding to the knockout stage.
+            {t('competitionDetail.tiebreakers.tabNote')}
           </p>
         </div>
       )}
@@ -1321,15 +1292,13 @@ export default function CompetitionDetailPage() {
       {showClearConfirm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-background rounded-lg border p-6 max-w-sm w-full shadow-xl">
-            <p className="font-semibold mb-1">Reset all predictions?</p>
-            <p className="text-sm text-muted-foreground mb-6">
-              All your match predictions and knockout stage selections will be permanently deleted. Bonus question answers are not affected.
-            </p>
+            <p className="font-semibold mb-1">{t('competitionDetail.resetConfirm.title')}</p>
+            <p className="text-sm text-muted-foreground mb-6">{t('competitionDetail.resetConfirm.body')}</p>
             {clearPredictionsMutation.isError && (
               <p className="mb-4 text-sm text-destructive">
                 {clearPredictionsMutation.error instanceof ApiError
                   ? clearPredictionsMutation.error.message
-                  : 'Failed to clear predictions'}
+                  : t('competitionDetail.failedToClear')}
               </p>
             )}
             <div className="flex gap-3 justify-end">
@@ -1338,14 +1307,14 @@ export default function CompetitionDetailPage() {
                 disabled={clearPredictionsMutation.isPending}
                 className="rounded-md border px-4 py-2 text-sm hover:bg-muted disabled:opacity-50"
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button
                 onClick={() => clearPredictionsMutation.mutate()}
                 disabled={clearPredictionsMutation.isPending}
                 className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
               >
-                {clearPredictionsMutation.isPending ? 'Resetting…' : 'Reset all'}
+                {clearPredictionsMutation.isPending ? t('competitionDetail.resetConfirm.resetting') : t('competitionDetail.resetConfirm.resetAll')}
               </button>
             </div>
           </div>
@@ -1356,13 +1325,13 @@ export default function CompetitionDetailPage() {
       {showLeaveConfirm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-background rounded-lg border p-6 max-w-sm w-full shadow-xl">
-            <p className="font-semibold mb-1">Leave competition?</p>
+            <p className="font-semibold mb-1">{t('competitionDetail.leaveConfirm.title')}</p>
             <p className="text-sm text-muted-foreground mb-6">
-              You will be removed from <span className="font-medium text-foreground">{competition.name}</span> and will need an invite code to rejoin.
+              {t('competitionDetail.leaveConfirm.body', { name: competition.name })}
             </p>
             {leaveMutation.isError && (
               <p className="mb-4 text-sm text-destructive">
-                {leaveMutation.error instanceof ApiError ? leaveMutation.error.message : 'Failed to leave'}
+                {leaveMutation.error instanceof ApiError ? leaveMutation.error.message : t('competitionDetail.failedToLeave')}
               </p>
             )}
             <div className="flex gap-3 justify-end">
@@ -1371,14 +1340,14 @@ export default function CompetitionDetailPage() {
                 disabled={leaveMutation.isPending}
                 className="rounded-md border px-4 py-2 text-sm hover:bg-muted disabled:opacity-50"
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button
                 onClick={() => leaveMutation.mutate()}
                 disabled={leaveMutation.isPending}
                 className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
               >
-                {leaveMutation.isPending ? 'Leaving…' : 'Leave'}
+                {leaveMutation.isPending ? t('competitionDetail.leaveConfirm.leaving') : t('competitionDetail.leaveConfirm.leave')}
               </button>
             </div>
           </div>
@@ -1389,16 +1358,14 @@ export default function CompetitionDetailPage() {
       {showProceedPrompt && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-background rounded-lg border p-6 max-w-md w-full shadow-xl">
-            <p className="font-semibold mb-1">All group stage results registered.</p>
-            <p className="text-sm text-muted-foreground mb-6">
-              Go to Group Tables to review your predicted standings before proceeding to the knockout stage.
-            </p>
+            <p className="font-semibold mb-1">{t('competitionDetail.proceedPrompt.title')}</p>
+            <p className="text-sm text-muted-foreground mb-6">{t('competitionDetail.proceedPrompt.body')}</p>
             <div className="flex gap-3 justify-end">
               <button
                 onClick={handleDeclineProceed}
                 className="rounded-md border px-4 py-2 text-sm hover:bg-muted"
               >
-                Stay here
+                {t('competitionDetail.proceedPrompt.stayHere')}
               </button>
               <button
                 onClick={() => {
@@ -1407,7 +1374,7 @@ export default function CompetitionDetailPage() {
                 }}
                 className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
               >
-                Go to Group Tables
+                {t('competitionDetail.proceedPrompt.goToGroupTables')}
               </button>
             </div>
           </div>
@@ -1418,10 +1385,8 @@ export default function CompetitionDetailPage() {
       {showKnockoutCompletePrompt && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-background rounded-lg border p-6 max-w-md w-full shadow-xl">
-            <p className="font-semibold mb-1">All knockout predictions filled in.</p>
-            <p className="text-sm text-muted-foreground mb-6">
-              Do you want to go to the bonus questions?
-            </p>
+            <p className="font-semibold mb-1">{t('competitionDetail.knockoutCompletePrompt.title')}</p>
+            <p className="text-sm text-muted-foreground mb-6">{t('competitionDetail.knockoutCompletePrompt.body')}</p>
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => {
@@ -1430,7 +1395,7 @@ export default function CompetitionDetailPage() {
                 }}
                 className="rounded-md border px-4 py-2 text-sm hover:bg-muted"
               >
-                No
+                {t('common.no')}
               </button>
               <button
                 onClick={() => {
@@ -1441,7 +1406,7 @@ export default function CompetitionDetailPage() {
                 }}
                 className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
               >
-                Yes, go to bonus questions
+                {t('competitionDetail.knockoutCompletePrompt.yesBonusQuestions')}
               </button>
             </div>
           </div>

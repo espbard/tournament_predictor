@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
+import { useT } from '@/lib/useT';
 import type {
   Competition,
   Tournament,
@@ -358,6 +359,7 @@ function FocusedMatchCard({
     const total = exactScore + correctResult + correctTeamProgresses + correctTeamInKnockoutTie + correctTeamInFinal + correctWinner;
     return { exactScore, correctResult, correctTeamProgresses, correctTeamInKnockoutTie, correctTeamInFinal, correctWinner, total };
   }, [actualMatch, prediction, scoringConfig, homeTeam, awayTeam, isFinal, isFirstRound]);
+  const { t } = useT();
   const homeWins = bothValid && homeNum! > awayNum!;
   const awayWins = bothValid && awayNum! > homeNum!;
   const isHomeChampion = isFinal && (homeWins || (isDraw && prediction?.progressingTeamId === homeTeam?.teamId));
@@ -464,7 +466,7 @@ function FocusedMatchCard({
           <div className="h-px bg-border" />
           <div className="p-3 space-y-2">
             <p className="text-[11px] text-muted-foreground text-center font-medium">
-              Who advances after extra time / penalties?
+              {t('knockoutContent.whoAdvances')}
             </p>
             <div className="flex gap-2">
               <button
@@ -499,7 +501,7 @@ function FocusedMatchCard({
           <div className="h-px bg-border" />
           <div className="px-4 py-3 bg-muted/30 space-y-1.5">
             <div className="flex items-center gap-2 text-sm">
-              <span className="text-xs text-muted-foreground font-medium shrink-0">Result</span>
+              <span className="text-xs text-muted-foreground font-medium shrink-0">{t('knockoutContent.result')}</span>
               <span className="font-bold tabular-nums">
                 {actualMatch.homeScore} – {actualMatch.awayScore}
               </span>
@@ -507,7 +509,7 @@ function FocusedMatchCard({
                 <span className="text-xs text-muted-foreground">
                   ({actualMatch.progressingTeamId === actualMatch.homeTeamId
                     ? actualMatch.homeTeamName
-                    : actualMatch.awayTeamName} adv.)
+                    : actualMatch.awayTeamName} {t('knockoutContent.advances')})
                 </span>
               )}
             </div>
@@ -516,12 +518,12 @@ function FocusedMatchCard({
                 <span className={`font-semibold ${pointsInfo.total > 0 ? 'text-green-700 dark:text-green-400' : 'text-muted-foreground'}`}>
                   {pointsInfo.total > 0 ? `+${pointsInfo.total} pts` : '0 pts'}
                 </span>
-                {pointsInfo.correctResult > 0 && <span className="text-muted-foreground">+{pointsInfo.correctResult} correct result</span>}
-                {pointsInfo.exactScore > 0 && <span className="text-muted-foreground">+{pointsInfo.exactScore} correct exact score</span>}
-                {pointsInfo.correctTeamProgresses > 0 && <span className="text-muted-foreground">+{pointsInfo.correctTeamProgresses} advances</span>}
-                {pointsInfo.correctTeamInKnockoutTie > 0 && <span className="text-muted-foreground">+{pointsInfo.correctTeamInKnockoutTie} correct team(s) in tie</span>}
-                {pointsInfo.correctTeamInFinal > 0 && <span className="text-muted-foreground">+{pointsInfo.correctTeamInFinal} correct team predicted in final</span>}
-                {pointsInfo.correctWinner > 0 && <span className="text-muted-foreground">+{pointsInfo.correctWinner} correct winner</span>}
+                {pointsInfo.correctResult > 0 && <span className="text-muted-foreground">+{pointsInfo.correctResult} {t('knockoutContent.correctResult')}</span>}
+                {pointsInfo.exactScore > 0 && <span className="text-muted-foreground">+{pointsInfo.exactScore} {t('knockoutContent.correctExactScore')}</span>}
+                {pointsInfo.correctTeamProgresses > 0 && <span className="text-muted-foreground">+{pointsInfo.correctTeamProgresses} {t('knockoutContent.advances')}</span>}
+                {pointsInfo.correctTeamInKnockoutTie > 0 && <span className="text-muted-foreground">+{pointsInfo.correctTeamInKnockoutTie} {t('knockoutContent.correctTeamInTie')}</span>}
+                {pointsInfo.correctTeamInFinal > 0 && <span className="text-muted-foreground">+{pointsInfo.correctTeamInFinal} {t('knockoutContent.correctTeamInFinal')}</span>}
+                {pointsInfo.correctWinner > 0 && <span className="text-muted-foreground">+{pointsInfo.correctWinner} {t('knockoutContent.correctWinner')}</span>}
               </div>
             )}
           </div>
@@ -617,6 +619,9 @@ function FocusedBracketView({
     return list;
   }, [chronoRounds, maxRoundIdx, hasBronzeFinal]);
 
+  const { t } = useT();
+  const getRoundLabel = (round: KnockoutFirstRound) => t(`knockout.rounds.${round}` as any) || ROUND_LABELS[round] || round;
+
   const [currentIdx, setCurrentIdx] = useState(0);
   const [slideDir, setSlideDir] = useState<'fromRight' | 'fromLeft'>('fromRight');
   const [animKey, setAnimKey] = useState(0);
@@ -690,7 +695,7 @@ function FocusedBracketView({
     ? []
     : allMatches.filter(m => m.round === current.round && !m.isBronze);
 
-  const currentRoundLabel = current.isBronze ? 'Bronze Final' : ROUND_LABELS[current.round];
+  const currentRoundLabel = current.isBronze ? t('knockoutContent.bronzeFinal') : getRoundLabel(current.round);
 
   return (
     <div className="space-y-5">
@@ -716,7 +721,7 @@ function FocusedBracketView({
                   : 'bg-muted text-muted-foreground hover:bg-muted/80'
               }`}
             >
-              {ROUND_LABELS[round]}
+              {getRoundLabel(round)}
               {allDone && <span className="ml-1 text-green-600">✓</span>}
             </button>
           );
@@ -736,7 +741,7 @@ function FocusedBracketView({
                     : 'bg-muted text-muted-foreground hover:bg-muted/80'
                 }`}
               >
-                Bronze Final
+                {t('knockoutContent.bronzeFinal')}
                 {isBronzeDone && <span className="ml-1 text-green-600">✓</span>}
               </button>
             );
@@ -842,6 +847,7 @@ export default function KnockoutStageContent({
   onAllComplete?: () => void;
 }) {
   const id = competitionId;
+  const { t } = useT();
 
   const { data: competition, isLoading, error } = useQuery({
     queryKey: ['competitions', id],
@@ -1148,9 +1154,9 @@ export default function KnockoutStageContent({
       }));
   }, [groupStandings, knockoutConfig, luckyLoserDisciplinaryChoices]);
 
-  if (isLoading) return <p className="py-4 text-sm text-muted-foreground">Loading…</p>;
+  if (isLoading) return <p className="py-4 text-sm text-muted-foreground">{t('common.loading')}</p>;
   if (error) {
-    const msg = error instanceof ApiError ? error.message : 'Failed to load';
+    const msg = error instanceof ApiError ? error.message : t('knockoutContent.saveFailed');
     return <p className="py-4 text-sm text-destructive">{msg}</p>;
   }
   if (!competition) return null;
@@ -1180,23 +1186,22 @@ export default function KnockoutStageContent({
 
       <div className="flex items-center justify-between mb-2">
         <p className="text-sm text-muted-foreground">
-          Teams shown are based on your group stage predictions. Enter scores for each match — a draw
-          prompts you to pick who advances.
+          {t('knockoutContent.teamsBasedOn')}
         </p>
         <span className={`text-xs flex-shrink-0 ml-4 ${
           saveStatus === 'saving' ? 'text-muted-foreground' :
           saveStatus === 'saved' ? 'text-green-600' :
           saveStatus === 'error' ? 'text-destructive' : 'invisible'
         }`}>
-          {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'saved' ? 'Saved' : saveStatus === 'error' ? 'Save failed' : '.'}
+          {saveStatus === 'saving' ? t('knockoutContent.saving') : saveStatus === 'saved' ? t('knockoutContent.saved') : saveStatus === 'error' ? t('knockoutContent.saveFailed') : '.'}
         </span>
       </div>
 
       {hasPendingTies && (
         <div className="mb-4 rounded-lg border border-amber-400/40 bg-amber-50/10 px-4 py-3 text-sm">
-          <p className="font-medium text-amber-700 dark:text-amber-400">Tiebreakers need to be resolved.</p>
+          <p className="font-medium text-amber-700 dark:text-amber-400">{t('knockoutContent.tiebreakerWarning')}</p>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Go to the Group Tables tab to rank the tied teams before filling in knockout predictions.
+            {t('knockoutContent.tiebreakerNote')}
           </p>
         </div>
       )}
@@ -1216,14 +1221,14 @@ export default function KnockoutStageContent({
           {hasPendingTies && (
             <div className="absolute inset-0 bg-background/70 rounded-xl flex items-center justify-center backdrop-blur-[2px]">
               <p className="text-sm font-medium text-muted-foreground text-center px-6">
-                Go to the Group Tables tab to resolve tiebreakers before filling in knockout predictions.
+                {t('knockoutContent.tiebreakerBlur')}
               </p>
             </div>
           )}
         </div>
       ) : (
         <p className="text-sm text-muted-foreground">
-          The knockout bracket hasn't been configured yet.
+          {t('knockoutContent.bracketNotConfigured')}
         </p>
       )}
     </>

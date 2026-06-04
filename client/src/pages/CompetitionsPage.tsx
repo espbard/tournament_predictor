@@ -3,10 +3,12 @@ import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import ImageUpload from '@/components/ImageUpload';
+import { useT } from '@/lib/useT';
 import type { Competition, Tournament } from '@tournament-predictor/shared';
 
 export default function CompetitionsPage() {
   const queryClient = useQueryClient();
+  const { t } = useT();
   const [showForm, setShowForm] = useState(false);
   const [formError, setFormError] = useState('');
   const [name, setName] = useState('');
@@ -41,7 +43,7 @@ export default function CompetitionsPage() {
       queryClient.invalidateQueries({ queryKey: ['competitions'] });
     },
     onError: (err) => {
-      setFormError(err instanceof ApiError ? err.message : 'Failed to create competition');
+      setFormError(err instanceof ApiError ? err.message : t('competitions.failedToCreate'));
     },
   });
 
@@ -53,7 +55,7 @@ export default function CompetitionsPage() {
   function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || !tournamentId) {
-      setFormError('Name and tournament are required');
+      setFormError(t('competitions.nameAndTournamentRequired'));
       return;
     }
     createMutation.mutate({
@@ -68,26 +70,24 @@ export default function CompetitionsPage() {
     <main className="mx-auto max-w-2xl px-4 py-12">
       <div className="mb-8 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Competitions</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Create competitions and share invite codes with players
-          </p>
+          <h1 className="text-2xl font-bold">{t('competitions.title')}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{t('competitions.subtitle')}</p>
         </div>
         {!showForm && (
           <button
             onClick={() => setShowForm(true)}
             className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
           >
-            New Competition
+            {t('competitions.newCompetition')}
           </button>
         )}
       </div>
 
       {showForm && (
         <form onSubmit={handleCreate} className="mb-8 rounded-lg border p-5 space-y-4">
-          <h2 className="font-semibold">New Competition</h2>
+          <h2 className="font-semibold">{t('competitions.newCompetition')}</h2>
           <div>
-            <label className="mb-1 block text-sm font-medium">Name</label>
+            <label className="mb-1 block text-sm font-medium">{t('common.name')}</label>
             <input
               type="text"
               value={name}
@@ -97,23 +97,21 @@ export default function CompetitionsPage() {
             />
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium">Tournament</label>
+            <label className="mb-1 block text-sm font-medium">{t('competitions.tournament')}</label>
             <select
               value={tournamentId}
               onChange={e => setTournamentId(e.target.value)}
               className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             >
-              <option value="">Select a tournament…</option>
-              {tournaments.map(t => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
+              <option value="">{t('competitions.selectTournament')}</option>
+              {tournaments.map(t2 => (
+                <option key={t2.id} value={t2.id}>{t2.name}</option>
               ))}
             </select>
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium">
-              Logo <span className="text-muted-foreground">(optional)</span>
+              {t('competitions.logo')} <span className="text-muted-foreground">{t('common.optional')}</span>
             </label>
             <ImageUpload
               type="competitions"
@@ -124,7 +122,7 @@ export default function CompetitionsPage() {
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium">
-              Prediction Deadline <span className="text-muted-foreground">(optional)</span>
+              {t('competitions.predictionDeadline')} <span className="text-muted-foreground">{t('common.optional')}</span>
             </label>
             <input
               type="datetime-local"
@@ -140,29 +138,29 @@ export default function CompetitionsPage() {
               disabled={createMutation.isPending}
               className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             >
-              {createMutation.isPending ? 'Creating…' : 'Create'}
+              {createMutation.isPending ? t('common.creating') : t('common.create')}
             </button>
             <button
               type="button"
               onClick={() => { setShowForm(false); setFormError(''); setImageUrl(null); }}
               className="rounded-md border px-4 py-2 text-sm hover:bg-muted"
             >
-              Cancel
+              {t('common.cancel')}
             </button>
           </div>
         </form>
       )}
 
       {isLoading ? (
-        <p className="text-sm text-muted-foreground">Loading…</p>
+        <p className="text-sm text-muted-foreground">{t('common.loading')}</p>
       ) : competitions.length === 0 ? (
         <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-          No competitions yet. Create one to get started.
+          {t('competitions.noCompetitions')}
         </p>
       ) : (
         <div className="grid gap-3">
           {competitions.map(c => {
-            const tournament = tournaments.find(t => t.id === c.tournamentId);
+            const tournament = tournaments.find(t2 => t2.id === c.tournamentId);
             return (
               <div key={c.id} className="flex items-center gap-4 rounded-lg border p-4">
                 {c.imageUrl ? (
@@ -178,7 +176,7 @@ export default function CompetitionsPage() {
                     <p className="text-sm text-muted-foreground">{tournament.name}</p>
                   )}
                   <p className="mt-0.5 text-xs font-mono text-muted-foreground">
-                    Invite: <span className="font-bold text-foreground">{c.inviteCode}</span>
+                    {t('competitions.invite')}: <span className="font-bold text-foreground">{c.inviteCode}</span>
                   </p>
                 </div>
                 <button
@@ -187,7 +185,7 @@ export default function CompetitionsPage() {
                   }}
                   className="text-sm text-destructive hover:underline flex-shrink-0"
                 >
-                  Delete
+                  {t('common.delete')}
                 </button>
               </div>
             );

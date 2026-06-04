@@ -4,6 +4,7 @@ import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import PlayerSearchInput from '@/components/PlayerSearchInput';
 import TeamSelectInput from '@/components/TeamSelectInput';
+import { useT } from '@/lib/useT';
 import type { BonusAnswerType, BonusQuestion, BonusAnswer, Team } from '@tournament-predictor/shared';
 
 interface Props {
@@ -12,38 +13,35 @@ interface Props {
   deadlinePassed: boolean;
 }
 
-const ANSWER_TYPE_LABELS: Record<BonusAnswerType, string> = {
-  number: 'Number',
-  player: 'Player',
-  team: 'Team',
-  yes_no: 'Yes / No',
-};
-
 const CREATABLE_TYPES: BonusAnswerType[] = ['number', 'yes_no', 'player', 'team'];
 
 export default function BonusQuestionsTab({ competitionId, tournamentId, deadlinePassed }: Props) {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
+  const { t } = useT();
 
-  // Add form
+  const ANSWER_TYPE_LABELS: Record<BonusAnswerType, string> = {
+    number: t('bonusQuestions.answerTypes.number'),
+    player: t('bonusQuestions.answerTypes.player'),
+    team: t('bonusQuestions.answerTypes.team'),
+    yes_no: t('bonusQuestions.answerTypes.yes_no'),
+  };
+
   const [newQuestion, setNewQuestion] = useState('');
   const [newAnswerType, setNewAnswerType] = useState<BonusAnswerType>('number');
   const [newPoints, setNewPoints] = useState('');
   const [addError, setAddError] = useState('');
 
-  // Edit question (admin)
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editQuestion, setEditQuestion] = useState('');
   const [editAnswerType, setEditAnswerType] = useState<BonusAnswerType>('number');
   const [editPoints, setEditPoints] = useState('');
   const [editError, setEditError] = useState('');
 
-  // Set correct answer (admin)
   const [settingAnswerFor, setSettingAnswerFor] = useState<string | null>(null);
   const [correctAnswerInput, setCorrectAnswerInput] = useState('');
   const [setAnswerError, setSetAnswerError] = useState('');
 
-  // User answers
   const [localAnswers, setLocalAnswers] = useState<Record<string, string>>({});
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
@@ -68,8 +66,6 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
 
   const answerMap = Object.fromEntries(myAnswers.map(a => [a.questionId, a]));
 
-  // ── Mutations ─────────────────────────────────────────────────────────────────
-
   const addMutation = useMutation({
     mutationFn: (body: { question: string; answerType: BonusAnswerType; points: number }) =>
       api.post<BonusQuestion>(`/tournaments/${tournamentId}/bonus-questions`, body),
@@ -79,7 +75,7 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
       setAddError('');
       queryClient.invalidateQueries({ queryKey: ['tournaments', tournamentId, 'bonus-questions'] });
     },
-    onError: (err) => setAddError(err instanceof ApiError ? err.message : 'Failed to add question'),
+    onError: (err) => setAddError(err instanceof ApiError ? err.message : t('bonusQuestions.failedToAdd')),
   });
 
   const editMutation = useMutation({
@@ -90,7 +86,7 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
       setEditError('');
       queryClient.invalidateQueries({ queryKey: ['tournaments', tournamentId, 'bonus-questions'] });
     },
-    onError: (err) => setEditError(err instanceof ApiError ? err.message : 'Failed to update question'),
+    onError: (err) => setEditError(err instanceof ApiError ? err.message : t('bonusQuestions.failedToUpdate')),
   });
 
   const deleteMutation = useMutation({
@@ -108,16 +104,14 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
       setSetAnswerError('');
       queryClient.invalidateQueries({ queryKey: ['tournaments', tournamentId, 'bonus-questions'] });
     },
-    onError: (err) => setSetAnswerError(err instanceof ApiError ? err.message : 'Failed to set answer'),
+    onError: (err) => setSetAnswerError(err instanceof ApiError ? err.message : t('bonusQuestions.failedToSetAnswer')),
   });
-
-  // ── Handlers ──────────────────────────────────────────────────────────────────
 
   function handleAddQuestion(e: React.FormEvent) {
     e.preventDefault();
     const pts = parseInt(newPoints, 10);
     if (!newQuestion.trim() || isNaN(pts) || pts < 1) {
-      setAddError('Fill in all fields correctly');
+      setAddError(t('bonusQuestions.fillAllFields'));
       return;
     }
     addMutation.mutate({ question: newQuestion.trim(), answerType: newAnswerType, points: pts });
@@ -135,7 +129,7 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
   function handleEditSave(qid: string) {
     const pts = parseInt(editPoints, 10);
     if (!editQuestion.trim() || isNaN(pts) || pts < 1) {
-      setEditError('Fill in all fields correctly');
+      setEditError(t('bonusQuestions.fillAllFields'));
       return;
     }
     editMutation.mutate({ qid, question: editQuestion.trim(), answerType: editAnswerType, points: pts });
@@ -160,7 +154,7 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
       setSavedIds(prev => new Set([...prev, questionId]));
       setTimeout(() => setSavedIds(prev => { const n = new Set(prev); n.delete(questionId); return n; }), 2000);
     } catch (err) {
-      setSaveErrors(prev => ({ ...prev, [questionId]: err instanceof ApiError ? err.message : 'Failed to save' }));
+      setSaveErrors(prev => ({ ...prev, [questionId]: err instanceof ApiError ? err.message : t('bonusQuestions.saveFailed') }));
     } finally {
       setSavingIds(prev => { const n = new Set(prev); n.delete(questionId); return n; });
     }
@@ -175,16 +169,16 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
     saveAnswer(qid, val);
   }
 
-  if (isLoading) return <p className="text-sm text-muted-foreground">Loading…</p>;
+  if (isLoading) return <p className="text-sm text-muted-foreground">{t('common.loading')}</p>;
 
   return (
     <div className="space-y-6">
       {/* Admin: add question form */}
       {user?.isAdmin && (
         <form onSubmit={handleAddQuestion} className="rounded-lg border p-5 space-y-4">
-          <h2 className="font-semibold">Add Bonus Question</h2>
+          <h2 className="font-semibold">{t('bonusQuestions.addTitle')}</h2>
           <div>
-            <label className="mb-1 block text-sm font-medium">Question</label>
+            <label className="mb-1 block text-sm font-medium">{t('bonusQuestions.question')}</label>
             <input
               type="text"
               value={newQuestion}
@@ -195,7 +189,7 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
           </div>
           <div className="flex flex-wrap gap-6">
             <div>
-              <label className="mb-2 block text-sm font-medium">Answer type</label>
+              <label className="mb-2 block text-sm font-medium">{t('bonusQuestions.answerType')}</label>
               <div className="flex flex-wrap gap-4">
                 {CREATABLE_TYPES.map(type => (
                   <label key={type} className="flex items-center gap-2 text-sm cursor-pointer">
@@ -212,7 +206,7 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
               </div>
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium">Points</label>
+              <label className="mb-1 block text-sm font-medium">{t('bonusQuestions.points')}</label>
               <input
                 type="number"
                 min={1}
@@ -229,14 +223,14 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
             disabled={addMutation.isPending}
             className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
-            {addMutation.isPending ? 'Adding…' : 'Add Question'}
+            {addMutation.isPending ? t('bonusQuestions.adding') : t('bonusQuestions.addQuestion')}
           </button>
         </form>
       )}
 
       {/* Question list */}
       {questions.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No bonus questions yet.</p>
+        <p className="text-sm text-muted-foreground">{t('bonusQuestions.noQuestions')}</p>
       ) : (
         <div className="space-y-3">
           {questions.map(q => {
@@ -257,7 +251,7 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-sm">{q.question}</p>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        {typeLabel} · {q.points} {q.points === 1 ? 'pt' : 'pts'}
+                        {typeLabel} · {q.points} {q.points === 1 ? t('bonusQuestions.pt') : t('bonusQuestions.pts')}
                       </p>
                     </div>
                     {user?.isAdmin && (
@@ -266,20 +260,20 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
                           onClick={() => openEdit(q)}
                           className="text-xs rounded border px-2.5 py-1 hover:bg-muted"
                         >
-                          Edit
+                          {t('common.edit')}
                         </button>
                         <button
                           onClick={() => openSetAnswer(q)}
                           className="text-xs rounded border px-2.5 py-1 hover:bg-muted"
                         >
-                          Set answer
+                          {t('bonusQuestions.setAnswer')}
                         </button>
                         <button
                           onClick={() => deleteMutation.mutate(q.id)}
                           disabled={deleteMutation.isPending}
                           className="text-xs rounded border border-destructive/30 px-2.5 py-1 text-destructive hover:bg-destructive/10 disabled:opacity-50"
                         >
-                          Delete
+                          {t('common.delete')}
                         </button>
                       </div>
                     )}
@@ -290,7 +284,7 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
                 {user?.isAdmin && isEditing && (
                   <div className="space-y-3">
                     <div>
-                      <label className="mb-1 block text-xs font-medium text-muted-foreground">Question</label>
+                      <label className="mb-1 block text-xs font-medium text-muted-foreground">{t('bonusQuestions.question')}</label>
                       <input
                         type="text"
                         value={editQuestion}
@@ -300,7 +294,7 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
                     </div>
                     <div className="flex flex-wrap gap-6">
                       <div>
-                        <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Answer type</label>
+                        <label className="mb-1.5 block text-xs font-medium text-muted-foreground">{t('bonusQuestions.answerType')}</label>
                         <div className="flex flex-wrap gap-4">
                           {CREATABLE_TYPES.map(type => (
                             <label key={type} className="flex items-center gap-2 text-sm cursor-pointer">
@@ -317,7 +311,7 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
                         </div>
                       </div>
                       <div>
-                        <label className="mb-1 block text-xs font-medium text-muted-foreground">Points</label>
+                        <label className="mb-1 block text-xs font-medium text-muted-foreground">{t('bonusQuestions.points')}</label>
                         <input
                           type="number"
                           min={1}
@@ -334,13 +328,13 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
                         disabled={editMutation.isPending}
                         className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                       >
-                        {editMutation.isPending ? 'Saving…' : 'Save'}
+                        {editMutation.isPending ? t('common.saving') : t('common.save')}
                       </button>
                       <button
                         onClick={() => setEditingId(null)}
                         className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
                       >
-                        Cancel
+                        {t('common.cancel')}
                       </button>
                     </div>
                   </div>
@@ -349,7 +343,7 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
                 {/* Admin: set correct answer */}
                 {user?.isAdmin && isSettingAnswer && !isEditing && (
                   <div className="space-y-2 pt-1 border-t">
-                    <label className="text-xs font-medium text-muted-foreground">Correct answer</label>
+                    <label className="text-xs font-medium text-muted-foreground">{t('bonusQuestions.correctAnswer')}</label>
                     <div className="space-y-2">
                       {q.answerType === 'yes_no' ? (
                         <div className="flex gap-2">
@@ -364,7 +358,7 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
                                   : 'hover:bg-muted'
                               }`}
                             >
-                              {opt}
+                              {opt === 'Yes' ? t('common.yes') : t('common.no')}
                             </button>
                           ))}
                         </div>
@@ -372,7 +366,7 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
                         <PlayerSearchInput
                           value={correctAnswerInput}
                           onChange={setCorrectAnswerInput}
-                          placeholder="Search for the correct player…"
+                          placeholder={t('bonusQuestions.searchPlayer')}
                         />
                       ) : q.answerType === 'team' ? (
                         <TeamSelectInput
@@ -385,7 +379,7 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
                           type="number"
                           value={correctAnswerInput}
                           onChange={e => setCorrectAnswerInput(e.target.value)}
-                          placeholder="Enter correct answer…"
+                          placeholder={t('bonusQuestions.enterCorrectAnswer')}
                           className="w-full rounded-md border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                         />
                       )}
@@ -395,13 +389,13 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
                           disabled={setAnswerMutation.isPending}
                           className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                         >
-                          Save
+                          {t('common.save')}
                         </button>
                         <button
                           onClick={() => setSettingAnswerFor(null)}
                           className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
                         >
-                          Cancel
+                          {t('common.cancel')}
                         </button>
                       </div>
                       {setAnswerError && <p className="text-xs text-destructive">{setAnswerError}</p>}
@@ -411,7 +405,7 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
 
                 {/* Admin: show stored correct answer (idle state) */}
                 {user?.isAdmin && !isSettingAnswer && !isEditing && q.correctAnswer !== null && (
-                  <CorrectAnswerDisplay type={q.answerType} value={q.correctAnswer} teams={teams} />
+                  <CorrectAnswerDisplay type={q.answerType} value={q.correctAnswer} teams={teams} correctAnswerLabel={t('bonusQuestions.correctAnswer')} />
                 )}
 
                 {/* User: answer input */}
@@ -434,12 +428,12 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
                                   : 'hover:bg-muted'
                               }`}
                             >
-                              {opt}
+                              {opt === 'Yes' ? t('common.yes') : t('common.no')}
                             </button>
                           ))}
                         </div>
                         {saving && <span className="text-xs text-muted-foreground">…</span>}
-                        {justSaved && <span className="text-xs text-green-600">Saved!</span>}
+                        {justSaved && <span className="text-xs text-green-600">{t('bonusQuestions.savedBang')}</span>}
                         {myAnswer?.points !== null && myAnswer?.points !== undefined && (
                           <span className="text-sm font-medium text-green-600">+{myAnswer.points} pts</span>
                         )}
@@ -450,7 +444,7 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
                           value={localVal}
                           onChange={val => setLocalAnswer(q.id, val)}
                           disabled={deadlinePassed}
-                          placeholder={deadlinePassed ? (myAnswer?.answer || '—') : 'Search for a player…'}
+                          placeholder={deadlinePassed ? (myAnswer?.answer || '—') : t('bonusQuestions.searchPlayerUser')}
                         />
                         <SaveRow
                           deadlinePassed={deadlinePassed}
@@ -459,12 +453,14 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
                           justSaved={justSaved}
                           points={myAnswer?.points ?? null}
                           onSave={() => saveAnswer(q.id)}
+                          saveLabel={t('common.save')}
+                          savedLabel={t('bonusQuestions.savedBang')}
                         />
                       </>
                     ) : q.answerType === 'team' ? (
                       <>
                         {deadlinePassed ? (
-                          <AnswerReadOnly type={q.answerType} value={myAnswer?.answer ?? ''} teams={teams} />
+                          <AnswerReadOnly type={q.answerType} value={myAnswer?.answer ?? ''} teams={teams} noAnswerLabel={t('bonusQuestions.noAnswerSubmitted')} />
                         ) : (
                           <TeamSelectInput
                             value={localVal}
@@ -480,6 +476,8 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
                             justSaved={justSaved}
                             points={myAnswer?.points ?? null}
                             onSave={() => saveAnswer(q.id)}
+                            saveLabel={t('common.save')}
+                            savedLabel={t('bonusQuestions.savedBang')}
                           />
                         )}
                         {deadlinePassed && myAnswer?.points !== null && myAnswer?.points !== undefined && (
@@ -487,14 +485,13 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
                         )}
                       </>
                     ) : (
-                      /* number (and legacy text) */
                       <>
                         <input
                           type="number"
                           value={localVal}
                           onChange={e => setLocalAnswer(q.id, e.target.value)}
                           disabled={deadlinePassed}
-                          placeholder={deadlinePassed ? (myAnswer?.answer ?? '—') : 'Your answer…'}
+                          placeholder={deadlinePassed ? (myAnswer?.answer ?? '—') : t('bonusQuestions.yourAnswer')}
                           className="w-full rounded-md border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:bg-muted disabled:text-muted-foreground [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                         />
                         <SaveRow
@@ -504,6 +501,8 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
                           justSaved={justSaved}
                           points={myAnswer?.points ?? null}
                           onSave={() => saveAnswer(q.id)}
+                          saveLabel={t('common.save')}
+                          savedLabel={t('bonusQuestions.savedBang')}
                         />
                       </>
                     )}
@@ -519,10 +518,8 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
   );
 }
 
-// ── Small helpers ─────────────────────────────────────────────────────────────
-
 function SaveRow({
-  deadlinePassed, hasValue, saving, justSaved, points, onSave,
+  deadlinePassed, hasValue, saving, justSaved, points, onSave, saveLabel, savedLabel,
 }: {
   deadlinePassed: boolean;
   hasValue: boolean;
@@ -530,6 +527,8 @@ function SaveRow({
   justSaved: boolean;
   points: number | null;
   onSave: () => void;
+  saveLabel: string;
+  savedLabel: string;
 }) {
   return (
     <div className="flex items-center gap-3">
@@ -539,7 +538,7 @@ function SaveRow({
           disabled={saving || !hasValue}
           className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
         >
-          {saving ? '…' : justSaved ? 'Saved!' : 'Save'}
+          {saving ? '…' : justSaved ? savedLabel : saveLabel}
         </button>
       )}
       {points !== null && points !== undefined && (
@@ -549,11 +548,11 @@ function SaveRow({
   );
 }
 
-function CorrectAnswerDisplay({ type, value, teams }: { type: BonusAnswerType | string; value: string; teams: Team[] }) {
+function CorrectAnswerDisplay({ type, value, teams, correctAnswerLabel }: { type: BonusAnswerType | string; value: string; teams: Team[]; correctAnswerLabel: string }) {
   const teamObj = type === 'team' ? teams.find(t => t.name === value) : null;
   return (
     <div className="flex items-center gap-2 text-xs text-muted-foreground border-t pt-2">
-      <span>Correct answer:</span>
+      <span>{correctAnswerLabel}:</span>
       {teamObj?.imageUrl && (
         <img src={teamObj.imageUrl} alt="" className="h-4 w-4 rounded-full object-cover" />
       )}
@@ -562,8 +561,8 @@ function CorrectAnswerDisplay({ type, value, teams }: { type: BonusAnswerType | 
   );
 }
 
-function AnswerReadOnly({ type, value, teams }: { type: BonusAnswerType | string; value: string; teams: Team[] }) {
-  if (!value) return <p className="text-sm text-muted-foreground">No answer submitted</p>;
+function AnswerReadOnly({ type, value, teams, noAnswerLabel }: { type: BonusAnswerType | string; value: string; teams: Team[]; noAnswerLabel: string }) {
+  if (!value) return <p className="text-sm text-muted-foreground">{noAnswerLabel}</p>;
   const teamObj = type === 'team' ? teams.find(t => t.name === value) : null;
   return (
     <div className="flex items-center gap-2 rounded-md border bg-muted px-3 py-2">

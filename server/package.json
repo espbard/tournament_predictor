@@ -18,7 +18,10 @@
     ],
     "target": "node20",
     "clean": true,
-    "sourcemap": true
+    "sourcemap": true,
+    "noExternal": [
+      "@tournament-predictor/shared"
+    ]
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1056.0",
