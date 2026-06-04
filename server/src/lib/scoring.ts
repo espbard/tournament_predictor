@@ -316,20 +316,11 @@ export function calculateKnockoutPoints(
       );
 
       if (m.homeTeamId && m.awayTeamId) {
-        const homeInActualHome = predictedHome === m.homeTeamId;
-        const homeInActualAway = predictedHome === m.awayTeamId;
-        const awayInActualHome = predictedAway === m.homeTeamId;
-        const awayInActualAway = predictedAway === m.awayTeamId;
-        const homeCorrect = homeInActualHome || homeInActualAway;
-        const awayCorrect = awayInActualAway || awayInActualHome;
-        const correctCount = (homeCorrect ? 1 : 0) + (awayCorrect ? 1 : 0);
-
-        if (correctCount === 2) {
-          shouldFlip = homeInActualAway && awayInActualHome;
-        } else if (correctCount === 1) {
-          if (homeCorrect) shouldFlip = homeInActualAway;
-          else shouldFlip = awayInActualHome;
-        }
+        // Flip when a team from the actual match is predicted on the wrong side:
+        // predicted home is actually the away team, OR predicted away is actually the home team.
+        shouldFlip =
+          (predictedHome !== null && predictedHome === m.awayTeamId) ||
+          (predictedAway !== null && predictedAway === m.homeTeamId);
       }
     }
 

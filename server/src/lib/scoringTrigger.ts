@@ -116,17 +116,9 @@ async function markFlippedKnockoutPredictions(
       match.stage, matchIndex, 'away', firstRound, matchesByStage, userPreds,
     );
 
-    const homeInActualHome = predictedHome === match.homeTeamId;
-    const homeInActualAway = predictedHome === match.awayTeamId;
-    const awayInActualHome = predictedAway === match.homeTeamId;
-    const awayInActualAway = predictedAway === match.awayTeamId;
-    const homeCorrect = homeInActualHome || homeInActualAway;
-    const awayCorrect = awayInActualAway || awayInActualHome;
-    const correctCount = (homeCorrect ? 1 : 0) + (awayCorrect ? 1 : 0);
-
-    let shouldFlip = false;
-    if (correctCount === 2) shouldFlip = homeInActualAway && awayInActualHome;
-    else if (correctCount === 1) shouldFlip = homeCorrect ? homeInActualAway : awayInActualHome;
+    const shouldFlip =
+      (predictedHome !== null && predictedHome === match.awayTeamId) ||
+      (predictedAway !== null && predictedAway === match.homeTeamId);
 
     if (!shouldFlip) continue;
 

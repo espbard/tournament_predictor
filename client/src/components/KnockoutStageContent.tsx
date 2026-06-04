@@ -314,15 +314,10 @@ function FocusedMatchCard({
     const actHomeId = actualMatch.homeTeamId;
     const actAwayId = actualMatch.awayTeamId;
 
-    if (!isFirstRound && actHomeId && actAwayId && predHomeId && predAwayId) {
-      const hInActHome = predHomeId === actHomeId;
-      const hInActAway = predHomeId === actAwayId;
-      const aInActHome = predAwayId === actHomeId;
-      const aInActAway = predAwayId === actAwayId;
-      const correct = ((hInActHome || hInActAway) ? 1 : 0) + ((aInActAway || aInActHome) ? 1 : 0);
-      let flip = false;
-      if (correct === 2) flip = hInActAway && aInActHome;
-      else if (correct === 1) flip = hInActHome || hInActAway ? hInActAway : aInActHome;
+    if (!isFirstRound && actHomeId && actAwayId) {
+      const flip =
+        (predHomeId !== null && predHomeId === actAwayId) ||
+        (predAwayId !== null && predAwayId === actHomeId);
       if (flip) { predH = prediction.awayScore; predA = prediction.homeScore; }
     }
 
@@ -375,8 +370,10 @@ function FocusedMatchCard({
       const predAwayId = awayTeam?.teamId ?? null;
       const actHomeId = actualMatch.homeTeamId;
       const actAwayId = actualMatch.awayTeamId;
-      if (actHomeId && actAwayId && predHomeId && predAwayId) {
-        const flip = predHomeId === actAwayId && predAwayId === actHomeId;
+      if (actHomeId && actAwayId) {
+        const flip =
+          (predHomeId !== null && predHomeId === actAwayId) ||
+          (predAwayId !== null && predAwayId === actHomeId);
         if (flip) { predH = prediction.awayScore; predA = prediction.homeScore; }
       }
     }
