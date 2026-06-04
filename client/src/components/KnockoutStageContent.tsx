@@ -360,8 +360,31 @@ function FocusedMatchCard({
     return { exactScore, correctResult, correctTeamProgresses, correctTeamInKnockoutTie, correctTeamInFinal, correctWinner, total };
   }, [actualMatch, prediction, scoringConfig, homeTeam, awayTeam, isFinal, isFirstRound]);
   const { t } = useT();
-  const isCorrectResult = pointsInfo !== null && pointsInfo.correctResult > 0;
-  const isExactScore = pointsInfo !== null && pointsInfo.exactScore > 0;
+
+  // Visual flags — computed directly from score comparison so they don't depend on
+  // scoringConfig values being non-zero.
+  const { isCorrectResult, isExactScore } = useMemo(() => {
+    if (!actualMatch || actualMatch.status !== 'completed' || !prediction)
+      return { isCorrectResult: false, isExactScore: false };
+    const h = actualMatch.homeScore ?? 0;
+    const a = actualMatch.awayScore ?? 0;
+    let predH = prediction.homeScore;
+    let predA = prediction.awayScore;
+    if (!isFirstRound) {
+      const predHomeId = homeTeam?.teamId ?? null;
+      const predAwayId = awayTeam?.teamId ?? null;
+      const actHomeId = actualMatch.homeTeamId;
+      const actAwayId = actualMatch.awayTeamId;
+      if (actHomeId && actAwayId && predHomeId && predAwayId) {
+        const flip = predHomeId === actAwayId && predAwayId === actHomeId;
+        if (flip) { predH = prediction.awayScore; predA = prediction.homeScore; }
+      }
+    }
+    return {
+      isExactScore: predH === h && predA === a,
+      isCorrectResult: Math.sign(predH - predA) === Math.sign(h - a),
+    };
+  }, [actualMatch, prediction, homeTeam, awayTeam, isFirstRound]);
   const homeWins = bothValid && homeNum! > awayNum!;
   const awayWins = bothValid && awayNum! > homeNum!;
   const isHomeChampion = isFinal && (homeWins || (isDraw && prediction?.progressingTeamId === homeTeam?.teamId));

@@ -253,15 +253,17 @@ export default function CompetitionDetailPage() {
         teamMap.set(m.homeTeamId, { teamId: m.homeTeamId, teamName: m.homeTeamName, imageUrl: m.homeTeamImageUrl, group: g, P: 0, W: 0, D: 0, L: 0, GF: 0, GA: 0 });
       if (m.awayTeamId && m.awayTeamName && !teamMap.has(m.awayTeamId))
         teamMap.set(m.awayTeamId, { teamId: m.awayTeamId, teamName: m.awayTeamName, imageUrl: m.awayTeamImageUrl, group: g, P: 0, W: 0, D: 0, L: 0, GF: 0, GA: 0 });
-      if (!matchCounts.has(g)) matchCounts.set(g, { total: 0, completed: 0 });
-      const cnt = matchCounts.get(g)!;
-      cnt.total++;
-      if (m.status === 'completed') cnt.completed++;
     }
 
     const groupResultsMap = new Map<string, MatchResult[]>();
     for (const m of groupMatches) {
-      if (!m.homeTeamId || !m.awayTeamId || !m.groupName || m.status !== 'completed' || m.homeScore === null || m.awayScore === null) continue;
+      if (!m.homeTeamId || !m.awayTeamId || !m.groupName) continue;
+      // Update counts only for matches with real teams assigned
+      if (!matchCounts.has(m.groupName)) matchCounts.set(m.groupName, { total: 0, completed: 0 });
+      const cnt2 = matchCounts.get(m.groupName)!;
+      cnt2.total++;
+      if (m.status === 'completed') cnt2.completed++;
+      if (m.status !== 'completed' || m.homeScore === null || m.awayScore === null) continue;
       const hs = m.homeScore, as_ = m.awayScore;
       const home = teamMap.get(m.homeTeamId);
       const away = teamMap.get(m.awayTeamId);
