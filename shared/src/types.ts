@@ -2,6 +2,7 @@ export interface User {
   id: string;
   username: string;
   isAdmin: boolean;
+  isTestAccount: boolean;
   imageUrl?: string | null;
 }
 

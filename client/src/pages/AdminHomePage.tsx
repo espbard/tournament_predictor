@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useT } from '@/lib/useT';
+import type { User } from '@tournament-predictor/shared';
 
 interface Props {
   maintenanceMode: boolean;
@@ -21,6 +22,19 @@ export default function AdminHomePage({ maintenanceMode }: Props) {
       queryClient.invalidateQueries({ queryKey: ['maintenance'] });
     },
     onSettled: () => setPending(false),
+  });
+
+  const { data: userList } = useQuery({
+    queryKey: ['admin-users'],
+    queryFn: () => api.get<User[]>('/auth/users'),
+  });
+
+  const testAccountMutation = useMutation({
+    mutationFn: ({ id, isTestAccount }: { id: string; isTestAccount: boolean }) =>
+      api.patch<User>(`/auth/users/${id}`, { isTestAccount }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] });
+    },
   });
 
   return (
@@ -73,6 +87,43 @@ export default function AdminHomePage({ maintenanceMode }: Props) {
           </button>
         </div>
       </div>
+
+      {userList && userList.length > 0 && (
+        <div className="mt-8 rounded-lg border p-5">
+          <h2 className="mb-4 font-semibold">{t('adminUsers.title')}</h2>
+          <ul className="space-y-3">
+            {userList.map((u) => (
+              <li key={u.id} className="flex items-center justify-between gap-4">
+                <div>
+                  <span className="text-sm font-medium">{u.username}</span>
+                  {u.isAdmin && (
+                    <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">admin</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">{t('adminUsers.testAccount')}</span>
+                  <button
+                    onClick={() => testAccountMutation.mutate({ id: u.id, isTestAccount: !u.isTestAccount })}
+                    disabled={testAccountMutation.isPending}
+                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors disabled:opacity-50 ${
+                      u.isTestAccount ? 'bg-primary' : 'bg-input'
+                    }`}
+                    role="switch"
+                    aria-checked={u.isTestAccount}
+                    title={t('adminUsers.testAccountDesc')}
+                  >
+                    <span
+                      className={`pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg ring-0 transition-transform ${
+                        u.isTestAccount ? 'translate-x-4' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </main>
   );
 }

@@ -23,7 +23,7 @@ function PrivateRoute({ children, maintenanceMode }: { children: React.ReactNode
   const { user, isLoading } = useAuthStore();
   if (isLoading) return null;
   if (!user) return <Navigate to="/login" replace />;
-  if (maintenanceMode && !user.isAdmin) return <MaintenancePage />;
+  if (maintenanceMode && !user.isAdmin && !user.isTestAccount) return <MaintenancePage />;
   return <AppLayout>{children}</AppLayout>;
 }
 

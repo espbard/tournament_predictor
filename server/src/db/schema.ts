@@ -45,6 +45,7 @@ export const users = pgTable('users', {
   username: text('username').notNull().unique(),
   hashedPassword: text('hashed_password').notNull(),
   isAdmin: boolean('is_admin').notNull().default(false),
+  isTestAccount: boolean('is_test_account').notNull().default(false),
   imageUrl: text('image_url'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
