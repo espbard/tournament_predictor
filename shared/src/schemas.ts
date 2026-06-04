@@ -3,7 +3,7 @@ import { z } from 'zod';
 export const RegisterSchema = z.object({
   username: z.string().min(3).max(30).regex(/^[a-zA-Z0-9_]+$/, 'Only letters, numbers, and underscores'),
   password: z.string().min(6),
-  imageUrl: z.string().url().nullable().optional(),
+  imageUrl: z.string().nullable().optional(),
 });
 
 export const LoginSchema = z.object({
@@ -13,25 +13,25 @@ export const LoginSchema = z.object({
 
 export const CreateTournamentSchema = z.object({
   name: z.string().min(1).max(100),
-  imageUrl: z.string().url().nullable().optional(),
+  imageUrl: z.string().nullable().optional(),
 });
 
 export const UpdateTournamentSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   status: z.enum(['upcoming', 'active', 'completed']).optional(),
-  imageUrl: z.string().url().nullable().optional(),
+  imageUrl: z.string().nullable().optional(),
 });
 
 export const CreateTeamSchema = z.object({
   name: z.string().min(1).max(100),
   groupId: z.string().nullable().optional(),
-  imageUrl: z.string().url().nullable().optional(),
+  imageUrl: z.string().nullable().optional(),
 });
 
 export const UpdateTeamSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   groupId: z.string().nullable().optional(),
-  imageUrl: z.string().url().nullable().optional(),
+  imageUrl: z.string().nullable().optional(),
 });
 
 export const CreateGroupSchema = z.object({
@@ -39,7 +39,7 @@ export const CreateGroupSchema = z.object({
 });
 
 export const UpdateUserSchema = z.object({
-  imageUrl: z.string().url().nullable().optional(),
+  imageUrl: z.string().nullable().optional(),
 });
 
 export const CreateMatchSchema = z.object({
@@ -62,13 +62,13 @@ export const UpdateMatchSchema = z.object({
 export const CreateCompetitionSchema = z.object({
   tournamentId: z.string().min(1),
   name: z.string().min(1).max(100),
-  imageUrl: z.string().url().nullable().optional(),
+  imageUrl: z.string().nullable().optional(),
   predictionDeadline: z.string().datetime().nullable().optional(),
 });
 
 export const UpdateCompetitionSchema = z.object({
   name: z.string().min(1).max(100).optional(),
-  imageUrl: z.string().url().nullable().optional(),
+  imageUrl: z.string().nullable().optional(),
   predictionDeadline: z.string().datetime().nullable().optional(),
 });
 
