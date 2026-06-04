@@ -453,12 +453,7 @@ export default function CompetitionDetailPage() {
   useEffect(() => {
     if (firstGroupUnfilledRef.current || !savedPredictions.length) return;
     firstGroupUnfilledRef.current = true;
-    const idx = allGroupMatchesList.findIndex(m => {
-      if (m.status === 'completed') return false;
-      return !predMap[m.id];
-    });
-    if (idx > 0) setCurrentGroupMatchIdx(idx);
-  }, [savedPredictions, allGroupMatchesList, predMap]);
+  }, [savedPredictions]);
 
   const deadlinePassed = competition?.predictionDeadline
     ? new Date() > new Date(competition.predictionDeadline)

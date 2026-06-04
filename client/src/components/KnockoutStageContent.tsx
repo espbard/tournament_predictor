@@ -741,16 +741,7 @@ function FocusedBracketView({
   useEffect(() => {
     if (initedRef.current || !predsLoaded) return;
     initedRef.current = true;
-    const firstIncomplete = allMatches.findIndex(m => {
-      if (m.isBronze) return false;
-      const teams = matchTeams[m.bracketKey];
-      if (!teams?.home || !teams?.away) return false;
-      return !isPredComplete(bracketPreds[m.predKey], teams);
-    });
-    if (firstIncomplete > 0) {
-      setCurrentIdx(firstIncomplete);
-    }
-  }, [predsLoaded, allMatches, matchTeams, bracketPreds]);
+  }, [predsLoaded]);
 
   function goTo(idx: number) {
     const dir = idx > currentIdx ? 'fromRight' : 'fromLeft';
