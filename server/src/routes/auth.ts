@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client';
 import { users } from '../db/schema';
-import { lucia, requireAuth } from '../middleware/auth';
+import { lucia, requireAuth, requireAdmin } from '../middleware/auth';
 import { LoginSchema, RegisterSchema, UpdateUserSchema } from '@tournament-predictor/shared';
 
 export const authRouter = Router();
@@ -30,7 +30,7 @@ authRouter.post('/register', async (req, res) => {
     const session = await lucia.createSession(userId, {});
     res.setHeader('Set-Cookie', lucia.createSessionCookie(session.id).serialize());
 
-    return res.status(201).json({ id: userId, username, isAdmin: false, imageUrl: imageUrl ?? null });
+    return res.status(201).json({ id: userId, username, isAdmin: false, isTestAccount: false, imageUrl: imageUrl ?? null });
   } catch (err: any) {
     if (err?.name === 'ZodError') {
       return res.status(400).json({ error: 'Invalid input', details: err.errors });
@@ -62,7 +62,7 @@ authRouter.post('/login', async (req, res) => {
     const session = await lucia.createSession(user.id, {});
     res.setHeader('Set-Cookie', lucia.createSessionCookie(session.id).serialize());
 
-    return res.json({ id: user.id, username: user.username, isAdmin: user.isAdmin, imageUrl: user.imageUrl });
+    return res.json({ id: user.id, username: user.username, isAdmin: user.isAdmin, isTestAccount: user.isTestAccount, imageUrl: user.imageUrl });
   } catch (err: any) {
     if (err?.name === 'ZodError') {
       return res.status(400).json({ error: 'Invalid input', details: err.errors });
@@ -80,7 +80,7 @@ authRouter.post('/logout', requireAuth, async (_req, res) => {
 
 authRouter.get('/me', requireAuth, async (_req, res) => {
   const [user] = await db
-    .select({ id: users.id, username: users.username, isAdmin: users.isAdmin, imageUrl: users.imageUrl })
+    .select({ id: users.id, username: users.username, isAdmin: users.isAdmin, isTestAccount: users.isTestAccount, imageUrl: users.imageUrl })
     .from(users)
     .where(eq(users.id, res.locals.user.id))
     .limit(1);
@@ -94,11 +94,33 @@ authRouter.patch('/me', requireAuth, async (req, res) => {
       .update(users)
       .set(updates)
       .where(eq(users.id, res.locals.user.id))
-      .returning({ id: users.id, username: users.username, isAdmin: users.isAdmin, imageUrl: users.imageUrl });
+      .returning({ id: users.id, username: users.username, isAdmin: users.isAdmin, isTestAccount: users.isTestAccount, imageUrl: users.imageUrl });
     return res.json(updated);
   } catch (err: any) {
     if (err?.name === 'ZodError') return res.status(400).json({ error: 'Invalid input', details: err.errors });
     console.error(err);
     return res.status(500).json({ error: 'Internal server error' });
   }
+});
+
+authRouter.get('/users', requireAdmin, async (_req, res) => {
+  const allUsers = await db
+    .select({ id: users.id, username: users.username, isAdmin: users.isAdmin, isTestAccount: users.isTestAccount, imageUrl: users.imageUrl })
+    .from(users)
+    .orderBy(users.username);
+  return res.json(allUsers);
+});
+
+authRouter.patch('/users/:id', requireAdmin, async (req, res) => {
+  const { isTestAccount } = req.body;
+  if (typeof isTestAccount !== 'boolean') {
+    return res.status(400).json({ error: 'isTestAccount must be a boolean' });
+  }
+  const [updated] = await db
+    .update(users)
+    .set({ isTestAccount })
+    .where(eq(users.id, req.params.id))
+    .returning({ id: users.id, username: users.username, isAdmin: users.isAdmin, isTestAccount: users.isTestAccount, imageUrl: users.imageUrl });
+  if (!updated) return res.status(404).json({ error: 'User not found' });
+  return res.json(updated);
 });

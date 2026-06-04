@@ -106,10 +106,13 @@ export default function PlayerSearchInput({ value, onChange, disabled, placehold
     );
   }
 
+  // Show selected card whenever a value is present (either from this session or loaded from saved answer)
+  const isSelected = !!value;
+
   return (
     <div ref={containerRef} className="relative">
       {/* Selected player card */}
-      {selectedMeta ? (
+      {isSelected ? (
         <div className="flex items-center gap-3 rounded-md border px-3 py-2 bg-muted/30">
           {thumbUrl ? (
             <img
@@ -122,8 +125,8 @@ export default function PlayerSearchInput({ value, onChange, disabled, placehold
             <div className="h-10 w-10 rounded-full bg-muted flex-shrink-0" />
           )}
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">{selectedMeta.strPlayer}</p>
-            {selectedMeta.strTeam && (
+            <p className="text-sm font-medium truncate">{selectedMeta?.strPlayer ?? value}</p>
+            {selectedMeta?.strTeam && (
               <p className="text-xs text-muted-foreground truncate">{selectedMeta.strTeam}</p>
             )}
           </div>
