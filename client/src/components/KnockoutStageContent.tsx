@@ -390,7 +390,7 @@ function FocusedMatchCard({
   }
 
   return (
-    <div className="rounded-xl border-2 bg-card shadow-sm overflow-hidden w-full max-w-xs mx-auto">
+    <div className="rounded-xl border-2 bg-card shadow-sm overflow-hidden w-full sm:max-w-xs sm:mx-auto">
       <div
         className={`flex items-center gap-3 px-4 py-3.5 transition-colors ${homeWins && !isHomeChampion ? 'bg-primary/5' : ''}`}
         style={isHomeChampion ? { animation: 'ko_winner_glow 1.8s ease-in-out infinite' } : undefined}
@@ -826,12 +826,12 @@ function FocusedBracketView({
           </div>
         )}
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
           <button
             type="button"
             onClick={() => canGoPrev && goTo(currentIdx - 1)}
             disabled={!canGoPrev}
-            className="flex-shrink-0 h-10 w-10 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20"
+            className="hidden sm:flex flex-shrink-0 h-10 w-10 rounded-full border items-center justify-center transition-opacity disabled:opacity-20"
             aria-label="Previous match"
           >
             ←
@@ -856,13 +856,29 @@ function FocusedBracketView({
               scoringConfig={scoringConfig}
               predictedFirstRoundTeams={current.round === firstRound && !current.isBronze ? predictedFirstRoundMap[current.predKey] : undefined}
             />
+            <div className="mt-3 flex sm:hidden items-center justify-between">
+              <button
+                type="button"
+                onClick={() => canGoPrev && goTo(currentIdx - 1)}
+                disabled={!canGoPrev}
+                className="h-11 w-11 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20"
+                aria-label="Previous match"
+              >←</button>
+              <button
+                type="button"
+                onClick={() => showNextArrow && goTo(currentIdx + 1)}
+                disabled={!showNextArrow}
+                className={`h-11 w-11 rounded-full border flex items-center justify-center transition-all duration-200 ${showNextArrow ? 'border-primary text-primary hover:bg-primary/10 shadow-sm' : 'opacity-0 pointer-events-none'}`}
+                aria-label="Next match"
+              >→</button>
+            </div>
           </div>
 
           <button
             type="button"
             onClick={() => showNextArrow && goTo(currentIdx + 1)}
             disabled={!showNextArrow}
-            className={`flex-shrink-0 h-10 w-10 rounded-full border flex items-center justify-center transition-all duration-200 ${
+            className={`hidden sm:flex flex-shrink-0 h-10 w-10 rounded-full border items-center justify-center transition-all duration-200 ${
               showNextArrow
                 ? 'border-primary text-primary hover:bg-primary/10 shadow-sm'
                 : 'opacity-0 pointer-events-none'
