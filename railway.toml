@@ -1,6 +1,6 @@
 [build]
 builder = "NIXPACKS"
-buildCommand = "npm install && npm run build && npm run db:migrate"
+buildCommand = "npm install --include=dev && npm run build && npm run db:migrate"
 
 
 [deploy]
