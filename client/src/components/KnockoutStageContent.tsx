@@ -414,197 +414,231 @@ function FocusedMatchCard({
     onUpdate(matchKey, { homeScore: homeNum, awayScore: awayNum, progressingTeamId: teamId });
   }
 
+  const isCompleted = actualMatch?.status === 'completed';
+
   return (
-    <div className={`rounded-xl border-2 shadow-sm overflow-hidden w-full sm:max-w-xs sm:mx-auto ${isCorrectResult ? 'border-green-400 bg-green-50/60 dark:bg-green-950/25' : 'bg-card'}`}>
-      <div
-        className={`flex items-center gap-3 px-4 py-3.5 transition-colors ${homeWins && !isHomeChampion ? 'bg-primary/5' : ''}`}
-        style={isHomeChampion ? { animation: 'ko_winner_glow 1.8s ease-in-out infinite' } : undefined}
-      >
-        {homeTeam ? (
-          <>
-            {homeTeam.imageUrl ? (
-              <img src={homeTeam.imageUrl} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0" />
-            ) : (
-              <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
-            )}
-            <span className={`flex-1 text-sm truncate ${homeWins ? 'font-semibold' : 'font-medium'}`}>
-              {homeTeam.teamName}
-            </span>
-            {isHomeChampion && (
-              <span style={{ animation: 'ko_trophy_pop 0.45s cubic-bezier(0.34,1.56,0.64,1) forwards' }}>
-                🏆
-              </span>
-            )}
-          </>
-        ) : (
-          <span className="flex-1 text-sm text-muted-foreground italic">TBD</span>
+    <div className="space-y-3 w-full">
+      {/* ── Predicted card ─────────────────────────────────── */}
+      <div>
+        {isCompleted && (
+          <p className="text-xs text-muted-foreground text-center mb-1.5 font-medium">
+            {t('knockoutContent.yourPrediction')}
+          </p>
         )}
-        {actualMatch?.status === 'completed' ? (
-          <span className={`w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400 border border-amber-400 bg-amber-50/70 dark:bg-amber-900/30' : ''}`}>
-            {prediction != null ? prediction.homeScore : '—'}
-          </span>
-        ) : (
-          <div className="flex items-center gap-0.5 flex-shrink-0">
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={() => {
-                const cur = parseInt(homeStr || '0') || 0;
-                handleScoreChange('home', String(Math.max(0, cur - 1)));
-              }}
-              className="h-10 w-10 flex items-center justify-center rounded-md border bg-muted hover:bg-muted/80 text-base font-bold select-none active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-            >−</button>
-            <input
-              type="text"
-              inputMode="numeric"
-              value={homeStr}
-              onChange={e => handleScoreChange('home', e.target.value)}
-              disabled={disabled}
-              className="w-11 h-9 text-center text-xl font-bold rounded-lg border bg-background disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-primary flex-shrink-0"
-              placeholder="–"
-            />
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={() => {
-                const cur = parseInt(homeStr || '0') || 0;
-                handleScoreChange('home', String(Math.min(99, cur + 1)));
-              }}
-              className="h-10 w-10 flex items-center justify-center rounded-md border bg-muted hover:bg-muted/80 text-base font-bold select-none active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-            >+</button>
-          </div>
-        )}
-      </div>
-
-      <div className="h-px bg-border" />
-
-      <div
-        className={`flex items-center gap-3 px-4 py-3.5 transition-colors ${awayWins && !isAwayChampion ? 'bg-primary/5' : ''}`}
-        style={isAwayChampion ? { animation: 'ko_winner_glow 1.8s ease-in-out infinite' } : undefined}
-      >
-        {awayTeam ? (
-          <>
-            {awayTeam.imageUrl ? (
-              <img src={awayTeam.imageUrl} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0" />
-            ) : (
-              <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
-            )}
-            <span className={`flex-1 text-sm truncate ${awayWins ? 'font-semibold' : 'font-medium'}`}>
-              {awayTeam.teamName}
-            </span>
-            {isAwayChampion && (
-              <span style={{ animation: 'ko_trophy_pop 0.45s cubic-bezier(0.34,1.56,0.64,1) forwards' }}>
-                🏆
-              </span>
-            )}
-          </>
-        ) : (
-          <span className="flex-1 text-sm text-muted-foreground italic">TBD</span>
-        )}
-        {actualMatch?.status === 'completed' ? (
-          <span className={`w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400 border border-amber-400 bg-amber-50/70 dark:bg-amber-900/30' : ''}`}>
-            {prediction != null ? prediction.awayScore : '—'}
-          </span>
-        ) : (
-          <div className="flex items-center gap-0.5 flex-shrink-0">
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={() => {
-                const cur = parseInt(awayStr || '0') || 0;
-                handleScoreChange('away', String(Math.max(0, cur - 1)));
-              }}
-              className="h-10 w-10 flex items-center justify-center rounded-md border bg-muted hover:bg-muted/80 text-base font-bold select-none active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-            >−</button>
-            <input
-              type="text"
-              inputMode="numeric"
-              value={awayStr}
-              onChange={e => handleScoreChange('away', e.target.value)}
-              disabled={disabled}
-              className="w-11 h-9 text-center text-xl font-bold rounded-lg border bg-background disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-primary flex-shrink-0"
-              placeholder="–"
-            />
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={() => {
-                const cur = parseInt(awayStr || '0') || 0;
-                handleScoreChange('away', String(Math.min(99, cur + 1)));
-              }}
-              className="h-10 w-10 flex items-center justify-center rounded-md border bg-muted hover:bg-muted/80 text-base font-bold select-none active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-            >+</button>
-          </div>
-        )}
-      </div>
-
-      {isDraw && homeTeam && awayTeam && actualMatch?.status !== 'completed' && (
-        <>
-          <div className="h-px bg-border" />
-          <div className="p-3 space-y-2">
-            <p className="text-[11px] text-muted-foreground text-center font-medium">
-              {t('knockoutContent.whoAdvances')}
-            </p>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => handleProgressing(homeTeam.teamId)}
-                className={`flex-1 text-xs py-2 rounded-lg border font-medium transition-colors truncate px-1 ${
-                  prediction?.progressingTeamId === homeTeam.teamId
-                    ? 'bg-primary text-primary-foreground border-primary'
-                    : 'hover:bg-muted text-muted-foreground'
-                }`}
-              >
-                {homeTeam.teamName}
-              </button>
-              <button
-                type="button"
-                onClick={() => handleProgressing(awayTeam.teamId)}
-                className={`flex-1 text-xs py-2 rounded-lg border font-medium transition-colors truncate px-1 ${
-                  prediction?.progressingTeamId === awayTeam.teamId
-                    ? 'bg-primary text-primary-foreground border-primary'
-                    : 'hover:bg-muted text-muted-foreground'
-                }`}
-              >
-                {awayTeam.teamName}
-              </button>
-            </div>
-          </div>
-        </>
-      )}
-
-      {actualMatch?.status === 'completed' && (
-        <>
-          <div className="h-px bg-border" />
-          <div className="px-4 py-3 bg-muted/30 space-y-1.5">
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-xs text-muted-foreground font-medium shrink-0">{t('knockoutContent.result')}</span>
-              <span className="font-bold tabular-nums">
-                {actualMatch.homeScore} – {actualMatch.awayScore}
-              </span>
-              {actualMatch.homeScore === actualMatch.awayScore && actualMatch.progressingTeamId && (
-                <span className="text-xs text-muted-foreground">
-                  ({actualMatch.progressingTeamId === actualMatch.homeTeamId
-                    ? actualMatch.homeTeamName
-                    : actualMatch.awayTeamName} {t('knockoutContent.advances')})
+        <div className={`rounded-xl border-2 shadow-sm overflow-hidden ${isCorrectResult ? 'border-green-400 bg-green-50/60 dark:bg-green-950/25' : 'bg-card'}`}>
+          {/* Home row */}
+          <div
+            className={`flex items-center gap-3 px-4 py-3.5 transition-colors ${homeWins && !isHomeChampion ? 'bg-primary/5' : ''}`}
+            style={isHomeChampion ? { animation: 'ko_winner_glow 1.8s ease-in-out infinite' } : undefined}
+          >
+            {homeTeam ? (
+              <>
+                {homeTeam.imageUrl ? (
+                  <img src={homeTeam.imageUrl} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0" />
+                ) : (
+                  <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
+                )}
+                <span className={`flex-1 text-sm truncate ${homeWins ? 'font-semibold' : 'font-medium'}`}>
+                  {homeTeam.teamName}
                 </span>
-              )}
-            </div>
-            {pointsInfo !== null && (
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
-                <span className={`font-semibold ${pointsInfo.total > 0 ? 'text-green-700 dark:text-green-400' : 'text-muted-foreground'}`}>
-                  {pointsInfo.total > 0 ? `+${pointsInfo.total} pts` : '0 pts'}
-                </span>
-                {pointsInfo.correctResult > 0 && <span className="text-muted-foreground">+{pointsInfo.correctResult} {t('knockoutContent.correctResult')}</span>}
-                {pointsInfo.exactScore > 0 && <span className="text-muted-foreground">+{pointsInfo.exactScore} {t('knockoutContent.correctExactScore')}</span>}
-                {pointsInfo.correctTeamProgresses > 0 && <span className="text-muted-foreground">+{pointsInfo.correctTeamProgresses} {t('knockoutContent.advances')}</span>}
-                {pointsInfo.correctTeamInKnockoutTie > 0 && <span className="text-muted-foreground">+{pointsInfo.correctTeamInKnockoutTie} {t('knockoutContent.correctTeamInTie')}</span>}
-                {pointsInfo.correctTeamInFinal > 0 && <span className="text-muted-foreground">+{pointsInfo.correctTeamInFinal} {t('knockoutContent.correctTeamInFinal')}</span>}
-                {pointsInfo.correctWinner > 0 && <span className="text-muted-foreground">+{pointsInfo.correctWinner} {t('knockoutContent.correctWinner')}</span>}
+                {isHomeChampion && (
+                  <span style={{ animation: 'ko_trophy_pop 0.45s cubic-bezier(0.34,1.56,0.64,1) forwards' }}>
+                    🏆
+                  </span>
+                )}
+              </>
+            ) : (
+              <span className="flex-1 text-sm text-muted-foreground italic">TBD</span>
+            )}
+            {isCompleted ? (
+              <span className={`w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400 border border-amber-400 bg-amber-50/70 dark:bg-amber-900/30' : ''}`}>
+                {prediction != null ? prediction.homeScore : '—'}
+              </span>
+            ) : (
+              <div className="flex items-center gap-0.5 flex-shrink-0">
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => handleScoreChange('home', String(Math.max(0, (parseInt(homeStr || '0') || 0) - 1)))}
+                  className="h-10 w-10 flex items-center justify-center rounded-md border bg-muted hover:bg-muted/80 text-base font-bold select-none active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                >−</button>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={homeStr}
+                  onChange={e => handleScoreChange('home', e.target.value)}
+                  disabled={disabled}
+                  className="w-11 h-9 text-center text-xl font-bold rounded-lg border bg-background disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-primary flex-shrink-0"
+                  placeholder="–"
+                />
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => handleScoreChange('home', String(Math.min(99, (parseInt(homeStr || '0') || 0) + 1)))}
+                  className="h-10 w-10 flex items-center justify-center rounded-md border bg-muted hover:bg-muted/80 text-base font-bold select-none active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                >+</button>
               </div>
             )}
           </div>
-        </>
+
+          <div className="h-px bg-border" />
+
+          {/* Away row */}
+          <div
+            className={`flex items-center gap-3 px-4 py-3.5 transition-colors ${awayWins && !isAwayChampion ? 'bg-primary/5' : ''}`}
+            style={isAwayChampion ? { animation: 'ko_winner_glow 1.8s ease-in-out infinite' } : undefined}
+          >
+            {awayTeam ? (
+              <>
+                {awayTeam.imageUrl ? (
+                  <img src={awayTeam.imageUrl} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0" />
+                ) : (
+                  <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
+                )}
+                <span className={`flex-1 text-sm truncate ${awayWins ? 'font-semibold' : 'font-medium'}`}>
+                  {awayTeam.teamName}
+                </span>
+                {isAwayChampion && (
+                  <span style={{ animation: 'ko_trophy_pop 0.45s cubic-bezier(0.34,1.56,0.64,1) forwards' }}>
+                    🏆
+                  </span>
+                )}
+              </>
+            ) : (
+              <span className="flex-1 text-sm text-muted-foreground italic">TBD</span>
+            )}
+            {isCompleted ? (
+              <span className={`w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400 border border-amber-400 bg-amber-50/70 dark:bg-amber-900/30' : ''}`}>
+                {prediction != null ? prediction.awayScore : '—'}
+              </span>
+            ) : (
+              <div className="flex items-center gap-0.5 flex-shrink-0">
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => handleScoreChange('away', String(Math.max(0, (parseInt(awayStr || '0') || 0) - 1)))}
+                  className="h-10 w-10 flex items-center justify-center rounded-md border bg-muted hover:bg-muted/80 text-base font-bold select-none active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                >−</button>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={awayStr}
+                  onChange={e => handleScoreChange('away', e.target.value)}
+                  disabled={disabled}
+                  className="w-11 h-9 text-center text-xl font-bold rounded-lg border bg-background disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-primary flex-shrink-0"
+                  placeholder="–"
+                />
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => handleScoreChange('away', String(Math.min(99, (parseInt(awayStr || '0') || 0) + 1)))}
+                  className="h-10 w-10 flex items-center justify-center rounded-md border bg-muted hover:bg-muted/80 text-base font-bold select-none active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                >+</button>
+              </div>
+            )}
+          </div>
+
+          {/* Who advances — only while match is not yet played */}
+          {isDraw && homeTeam && awayTeam && !isCompleted && (
+            <>
+              <div className="h-px bg-border" />
+              <div className="p-3 space-y-2">
+                <p className="text-[11px] text-muted-foreground text-center font-medium">
+                  {t('knockoutContent.whoAdvances')}
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleProgressing(homeTeam.teamId)}
+                    className={`flex-1 text-xs py-2 rounded-lg border font-medium transition-colors truncate px-1 ${
+                      prediction?.progressingTeamId === homeTeam.teamId
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'hover:bg-muted text-muted-foreground'
+                    }`}
+                  >
+                    {homeTeam.teamName}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleProgressing(awayTeam.teamId)}
+                    className={`flex-1 text-xs py-2 rounded-lg border font-medium transition-colors truncate px-1 ${
+                      prediction?.progressingTeamId === awayTeam.teamId
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'hover:bg-muted text-muted-foreground'
+                    }`}
+                  >
+                    {awayTeam.teamName}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* ── Actual result card ─────────────────────────────── */}
+      {isCompleted && actualMatch && (
+        <div>
+          <p className="text-xs text-muted-foreground text-center mb-1.5 font-medium">
+            {t('knockoutContent.result')}
+          </p>
+          <div className="rounded-xl border-2 bg-card shadow-sm overflow-hidden">
+            {/* Home row */}
+            <div className="flex items-center gap-3 px-4 py-3.5">
+              {actualMatch.homeTeamImageUrl ? (
+                <img src={actualMatch.homeTeamImageUrl} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0" />
+              ) : (
+                <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
+              )}
+              <span className={`flex-1 text-sm truncate ${(actualMatch.homeScore ?? 0) > (actualMatch.awayScore ?? 0) ? 'font-semibold' : 'font-medium'}`}>
+                {actualMatch.homeTeamName}
+              </span>
+              <span className="w-11 h-9 flex items-center justify-center text-xl font-bold flex-shrink-0 tabular-nums">
+                {actualMatch.homeScore}
+              </span>
+            </div>
+            <div className="h-px bg-border" />
+            {/* Away row */}
+            <div className="flex items-center gap-3 px-4 py-3.5">
+              {actualMatch.awayTeamImageUrl ? (
+                <img src={actualMatch.awayTeamImageUrl} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0" />
+              ) : (
+                <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
+              )}
+              <span className={`flex-1 text-sm truncate ${(actualMatch.awayScore ?? 0) > (actualMatch.homeScore ?? 0) ? 'font-semibold' : 'font-medium'}`}>
+                {actualMatch.awayTeamName}
+              </span>
+              <span className="w-11 h-9 flex items-center justify-center text-xl font-bold flex-shrink-0 tabular-nums">
+                {actualMatch.awayScore}
+              </span>
+            </div>
+            {/* Extra time / penalties winner */}
+            {actualMatch.homeScore === actualMatch.awayScore && actualMatch.progressingTeamId && (
+              <>
+                <div className="h-px bg-border" />
+                <p className="px-4 py-2 text-xs text-muted-foreground text-center">
+                  {actualMatch.progressingTeamId === actualMatch.homeTeamId
+                    ? actualMatch.homeTeamName
+                    : actualMatch.awayTeamName} {t('knockoutContent.advances')}
+                </p>
+              </>
+            )}
+          </div>
+          {/* Points breakdown */}
+          {pointsInfo !== null && (
+            <div className="mt-1.5 flex flex-wrap justify-center items-center gap-x-2 gap-y-0.5 text-xs">
+              <span className={`font-semibold ${pointsInfo.total > 0 ? 'text-green-700 dark:text-green-400' : 'text-muted-foreground'}`}>
+                {pointsInfo.total > 0 ? `+${pointsInfo.total} pts` : '0 pts'}
+              </span>
+              {pointsInfo.correctResult > 0 && <span className="text-muted-foreground">+{pointsInfo.correctResult} {t('knockoutContent.correctResult')}</span>}
+              {pointsInfo.exactScore > 0 && <span className="text-muted-foreground">+{pointsInfo.exactScore} {t('knockoutContent.correctExactScore')}</span>}
+              {pointsInfo.correctTeamProgresses > 0 && <span className="text-muted-foreground">+{pointsInfo.correctTeamProgresses} {t('knockoutContent.advances')}</span>}
+              {pointsInfo.correctTeamInKnockoutTie > 0 && <span className="text-muted-foreground">+{pointsInfo.correctTeamInKnockoutTie} {t('knockoutContent.correctTeamInTie')}</span>}
+              {pointsInfo.correctTeamInFinal > 0 && <span className="text-muted-foreground">+{pointsInfo.correctTeamInFinal} {t('knockoutContent.correctTeamInFinal')}</span>}
+              {pointsInfo.correctWinner > 0 && <span className="text-muted-foreground">+{pointsInfo.correctWinner} {t('knockoutContent.correctWinner')}</span>}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
