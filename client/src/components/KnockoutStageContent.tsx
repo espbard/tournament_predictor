@@ -666,7 +666,6 @@ function FocusedBracketView({
   const [slideDir, setSlideDir] = useState<'fromRight' | 'fromLeft'>('fromRight');
   const [animKey, setAnimKey] = useState(0);
   const initedRef = useRef(false);
-  const autoAdvanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (initedRef.current || !predsLoaded) return;
@@ -698,25 +697,6 @@ function FocusedBracketView({
     const updatedTeams = matchTeams[current.bracketKey];
     if (!isPredComplete(pred, updatedTeams)) return;
 
-    const newPreds = { ...bracketPreds, [key]: pred };
-    const roundMatches = allMatches.filter(m => m.round === current.round && !m.isBronze);
-    const roundAllDone = roundMatches.every(m =>
-      isPredComplete(newPreds[m.predKey], matchTeams[m.bracketKey])
-    );
-
-    if (roundAllDone) {
-      // After semi-finals, go to bronze final first (if present), then the regular final
-      const bronzeIdx = current.round === 'semi_final'
-        ? allMatches.findIndex(m => m.isBronze)
-        : -1;
-      const nextIdx = bronzeIdx !== -1
-        ? bronzeIdx
-        : allMatches.findIndex((m, idx) => idx > currentIdx && m.round !== current.round && !m.isBronze);
-      if (nextIdx !== -1) {
-        if (autoAdvanceTimer.current) clearTimeout(autoAdvanceTimer.current);
-        autoAdvanceTimer.current = setTimeout(() => goTo(nextIdx), 600);
-      }
-    }
   }
 
   const current = allMatches[currentIdx];
