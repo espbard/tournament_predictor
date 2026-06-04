@@ -887,7 +887,6 @@ export default function KnockoutStageContent({
   const [localPreds, setLocalPreds] = useState<BracketPredictions>({});
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [initialized, setInitialized] = useState(false);
-  const [tiebreakerInitialized, setTiebreakerInitialized] = useState(false);
   const [groupDisciplinaryChoices, setGroupDisciplinaryChoices] = useState<DisciplinaryChoices>({});
   const [luckyLoserDisciplinaryChoices, setLuckyLoserDisciplinaryChoices] = useState<DisciplinaryChoices>({});
   const latestPredsRef = useRef<BracketPredictions>({});
@@ -904,12 +903,11 @@ export default function KnockoutStageContent({
   }, [savedBracketPreds, initialized]);
 
   useEffect(() => {
-    if (savedTiebreakerChoices && !tiebreakerInitialized) {
+    if (savedTiebreakerChoices) {
       if (savedTiebreakerChoices.groupChoices) setGroupDisciplinaryChoices(savedTiebreakerChoices.groupChoices);
       if (savedTiebreakerChoices.luckyLoserChoices) setLuckyLoserDisciplinaryChoices(savedTiebreakerChoices.luckyLoserChoices);
-      setTiebreakerInitialized(true);
     }
-  }, [savedTiebreakerChoices, tiebreakerInitialized]);
+  }, [savedTiebreakerChoices]);
 
 
   const saveMutation = useMutation({

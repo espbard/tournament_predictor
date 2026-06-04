@@ -159,6 +159,15 @@ export default function CompetitionDetailPage() {
   const saveTiebreakerChoicesMutation = useMutation({
     mutationFn: (body: { groupChoices?: DisciplinaryChoices; luckyLoserChoices?: DisciplinaryChoices }) =>
       api.post(`/competitions/${id}/tiebreak-choices`, body),
+    onSuccess: (_, variables) => {
+      queryClient.setQueryData(
+        ['competitions', id, 'tiebreak-choices'],
+        (old: { groupChoices: DisciplinaryChoices; luckyLoserChoices: DisciplinaryChoices } | undefined) => ({
+          groupChoices: variables.groupChoices ?? old?.groupChoices ?? {},
+          luckyLoserChoices: variables.luckyLoserChoices ?? old?.luckyLoserChoices ?? {},
+        })
+      );
+    },
   });
 
   const predMap = useMemo(
