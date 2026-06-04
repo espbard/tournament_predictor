@@ -1143,19 +1143,19 @@ export default function CompetitionDetailPage() {
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                     <button
                       type="button"
                       onClick={() => setCurrentGroupMatchIdx(i => Math.max(0, i - 1))}
                       disabled={!canGoPrev}
-                      className="flex-shrink-0 h-10 w-10 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20"
+                      className="hidden sm:flex flex-shrink-0 h-10 w-10 rounded-full border items-center justify-center transition-opacity disabled:opacity-20"
                       aria-label="Previous match"
                     >
                       ←
                     </button>
 
                     <div className="flex-1 min-w-0">
-                      <div className="rounded-xl border-2 bg-card shadow-sm overflow-hidden w-full max-w-xs mx-auto">
+                      <div className="rounded-xl border-2 bg-card shadow-sm overflow-hidden w-full sm:max-w-xs sm:mx-auto">
                         {/* Home row */}
                         <div className="flex items-center gap-3 px-4 py-3.5">
                           {match.homeTeamImageUrl ? (
@@ -1294,13 +1294,29 @@ export default function CompetitionDetailPage() {
                         })()}
                         {saveErr && <p className="text-xs text-destructive">{saveErr}</p>}
                       </div>
+                      <div className="mt-3 flex sm:hidden items-center justify-between">
+                        <button
+                          type="button"
+                          onClick={() => setCurrentGroupMatchIdx(i => Math.max(0, i - 1))}
+                          disabled={!canGoPrev}
+                          className="h-11 w-11 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20"
+                          aria-label="Previous match"
+                        >←</button>
+                        <button
+                          type="button"
+                          onClick={() => setCurrentGroupMatchIdx(i => Math.min(allGroupMatchesList.length - 1, i + 1))}
+                          disabled={!canGoNext}
+                          className="h-11 w-11 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20"
+                          aria-label="Next match"
+                        >→</button>
+                      </div>
                     </div>
 
                     <button
                       type="button"
                       onClick={() => setCurrentGroupMatchIdx(i => Math.min(allGroupMatchesList.length - 1, i + 1))}
                       disabled={!canGoNext}
-                      className="flex-shrink-0 h-10 w-10 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20"
+                      className="hidden sm:flex flex-shrink-0 h-10 w-10 rounded-full border items-center justify-center transition-opacity disabled:opacity-20"
                       aria-label="Next match"
                     >
                       →
