@@ -579,7 +579,7 @@ function FocusedMatchCard({
                         : 'hover:bg-muted text-muted-foreground'
                     }`}
                   >
-                    {homeTeam.teamName}
+                    {isFlipped ? awayTeam.teamName : homeTeam.teamName}
                   </button>
                   <button
                     type="button"
@@ -590,7 +590,7 @@ function FocusedMatchCard({
                         : 'hover:bg-muted text-muted-foreground'
                     }`}
                   >
-                    {awayTeam.teamName}
+                    {isFlipped ? homeTeam.teamName : awayTeam.teamName}
                   </button>
                 </div>
               </div>
