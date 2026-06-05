@@ -7,7 +7,7 @@ import ImageUpload from '@/components/ImageUpload';
 import KnockoutStageContent from '@/components/KnockoutStageContent';
 import BonusQuestionsTab from './BonusQuestionsTab';
 import { useT } from '@/lib/useT';
-import type { Competition, Tournament, Prediction, MatchStage, LeaderboardEntry } from '@tournament-predictor/shared';
+import type { Competition, Tournament, Prediction, MatchStage, LeaderboardEntry, BracketPredictions } from '@tournament-predictor/shared';
 import {
   sortGroupTeams,
   sortLuckyLosers,
@@ -119,6 +119,12 @@ export default function CompetitionDetailPage() {
     queryKey: ['competitions', id, 'my-status'],
     queryFn: () => api.get<{ groupStageLocked: boolean; knockoutCompleteSeen: boolean }>(`/competitions/${id}/my-status`),
     enabled: !!competition && !user?.isAdmin && !user?.isLeaderboardUser,
+  });
+
+  const { data: bracketPreds } = useQuery({
+    queryKey: ['competitions', id, 'bracket-predictions'],
+    queryFn: () => api.get<BracketPredictions>(`/competitions/${id}/bracket-predictions`),
+    enabled: !!competition && !user?.isAdmin && !user?.isLeaderboardUser && (myStatus?.groupStageLocked ?? false),
   });
 
   const { data: leaderboard = [] } = useQuery({
@@ -444,13 +450,20 @@ export default function CompetitionDetailPage() {
       return;
     }
 
-    if (allGroupFilled && !groupStageLocked && !hasDeclined) {
-      setShowProceedPrompt(true);
-    }
     if (!allGroupFilled) {
       setHasDeclined(false);
+      setShowProceedPrompt(false);
+      return;
     }
-  }, [allGroupMatchesList, allGroupFilled, groupStageLocked, hasDeclined, predictionsFetched]);
+
+    if (!groupStageLocked && !hasDeclined) {
+      setShowProceedPrompt(false);
+      const timer = setTimeout(() => {
+        setShowProceedPrompt(true);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [allGroupMatchesList, allGroupFilled, localEdits, groupStageLocked, hasDeclined, predictionsFetched]);
 
   useEffect(() => {
     if (firstGroupUnfilledRef.current || !savedPredictions.length) return;
@@ -465,7 +478,8 @@ export default function CompetitionDetailPage() {
     ? new Date() > new Date(competition.predictionDeadline)
     : false;
 
-  const isLocked = deadlinePassed || groupStageLocked;
+  const hasKnockoutPredictions = Object.keys(bracketPreds ?? {}).length > 0;
+  const isLocked = deadlinePassed || (groupStageLocked && hasKnockoutPredictions);
 
   async function savePrediction(matchId: string) {
     const edit = localEditsRef.current[matchId];
@@ -1117,7 +1131,7 @@ export default function CompetitionDetailPage() {
       )}
 
       {/* Group stage locked banner */}
-      {groupStageLocked && (
+      {groupStageLocked && hasKnockoutPredictions && (
         <div className="mb-4 rounded-lg bg-muted px-4 py-2.5 text-sm text-muted-foreground">
           {t('competitionDetail.groupStageLocked')}
         </div>
