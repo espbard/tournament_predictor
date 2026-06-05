@@ -456,14 +456,13 @@ export default function CompetitionDetailPage() {
       return;
     }
 
-    if (!groupStageLocked && !hasDeclined) {
-      setShowProceedPrompt(false);
+    if (!groupStageLocked && !hasDeclined && !showProceedPrompt) {
       const timer = setTimeout(() => {
         setShowProceedPrompt(true);
       }, 3000);
       return () => clearTimeout(timer);
     }
-  }, [allGroupMatchesList, allGroupFilled, localEdits, groupStageLocked, hasDeclined, predictionsFetched]);
+  }, [allGroupMatchesList, allGroupFilled, localEdits, groupStageLocked, hasDeclined, showProceedPrompt, predictionsFetched]);
 
   useEffect(() => {
     if (firstGroupUnfilledRef.current || !savedPredictions.length) return;
