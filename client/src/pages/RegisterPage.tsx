@@ -12,6 +12,7 @@ export default function RegisterPage() {
   const [password, setPassword] = useState('');
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isLeaderboardUser, setIsLeaderboardUser] = useState(false);
+  const [showLeaderboardConfirm, setShowLeaderboardConfirm] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -36,8 +37,54 @@ export default function RegisterPage() {
     }
   }
 
+  function handleLeaderboardConfirm() {
+    setIsLeaderboardUser(true);
+    setShowLeaderboardConfirm(false);
+  }
+
+  function handleLeaderboardCancel() {
+    setShowLeaderboardConfirm(false);
+  }
+
   return (
     <main className="flex min-h-screen flex-col items-center justify-center">
+      {/* Leaderboard type confirmation dialog */}
+      {showLeaderboardConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="w-full max-w-sm rounded-lg border bg-card p-6 shadow-lg space-y-4">
+            <h2 className="text-lg font-semibold">Leaderboard Viewer account?</h2>
+            <p className="text-sm text-muted-foreground">
+              A <span className="font-medium text-foreground">Leaderboard Viewer</span> account lets you watch competitions without taking part:
+            </p>
+            <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-4">
+              <li>Enter an invite code to gain access to a competition's leaderboard</li>
+              <li>View live standings at any time</li>
+              <li>You will <span className="font-medium text-foreground">not</span> make predictions</li>
+              <li>You will <span className="font-medium text-foreground">not</span> appear on the leaderboard yourself</li>
+            </ul>
+            <p className="text-sm text-muted-foreground">
+              If you want to compete and make predictions, choose <span className="font-medium text-foreground">Predictor</span> instead.
+            </p>
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={handleLeaderboardConfirm}
+                className="flex-1 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              >
+                Yes, Leaderboard Viewer
+              </button>
+              <button
+                type="button"
+                onClick={handleLeaderboardCancel}
+                className="flex-1 rounded-md border px-4 py-2 text-sm font-medium hover:bg-muted"
+              >
+                Back to Predictor
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="w-full max-w-sm space-y-6 rounded-lg border bg-card p-8 shadow-sm">
         <h1 className="text-2xl font-bold">{t('auth.createAccount')}</h1>
 
@@ -55,7 +102,7 @@ export default function RegisterPage() {
           </button>
           <button
             type="button"
-            onClick={() => setIsLeaderboardUser(true)}
+            onClick={() => setShowLeaderboardConfirm(true)}
             className={`rounded-sm px-3 py-2 text-sm font-medium transition-colors ${
               isLeaderboardUser
                 ? 'bg-primary text-primary-foreground'
