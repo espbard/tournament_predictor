@@ -1051,7 +1051,7 @@ export default function CompetitionDetailPage() {
           <p className="text-sm text-muted-foreground py-4 text-center">{t('competitionDetail.leaderboard.noScores')}</p>
         ) : (
           <>
-            <PlayerPodium leaderboard={leaderboard} />
+            {tournament?.status !== 'upcoming' && <PlayerPodium leaderboard={leaderboard} />}
           <div className="overflow-x-auto rounded-lg border mt-4">
             <table className="w-full text-xs">
               <thead>
