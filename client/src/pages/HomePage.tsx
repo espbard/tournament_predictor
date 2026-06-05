@@ -55,7 +55,9 @@ function CompetitionsHome() {
         )}
         <div>
           <h1 className="text-2xl font-bold">{t('home.welcome', { name: user?.username ?? '' })}</h1>
-          <p className="text-sm text-muted-foreground">{t('home.subtitle')}</p>
+          <p className="text-sm text-muted-foreground">
+            {user?.isLeaderboardUser ? 'Leaderboard viewer — enter an invite code to view a competition leaderboard.' : t('home.subtitle')}
+          </p>
         </div>
       </div>
       <h2 className="mb-4 font-semibold">{t('home.myCompetitions')}</h2>

@@ -251,7 +251,7 @@ router.get('/:id/leaderboard', requireAuth, async (req, res) => {
       })
       .from(competitionMembers)
       .innerJoin(users, eq(competitionMembers.userId, users.id))
-      .where(eq(competitionMembers.competitionId, id));
+      .where(and(eq(competitionMembers.competitionId, id), eq(users.isLeaderboardUser, false)));
 
     const rowsWithTotal = rows.map(row => ({
       ...row,
@@ -386,6 +386,10 @@ router.post('/:id/predictions', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const user = res.locals.user;
+
+    if (user.isLeaderboardUser) {
+      return res.status(403).json({ error: 'Leaderboard users cannot make predictions' });
+    }
 
     const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
     if (!competition) return res.status(404).json({ error: 'Competition not found' });
@@ -526,6 +530,10 @@ router.post('/:id/bracket-predictions', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const user = res.locals.user;
+
+    if (user.isLeaderboardUser) {
+      return res.status(403).json({ error: 'Leaderboard users cannot make predictions' });
+    }
 
     const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
     if (!competition) return res.status(404).json({ error: 'Competition not found' });
@@ -685,6 +693,10 @@ router.post('/:id/bonus-answers', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const user = res.locals.user;
+
+    if (user.isLeaderboardUser) {
+      return res.status(403).json({ error: 'Leaderboard users cannot submit bonus answers' });
+    }
 
     const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
     if (!competition) return res.status(404).json({ error: 'Competition not found' });
