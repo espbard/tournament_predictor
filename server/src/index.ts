@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
+import { sql } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { db } from './db/client';
 import { authRouter } from './routes/auth';
@@ -50,6 +51,8 @@ app.get('/api/health', (_req, res) => res.json({ ok: true }));
 async function start() {
   console.log('Running migrations…');
   await migrate(db, { migrationsFolder: path.join(__dirname, '../drizzle') });
+  // Defensive: ensure is_leaderboard_user column exists regardless of migration state
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS "is_leaderboard_user" boolean NOT NULL DEFAULT false`);
   console.log('Migrations complete.');
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
