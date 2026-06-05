@@ -444,13 +444,20 @@ export default function CompetitionDetailPage() {
       return;
     }
 
-    if (allGroupFilled && !groupStageLocked && !hasDeclined) {
-      setShowProceedPrompt(true);
-    }
     if (!allGroupFilled) {
       setHasDeclined(false);
+      setShowProceedPrompt(false);
+      return;
     }
-  }, [allGroupMatchesList, allGroupFilled, groupStageLocked, hasDeclined, predictionsFetched]);
+
+    if (!groupStageLocked && !hasDeclined) {
+      setShowProceedPrompt(false);
+      const timer = setTimeout(() => {
+        setShowProceedPrompt(true);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [allGroupMatchesList, allGroupFilled, localEdits, groupStageLocked, hasDeclined, predictionsFetched]);
 
   useEffect(() => {
     if (firstGroupUnfilledRef.current || !savedPredictions.length) return;
