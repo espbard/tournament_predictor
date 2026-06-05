@@ -1066,11 +1066,7 @@ export default function CompetitionDetailPage() {
                       </td>
                       <td className="px-3 py-2.5">
                         <div className="flex items-center gap-2 min-w-0">
-                          {entry.imageUrl ? (
-                            <img src={entry.imageUrl} alt="" className="h-5 w-5 rounded-full object-cover flex-shrink-0" />
-                          ) : (
-                            <div className="h-5 w-5 rounded-full bg-muted flex-shrink-0" />
-                          )}
+                          <img src={entry.imageUrl ?? '/default-avatar.png'} alt="" className="h-5 w-5 rounded-full object-cover flex-shrink-0" />
                           <span className={`font-medium truncate ${isMe ? 'text-primary' : ''}`}>
                             {entry.username}
                             {isMe && <span className="ml-1 font-normal text-muted-foreground">{t('competitionDetail.leaderboard.you')}</span>}
