@@ -3,6 +3,7 @@ export interface User {
   username: string;
   isAdmin: boolean;
   isTestAccount: boolean;
+  isLeaderboardUser: boolean;
   imageUrl?: string | null;
 }
 

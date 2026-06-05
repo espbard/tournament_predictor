@@ -11,6 +11,7 @@ export default function RegisterPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [isLeaderboardUser, setIsLeaderboardUser] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -24,7 +25,7 @@ export default function RegisterPage() {
     setError('');
     setLoading(true);
     try {
-      const user = await api.post<User>('/auth/register', { username, password, imageUrl });
+      const user = await api.post<User>('/auth/register', { username, password, imageUrl, isLeaderboardUser });
       setUser(user);
       queryClient.setQueryData(['me'], user);
       navigate('/');
@@ -39,6 +40,37 @@ export default function RegisterPage() {
     <main className="flex min-h-screen flex-col items-center justify-center">
       <div className="w-full max-w-sm space-y-6 rounded-lg border bg-card p-8 shadow-sm">
         <h1 className="text-2xl font-bold">{t('auth.createAccount')}</h1>
+
+        <div className="grid grid-cols-2 gap-2 rounded-md border p-1">
+          <button
+            type="button"
+            onClick={() => setIsLeaderboardUser(false)}
+            className={`rounded-sm px-3 py-2 text-sm font-medium transition-colors ${
+              !isLeaderboardUser
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Predictor
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsLeaderboardUser(true)}
+            className={`rounded-sm px-3 py-2 text-sm font-medium transition-colors ${
+              isLeaderboardUser
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Leaderboard Viewer
+          </button>
+        </div>
+        <p className="text-xs text-muted-foreground -mt-3">
+          {isLeaderboardUser
+            ? 'View leaderboards only — no predictions, not on the scoreboard.'
+            : 'Make predictions and compete on the leaderboard.'}
+        </p>
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1">
             <label className="text-sm font-medium" htmlFor="username">

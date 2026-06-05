@@ -4,6 +4,7 @@ export const RegisterSchema = z.object({
   username: z.string().min(3).max(30).regex(/^[a-zA-Z0-9_]+$/, 'Only letters, numbers, and underscores'),
   password: z.string().min(6),
   imageUrl: z.string().nullable().optional(),
+  isLeaderboardUser: z.boolean().optional(),
 });
 
 export const LoginSchema = z.object({

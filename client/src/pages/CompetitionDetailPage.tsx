@@ -55,7 +55,9 @@ export default function CompetitionDetailPage() {
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [saveErrors, setSaveErrors] = useState<Record<string, string>>({});
 
-  const [activeTab, setActiveTab] = useState<'group' | 'tables' | 'knockout' | 'bonus' | 'leaderboard'>('group');
+  const [activeTab, setActiveTab] = useState<'group' | 'tables' | 'knockout' | 'bonus' | 'leaderboard'>(
+    () => useAuthStore.getState().user?.isLeaderboardUser ? 'leaderboard' : 'group'
+  );
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
@@ -104,25 +106,25 @@ export default function CompetitionDetailPage() {
   const { data: savedPredictions = [], isFetched: predictionsFetched } = useQuery({
     queryKey: ['competitions', id, 'predictions'],
     queryFn: () => api.get<Prediction[]>(`/competitions/${id}/predictions`),
-    enabled: !!competition && !user?.isAdmin,
+    enabled: !!competition && !user?.isAdmin && !user?.isLeaderboardUser,
   });
 
   const { data: savedTiebreakerChoices } = useQuery({
     queryKey: ['competitions', id, 'tiebreak-choices'],
     queryFn: () => api.get<{ groupChoices: DisciplinaryChoices; luckyLoserChoices: DisciplinaryChoices }>(`/competitions/${id}/tiebreak-choices`),
-    enabled: !!competition && !user?.isAdmin,
+    enabled: !!competition && !user?.isAdmin && !user?.isLeaderboardUser,
   });
 
   const { data: myStatus } = useQuery({
     queryKey: ['competitions', id, 'my-status'],
     queryFn: () => api.get<{ groupStageLocked: boolean; knockoutCompleteSeen: boolean }>(`/competitions/${id}/my-status`),
-    enabled: !!competition && !user?.isAdmin,
+    enabled: !!competition && !user?.isAdmin && !user?.isLeaderboardUser,
   });
 
   const { data: leaderboard = [] } = useQuery({
     queryKey: ['competitions', id, 'leaderboard'],
     queryFn: () => api.get<LeaderboardEntry[]>(`/competitions/${id}/leaderboard`),
-    enabled: !!competition && !user?.isAdmin && activeTab === 'leaderboard',
+    enabled: !!competition && !user?.isAdmin && (activeTab === 'leaderboard' || !!user?.isLeaderboardUser),
   });
 
   const lockMutation = useMutation({
@@ -455,6 +457,10 @@ export default function CompetitionDetailPage() {
     firstGroupUnfilledRef.current = true;
   }, [savedPredictions]);
 
+  useEffect(() => {
+    if (user?.isLeaderboardUser) setActiveTab('leaderboard');
+  }, [user?.isLeaderboardUser]);
+
   const deadlinePassed = competition?.predictionDeadline
     ? new Date() > new Date(competition.predictionDeadline)
     : false;
@@ -755,13 +761,16 @@ export default function CompetitionDetailPage() {
 
       {!user?.isAdmin && (<>
       <div className="flex flex-wrap gap-1 mb-6 border-b">
-        {([
-          ['group', t('competitionDetail.tabs.groupStage')],
-          ['tables', t('competitionDetail.tabs.groupTables')],
-          ['knockout', t('competitionDetail.tabs.knockoutStage')],
-          ['bonus', t('competitionDetail.tabs.bonusQuestions')],
-          ['leaderboard', t('competitionDetail.tabs.leaderboard')],
-        ] as const).map(([tab, label]) => (
+        {(user?.isLeaderboardUser
+          ? [['leaderboard', t('competitionDetail.tabs.leaderboard')]] as const
+          : [
+              ['group', t('competitionDetail.tabs.groupStage')],
+              ['tables', t('competitionDetail.tabs.groupTables')],
+              ['knockout', t('competitionDetail.tabs.knockoutStage')],
+              ['bonus', t('competitionDetail.tabs.bonusQuestions')],
+              ['leaderboard', t('competitionDetail.tabs.leaderboard')],
+            ] as const
+        ).map(([tab, label]) => (
           <button
             key={tab}
             onClick={() => {
