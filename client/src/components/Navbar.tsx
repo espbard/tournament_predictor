@@ -47,18 +47,11 @@ export default function Navbar() {
             to="/settings"
             className="flex items-center gap-2 text-sm text-primary-foreground/70 hover:text-primary-foreground"
           >
-            {user?.imageUrl ? (
-              <img
-                src={user.imageUrl}
-                alt={user.username}
-                className="h-7 w-7 rounded-full object-cover"
-              />
-            ) : (
-              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary-foreground/20 text-xs font-medium text-primary-foreground">
-                {user?.username?.[0]?.toUpperCase()}
-              </span>
-            )}
-            <span>{user?.username}</span>
+            <img
+              src={user?.imageUrl ?? '/default-avatar.png'}
+              alt={user?.username}
+              className="h-7 w-7 rounded-full object-cover"
+            />
           </Link>
           <button
             onClick={handleLogout}
