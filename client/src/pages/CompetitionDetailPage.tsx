@@ -5,6 +5,7 @@ import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import ImageUpload from '@/components/ImageUpload';
 import KnockoutStageContent from '@/components/KnockoutStageContent';
+import PlayerPodium from '@/components/PlayerPodium';
 import BonusQuestionsTab from './BonusQuestionsTab';
 import { useT } from '@/lib/useT';
 import type { Competition, Tournament, Prediction, MatchStage, LeaderboardEntry, BracketPredictions } from '@tournament-predictor/shared';
@@ -1049,7 +1050,9 @@ export default function CompetitionDetailPage() {
         leaderboard.length === 0 ? (
           <p className="text-sm text-muted-foreground py-4 text-center">{t('competitionDetail.leaderboard.noScores')}</p>
         ) : (
-          <div className="overflow-x-auto rounded-lg border">
+          <>
+            {tournament?.status !== 'upcoming' && <PlayerPodium leaderboard={leaderboard} />}
+          <div className="overflow-x-auto rounded-lg border mt-4">
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b bg-muted/50 text-muted-foreground">
@@ -1101,6 +1104,7 @@ export default function CompetitionDetailPage() {
               </tbody>
             </table>
           </div>
+          </>
         )
       )}
 
