@@ -99,6 +99,13 @@
       "when": 1749859200000,
       "tag": "0015_is_test_account",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1749945600000,
+      "tag": "0016_leaderboard_user",
+      "breakpoints": true
     }
   ]
 }
