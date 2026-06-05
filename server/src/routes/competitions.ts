@@ -424,7 +424,13 @@ router.post('/:id/predictions', requireAuth, async (req, res) => {
         .from(competitionMembers)
         .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
       if (membership?.groupStageLocked) {
-        return res.status(400).json({ error: 'Group stage predictions are locked' });
+        const [bracketPred] = await db
+          .select()
+          .from(bracketPredictions)
+          .where(and(eq(bracketPredictions.competitionId, id), eq(bracketPredictions.userId, user.id)));
+        if (bracketPred && Object.keys(bracketPred.predictions ?? {}).length > 0) {
+          return res.status(400).json({ error: 'Group stage predictions are locked' });
+        }
       }
     }
 
