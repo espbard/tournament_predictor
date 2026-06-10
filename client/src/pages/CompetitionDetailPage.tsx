@@ -474,9 +474,10 @@ export default function CompetitionDetailPage() {
     if (user?.isLeaderboardUser) setActiveTab('leaderboard');
   }, [user?.isLeaderboardUser]);
 
-  const deadlinePassed = competition?.predictionDeadline
-    ? new Date() > new Date(competition.predictionDeadline)
-    : false;
+  const deadlinePassed =
+    (competition?.predictionDeadline ? new Date() > new Date(competition.predictionDeadline) : false)
+    || tournament?.status === 'active'
+    || tournament?.status === 'completed';
 
   const hasKnockoutPredictions = Object.keys(bracketPreds ?? {}).length > 0;
   const isLocked = deadlinePassed || (groupStageLocked && hasKnockoutPredictions);

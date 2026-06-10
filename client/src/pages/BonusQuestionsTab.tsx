@@ -506,6 +506,14 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
                         />
                       </>
                     )}
+                    {q.correctAnswer !== null && q.correctAnswer !== undefined && (
+                      <CorrectAnswerDisplay
+                        type={q.answerType}
+                        value={q.correctAnswer}
+                        teams={teams}
+                        correctAnswerLabel={t('bonusQuestions.correctAnswer')}
+                      />
+                    )}
                     {saveErr && <p className="text-xs text-destructive">{saveErr}</p>}
                   </div>
                 )}
