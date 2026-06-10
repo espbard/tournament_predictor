@@ -7,6 +7,21 @@ import TeamSelectInput from '@/components/TeamSelectInput';
 import { useT } from '@/lib/useT';
 import type { BonusAnswerType, BonusQuestion, BonusAnswer, Team } from '@tournament-predictor/shared';
 
+function parseCorrectAnswers(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed.filter(Boolean);
+  } catch {}
+  return [raw];
+}
+
+function serializeCorrectAnswers(answers: string[]): string | null {
+  if (answers.length === 0) return null;
+  if (answers.length === 1) return answers[0];
+  return JSON.stringify(answers);
+}
+
 interface Props {
   tournamentId: string;
   competitionId?: string;
@@ -40,6 +55,7 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
 
   const [settingAnswerFor, setSettingAnswerFor] = useState<string | null>(null);
   const [correctAnswerInput, setCorrectAnswerInput] = useState('');
+  const [correctAnswerList, setCorrectAnswerList] = useState<string[]>([]);
   const [setAnswerError, setSetAnswerError] = useState('');
 
   const [localAnswers, setLocalAnswers] = useState<Record<string, string>>({});
@@ -137,7 +153,13 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
 
   function openSetAnswer(q: BonusQuestion) {
     setSettingAnswerFor(q.id);
-    setCorrectAnswerInput(q.correctAnswer ?? '');
+    if (q.answerType === 'player' || q.answerType === 'team') {
+      setCorrectAnswerList(parseCorrectAnswers(q.correctAnswer));
+      setCorrectAnswerInput('');
+    } else {
+      setCorrectAnswerInput(q.correctAnswer ?? '');
+      setCorrectAnswerList([]);
+    }
     setSetAnswerError('');
     setEditingId(null);
   }
@@ -363,17 +385,85 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
                           ))}
                         </div>
                       ) : q.answerType === 'player' ? (
-                        <PlayerSearchInput
-                          value={correctAnswerInput}
-                          onChange={setCorrectAnswerInput}
-                          placeholder={t('bonusQuestions.searchPlayer')}
-                        />
+                        <div className="space-y-2">
+                          {correctAnswerList.map((item, i) => (
+                            <div key={i} className="flex items-center gap-2 rounded-md border bg-muted px-3 py-1.5">
+                              <span className="flex-1 text-sm">{item}</span>
+                              <button
+                                type="button"
+                                onClick={() => setCorrectAnswerList(prev => prev.filter((_, j) => j !== i))}
+                                className="text-xs text-destructive hover:text-destructive/80"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                          <div className="flex gap-2">
+                            <div className="flex-1">
+                              <PlayerSearchInput
+                                value={correctAnswerInput}
+                                onChange={setCorrectAnswerInput}
+                                placeholder={t('bonusQuestions.searchPlayer')}
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const v = correctAnswerInput.trim();
+                                if (v && !correctAnswerList.includes(v)) {
+                                  setCorrectAnswerList(prev => [...prev, v]);
+                                  setCorrectAnswerInput('');
+                                }
+                              }}
+                              className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+                            >
+                              {t('common.add')}
+                            </button>
+                          </div>
+                        </div>
                       ) : q.answerType === 'team' ? (
-                        <TeamSelectInput
-                          value={correctAnswerInput}
-                          onChange={setCorrectAnswerInput}
-                          teams={teams}
-                        />
+                        <div className="space-y-2">
+                          {correctAnswerList.map((item, i) => {
+                            const teamObj = teams.find(tm => tm.name === item);
+                            return (
+                              <div key={i} className="flex items-center gap-2 rounded-md border bg-muted px-3 py-1.5">
+                                {teamObj?.imageUrl && (
+                                  <img src={teamObj.imageUrl} alt="" className="h-4 w-4 rounded-full object-cover" />
+                                )}
+                                <span className="flex-1 text-sm">{item}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setCorrectAnswerList(prev => prev.filter((_, j) => j !== i))}
+                                  className="text-xs text-destructive hover:text-destructive/80"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            );
+                          })}
+                          <div className="flex gap-2">
+                            <div className="flex-1">
+                              <TeamSelectInput
+                                value={correctAnswerInput}
+                                onChange={setCorrectAnswerInput}
+                                teams={teams}
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const v = correctAnswerInput.trim();
+                                if (v && !correctAnswerList.includes(v)) {
+                                  setCorrectAnswerList(prev => [...prev, v]);
+                                  setCorrectAnswerInput('');
+                                }
+                              }}
+                              className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+                            >
+                              {t('common.add')}
+                            </button>
+                          </div>
+                        </div>
                       ) : (
                         <input
                           type="number"
@@ -385,7 +475,12 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
                       )}
                       <div className="flex gap-2">
                         <button
-                          onClick={() => setAnswerMutation.mutate({ qid: q.id, correctAnswer: correctAnswerInput.trim() || null })}
+                          onClick={() => {
+                            const answer = (q.answerType === 'player' || q.answerType === 'team')
+                              ? serializeCorrectAnswers(correctAnswerList)
+                              : (correctAnswerInput.trim() || null);
+                            setAnswerMutation.mutate({ qid: q.id, correctAnswer: answer });
+                          }}
                           disabled={setAnswerMutation.isPending}
                           className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                         >
@@ -557,14 +652,22 @@ function SaveRow({
 }
 
 function CorrectAnswerDisplay({ type, value, teams, correctAnswerLabel }: { type: BonusAnswerType | string; value: string; teams: Team[]; correctAnswerLabel: string }) {
-  const teamObj = type === 'team' ? teams.find(t => t.name === value) : null;
+  const answers = parseCorrectAnswers(value);
   return (
-    <div className="flex items-center gap-2 text-xs text-muted-foreground border-t pt-2">
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground border-t pt-2">
       <span>{correctAnswerLabel}:</span>
-      {teamObj?.imageUrl && (
-        <img src={teamObj.imageUrl} alt="" className="h-4 w-4 rounded-full object-cover" />
-      )}
-      <span className="font-medium text-foreground">{value}</span>
+      {answers.map((answer, i) => {
+        const teamObj = type === 'team' ? teams.find(tm => tm.name === answer) : null;
+        return (
+          <span key={i} className="flex items-center gap-1">
+            {i > 0 && <span className="text-muted-foreground/50">·</span>}
+            {teamObj?.imageUrl && (
+              <img src={teamObj.imageUrl} alt="" className="h-4 w-4 rounded-full object-cover" />
+            )}
+            <span className="font-medium text-foreground">{answer}</span>
+          </span>
+        );
+      })}
     </div>
   );
 }

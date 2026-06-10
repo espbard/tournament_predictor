@@ -386,6 +386,14 @@ export async function recalculateAllScoresForTournament(tournamentId: string): P
 
 // ── Bonus question scoring (called when admin sets correctAnswer) ─────────────
 
+function parseCorrectAnswers(raw: string): string[] {
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed.filter(Boolean);
+  } catch {}
+  return [raw];
+}
+
 export async function triggerBonusScoring(questionId: string, tournamentId: string): Promise<void> {
   const [question] = await db
     .select()
@@ -400,8 +408,9 @@ export async function triggerBonusScoring(questionId: string, tournamentId: stri
     .from(bonusAnswers)
     .where(eq(bonusAnswers.questionId, questionId));
 
+  const correctAnswers = parseCorrectAnswers(question.correctAnswer);
   for (const answer of allAnswers) {
-    const isCorrect = answer.answer.trim().toLowerCase() === question.correctAnswer.trim().toLowerCase();
+    const isCorrect = correctAnswers.some(ca => answer.answer.trim().toLowerCase() === ca.trim().toLowerCase());
     await db
       .update(bonusAnswers)
       .set({ points: isCorrect ? question.points : 0 })
