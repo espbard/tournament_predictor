@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { eq, inArray, and, isNotNull } from 'drizzle-orm';
 import { db } from '../db/client';
-import { tournaments, teams, matches, groups, bonusQuestions } from '../db/schema';
+import { tournaments, teams, matches, groups, bonusQuestions, competitions } from '../db/schema';
 import { requireAuth, requireAdmin } from '../middleware/auth';
 import {
   CreateTournamentSchema,
@@ -608,6 +608,22 @@ tournamentsRouter.patch('/:id/knockout-config', requireAdmin, async (req, res) =
       .limit(1);
     if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
 
+    if (tournament.status !== 'upcoming') {
+      return res.status(403).json({ error: 'Bracket setup is locked once the tournament is underway' });
+    }
+
+    const tournamentCompetitions = await db
+      .select({ predictionDeadline: competitions.predictionDeadline })
+      .from(competitions)
+      .where(eq(competitions.tournamentId, req.params.id));
+    const now = new Date();
+    const deadlinePassed = tournamentCompetitions.some(
+      c => c.predictionDeadline && new Date(c.predictionDeadline) < now
+    );
+    if (deadlinePassed) {
+      return res.status(403).json({ error: 'Bracket setup is locked once the prediction deadline has passed' });
+    }
+
     const existing: KnockoutConfig = (tournament.knockoutConfig as KnockoutConfig | null) ?? {
       firstRound: 'round_of_16',
       hasBronzeFinal: false,
@@ -696,8 +712,24 @@ tournamentsRouter.post('/:id/clear-group-stage', requireAdmin, async (req, res) 
 tournamentsRouter.post('/:id/regenerate-knockout', requireAdmin, async (req, res) => {
   try {
     const tournamentId = req.params.id;
-    const [exists] = await db.select({ id: tournaments.id }).from(tournaments).where(eq(tournaments.id, tournamentId)).limit(1);
-    if (!exists) return res.status(404).json({ error: 'Tournament not found' });
+    const [tournament] = await db.select().from(tournaments).where(eq(tournaments.id, tournamentId)).limit(1);
+    if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
+
+    if (tournament.status !== 'upcoming') {
+      return res.status(403).json({ error: 'Bracket setup is locked once the tournament is underway' });
+    }
+
+    const tournamentCompetitions = await db
+      .select({ predictionDeadline: competitions.predictionDeadline })
+      .from(competitions)
+      .where(eq(competitions.tournamentId, tournamentId));
+    const now = new Date();
+    const deadlinePassed = tournamentCompetitions.some(
+      c => c.predictionDeadline && new Date(c.predictionDeadline) < now
+    );
+    if (deadlinePassed) {
+      return res.status(403).json({ error: 'Bracket setup is locked once the prediction deadline has passed' });
+    }
 
     await generateFirstRoundKnockout(tournamentId);
     return res.json({ ok: true });

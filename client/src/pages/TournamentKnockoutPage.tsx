@@ -877,19 +877,22 @@ export function TournamentKnockoutTabContent({ tournamentId }: { tournamentId: s
   if (isLoading) return <div className="py-8 text-sm text-muted-foreground">{t('common.loading')}</div>;
   if (!tournament) return null;
 
+  const isSetupLocked = tournament.status !== 'upcoming';
   const qualifiersMatch = qualifierLabels.length + luckyLosers === totalSlots;
 
   return (
     <>
       {isAdmin && (
         <div className="flex justify-end gap-2 mb-6">
-          <button
-            onClick={() => regenerateKnockoutMutation.mutate()}
-            disabled={regenerateKnockoutMutation.isPending}
-            className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
-          >
-            {regenerateKnockoutMutation.isPending ? t('knockout.regenerating') : t('knockout.regenerate')}
-          </button>
+          {!isSetupLocked && (
+            <button
+              onClick={() => regenerateKnockoutMutation.mutate()}
+              disabled={regenerateKnockoutMutation.isPending}
+              className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
+            >
+              {regenerateKnockoutMutation.isPending ? t('knockout.regenerating') : t('knockout.regenerate')}
+            </button>
+          )}
           <button
             onClick={() => simulateKnockoutMutation.mutate()}
             disabled={simulateKnockoutMutation.isPending}
@@ -907,124 +910,134 @@ export function TournamentKnockoutTabContent({ tournamentId }: { tournamentId: s
         </div>
       )}
 
-      {/* Settings panel */}
-      <section className="mb-8 rounded-lg border p-5">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">
-          {t('knockout.knockoutSettings')}
-        </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-4">
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1.5">{t('knockout.firstKnockoutRound')}</label>
-            <select
-              value={firstRound}
-              onChange={e => { setFirstRound(e.target.value as KnockoutFirstRound); setConfigDirty(true); }}
-              className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-            >
-              <option value="round_of_32">{t('knockout.roundOpts.round_of_32')}</option>
-              <option value="round_of_16">{t('knockout.roundOpts.round_of_16')}</option>
-              <option value="quarter_final">{t('knockout.roundOpts.quarter_final')}</option>
-              <option value="semi_final">{t('knockout.roundOpts.semi_final')}</option>
-              <option value="final">{t('knockout.roundOpts.final')}</option>
-            </select>
-          </div>
-          <div className="flex items-end pb-0.5">
-            <label className="flex items-center gap-2.5 cursor-pointer">
-              <input type="checkbox" checked={hasBronzeFinal} onChange={e => { setHasBronzeFinal(e.target.checked); setConfigDirty(true); }} className="h-4 w-4 rounded" />
-              <span className="text-sm">{t('knockout.bronzeFinal')}</span>
-            </label>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1.5">{t('knockout.directQualifiers')}</label>
-            <div className="flex gap-2">
-              {[1, 2, 3, 4].map(n => (
-                <button key={n} type="button" onClick={() => { setDirectQualifiers(n); setConfigDirty(true); }}
-                  className={`h-9 w-9 rounded-md border text-sm font-semibold transition-colors ${directQualifiers === n ? 'bg-primary text-primary-foreground border-primary' : 'hover:bg-muted'}`}>
-                  {n}
-                </button>
-              ))}
+      {isAdmin && isSetupLocked && (
+        <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+          {t('knockout.setupLocked')}
+        </div>
+      )}
+
+      {!isSetupLocked && (
+        <>
+          {/* Settings panel */}
+          <section className="mb-8 rounded-lg border p-5">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">
+              {t('knockout.knockoutSettings')}
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-4">
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1.5">{t('knockout.firstKnockoutRound')}</label>
+                <select
+                  value={firstRound}
+                  onChange={e => { setFirstRound(e.target.value as KnockoutFirstRound); setConfigDirty(true); }}
+                  className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                >
+                  <option value="round_of_32">{t('knockout.roundOpts.round_of_32')}</option>
+                  <option value="round_of_16">{t('knockout.roundOpts.round_of_16')}</option>
+                  <option value="quarter_final">{t('knockout.roundOpts.quarter_final')}</option>
+                  <option value="semi_final">{t('knockout.roundOpts.semi_final')}</option>
+                  <option value="final">{t('knockout.roundOpts.final')}</option>
+                </select>
+              </div>
+              <div className="flex items-end pb-0.5">
+                <label className="flex items-center gap-2.5 cursor-pointer">
+                  <input type="checkbox" checked={hasBronzeFinal} onChange={e => { setHasBronzeFinal(e.target.checked); setConfigDirty(true); }} className="h-4 w-4 rounded" />
+                  <span className="text-sm">{t('knockout.bronzeFinal')}</span>
+                </label>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1.5">{t('knockout.directQualifiers')}</label>
+                <div className="flex gap-2">
+                  {[1, 2, 3, 4].map(n => (
+                    <button key={n} type="button" onClick={() => { setDirectQualifiers(n); setConfigDirty(true); }}
+                      className={`h-9 w-9 rounded-md border text-sm font-semibold transition-colors ${directQualifiers === n ? 'bg-primary text-primary-foreground border-primary' : 'hover:bg-muted'}`}>
+                      {n}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+                  {t('knockout.luckyLosers')} <span className="font-normal">{t('knockout.luckyLosersDesc')}</span>
+                </label>
+                <input type="number" min="0" max="32" value={luckyLosers}
+                  onChange={e => { setLuckyLosers(Math.max(0, parseInt(e.target.value) || 0)); setConfigDirty(true); }}
+                  className="w-24 rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
             </div>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1.5">
-              {t('knockout.luckyLosers')} <span className="font-normal">{t('knockout.luckyLosersDesc')}</span>
-            </label>
-            <input type="number" min="0" max="32" value={luckyLosers}
-              onChange={e => { setLuckyLosers(Math.max(0, parseInt(e.target.value) || 0)); setConfigDirty(true); }}
-              className="w-24 rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t">
-          <div className="text-sm">
-            {sortedGroups.length === 0 ? (
-              <span className="text-muted-foreground">{t('knockout.addGroupsFirst')}</span>
-            ) : (
-              <>
-                <span className={`font-medium ${qualifiersMatch ? 'text-green-600' : 'text-amber-600'}`}>
-                  {qualifierLabels.length} direct qualifiers{luckyLosers > 0 && ` + ${luckyLosers} lucky losers (auto)`}
-                </span>
-                <span className="text-muted-foreground"> / {totalSlots} bracket slots</span>
-                {!qualifiersMatch && (
-                  <span className="ml-2 text-xs text-muted-foreground">
-                    ({totalSlots > qualifierLabels.length + luckyLosers
-                      ? `need ${totalSlots - qualifierLabels.length - luckyLosers} more`
-                      : `${qualifierLabels.length + luckyLosers - totalSlots} too many`})
-                  </span>
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t">
+              <div className="text-sm">
+                {sortedGroups.length === 0 ? (
+                  <span className="text-muted-foreground">{t('knockout.addGroupsFirst')}</span>
+                ) : (
+                  <>
+                    <span className={`font-medium ${qualifiersMatch ? 'text-green-600' : 'text-amber-600'}`}>
+                      {qualifierLabels.length} direct qualifiers{luckyLosers > 0 && ` + ${luckyLosers} lucky losers (auto)`}
+                    </span>
+                    <span className="text-muted-foreground"> / {totalSlots} bracket slots</span>
+                    {!qualifiersMatch && (
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        ({totalSlots > qualifierLabels.length + luckyLosers
+                          ? `need ${totalSlots - qualifierLabels.length - luckyLosers} more`
+                          : `${qualifierLabels.length + luckyLosers - totalSlots} too many`})
+                      </span>
+                    )}
+                  </>
                 )}
-              </>
-            )}
-          </div>
-          {configDirty && (
-            <button onClick={handleConfigSave} disabled={saveConfigMutation.isPending}
-              className="rounded-md bg-primary px-4 py-1.5 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
-              {saveConfigMutation.isPending ? t('knockout.saving') : t('knockout.saveSettings')}
-            </button>
-          )}
-          {!configDirty && saveConfigMutation.isSuccess && <span className="text-xs text-green-600">Saved</span>}
-        </div>
-      </section>
-
-      <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-        {/* Bracket Setup */}
-        <section className="mb-8">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('knockout.bracketSetup')}</h2>
-            {Object.keys(bracketSlots).length > 0 && (
-              <button type="button" onClick={() => { setBracketSlots({}); saveConfigMutation.mutate({ bracketSlots: {} }); }} className="text-xs text-muted-foreground hover:text-destructive">
-                {t('knockout.clearAllSlots')}
-              </button>
-            )}
-          </div>
-          <BracketVisualization firstRound={firstRound} hasBronzeFinal={hasBronzeFinal} bracketSlots={bracketSlots} onClearSlot={handleClearSlot} luckyLoserLabels={luckyLoserLabels} />
-        </section>
-
-        {/* Qualifier pool */}
-        {qualifierLabels.length > 0 && (
-          <section className="mb-8">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">{t('knockout.directQualifiersPool')}</h2>
-            <p className="text-xs text-muted-foreground mb-3">
-              {t('knockout.dragToBracket')}{' '}
-              <span className="font-medium text-foreground">{usedQualifiers.size}/{qualifierLabels.length} placed</span>
-              {luckyLosers > 0 && <span> · Lucky loser slots auto-fill in the bracket</span>}
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {qualifierLabels.map(label => (
-                <DraggableQualifier key={label} label={label} isUsed={usedQualifiers.has(label)} />
-              ))}
+              </div>
+              {configDirty && (
+                <button onClick={handleConfigSave} disabled={saveConfigMutation.isPending}
+                  className="rounded-md bg-primary px-4 py-1.5 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                  {saveConfigMutation.isPending ? t('knockout.saving') : t('knockout.saveSettings')}
+                </button>
+              )}
+              {!configDirty && saveConfigMutation.isSuccess && <span className="text-xs text-green-600">Saved</span>}
             </div>
           </section>
-        )}
 
-        {qualifierLabels.length === 0 && sortedGroups.length > 0 && (
-          <p className="text-sm text-muted-foreground mb-8">Set direct qualifiers and lucky losers above to generate the qualifier pool.</p>
-        )}
+          <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+            {/* Bracket Setup */}
+            <section className="mb-8">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t('knockout.bracketSetup')}</h2>
+                {Object.keys(bracketSlots).length > 0 && (
+                  <button type="button" onClick={() => { setBracketSlots({}); saveConfigMutation.mutate({ bracketSlots: {} }); }} className="text-xs text-muted-foreground hover:text-destructive">
+                    {t('knockout.clearAllSlots')}
+                  </button>
+                )}
+              </div>
+              <BracketVisualization firstRound={firstRound} hasBronzeFinal={hasBronzeFinal} bracketSlots={bracketSlots} onClearSlot={handleClearSlot} luckyLoserLabels={luckyLoserLabels} />
+            </section>
 
-        <DragOverlay dropAnimation={null}>
-          {activeQualifier && (
-            <div className="rounded border bg-primary px-2.5 py-1 text-xs font-mono font-semibold text-primary-foreground shadow-lg">{activeQualifier}</div>
-          )}
-        </DragOverlay>
-      </DndContext>
+            {/* Qualifier pool */}
+            {qualifierLabels.length > 0 && (
+              <section className="mb-8">
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">{t('knockout.directQualifiersPool')}</h2>
+                <p className="text-xs text-muted-foreground mb-3">
+                  {t('knockout.dragToBracket')}{' '}
+                  <span className="font-medium text-foreground">{usedQualifiers.size}/{qualifierLabels.length} placed</span>
+                  {luckyLosers > 0 && <span> · Lucky loser slots auto-fill in the bracket</span>}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {qualifierLabels.map(label => (
+                    <DraggableQualifier key={label} label={label} isUsed={usedQualifiers.has(label)} />
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {qualifierLabels.length === 0 && sortedGroups.length > 0 && (
+              <p className="text-sm text-muted-foreground mb-8">Set direct qualifiers and lucky losers above to generate the qualifier pool.</p>
+            )}
+
+            <DragOverlay dropAnimation={null}>
+              {activeQualifier && (
+                <div className="rounded border bg-primary px-2.5 py-1 text-xs font-mono font-semibold text-primary-foreground shadow-lg">{activeQualifier}</div>
+              )}
+            </DragOverlay>
+          </DndContext>
+        </>
+      )}
 
       {/* Results */}
       <section className="mt-8">
