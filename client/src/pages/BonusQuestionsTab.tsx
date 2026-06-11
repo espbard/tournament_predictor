@@ -290,6 +290,15 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
                         >
                           {t('bonusQuestions.setAnswer')}
                         </button>
+                        {q.correctAnswer !== null && (
+                          <button
+                            onClick={() => setAnswerMutation.mutate({ qid: q.id, correctAnswer: null })}
+                            disabled={setAnswerMutation.isPending}
+                            className="text-xs rounded border border-destructive/30 px-2.5 py-1 text-destructive hover:bg-destructive/10 disabled:opacity-50"
+                          >
+                            {t('bonusQuestions.removeAnswer')}
+                          </button>
+                        )}
                         <button
                           onClick={() => deleteMutation.mutate(q.id)}
                           disabled={deleteMutation.isPending}
