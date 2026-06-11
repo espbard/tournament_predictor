@@ -108,6 +108,7 @@ const translations = {
         total: 'Total',
         noScores: 'No scores yet.',
         you: '(you)',
+        points: 'points',
       },
       predictions: {
         title: 'Predictions',
@@ -518,6 +519,7 @@ const translations = {
         total: 'Totalt',
         noScores: 'Ingen poeng ennå.',
         you: '(deg)',
+        points: 'poeng',
       },
       predictions: {
         title: 'Tips',

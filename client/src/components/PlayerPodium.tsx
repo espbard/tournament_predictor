@@ -1,4 +1,5 @@
 import type { LeaderboardEntry } from '@tournament-predictor/shared';
+import { useT } from '@/lib/useT';
 
 interface Props {
   leaderboard: LeaderboardEntry[];
@@ -18,6 +19,7 @@ function barHeight(rank: number): number {
 }
 
 export default function PlayerPodium({ leaderboard }: Props) {
+  const { t } = useT();
   const top = leaderboard.slice(0, 3);
   if (top.length < 2) return null;
 
@@ -59,7 +61,7 @@ export default function PlayerPodium({ leaderboard }: Props) {
               style={{ height }}
             >
               <span className="text-white font-bold text-sm leading-none">{ordinal(entry.rank)}</span>
-              <span className="text-white/80 text-xs leading-none">{entry.totalPoints}</span>
+              <span className="text-white/80 text-xs leading-none">{entry.totalPoints} {t('competitionDetail.leaderboard.points')}</span>
             </div>
           </div>
         );
