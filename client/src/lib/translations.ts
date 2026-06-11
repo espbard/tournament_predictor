@@ -311,6 +311,7 @@ const translations = {
       results: 'Results',
       noKnockoutMatches:
         'No knockout matches yet. Generate the first round from the Group Stage tab once all group matches are complete.',
+      setupLocked: 'Bracket setup is locked because the tournament is underway. You can still edit match results below.',
       regenerate: 'Regenerate Knockout',
       regenerating: 'Regenerating…',
       simulate: 'Simulate Knockout Results',
@@ -722,6 +723,7 @@ const translations = {
       results: 'Resultater',
       noKnockoutMatches:
         'Ingen sluttspillkamper ennå. Generer første runde fra Gruppespill-fanen når alle gruppekamper er fullført.',
+      setupLocked: 'Bracket-oppsettet er låst fordi turneringen er i gang. Du kan fortsatt redigere kampresultater nedenfor.',
       regenerate: 'Generer sluttspill på nytt',
       regenerating: 'Genererer…',
       simulate: 'Simuler sluttspillresultater',
