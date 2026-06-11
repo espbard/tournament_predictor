@@ -362,6 +362,7 @@ const translations = {
       correctTeamInTie: 'correct team(s) in tie',
       whoAdvances: 'Who advances after extra time / penalties?',
       predictionFlipped: 'Your prediction was adjusted because one or more of the teams ended up on opposite side of the fixture.',
+      predictionsLocked: 'Knockout predictions are locked — the tournament has started.',
     },
     stages: {
       group: 'Group Stage',
@@ -772,6 +773,7 @@ const translations = {
       correctTeamInTie: 'riktig lag i oppgjøret',
       whoAdvances: 'Hvem går videre etter ekstraomganger/straffespark?',
       predictionFlipped: 'Tipset ditt ble justert fordi lagene endte opp på motsatte sider av kampen.',
+      predictionsLocked: 'Sluttspill-tips er låst – turneringen har startet.',
     },
     stages: {
       group: 'Gruppespill',
