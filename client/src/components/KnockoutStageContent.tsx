@@ -270,6 +270,7 @@ function FocusedMatchCard({
   isFirstRound,
   scoringConfig,
   predictedFirstRoundTeams,
+  readOnly,
 }: {
   matchKey: string;
   homeTeam: TeamStat | null;
@@ -281,6 +282,7 @@ function FocusedMatchCard({
   isFirstRound?: boolean;
   scoringConfig?: ScoringConfig;
   predictedFirstRoundTeams?: { predHomeId: string | null; predAwayId: string | null };
+  readOnly?: boolean;
 }) {
   const [homeStr, setHomeStr] = useState('');
   const [awayStr, setAwayStr] = useState('');
@@ -477,6 +479,10 @@ function FocusedMatchCard({
               <span className={`w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400 border border-amber-400 bg-amber-50/70 dark:bg-amber-900/30' : ''}`}>
                 {prediction != null ? displayHomeScore : '—'}
               </span>
+            ) : readOnly ? (
+              <span className="w-11 h-9 flex items-center justify-center text-xl font-bold flex-shrink-0 text-muted-foreground">
+                {prediction != null ? prediction.homeScore : '—'}
+              </span>
             ) : (
               <div className="flex items-center gap-0.5 flex-shrink-0">
                 <button
@@ -534,6 +540,10 @@ function FocusedMatchCard({
               <span className={`w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400 border border-amber-400 bg-amber-50/70 dark:bg-amber-900/30' : ''}`}>
                 {prediction != null ? displayAwayScore : '—'}
               </span>
+            ) : readOnly ? (
+              <span className="w-11 h-9 flex items-center justify-center text-xl font-bold flex-shrink-0 text-muted-foreground">
+                {prediction != null ? prediction.awayScore : '—'}
+              </span>
             ) : (
               <div className="flex items-center gap-0.5 flex-shrink-0">
                 <button
@@ -561,8 +571,8 @@ function FocusedMatchCard({
             )}
           </div>
 
-          {/* Who advances — only while match is not yet played */}
-          {isDraw && homeTeam && awayTeam && !isCompleted && (
+          {/* Who advances — only while match is not yet played and editing is allowed */}
+          {isDraw && homeTeam && awayTeam && !isCompleted && !readOnly && (
             <>
               <div className="h-px bg-border" />
               <div className="p-3 space-y-2">
@@ -684,6 +694,7 @@ function FocusedBracketView({
   actualMatchMap,
   scoringConfig,
   predictedFirstRoundMap,
+  readOnly,
 }: {
   knockoutConfig: KnockoutConfig;
   resolvedSlots: Record<string, TeamStat | null>;
@@ -693,6 +704,7 @@ function FocusedBracketView({
   actualMatchMap: Record<string, MatchWithTeams>;
   scoringConfig: ScoringConfig;
   predictedFirstRoundMap: Record<string, { predHomeId: string | null; predAwayId: string | null }>;
+  readOnly?: boolean;
 }) {
   const { firstRound, hasBronzeFinal } = knockoutConfig;
   const startIdx = ROUND_ORDER.indexOf(firstRound);
@@ -780,6 +792,7 @@ function FocusedBracketView({
   }
 
   function handleUpdate(key: string, pred: BracketMatchPrediction) {
+    if (readOnly) return;
     onUpdate(key, pred);
 
     const current = allMatches[currentIdx];
@@ -926,6 +939,7 @@ function FocusedBracketView({
               isFirstRound={current.round === firstRound || current.isBronze}
               scoringConfig={scoringConfig}
               predictedFirstRoundTeams={current.round === firstRound && !current.isBronze ? predictedFirstRoundMap[current.predKey] : undefined}
+              readOnly={readOnly}
             />
             <div className="mt-3 flex sm:hidden items-center justify-between">
               <button
@@ -1046,7 +1060,10 @@ export default function KnockoutStageContent({
     onError: () => setSaveStatus('error'),
   });
 
+  const isReadOnly = tournament?.status === 'active' || tournament?.status === 'completed';
+
   function updatePrediction(key: string, pred: BracketMatchPrediction) {
+    if (isReadOnly) return;
     const next = { ...latestPredsRef.current, [key]: pred };
     latestPredsRef.current = next;
     setLocalPreds(next);
@@ -1346,17 +1363,25 @@ export default function KnockoutStageContent({
         }
       `}</style>
 
+      {isReadOnly && (
+        <div className="mb-4 rounded-lg bg-muted px-4 py-2.5 text-sm text-muted-foreground">
+          {t('knockoutContent.predictionsLocked')}
+        </div>
+      )}
+
       <div className="flex items-center justify-between mb-2">
         <p className="text-sm text-muted-foreground">
           {t('knockoutContent.teamsBasedOn')}
         </p>
-        <span className={`text-xs flex-shrink-0 ml-4 ${
-          saveStatus === 'saving' ? 'text-muted-foreground' :
-          saveStatus === 'saved' ? 'text-green-600' :
-          saveStatus === 'error' ? 'text-destructive' : 'invisible'
-        }`}>
-          {saveStatus === 'saving' ? t('knockoutContent.saving') : saveStatus === 'saved' ? t('knockoutContent.saved') : saveStatus === 'error' ? t('knockoutContent.saveFailed') : '.'}
-        </span>
+        {!isReadOnly && (
+          <span className={`text-xs flex-shrink-0 ml-4 ${
+            saveStatus === 'saving' ? 'text-muted-foreground' :
+            saveStatus === 'saved' ? 'text-green-600' :
+            saveStatus === 'error' ? 'text-destructive' : 'invisible'
+          }`}>
+            {saveStatus === 'saving' ? t('knockoutContent.saving') : saveStatus === 'saved' ? t('knockoutContent.saved') : saveStatus === 'error' ? t('knockoutContent.saveFailed') : '.'}
+          </span>
+        )}
       </div>
 
       {hasPendingTies && (
@@ -1379,6 +1404,7 @@ export default function KnockoutStageContent({
             actualMatchMap={knockoutMatchMap}
             scoringConfig={competition.scoringConfig}
             predictedFirstRoundMap={predictedFirstRoundMap}
+            readOnly={isReadOnly}
           />
           {hasPendingTies && (
             <div className="absolute inset-0 bg-background/70 rounded-xl flex items-center justify-center backdrop-blur-[2px]">
