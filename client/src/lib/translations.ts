@@ -108,6 +108,7 @@ const translations = {
         total: 'Total',
         noScores: 'No scores yet.',
         you: '(you)',
+        points: 'points',
       },
       predictions: {
         title: 'Predictions',
@@ -203,6 +204,7 @@ const translations = {
       failedToAdd: 'Failed to add question',
       failedToUpdate: 'Failed to update question',
       failedToSetAnswer: 'Failed to set answer',
+      removeAnswer: 'Remove answer',
       pt: 'pt',
       pts: 'pts',
     },
@@ -517,6 +519,7 @@ const translations = {
         total: 'Totalt',
         noScores: 'Ingen poeng ennå.',
         you: '(deg)',
+        points: 'poeng',
       },
       predictions: {
         title: 'Tips',
@@ -611,6 +614,7 @@ const translations = {
       failedToAdd: 'Kunne ikke legge til spørsmål',
       failedToUpdate: 'Kunne ikke oppdatere spørsmål',
       failedToSetAnswer: 'Kunne ikke sette svar',
+      removeAnswer: 'Fjern svar',
       pt: 'poeng',
       pts: 'poeng',
     },

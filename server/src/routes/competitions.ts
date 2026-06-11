@@ -82,6 +82,19 @@ router.post('/join', requireAuth, async (req, res) => {
       .where(eq(competitions.inviteCode, inviteCode.trim()));
     if (!competition) return res.status(404).json({ error: 'Invalid invite code' });
 
+    const [tournament] = await db
+      .select()
+      .from(tournaments)
+      .where(eq(tournaments.id, competition.tournamentId));
+
+    if (tournament && tournament.status !== 'upcoming') {
+      return res.status(403).json({ error: 'This competition is no longer open for new members' });
+    }
+
+    if (competition.predictionDeadline && new Date() > new Date(competition.predictionDeadline)) {
+      return res.status(403).json({ error: 'The prediction deadline for this competition has passed' });
+    }
+
     const userId: string = res.locals.user.id;
     const [existing] = await db
       .select()
