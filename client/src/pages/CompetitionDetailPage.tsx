@@ -681,16 +681,18 @@ export default function CompetitionDetailPage() {
 
       {/* Header */}
       {user?.isLeaderboardUser ? (
-        <div className="mb-8 text-center">
+        <div className="mb-4 flex items-center gap-3">
           {competition.imageUrl && (
             <img
               src={competition.imageUrl}
               alt={competition.name}
-              className="h-20 w-20 rounded-lg object-cover mx-auto mb-4"
+              className="h-10 w-10 rounded-lg object-cover flex-shrink-0"
             />
           )}
-          <h1 className="text-4xl font-bold">{competition.name}</h1>
-          {tournament && <p className="mt-2 text-base text-muted-foreground">{tournament.name}</p>}
+          <div>
+            <h1 className="text-xl font-bold leading-tight">{competition.name}</h1>
+            {tournament && <p className="text-sm text-muted-foreground">{tournament.name}</p>}
+          </div>
         </div>
       ) : (
         <div className="mb-8 flex items-start gap-4">
@@ -1077,7 +1079,7 @@ export default function CompetitionDetailPage() {
         ) : (
           <>
             {tournament?.status !== 'upcoming' && (
-              <PlayerPodium leaderboard={leaderboard} />
+              <PlayerPodium leaderboard={leaderboard} large={!!user?.isLeaderboardUser} />
             )}
 
             {/* Standard table (hidden on TV for leaderboard users) */}
