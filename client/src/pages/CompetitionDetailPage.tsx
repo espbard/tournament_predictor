@@ -851,7 +851,7 @@ export default function CompetitionDetailPage() {
                     : [];
                   return (
                     <div key={groupName} className="space-y-3">
-                      <div className="rounded-lg border overflow-hidden">
+                      <div className="rounded-lg border overflow-hidden dark:bg-white/5">
                         <div className="bg-muted/50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                           Group {groupName}
                         </div>
@@ -1085,6 +1085,13 @@ export default function CompetitionDetailPage() {
             if (rank === lastRank && rank > 3) return 'text-red-500';
             return 'text-muted-foreground';
           };
+          const rowBg = (rank: number) => {
+            if (rank === 1) return 'bg-yellow-50 dark:bg-yellow-500/10';
+            if (rank === 2) return 'bg-slate-100 dark:bg-slate-400/10';
+            if (rank === 3) return 'bg-amber-50 dark:bg-amber-600/10';
+            if (rank === lastRank && rank > 3) return 'bg-red-50 dark:bg-red-500/10';
+            return '';
+          };
           return (<>
             {tournament?.status !== 'upcoming' && (
               user?.isLeaderboardUser ? (
@@ -1110,7 +1117,7 @@ export default function CompetitionDetailPage() {
             )}
 
             {/* Standard table (hidden on TV for leaderboard users) */}
-            <div className={`overflow-x-auto rounded-lg border mt-4 ${user?.isLeaderboardUser ? 'tv:hidden' : ''}`}>
+            <div className={`overflow-x-auto rounded-lg border mt-4 dark:bg-white/5 ${user?.isLeaderboardUser ? 'tv:hidden' : ''}`}>
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b bg-muted/50 text-muted-foreground">
@@ -1132,7 +1139,7 @@ export default function CompetitionDetailPage() {
                     const isMe = entry.userId === user?.id;
                     const b = entry.breakdown;
                     return (
-                      <tr key={entry.userId} className={isMe ? 'bg-primary/5' : ''}>
+                      <tr key={entry.userId} className={rowBg(entry.rank) || (isMe ? 'bg-primary/5' : '')}>
                         <td className={`pl-3 pr-2 py-2.5 font-bold text-center ${rankColor(entry.rank)}`}>
                           {entry.rank}
                         </td>
@@ -1167,7 +1174,7 @@ export default function CompetitionDetailPage() {
               const renderRows = (entries: typeof leaderboard) => entries.map((entry) => {
                 const b = entry.breakdown;
                 return (
-                  <tr key={entry.userId}>
+                  <tr key={entry.userId} className={rowBg(entry.rank)}>
                     <td className={`pl-4 pr-3 py-3 font-bold text-center text-base ${rankColor(entry.rank)}`}>
                       {entry.rank}
                     </td>
@@ -1191,12 +1198,12 @@ export default function CompetitionDetailPage() {
               });
               return (
                 <div className="hidden tv:grid tv:grid-cols-2 tv:gap-8 mt-4">
-                  <div className="rounded-lg border overflow-hidden">
+                  <div className="rounded-lg border overflow-hidden dark:bg-white/5">
                     <table className="w-full text-sm">
                       <tbody className="divide-y">{renderRows(leaderboard.slice(0, mid))}</tbody>
                     </table>
                   </div>
-                  <div className="rounded-lg border overflow-hidden">
+                  <div className="rounded-lg border overflow-hidden dark:bg-white/5">
                     <table className="w-full text-sm">
                       <tbody className="divide-y">{renderRows(leaderboard.slice(mid))}</tbody>
                     </table>
