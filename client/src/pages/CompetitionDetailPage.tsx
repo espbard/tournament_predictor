@@ -1068,9 +1068,7 @@ export default function CompetitionDetailPage() {
         ) : (
           <>
             {tournament?.status !== 'upcoming' && (
-              <div className={user?.isLeaderboardUser ? 'tv:hidden' : ''}>
-                <PlayerPodium leaderboard={leaderboard} />
-              </div>
+              <PlayerPodium leaderboard={leaderboard} />
             )}
 
             {/* Standard table (hidden on TV for leaderboard users) */}
