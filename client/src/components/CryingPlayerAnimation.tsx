@@ -25,29 +25,17 @@ export function CryingPlayerAnimation() {
       style={{ opacity: 0.18 }}
     >
       <style>{`
-        @keyframes cryingPlayerSob {
-          0%, 100% { transform: rotate(0deg) translateY(0px); }
-          30%      { transform: rotate(-2deg) translateY(-3px); }
-          65%      { transform: rotate(0deg) translateY(0px); }
-          82%      { transform: rotate(-1deg) translateY(-2px); }
+        @keyframes cryingTearLeft {
+          0%   { transform: translate(0px, 0px); opacity: 0; }
+          8%   { opacity: 1; }
+          88%  { transform: translate(-4px, 90px); opacity: 0.7; }
+          100% { transform: translate(-5px, 112px); opacity: 0; }
         }
-        @keyframes cryingTear1 {
-          0%        { transform: translate(0px, 0px); opacity: 0; }
-          8%        { opacity: 1; }
-          85%       { transform: translate(-3px, 90px); opacity: 0.7; }
-          100%      { transform: translate(-4px, 112px); opacity: 0; }
-        }
-        @keyframes cryingTear2 {
-          0%        { transform: translate(0px, 0px); opacity: 0; }
-          8%        { opacity: 1; }
-          85%       { transform: translate(2px, 82px); opacity: 0.6; }
-          100%      { transform: translate(3px, 104px); opacity: 0; }
-        }
-        @keyframes cryingTear3 {
-          0%        { transform: translate(0px, 0px); opacity: 0; }
-          8%        { opacity: 1; }
-          85%       { transform: translate(-1px, 96px); opacity: 0.8; }
-          100%      { transform: translate(-2px, 118px); opacity: 0; }
+        @keyframes cryingTearRight {
+          0%   { transform: translate(0px, 0px); opacity: 0; }
+          8%   { opacity: 1; }
+          88%  { transform: translate(4px, 90px); opacity: 0.7; }
+          100% { transform: translate(5px, 112px); opacity: 0; }
         }
       `}</style>
 
@@ -63,7 +51,7 @@ export function CryingPlayerAnimation() {
           transform: `scale(${scale})`,
         }}
       >
-        {/* Crying player */}
+        {/* Crying player — static */}
         <img
           src="/crying-player.png"
           alt=""
@@ -75,23 +63,52 @@ export function CryingPlayerAnimation() {
             width: 'auto',
             objectFit: 'contain',
             mixBlendMode: 'multiply',
-            animation: 'cryingPlayerSob 3.5s ease-in-out infinite',
           }}
         />
 
-        {/* Tears — staggered, falling from eye level */}
+        {/* Left eye — two tears, staggered */}
         <img
           src="/crying-tear.png"
           alt=""
           style={{
             position: 'absolute',
             bottom: '113px',
-            left: '90px',
+            left: '73px',
             height: '22px',
             width: '16px',
             objectFit: 'contain',
             mixBlendMode: 'multiply',
-            animation: 'cryingTear1 2.2s ease-in 0s infinite',
+            animation: 'cryingTearLeft 3.8s ease-in 0s infinite',
+          }}
+        />
+        <img
+          src="/crying-tear.png"
+          alt=""
+          style={{
+            position: 'absolute',
+            bottom: '111px',
+            left: '70px',
+            height: '20px',
+            width: '15px',
+            objectFit: 'contain',
+            mixBlendMode: 'multiply',
+            animation: 'cryingTearLeft 4.2s ease-in 1.9s infinite',
+          }}
+        />
+
+        {/* Right eye — two tears, staggered */}
+        <img
+          src="/crying-tear.png"
+          alt=""
+          style={{
+            position: 'absolute',
+            bottom: '113px',
+            left: '114px',
+            height: '22px',
+            width: '16px',
+            objectFit: 'contain',
+            mixBlendMode: 'multiply',
+            animation: 'cryingTearRight 4.0s ease-in 0.8s infinite',
           }}
         />
         <img
@@ -100,26 +117,12 @@ export function CryingPlayerAnimation() {
           style={{
             position: 'absolute',
             bottom: '110px',
-            left: '86px',
+            left: '117px',
             height: '19px',
             width: '14px',
             objectFit: 'contain',
             mixBlendMode: 'multiply',
-            animation: 'cryingTear2 2.5s ease-in 0.9s infinite',
-          }}
-        />
-        <img
-          src="/crying-tear.png"
-          alt=""
-          style={{
-            position: 'absolute',
-            bottom: '116px',
-            left: '92px',
-            height: '20px',
-            width: '15px',
-            objectFit: 'contain',
-            mixBlendMode: 'multiply',
-            animation: 'cryingTear3 2.0s ease-in 1.6s infinite',
+            animation: 'cryingTearRight 3.6s ease-in 2.7s infinite',
           }}
         />
       </div>
