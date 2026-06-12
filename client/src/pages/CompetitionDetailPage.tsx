@@ -1220,10 +1220,13 @@ export default function CompetitionDetailPage() {
               return (
                 <div className="hidden tv:grid tv:grid-cols-2 tv:gap-8 tv:items-start mt-4">
                   <div className="rounded-lg border dark:bg-white/5 p-2">
-                    <table className="w-full text-sm">
-                      {tableHead}
-                      <tbody className="divide-y">{renderRows(leaderboard.slice(0, mid))}</tbody>
-                    </table>
+                    <div style={{ position: 'relative' }}>
+                      <SoccerKickAnimation />
+                      <table className="w-full text-sm">
+                        {tableHead}
+                        <tbody className="divide-y">{renderRows(leaderboard.slice(0, mid))}</tbody>
+                      </table>
+                    </div>
                   </div>
                   <div className="rounded-lg border dark:bg-white/5 p-2">
                     <table className="w-full text-sm">
