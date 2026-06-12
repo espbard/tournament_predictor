@@ -1093,8 +1093,7 @@ export default function CompetitionDetailPage() {
             if (rank === lastRank && rank > 3) return 'bg-red-50 dark:bg-red-500/10';
             return '';
           };
-          return (<div className="relative overflow-hidden">
-            <SoccerKickAnimation />
+          return (<>
             {tournament?.status !== 'upcoming' && (
               user?.isLeaderboardUser ? (
                 <div className="tv:relative">
@@ -1120,7 +1119,9 @@ export default function CompetitionDetailPage() {
 
             {/* Standard table (hidden on TV for leaderboard users) */}
             <div className={`overflow-x-auto rounded-lg border mt-4 dark:bg-white/5 p-2 ${user?.isLeaderboardUser ? 'tv:hidden' : ''}`}>
-              <table className="w-full text-xs">
+              <div style={{ position: 'relative' }}>
+                <SoccerKickAnimation />
+                <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b bg-muted/50 text-muted-foreground">
                     <th className="pl-3 pr-2 py-2 text-left w-6">#</th>
@@ -1168,6 +1169,7 @@ export default function CompetitionDetailPage() {
                   })}
                 </tbody>
               </table>
+              </div>
             </div>
 
             {/* TV split view: two columns, no headers */}
@@ -1232,7 +1234,7 @@ export default function CompetitionDetailPage() {
                 </div>
               );
             })()}
-          </div>);
+          </>);
         })()
       )}
 
