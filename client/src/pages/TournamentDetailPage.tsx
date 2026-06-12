@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Pencil } from 'lucide-react';
+import { Pencil, ChevronDown } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   DndContext,
@@ -252,6 +252,9 @@ export default function TournamentDetailPage() {
   const [awayScore, setAwayScore] = useState('');
 
   const [pendingResults, setPendingResults] = useState<Record<string, { home: number; away: number }>>({});
+
+  const [completedGamesOpen, setCompletedGamesOpen] = useState(false);
+  const [upcomingGamesOpen, setUpcomingGamesOpen] = useState(true);
 
   const [addTeamError, setAddTeamError] = useState('');
   const [addMatchError, setAddMatchError] = useState('');
@@ -642,6 +645,27 @@ export default function TournamentDetailPage() {
       matchGroups.push({ dateLabel, isoDate, matches: [match] });
     }
   }
+
+  const completedSortedMatches = sortedMatches.filter(m => m.homeScore !== null && m.awayScore !== null);
+  const upcomingSortedMatches = sortedMatches.filter(m => m.homeScore === null || m.awayScore === null);
+
+  function buildMatchGroups(matches: MatchWithTeams[]) {
+    const groups: { dateLabel: string; isoDate: string; matches: MatchWithTeams[] }[] = [];
+    for (const match of matches) {
+      const isoDate = match.scheduledAt ? new Date(match.scheduledAt).toLocaleDateString('en-CA') : '__none__';
+      const dateLabel = match.scheduledAt ? new Date(match.scheduledAt).toLocaleDateString(undefined, { dateStyle: 'long' }) : t('common.noDate');
+      const last = groups[groups.length - 1];
+      if (last && last.isoDate === isoDate) {
+        last.matches.push(match);
+      } else {
+        groups.push({ dateLabel, isoDate, matches: [match] });
+      }
+    }
+    return groups;
+  }
+
+  const completedMatchGroups = buildMatchGroups(completedSortedMatches);
+  const upcomingMatchGroups = buildMatchGroups(upcomingSortedMatches);
 
   function matchStageLabel(match: MatchWithTeams) {
     if (match.stage !== 'group') return STAGE_LABELS[match.stage];
@@ -1270,252 +1294,505 @@ export default function TournamentDetailPage() {
         {matchList.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t('tournamentDetail.noMatches')}</p>
         ) : (
-          <div className="space-y-6">
-            {matchGroups.map(({ dateLabel, isoDate, matches }) => (
-              <div key={isoDate}>
-                <h3 className="mb-2 text-sm font-semibold text-muted-foreground">{dateLabel}</h3>
-                <div className="space-y-2">
-                  {matches.map(match => (
-                    <div key={match.id} className="rounded-lg border p-4">
-                      {/* Match header row */}
-                      <div className="mb-2 flex items-center justify-between">
-                        <span className="text-xs font-bold">
-                          {matchStageLabel(match)}
-                          {match.scheduledAt && (
-                            <span className="ml-1.5 font-normal text-muted-foreground">
-                              {new Date(match.scheduledAt).toLocaleTimeString(undefined, { timeStyle: 'short' })}
-                            </span>
-                          )}
-                        </span>
-                        <div className="flex items-center gap-2">
-                          {match.status === 'completed' && (
-                            <span className="rounded-full bg-accent/15 px-2 py-0.5 text-xs font-medium text-accent">
-                              {t('tournamentDetail.final')}
-                            </span>
-                          )}
-                          {isAdmin && (
-                            <button
-                              type="button"
-                              onClick={() => editMatchId === match.id ? setEditMatchId(null) : openEditMatch(match)}
-                              className="text-muted-foreground hover:text-foreground"
-                              title="Edit match"
-                            >
-                              <Pencil size={13} />
-                            </button>
-                          )}
-                        </div>
-                      </div>
+          <div className="space-y-4">
 
-                      {/* Teams + score */}
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <TeamBadge name={match.homeTeamName} imageUrl={match.homeTeamImageUrl} />
-                          {pendingResults[match.id] ? (
-                            <span className="rounded bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 text-sm font-bold tabular-nums text-amber-800 dark:text-amber-200">
-                              {pendingResults[match.id].home} – {pendingResults[match.id].away}
-                            </span>
-                          ) : match.status === 'completed' ? (
-                            <span className="rounded bg-muted px-2 py-0.5 text-sm font-bold tabular-nums">
-                              {match.homeScore} – {match.awayScore}
-                            </span>
-                          ) : (
-                            <span className="text-sm text-muted-foreground">vs</span>
-                          )}
-                          <TeamBadge name={match.awayTeamName} imageUrl={match.awayTeamImageUrl} />
+            {/* Upcoming Games */}
+            <div>
+              <button
+                type="button"
+                onClick={() => setUpcomingGamesOpen(o => !o)}
+                className="mb-2 flex w-full items-center justify-between rounded-md px-1 py-1 text-left hover:bg-muted/50"
+              >
+                <span className="text-base font-semibold">Upcoming Games ({upcomingSortedMatches.length})</span>
+                <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-200${upcomingGamesOpen ? ' rotate-180' : ''}`} />
+              </button>
+              {upcomingGamesOpen && (
+                <div className="space-y-6">
+                  {upcomingMatchGroups.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No upcoming games.</p>
+                  ) : (
+                    upcomingMatchGroups.map(({ dateLabel, isoDate, matches }) => (
+                      <div key={isoDate}>
+                        <h3 className="mb-2 text-sm font-semibold text-muted-foreground">{dateLabel}</h3>
+                        <div className="space-y-2">
+                          {matches.map(match => (
+                            <div key={match.id} className="rounded-lg border p-4">
+                              <div className="mb-2 flex items-center justify-between">
+                                <span className="text-xs font-bold">
+                                  {matchStageLabel(match)}
+                                  {match.scheduledAt && (
+                                    <span className="ml-1.5 font-normal text-muted-foreground">
+                                      {new Date(match.scheduledAt).toLocaleTimeString(undefined, { timeStyle: 'short' })}
+                                    </span>
+                                  )}
+                                </span>
+                                <div className="flex items-center gap-2">
+                                  {match.status === 'completed' && (
+                                    <span className="rounded-full bg-accent/15 px-2 py-0.5 text-xs font-medium text-accent">
+                                      {t('tournamentDetail.final')}
+                                    </span>
+                                  )}
+                                  {isAdmin && (
+                                    <button
+                                      type="button"
+                                      onClick={() => editMatchId === match.id ? setEditMatchId(null) : openEditMatch(match)}
+                                      className="text-muted-foreground hover:text-foreground"
+                                      title="Edit match"
+                                    >
+                                      <Pencil size={13} />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                  <TeamBadge name={match.homeTeamName} imageUrl={match.homeTeamImageUrl} />
+                                  {pendingResults[match.id] ? (
+                                    <span className="rounded bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 text-sm font-bold tabular-nums text-amber-800 dark:text-amber-200">
+                                      {pendingResults[match.id].home} – {pendingResults[match.id].away}
+                                    </span>
+                                  ) : match.status === 'completed' ? (
+                                    <span className="rounded bg-muted px-2 py-0.5 text-sm font-bold tabular-nums">
+                                      {match.homeScore} – {match.awayScore}
+                                    </span>
+                                  ) : (
+                                    <span className="text-sm text-muted-foreground">vs</span>
+                                  )}
+                                  <TeamBadge name={match.awayTeamName} imageUrl={match.awayTeamImageUrl} />
+                                </div>
+                                {isAdmin && scoreMatchId !== match.id && (
+                                  <div className="flex items-center gap-1.5">
+                                    {pendingResults[match.id] ? (
+                                      <>
+                                        <button
+                                          onClick={() => openScoreForm(match.id)}
+                                          className="rounded-md border px-2.5 py-1 text-xs hover:bg-muted"
+                                        >
+                                          Edit
+                                        </button>
+                                        <button
+                                          onClick={() => removePendingResult(match.id)}
+                                          className="rounded-md border px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
+                                          title="Remove staged result"
+                                        >
+                                          ×
+                                        </button>
+                                      </>
+                                    ) : match.status === 'scheduled' ? (
+                                      <button
+                                        onClick={() => openScoreForm(match.id)}
+                                        className="rounded-md border px-3 py-1 text-xs hover:bg-muted"
+                                      >
+                                        {t('tournamentDetail.enterScore')}
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                )}
+                              </div>
+                              {scoreMatchId === match.id && (
+                                <div className="mt-3 flex flex-wrap items-center gap-2">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={homeScore}
+                                    onChange={e => {
+                                      const val = e.target.value;
+                                      setHomeScore(val);
+                                      autoStageScore(match.id, val, awayScore);
+                                    }}
+                                    className="w-14 rounded-md border px-2 py-1.5 text-center text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                                    placeholder="0"
+                                    autoFocus
+                                  />
+                                  <span className="text-sm font-medium">–</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={awayScore}
+                                    onChange={e => {
+                                      const val = e.target.value;
+                                      setAwayScore(val);
+                                      autoStageScore(match.id, homeScore, val);
+                                    }}
+                                    className="w-14 rounded-md border px-2 py-1.5 text-center text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                                    placeholder="0"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => setScoreMatchId(null)}
+                                    className="rounded-md border px-3 py-1.5 text-xs hover:bg-muted"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              )}
+                              {editMatchId === match.id && (
+                                <form onSubmit={handleSaveEdit} className="mt-3 rounded-md border p-3">
+                                  <div className="mb-3 grid grid-cols-2 gap-3">
+                                    <div>
+                                      <label className="mb-1 block text-xs font-medium text-muted-foreground">Stage</label>
+                                      <select
+                                        value={editStage}
+                                        onChange={e => {
+                                          const stage = e.target.value as MatchStage;
+                                          setEditStage(stage);
+                                          if (stage !== 'group') setEditGroupId('');
+                                          setEditHomeTeamId('');
+                                          setEditAwayTeamId('');
+                                        }}
+                                        className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                                        required
+                                      >
+                                        {(Object.entries(STAGE_LABELS) as [MatchStage, string][]).map(([val, label]) => (
+                                          <option key={val} value={val}>{label}</option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                    {editStage === 'group' && (
+                                      <div>
+                                        <label className="mb-1 block text-xs font-medium text-muted-foreground">Group</label>
+                                        <select
+                                          value={editGroupId}
+                                          onChange={e => {
+                                            setEditGroupId(e.target.value);
+                                            setEditHomeTeamId('');
+                                            setEditAwayTeamId('');
+                                          }}
+                                          className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                                        >
+                                          <option value="">{t('tournamentDetail.matchForm.allGroups')}</option>
+                                          {groupList.map(g => (
+                                            <option key={g.id} value={g.id}>{g.name}</option>
+                                          ))}
+                                        </select>
+                                      </div>
+                                    )}
+                                    <div>
+                                      <label className="mb-1 block text-xs font-medium text-muted-foreground">{t('tournamentDetail.matchForm.homeTeam')}</label>
+                                      <select
+                                        value={editHomeTeamId}
+                                        onChange={e => setEditHomeTeamId(e.target.value)}
+                                        className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                                      >
+                                        <option value="">TBD</option>
+                                        {(editStage === 'group' && editGroupId
+                                          ? teams.filter(t => t.groupId === editGroupId)
+                                          : teams
+                                        ).map(t => (
+                                          <option key={t.id} value={t.id}>{t.name}</option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                    <div>
+                                      <label className="mb-1 block text-xs font-medium text-muted-foreground">{t('tournamentDetail.matchForm.awayTeam')}</label>
+                                      <select
+                                        value={editAwayTeamId}
+                                        onChange={e => setEditAwayTeamId(e.target.value)}
+                                        className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                                      >
+                                        <option value="">TBD</option>
+                                        {(editStage === 'group' && editGroupId
+                                          ? teams.filter(t => t.groupId === editGroupId)
+                                          : teams
+                                        ).map(t => (
+                                          <option key={t.id} value={t.id}>{t.name}</option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                    <div className="col-span-2">
+                                      <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                                        Date &amp; Time (optional)
+                                      </label>
+                                      <DateTimePickerFields
+                                        date={editDate} hour={editHour} minute={editMinute}
+                                        onDate={setEditDate} onHour={setEditHour} onMinute={setEditMinute}
+                                      />
+                                    </div>
+                                  </div>
+                                  {editError && <p className="mb-2 text-sm text-red-600">{editError}</p>}
+                                  <div className="flex gap-2">
+                                    <button
+                                      type="submit"
+                                      disabled={editMatchMutation.isPending}
+                                      className="rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                                    >
+                                      {editMatchMutation.isPending ? t('tournamentDetail.matchForm.saving') : t('tournamentDetail.matchForm.saveChanges')}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => { setEditMatchId(null); setEditError(''); }}
+                                      className="rounded-md border px-3 py-1.5 text-xs hover:bg-muted"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </form>
+                              )}
+                            </div>
+                          ))}
                         </div>
-
-                        {isAdmin && scoreMatchId !== match.id && (
-                          <div className="flex items-center gap-1.5">
-                            {pendingResults[match.id] ? (
-                              <>
-                                <button
-                                  onClick={() => openScoreForm(match.id)}
-                                  className="rounded-md border px-2.5 py-1 text-xs hover:bg-muted"
-                                >
-                                  Edit
-                                </button>
-                                <button
-                                  onClick={() => removePendingResult(match.id)}
-                                  className="rounded-md border px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
-                                  title="Remove staged result"
-                                >
-                                  ×
-                                </button>
-                              </>
-                            ) : match.status === 'scheduled' ? (
+                        {isAdmin && isoDate !== '__none__' && (
+                          addMatchForDate === isoDate
+                            ? renderAddMatchForm()
+                            : (
                               <button
-                                onClick={() => openScoreForm(match.id)}
-                                className="rounded-md border px-3 py-1 text-xs hover:bg-muted"
+                                type="button"
+                                onClick={() => openAddMatch(isoDate)}
+                                className="mt-2 w-full rounded-md border border-dashed px-3 py-1.5 text-xs text-muted-foreground hover:border-solid hover:bg-muted hover:text-foreground"
                               >
-                                {t('tournamentDetail.enterScore')}
+                                {t('tournamentDetail.addMatchOnDay')}
                               </button>
-                            ) : null}
-                          </div>
+                            )
                         )}
                       </div>
-
-                      {/* Score form */}
-                      {scoreMatchId === match.id && (
-                        <div className="mt-3 flex flex-wrap items-center gap-2">
-                          <input
-                            type="number"
-                            min="0"
-                            value={homeScore}
-                            onChange={e => {
-                              const val = e.target.value;
-                              setHomeScore(val);
-                              autoStageScore(match.id, val, awayScore);
-                            }}
-                            className="w-14 rounded-md border px-2 py-1.5 text-center text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                            placeholder="0"
-                            autoFocus
-                          />
-                          <span className="text-sm font-medium">–</span>
-                          <input
-                            type="number"
-                            min="0"
-                            value={awayScore}
-                            onChange={e => {
-                              const val = e.target.value;
-                              setAwayScore(val);
-                              autoStageScore(match.id, homeScore, val);
-                            }}
-                            className="w-14 rounded-md border px-2 py-1.5 text-center text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                            placeholder="0"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setScoreMatchId(null)}
-                            className="rounded-md border px-3 py-1.5 text-xs hover:bg-muted"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      )}
-
-                      {/* Inline edit form */}
-                      {editMatchId === match.id && (
-                        <form onSubmit={handleSaveEdit} className="mt-3 rounded-md border p-3">
-                          <div className="mb-3 grid grid-cols-2 gap-3">
-                            <div>
-                              <label className="mb-1 block text-xs font-medium text-muted-foreground">Stage</label>
-                              <select
-                                value={editStage}
-                                onChange={e => {
-                                  const stage = e.target.value as MatchStage;
-                                  setEditStage(stage);
-                                  if (stage !== 'group') setEditGroupId('');
-                                  setEditHomeTeamId('');
-                                  setEditAwayTeamId('');
-                                }}
-                                className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                                required
-                              >
-                                {(Object.entries(STAGE_LABELS) as [MatchStage, string][]).map(([val, label]) => (
-                                  <option key={val} value={val}>{label}</option>
-                                ))}
-                              </select>
-                            </div>
-                            {editStage === 'group' && (
-                              <div>
-                                <label className="mb-1 block text-xs font-medium text-muted-foreground">Group</label>
-                                <select
-                                  value={editGroupId}
-                                  onChange={e => {
-                                    setEditGroupId(e.target.value);
-                                    setEditHomeTeamId('');
-                                    setEditAwayTeamId('');
-                                  }}
-                                  className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                                >
-                                  <option value="">{t('tournamentDetail.matchForm.allGroups')}</option>
-                                  {groupList.map(g => (
-                                    <option key={g.id} value={g.id}>{g.name}</option>
-                                  ))}
-                                </select>
-                              </div>
-                            )}
-                            <div>
-                              <label className="mb-1 block text-xs font-medium text-muted-foreground">{t('tournamentDetail.matchForm.homeTeam')}</label>
-                              <select
-                                value={editHomeTeamId}
-                                onChange={e => setEditHomeTeamId(e.target.value)}
-                                className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                              >
-                                <option value="">TBD</option>
-                                {(editStage === 'group' && editGroupId
-                                  ? teams.filter(t => t.groupId === editGroupId)
-                                  : teams
-                                ).map(t => (
-                                  <option key={t.id} value={t.id}>{t.name}</option>
-                                ))}
-                              </select>
-                            </div>
-                            <div>
-                              <label className="mb-1 block text-xs font-medium text-muted-foreground">{t('tournamentDetail.matchForm.awayTeam')}</label>
-                              <select
-                                value={editAwayTeamId}
-                                onChange={e => setEditAwayTeamId(e.target.value)}
-                                className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                              >
-                                <option value="">TBD</option>
-                                {(editStage === 'group' && editGroupId
-                                  ? teams.filter(t => t.groupId === editGroupId)
-                                  : teams
-                                ).map(t => (
-                                  <option key={t.id} value={t.id}>{t.name}</option>
-                                ))}
-                              </select>
-                            </div>
-                            <div className="col-span-2">
-                              <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                                Date &amp; Time (optional)
-                              </label>
-                              <DateTimePickerFields
-                                date={editDate} hour={editHour} minute={editMinute}
-                                onDate={setEditDate} onHour={setEditHour} onMinute={setEditMinute}
-                              />
-                            </div>
-                          </div>
-                          {editError && <p className="mb-2 text-sm text-red-600">{editError}</p>}
-                          <div className="flex gap-2">
-                            <button
-                              type="submit"
-                              disabled={editMatchMutation.isPending}
-                              className="rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                            >
-                              {editMatchMutation.isPending ? t('tournamentDetail.matchForm.saving') : t('tournamentDetail.matchForm.saveChanges')}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => { setEditMatchId(null); setEditError(''); }}
-                              className="rounded-md border px-3 py-1.5 text-xs hover:bg-muted"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </form>
-                      )}
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
+              )}
+            </div>
 
-                {/* Per-day add match form or button */}
-                {isAdmin && isoDate !== '__none__' && (
-                  addMatchForDate === isoDate
-                    ? renderAddMatchForm()
-                    : (
-                      <button
-                        type="button"
-                        onClick={() => openAddMatch(isoDate)}
-                        className="mt-2 w-full rounded-md border border-dashed px-3 py-1.5 text-xs text-muted-foreground hover:border-solid hover:bg-muted hover:text-foreground"
-                      >
-                        {t('tournamentDetail.addMatchOnDay')}
-                      </button>
-                    )
-                )}
-              </div>
-            ))}
+            {/* Completed Games */}
+            <div>
+              <button
+                type="button"
+                onClick={() => setCompletedGamesOpen(o => !o)}
+                className="mb-2 flex w-full items-center justify-between rounded-md px-1 py-1 text-left hover:bg-muted/50"
+              >
+                <span className="text-base font-semibold">Completed Games ({completedSortedMatches.length})</span>
+                <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-200${completedGamesOpen ? ' rotate-180' : ''}`} />
+              </button>
+              {completedGamesOpen && (
+                <div className="space-y-6">
+                  {completedMatchGroups.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No completed games.</p>
+                  ) : (
+                    completedMatchGroups.map(({ dateLabel, isoDate, matches }) => (
+                      <div key={isoDate}>
+                        <h3 className="mb-2 text-sm font-semibold text-muted-foreground">{dateLabel}</h3>
+                        <div className="space-y-2">
+                          {matches.map(match => (
+                            <div key={match.id} className="rounded-lg border p-4">
+                              <div className="mb-2 flex items-center justify-between">
+                                <span className="text-xs font-bold">
+                                  {matchStageLabel(match)}
+                                  {match.scheduledAt && (
+                                    <span className="ml-1.5 font-normal text-muted-foreground">
+                                      {new Date(match.scheduledAt).toLocaleTimeString(undefined, { timeStyle: 'short' })}
+                                    </span>
+                                  )}
+                                </span>
+                                <div className="flex items-center gap-2">
+                                  {match.status === 'completed' && (
+                                    <span className="rounded-full bg-accent/15 px-2 py-0.5 text-xs font-medium text-accent">
+                                      {t('tournamentDetail.final')}
+                                    </span>
+                                  )}
+                                  {isAdmin && (
+                                    <button
+                                      type="button"
+                                      onClick={() => editMatchId === match.id ? setEditMatchId(null) : openEditMatch(match)}
+                                      className="text-muted-foreground hover:text-foreground"
+                                      title="Edit match"
+                                    >
+                                      <Pencil size={13} />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                  <TeamBadge name={match.homeTeamName} imageUrl={match.homeTeamImageUrl} />
+                                  {pendingResults[match.id] ? (
+                                    <span className="rounded bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 text-sm font-bold tabular-nums text-amber-800 dark:text-amber-200">
+                                      {pendingResults[match.id].home} – {pendingResults[match.id].away}
+                                    </span>
+                                  ) : match.status === 'completed' ? (
+                                    <span className="rounded bg-muted px-2 py-0.5 text-sm font-bold tabular-nums">
+                                      {match.homeScore} – {match.awayScore}
+                                    </span>
+                                  ) : (
+                                    <span className="text-sm text-muted-foreground">vs</span>
+                                  )}
+                                  <TeamBadge name={match.awayTeamName} imageUrl={match.awayTeamImageUrl} />
+                                </div>
+                                {isAdmin && scoreMatchId !== match.id && (
+                                  <div className="flex items-center gap-1.5">
+                                    {pendingResults[match.id] ? (
+                                      <>
+                                        <button
+                                          onClick={() => openScoreForm(match.id)}
+                                          className="rounded-md border px-2.5 py-1 text-xs hover:bg-muted"
+                                        >
+                                          Edit
+                                        </button>
+                                        <button
+                                          onClick={() => removePendingResult(match.id)}
+                                          className="rounded-md border px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
+                                          title="Remove staged result"
+                                        >
+                                          ×
+                                        </button>
+                                      </>
+                                    ) : match.status === 'scheduled' ? (
+                                      <button
+                                        onClick={() => openScoreForm(match.id)}
+                                        className="rounded-md border px-3 py-1 text-xs hover:bg-muted"
+                                      >
+                                        {t('tournamentDetail.enterScore')}
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                )}
+                              </div>
+                              {scoreMatchId === match.id && (
+                                <div className="mt-3 flex flex-wrap items-center gap-2">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={homeScore}
+                                    onChange={e => {
+                                      const val = e.target.value;
+                                      setHomeScore(val);
+                                      autoStageScore(match.id, val, awayScore);
+                                    }}
+                                    className="w-14 rounded-md border px-2 py-1.5 text-center text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                                    placeholder="0"
+                                    autoFocus
+                                  />
+                                  <span className="text-sm font-medium">–</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={awayScore}
+                                    onChange={e => {
+                                      const val = e.target.value;
+                                      setAwayScore(val);
+                                      autoStageScore(match.id, homeScore, val);
+                                    }}
+                                    className="w-14 rounded-md border px-2 py-1.5 text-center text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                                    placeholder="0"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => setScoreMatchId(null)}
+                                    className="rounded-md border px-3 py-1.5 text-xs hover:bg-muted"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              )}
+                              {editMatchId === match.id && (
+                                <form onSubmit={handleSaveEdit} className="mt-3 rounded-md border p-3">
+                                  <div className="mb-3 grid grid-cols-2 gap-3">
+                                    <div>
+                                      <label className="mb-1 block text-xs font-medium text-muted-foreground">Stage</label>
+                                      <select
+                                        value={editStage}
+                                        onChange={e => {
+                                          const stage = e.target.value as MatchStage;
+                                          setEditStage(stage);
+                                          if (stage !== 'group') setEditGroupId('');
+                                          setEditHomeTeamId('');
+                                          setEditAwayTeamId('');
+                                        }}
+                                        className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                                        required
+                                      >
+                                        {(Object.entries(STAGE_LABELS) as [MatchStage, string][]).map(([val, label]) => (
+                                          <option key={val} value={val}>{label}</option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                    {editStage === 'group' && (
+                                      <div>
+                                        <label className="mb-1 block text-xs font-medium text-muted-foreground">Group</label>
+                                        <select
+                                          value={editGroupId}
+                                          onChange={e => {
+                                            setEditGroupId(e.target.value);
+                                            setEditHomeTeamId('');
+                                            setEditAwayTeamId('');
+                                          }}
+                                          className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                                        >
+                                          <option value="">{t('tournamentDetail.matchForm.allGroups')}</option>
+                                          {groupList.map(g => (
+                                            <option key={g.id} value={g.id}>{g.name}</option>
+                                          ))}
+                                        </select>
+                                      </div>
+                                    )}
+                                    <div>
+                                      <label className="mb-1 block text-xs font-medium text-muted-foreground">{t('tournamentDetail.matchForm.homeTeam')}</label>
+                                      <select
+                                        value={editHomeTeamId}
+                                        onChange={e => setEditHomeTeamId(e.target.value)}
+                                        className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                                      >
+                                        <option value="">TBD</option>
+                                        {(editStage === 'group' && editGroupId
+                                          ? teams.filter(t => t.groupId === editGroupId)
+                                          : teams
+                                        ).map(t => (
+                                          <option key={t.id} value={t.id}>{t.name}</option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                    <div>
+                                      <label className="mb-1 block text-xs font-medium text-muted-foreground">{t('tournamentDetail.matchForm.awayTeam')}</label>
+                                      <select
+                                        value={editAwayTeamId}
+                                        onChange={e => setEditAwayTeamId(e.target.value)}
+                                        className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                                      >
+                                        <option value="">TBD</option>
+                                        {(editStage === 'group' && editGroupId
+                                          ? teams.filter(t => t.groupId === editGroupId)
+                                          : teams
+                                        ).map(t => (
+                                          <option key={t.id} value={t.id}>{t.name}</option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                    <div className="col-span-2">
+                                      <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                                        Date &amp; Time (optional)
+                                      </label>
+                                      <DateTimePickerFields
+                                        date={editDate} hour={editHour} minute={editMinute}
+                                        onDate={setEditDate} onHour={setEditHour} onMinute={setEditMinute}
+                                      />
+                                    </div>
+                                  </div>
+                                  {editError && <p className="mb-2 text-sm text-red-600">{editError}</p>}
+                                  <div className="flex gap-2">
+                                    <button
+                                      type="submit"
+                                      disabled={editMatchMutation.isPending}
+                                      className="rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                                    >
+                                      {editMatchMutation.isPending ? t('tournamentDetail.matchForm.saving') : t('tournamentDetail.matchForm.saveChanges')}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => { setEditMatchId(null); setEditError(''); }}
+                                      className="rounded-md border px-3 py-1.5 text-xs hover:bg-muted"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </form>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+
           </div>
         )}
       </section>
