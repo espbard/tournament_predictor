@@ -1,6 +1,25 @@
+import { useRef, useState, useEffect } from 'react';
+
+const DESIGN_HEIGHT = 220; // px — player (200) + 20px breathing room for jump animation
+
 export function SoccerKickAnimation() {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const obs = new ResizeObserver(([entry]) => {
+      const h = entry.contentRect.height;
+      setScale(Math.min(1, Math.max(0.1, h / DESIGN_HEIGHT)));
+    });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
   return (
     <div
+      ref={containerRef}
       aria-hidden="true"
       className="pointer-events-none absolute inset-0 overflow-hidden"
       style={{ opacity: 0.18 }}
@@ -21,37 +40,47 @@ export function SoccerKickAnimation() {
         }
       `}</style>
 
-      {/* Player */}
-      <img
-        src="/soccer-player.png"
-        alt=""
+      {/* Inner wrapper: fixed design size, scales from bottom-left to fit container */}
+      <div
         style={{
           position: 'absolute',
           bottom: 0,
-          left: '24px',
-          height: '200px',
-          width: 'auto',
-          objectFit: 'contain',
-          mixBlendMode: 'multiply',
-          animation: 'soccerPlayerKick 4s ease-in-out infinite',
+          left: 0,
+          width: '260px',
+          height: `${DESIGN_HEIGHT}px`,
+          transformOrigin: 'bottom left',
+          transform: `scale(${scale})`,
         }}
-      />
-
-      {/* Ball — starts near the player's kicking foot */}
-      <img
-        src="/soccer-ball.png"
-        alt=""
-        style={{
-          position: 'absolute',
-          bottom: '6px',
-          left: '178px',
-          height: '58px',
-          width: '58px',
-          objectFit: 'contain',
-          mixBlendMode: 'multiply',
-          animation: 'soccerBallFly 4s ease-in-out infinite',
-        }}
-      />
+      >
+        <img
+          src="/soccer-player.png"
+          alt=""
+          style={{
+            position: 'absolute',
+            bottom: 0,
+            left: '24px',
+            height: '200px',
+            width: 'auto',
+            objectFit: 'contain',
+            mixBlendMode: 'multiply',
+            animation: 'soccerPlayerKick 4s ease-in-out infinite',
+          }}
+        />
+        <img
+          src="/soccer-ball.png"
+          alt=""
+          style={{
+            position: 'absolute',
+            bottom: '6px',
+            left: '178px',
+            height: '58px',
+            width: '58px',
+            objectFit: 'contain',
+            mixBlendMode: 'multiply',
+            animation: 'soccerBallFly 4s ease-in-out infinite',
+          }}
+        />
+      </div>
     </div>
   );
 }
