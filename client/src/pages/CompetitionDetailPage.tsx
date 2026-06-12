@@ -1196,15 +1196,34 @@ export default function CompetitionDetailPage() {
                   </tr>
                 );
               });
+              const tableHead = (
+                <thead>
+                  <tr className="border-b bg-muted/50 text-muted-foreground">
+                    <th className="pl-4 pr-3 py-3 text-left w-8">#</th>
+                    <th className="px-3 py-3 text-left">{t('competitionDetail.leaderboard.player')}</th>
+                    <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.exact')}</th>
+                    <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.result')}</th>
+                    <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.progresses')}</th>
+                    <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.group')}</th>
+                    <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.koTie')}</th>
+                    <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.final')}</th>
+                    <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.winner')}</th>
+                    <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.bonus')}</th>
+                    <th className="pl-3 pr-4 py-3 text-center whitespace-nowrap font-bold text-foreground border-l">{t('competitionDetail.leaderboard.total')}</th>
+                  </tr>
+                </thead>
+              );
               return (
                 <div className="hidden tv:grid tv:grid-cols-2 tv:gap-8 tv:items-start mt-4">
                   <div className="rounded-lg border dark:bg-white/5 p-2">
                     <table className="w-full text-sm">
+                      {tableHead}
                       <tbody className="divide-y">{renderRows(leaderboard.slice(0, mid))}</tbody>
                     </table>
                   </div>
                   <div className="rounded-lg border dark:bg-white/5 p-2">
                     <table className="w-full text-sm">
+                      {tableHead}
                       <tbody className="divide-y">{renderRows(leaderboard.slice(mid))}</tbody>
                     </table>
                   </div>
