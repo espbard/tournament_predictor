@@ -3,12 +3,20 @@
 @tailwind utilities;
 
 @keyframes gold-glow {
-  0%, 100% { box-shadow: 0 0 6px 2px rgba(234, 179, 8, 0.35); }
-  50%       { box-shadow: 0 0 18px 6px rgba(234, 179, 8, 0.7); }
+  0%, 100% { box-shadow: 0 0 4px 1px rgba(234, 179, 8, 0.3); }
+  50%       { box-shadow: 0 0 12px 4px rgba(234, 179, 8, 0.6); }
 }
 
 .animate-gold-glow {
   animation: gold-glow 2s ease-in-out infinite;
+}
+
+.glow-silver {
+  box-shadow: 0 0 8px 3px rgba(192, 192, 192, 0.45);
+}
+
+.glow-bronze {
+  box-shadow: 0 0 8px 3px rgba(180, 100, 30, 0.45);
 }
 
 @layer base {

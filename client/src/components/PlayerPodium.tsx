@@ -49,7 +49,7 @@ export default function PlayerPodium({ leaderboard, large = false }: Props) {
               <img
                 src={entry.imageUrl ?? '/default-avatar.png'}
                 alt={entry.username}
-                className={`rounded-full object-cover border-2 border-blue-500 ${entry.rank === 1 ? 'animate-gold-glow' : ''} ${large ? 'h-20 w-20' : 'h-10 w-10'}`}
+                className={`rounded-full object-cover border-2 border-blue-500 ${entry.rank === 1 ? 'animate-gold-glow' : entry.rank === 2 ? 'glow-silver' : entry.rank === 3 ? 'glow-bronze' : ''} ${large ? 'h-20 w-20' : 'h-10 w-10'}`}
               />
             </div>
             <p className={`font-medium text-center truncate w-full leading-tight ${large ? 'text-lg mb-3' : 'text-xs mb-2'}`}>
