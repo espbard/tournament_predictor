@@ -1092,13 +1092,11 @@ export default function CompetitionDetailPage() {
                 <tbody className="divide-y">
                   {leaderboard.map((entry, i) => {
                     const isMe = entry.userId === user?.id;
-                    const prev = leaderboard[i - 1];
-                    const showRank = i === 0 || entry.rank !== prev?.rank;
                     const b = entry.breakdown;
                     return (
                       <tr key={entry.userId} className={isMe ? 'bg-primary/5' : ''}>
                         <td className={`pl-3 pr-2 py-2.5 font-bold text-center ${entry.rank === 1 ? 'text-amber-500' : 'text-muted-foreground'}`}>
-                          {showRank ? entry.rank : ''}
+                          {entry.rank}
                         </td>
                         <td className="px-3 py-2.5">
                           <div className="flex items-center gap-2 min-w-0">
@@ -1128,14 +1126,12 @@ export default function CompetitionDetailPage() {
             {/* TV split view: two columns, no headers */}
             {user?.isLeaderboardUser && (() => {
               const mid = Math.ceil(leaderboard.length / 2);
-              const renderRows = (entries: typeof leaderboard) => entries.map((entry, i, arr) => {
-                const prev = arr[i - 1];
-                const showRank = i === 0 || entry.rank !== prev?.rank;
+              const renderRows = (entries: typeof leaderboard) => entries.map((entry) => {
                 const b = entry.breakdown;
                 return (
                   <tr key={entry.userId}>
                     <td className={`pl-4 pr-3 py-3 font-bold text-center text-base ${entry.rank === 1 ? 'text-amber-500' : 'text-muted-foreground'}`}>
-                      {showRank ? entry.rank : ''}
+                      {entry.rank}
                     </td>
                     <td className="px-3 py-3">
                       <div className="flex items-center gap-3 min-w-0">
