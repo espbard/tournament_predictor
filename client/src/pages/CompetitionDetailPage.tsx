@@ -1076,8 +1076,16 @@ export default function CompetitionDetailPage() {
       {activeTab === 'leaderboard' && (
         leaderboard.length === 0 ? (
           <p className="text-sm text-muted-foreground py-4 text-center">{t('competitionDetail.leaderboard.noScores')}</p>
-        ) : (
-          <>
+        ) : (() => {
+          const lastRank = leaderboard[leaderboard.length - 1].rank;
+          const rankColor = (rank: number) => {
+            if (rank === 1) return 'text-yellow-500';
+            if (rank === 2) return 'text-slate-400';
+            if (rank === 3) return 'text-amber-600';
+            if (rank === lastRank && rank > 3) return 'text-red-500';
+            return 'text-muted-foreground';
+          };
+          return (<>
             {tournament?.status !== 'upcoming' && (
               <PlayerPodium leaderboard={leaderboard} large={!!user?.isLeaderboardUser} />
             )}
@@ -1106,7 +1114,7 @@ export default function CompetitionDetailPage() {
                     const b = entry.breakdown;
                     return (
                       <tr key={entry.userId} className={isMe ? 'bg-primary/5' : ''}>
-                        <td className={`pl-3 pr-2 py-2.5 font-bold text-center ${entry.rank === 1 ? 'text-amber-500' : 'text-muted-foreground'}`}>
+                        <td className={`pl-3 pr-2 py-2.5 font-bold text-center ${rankColor(entry.rank)}`}>
                           {entry.rank}
                         </td>
                         <td className="px-3 py-2.5">
@@ -1141,7 +1149,7 @@ export default function CompetitionDetailPage() {
                 const b = entry.breakdown;
                 return (
                   <tr key={entry.userId}>
-                    <td className={`pl-4 pr-3 py-3 font-bold text-center text-base ${entry.rank === 1 ? 'text-amber-500' : 'text-muted-foreground'}`}>
+                    <td className={`pl-4 pr-3 py-3 font-bold text-center text-base ${rankColor(entry.rank)}`}>
                       {entry.rank}
                     </td>
                     <td className="px-3 py-3">
@@ -1177,8 +1185,8 @@ export default function CompetitionDetailPage() {
                 </div>
               );
             })()}
-          </>
-        )
+          </>);
+        })()
       )}
 
       {activeTab === 'knockout' && id && (
