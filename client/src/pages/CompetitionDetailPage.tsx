@@ -134,6 +134,15 @@ export default function CompetitionDetailPage() {
     enabled: !!competition && !user?.isAdmin && (activeTab === 'leaderboard' || !!user?.isLeaderboardUser),
   });
 
+  useEffect(() => {
+    if (!id || user?.isAdmin || (activeTab !== 'leaderboard' && !user?.isLeaderboardUser)) return;
+    const es = new EventSource(`/api/competitions/${id}/leaderboard/events`, { withCredentials: true });
+    es.addEventListener('leaderboard-updated', () => {
+      queryClient.invalidateQueries({ queryKey: ['competitions', id, 'leaderboard'] });
+    });
+    return () => es.close();
+  }, [id, activeTab, user?.isAdmin, user?.isLeaderboardUser, queryClient]);
+
   const lockMutation = useMutation({
     mutationFn: () => api.post<{ groupStageLocked: boolean }>(`/competitions/${id}/lock-group-stage`, {}),
     onSuccess: () => {

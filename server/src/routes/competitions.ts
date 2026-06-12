@@ -6,6 +6,7 @@ import { competitions, competitionMembers, users, tournaments, predictions, matc
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { CreateCompetitionSchema, CreatePredictionSchema, SaveBracketPredictionsSchema, DEFAULT_SCORING_CONFIG, SaveBonusAnswerSchema } from '@tournament-predictor/shared';
 import { recalculateAllScoresForTournament } from '../lib/scoringTrigger.js';
+import { subscribeLeaderboard, unsubscribeLeaderboard } from '../lib/leaderboardEvents.js';
 
 const router = Router();
 
@@ -307,6 +308,35 @@ router.get('/:id/leaderboard', requireAuth, async (req, res) => {
     console.error('Leaderboard error:', err);
     res.status(500).json({ error: 'Failed to fetch leaderboard' });
   }
+});
+
+router.get('/:id/leaderboard/events', requireAuth, async (req, res) => {
+  const { id } = req.params;
+  const user = res.locals.user;
+
+  const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
+  if (!competition) return res.status(404).json({ error: 'Competition not found' });
+
+  if (!user.isAdmin) {
+    const [membership] = await db
+      .select()
+      .from(competitionMembers)
+      .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
+    if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+  }
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  const ping = setInterval(() => res.write(': ping\n\n'), 30_000);
+  subscribeLeaderboard(id, res);
+
+  req.on('close', () => {
+    clearInterval(ping);
+    unsubscribeLeaderboard(id, res);
+  });
 });
 
 router.get('/:id/my-status', requireAuth, async (req, res) => {

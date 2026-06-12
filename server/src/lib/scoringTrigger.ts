@@ -1,4 +1,5 @@
 import { eq, and, inArray } from 'drizzle-orm';
+import { notifyLeaderboardUpdate } from './leaderboardEvents.js';
 import { db } from '../db/client.js';
 import {
   matches,
@@ -341,6 +342,7 @@ export async function triggerScoringForMatch(matchId: string, tournamentId: stri
     // Flip marking and full breakdown recompute (flip marking integrated inside)
     await recomputeAllMemberBreakdowns(tournamentId, comp.id, config, firstRound, bracketSlots);
   }
+  notifyLeaderboardUpdate(allComps.map(c => c.id));
 }
 
 // ── Full recalculate (called from admin "Recalculate Scores" action) ──────────
@@ -382,6 +384,7 @@ export async function recalculateAllScoresForTournament(tournamentId: string): P
     // Flip marking is integrated into recomputeAllMemberBreakdowns
     await recomputeAllMemberBreakdowns(tournamentId, comp.id, config, firstRound, bracketSlotsFull);
   }
+  notifyLeaderboardUpdate(allComps.map(c => c.id));
 }
 
 // ── Bonus question scoring (called when admin sets correctAnswer) ─────────────
@@ -438,4 +441,5 @@ export async function triggerBonusScoring(questionId: string, tournamentId: stri
         .where(and(eq(competitionMembers.competitionId, comp.id), eq(competitionMembers.userId, userId)));
     }
   }
+  notifyLeaderboardUpdate(allComps.map(c => c.id));
 }
