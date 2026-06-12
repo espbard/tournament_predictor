@@ -851,7 +851,7 @@ export default function CompetitionDetailPage() {
                     : [];
                   return (
                     <div key={groupName} className="space-y-3">
-                      <div className="rounded-lg border overflow-hidden dark:bg-white/5">
+                      <div className="rounded-lg border dark:bg-white/5 p-2">
                         <div className="bg-muted/50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                           Group {groupName}
                         </div>
@@ -1117,7 +1117,7 @@ export default function CompetitionDetailPage() {
             )}
 
             {/* Standard table (hidden on TV for leaderboard users) */}
-            <div className={`overflow-x-auto rounded-lg border mt-4 dark:bg-white/5 ${user?.isLeaderboardUser ? 'tv:hidden' : ''}`}>
+            <div className={`overflow-x-auto rounded-lg border mt-4 dark:bg-white/5 p-2 ${user?.isLeaderboardUser ? 'tv:hidden' : ''}`}>
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b bg-muted/50 text-muted-foreground">
@@ -1198,12 +1198,12 @@ export default function CompetitionDetailPage() {
               });
               return (
                 <div className="hidden tv:grid tv:grid-cols-2 tv:gap-8 tv:items-start mt-4">
-                  <div className="rounded-lg border overflow-hidden dark:bg-white/5">
+                  <div className="rounded-lg border dark:bg-white/5 p-2">
                     <table className="w-full text-sm">
                       <tbody className="divide-y">{renderRows(leaderboard.slice(0, mid))}</tbody>
                     </table>
                   </div>
-                  <div className="rounded-lg border overflow-hidden dark:bg-white/5">
+                  <div className="rounded-lg border dark:bg-white/5 p-2">
                     <table className="w-full text-sm">
                       <tbody className="divide-y">{renderRows(leaderboard.slice(mid))}</tbody>
                     </table>
