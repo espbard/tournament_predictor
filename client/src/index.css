@@ -2,6 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
+@keyframes gold-glow {
+  0%, 100% { box-shadow: 0 0 6px 2px rgba(234, 179, 8, 0.35); }
+  50%       { box-shadow: 0 0 18px 6px rgba(234, 179, 8, 0.7); }
+}
+
+.animate-gold-glow {
+  animation: gold-glow 2s ease-in-out infinite;
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;

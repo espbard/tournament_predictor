@@ -36,10 +36,10 @@ export default function PlayerPodium({ leaderboard, large = false }: Props) {
         }
         return (
           <div key={entry.userId} className={`flex flex-col items-center ${large ? 'w-44' : 'w-24'}`}>
-            <div className={`relative ${large ? 'mb-2' : 'mb-1'}`}>
+            <div className={`relative ${large ? 'mb-2 mt-14' : 'mb-1 mt-6'}`}>
               {entry.rank === 1 && (
                 <span
-                  className={`absolute left-1/2 -translate-x-1/2 select-none leading-none ${large ? '-top-8 text-4xl' : '-top-4 text-sm'}`}
+                  className={`absolute left-1/2 -translate-x-1/2 select-none leading-none ${large ? '-top-12 text-4xl' : '-top-6 text-sm'}`}
                   role="img"
                   aria-label="crown"
                 >
@@ -49,7 +49,7 @@ export default function PlayerPodium({ leaderboard, large = false }: Props) {
               <img
                 src={entry.imageUrl ?? '/default-avatar.png'}
                 alt={entry.username}
-                className={`rounded-full object-cover border-2 border-blue-500 ${large ? 'h-20 w-20' : 'h-10 w-10'}`}
+                className={`rounded-full object-cover border-2 border-blue-500 ${entry.rank === 1 ? 'animate-gold-glow' : ''} ${large ? 'h-20 w-20' : 'h-10 w-10'}`}
               />
             </div>
             <p className={`font-medium text-center truncate w-full leading-tight ${large ? 'text-lg mb-3' : 'text-xs mb-2'}`}>
