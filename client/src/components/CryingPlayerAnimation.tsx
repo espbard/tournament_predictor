@@ -66,14 +66,14 @@ export function CryingPlayerAnimation() {
           }}
         />
 
-        {/* Left eye — two tears, staggered */}
+        {/* Left eye */}
         <img
           src="/crying-tear.png"
           alt=""
           style={{
             position: 'absolute',
-            bottom: '113px',
-            left: '73px',
+            bottom: '103px',
+            left: '85px',
             height: '22px',
             width: '16px',
             objectFit: 'contain',
@@ -81,48 +81,20 @@ export function CryingPlayerAnimation() {
             animation: 'cryingTearLeft 3.8s ease-in 0s infinite',
           }}
         />
-        <img
-          src="/crying-tear.png"
-          alt=""
-          style={{
-            position: 'absolute',
-            bottom: '111px',
-            left: '70px',
-            height: '20px',
-            width: '15px',
-            objectFit: 'contain',
-            mixBlendMode: 'multiply',
-            animation: 'cryingTearLeft 4.2s ease-in 1.9s infinite',
-          }}
-        />
 
-        {/* Right eye — two tears, staggered */}
+        {/* Right eye */}
         <img
           src="/crying-tear.png"
           alt=""
           style={{
             position: 'absolute',
-            bottom: '113px',
+            bottom: '103px',
             left: '114px',
             height: '22px',
             width: '16px',
             objectFit: 'contain',
             mixBlendMode: 'multiply',
-            animation: 'cryingTearRight 4.0s ease-in 0.8s infinite',
-          }}
-        />
-        <img
-          src="/crying-tear.png"
-          alt=""
-          style={{
-            position: 'absolute',
-            bottom: '110px',
-            left: '117px',
-            height: '19px',
-            width: '14px',
-            objectFit: 'contain',
-            mixBlendMode: 'multiply',
-            animation: 'cryingTearRight 3.6s ease-in 2.7s infinite',
+            animation: 'cryingTearRight 4.0s ease-in 1.5s infinite',
           }}
         />
       </div>
