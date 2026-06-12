@@ -6,6 +6,7 @@ import { useAuthStore } from '@/store/authStore';
 import ImageUpload from '@/components/ImageUpload';
 import KnockoutStageContent from '@/components/KnockoutStageContent';
 import PlayerPodium from '@/components/PlayerPodium';
+import { SoccerKickAnimation } from '@/components/SoccerKickAnimation';
 import BonusQuestionsTab from './BonusQuestionsTab';
 import { useT } from '@/lib/useT';
 import type { Competition, Tournament, Prediction, MatchStage, LeaderboardEntry, BracketPredictions } from '@tournament-predictor/shared';
@@ -1092,7 +1093,8 @@ export default function CompetitionDetailPage() {
             if (rank === lastRank && rank > 3) return 'bg-red-50 dark:bg-red-500/10';
             return '';
           };
-          return (<>
+          return (<div className="relative overflow-hidden">
+            <SoccerKickAnimation />
             {tournament?.status !== 'upcoming' && (
               user?.isLeaderboardUser ? (
                 <div className="tv:relative">
@@ -1230,7 +1232,7 @@ export default function CompetitionDetailPage() {
                 </div>
               );
             })()}
-          </>);
+          </div>);
         })()
       )}
 
