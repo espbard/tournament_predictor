@@ -7,6 +7,7 @@ import ImageUpload from '@/components/ImageUpload';
 import KnockoutStageContent from '@/components/KnockoutStageContent';
 import PlayerPodium from '@/components/PlayerPodium';
 import { SoccerKickAnimation } from '@/components/SoccerKickAnimation';
+import { CryingPlayerAnimation } from '@/components/CryingPlayerAnimation';
 import BonusQuestionsTab from './BonusQuestionsTab';
 import { useT } from '@/lib/useT';
 import type { Competition, Tournament, Prediction, MatchStage, LeaderboardEntry, BracketPredictions } from '@tournament-predictor/shared';
@@ -1229,10 +1230,13 @@ export default function CompetitionDetailPage() {
                     </div>
                   </div>
                   <div className="rounded-lg border dark:bg-white/5 p-2">
-                    <table className="w-full text-sm">
-                      {tableHead}
-                      <tbody className="divide-y">{renderRows(leaderboard.slice(mid))}</tbody>
-                    </table>
+                    <div style={{ position: 'relative' }}>
+                      <CryingPlayerAnimation />
+                      <table className="w-full text-sm">
+                        {tableHead}
+                        <tbody className="divide-y">{renderRows(leaderboard.slice(mid))}</tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               );
