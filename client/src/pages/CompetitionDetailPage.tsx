@@ -1197,7 +1197,7 @@ export default function CompetitionDetailPage() {
                 );
               });
               return (
-                <div className="hidden tv:grid tv:grid-cols-2 tv:gap-8 mt-4">
+                <div className="hidden tv:grid tv:grid-cols-2 tv:gap-8 tv:items-start mt-4">
                   <div className="rounded-lg border overflow-hidden dark:bg-white/5">
                     <table className="w-full text-sm">
                       <tbody className="divide-y">{renderRows(leaderboard.slice(0, mid))}</tbody>
