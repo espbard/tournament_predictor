@@ -1096,7 +1096,7 @@ export default function CompetitionDetailPage() {
             {tournament?.status !== 'upcoming' && (
               user?.isLeaderboardUser ? (
                 <div className="tv:relative">
-                  <div className="hidden tv:flex items-center gap-3 absolute left-0 top-0">
+                  <div className="hidden tv:flex items-center gap-3 absolute left-0 top-0 bottom-0">
                     {competition.imageUrl && (
                       <img
                         src={competition.imageUrl}
