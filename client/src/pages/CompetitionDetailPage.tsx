@@ -681,7 +681,7 @@ export default function CompetitionDetailPage() {
 
       {/* Header */}
       {user?.isLeaderboardUser ? (
-        <div className="mb-4 flex items-center gap-3">
+        <div className="mb-4 flex items-center gap-3 tv:hidden">
           {competition.imageUrl && (
             <img
               src={competition.imageUrl}
@@ -1087,7 +1087,26 @@ export default function CompetitionDetailPage() {
           };
           return (<>
             {tournament?.status !== 'upcoming' && (
-              <PlayerPodium leaderboard={leaderboard} large={!!user?.isLeaderboardUser} />
+              user?.isLeaderboardUser ? (
+                <div className="tv:relative">
+                  <div className="hidden tv:flex items-center gap-3 absolute left-0 top-0 bottom-0">
+                    {competition.imageUrl && (
+                      <img
+                        src={competition.imageUrl}
+                        alt={competition.name}
+                        className="h-10 w-10 rounded-lg object-cover flex-shrink-0"
+                      />
+                    )}
+                    <div>
+                      <h1 className="text-xl font-bold leading-tight">{competition.name}</h1>
+                      {tournament && <p className="text-sm text-muted-foreground">{tournament.name}</p>}
+                    </div>
+                  </div>
+                  <PlayerPodium leaderboard={leaderboard} large={true} />
+                </div>
+              ) : (
+                <PlayerPodium leaderboard={leaderboard} large={false} />
+              )
             )}
 
             {/* Standard table (hidden on TV for leaderboard users) */}
