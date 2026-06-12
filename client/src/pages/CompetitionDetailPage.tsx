@@ -1099,7 +1099,7 @@ export default function CompetitionDetailPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {leaderboard.map((entry, i) => {
+                  {leaderboard.map((entry) => {
                     const isMe = entry.userId === user?.id;
                     const b = entry.breakdown;
                     return (
