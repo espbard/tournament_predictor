@@ -800,7 +800,7 @@ export default function TournamentDetailPage() {
       </Link>
 
       {/* Stage tabs */}
-      <div className="flex border-b mb-6">
+      <div className="flex flex-wrap gap-1 border-b mb-6">
         {([
           ['group', t('tournamentDetail.tabs.groupStage')],
           ['standings', t('tournamentDetail.tabs.groupTables')],
@@ -810,7 +810,7 @@ export default function TournamentDetailPage() {
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            className={`whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
               activeTab === tab ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
             }`}
           >

@@ -59,7 +59,10 @@ export default function CompetitionDetailPage() {
   const [saveErrors, setSaveErrors] = useState<Record<string, string>>({});
 
   const [activeTab, setActiveTab] = useState<'group' | 'tables' | 'knockout' | 'bonus' | 'leaderboard'>(
-    () => useAuthStore.getState().user?.isLeaderboardUser ? 'leaderboard' : 'group'
+    () => {
+      const u = useAuthStore.getState().user;
+      return u?.isLeaderboardUser || u?.isAdmin ? 'leaderboard' : 'group';
+    }
   );
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -133,11 +136,11 @@ export default function CompetitionDetailPage() {
   const { data: leaderboard = [] } = useQuery({
     queryKey: ['competitions', id, 'leaderboard'],
     queryFn: () => api.get<LeaderboardEntry[]>(`/competitions/${id}/leaderboard`),
-    enabled: !!competition && !user?.isAdmin && (activeTab === 'leaderboard' || !!user?.isLeaderboardUser),
+    enabled: !!competition && (activeTab === 'leaderboard' || (!user?.isAdmin && !!user?.isLeaderboardUser)),
   });
 
   useEffect(() => {
-    if (!id || user?.isAdmin || (activeTab !== 'leaderboard' && !user?.isLeaderboardUser)) return;
+    if (!id || (activeTab !== 'leaderboard' && !user?.isLeaderboardUser)) return;
     const es = new EventSource(`/api/competitions/${id}/leaderboard/events`, { withCredentials: true });
     es.addEventListener('leaderboard-updated', () => {
       queryClient.invalidateQueries({ queryKey: ['competitions', id, 'leaderboard'] });
@@ -803,6 +806,19 @@ export default function CompetitionDetailPage() {
         </form>
       )}
 
+      {user?.isAdmin && (
+        <div className="flex flex-wrap gap-1 mb-6 border-b">
+          <button
+            onClick={() => setActiveTab('leaderboard')}
+            className={`whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              activeTab === 'leaderboard' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {t('competitionDetail.tabs.leaderboard')}
+          </button>
+        </div>
+      )}
+
       {!user?.isAdmin && (<>
       {!user?.isLeaderboardUser && (
       <div className="flex flex-wrap gap-1 mb-6 border-b">
@@ -1073,176 +1089,6 @@ export default function CompetitionDetailPage() {
           tournamentId={competition.tournamentId}
           deadlinePassed={deadlinePassed}
         />
-      )}
-
-      {activeTab === 'leaderboard' && (
-        leaderboard.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-4 text-center">{t('competitionDetail.leaderboard.noScores')}</p>
-        ) : (() => {
-          const lastRank = leaderboard[leaderboard.length - 1].rank;
-          const rankColor = (rank: number) => {
-            if (rank === 1) return 'text-yellow-500';
-            if (rank === 2) return 'text-slate-400';
-            if (rank === 3) return 'text-amber-600';
-            if (rank === lastRank && rank > 3) return 'text-red-500';
-            return 'text-muted-foreground';
-          };
-          const rowBg = (rank: number) => {
-            if (rank === 1) return 'bg-yellow-50 dark:bg-yellow-500/10';
-            if (rank === 2) return 'bg-slate-100 dark:bg-slate-400/10';
-            if (rank === 3) return 'bg-amber-50 dark:bg-amber-600/10';
-            if (rank === lastRank && rank > 3) return 'bg-red-50 dark:bg-red-500/10';
-            return '';
-          };
-          return (<>
-            {tournament?.status !== 'upcoming' && (
-              user?.isLeaderboardUser ? (
-                <div className="tv:relative">
-                  <div className="hidden tv:flex items-center gap-3 absolute left-0 top-0 bottom-0">
-                    {competition.imageUrl && (
-                      <img
-                        src={competition.imageUrl}
-                        alt={competition.name}
-                        className="h-10 w-10 rounded-lg object-cover flex-shrink-0"
-                      />
-                    )}
-                    <div>
-                      <h1 className="text-xl font-bold leading-tight">{competition.name}</h1>
-                      {tournament && <p className="text-sm text-muted-foreground">{tournament.name}</p>}
-                    </div>
-                  </div>
-                  <PlayerPodium leaderboard={leaderboard} large={true} />
-                </div>
-              ) : (
-                <PlayerPodium leaderboard={leaderboard} large={false} />
-              )
-            )}
-
-            {/* Standard table (hidden on TV for leaderboard users) */}
-            <div className={`overflow-x-auto rounded-lg border mt-4 dark:bg-white/5 p-2 ${user?.isLeaderboardUser ? 'tv:hidden' : ''}`}>
-              <div style={{ position: 'relative' }}>
-                <SoccerKickAnimation />
-                <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b bg-muted/50 text-muted-foreground">
-                    <th className="pl-3 pr-2 py-2 text-left w-6">#</th>
-                    <th className="px-3 py-2 text-left min-w-[110px]">{t('competitionDetail.leaderboard.player')}</th>
-                    <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.exact')}</th>
-                    <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.result')}</th>
-                    <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.progresses')}</th>
-                    <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.group')}</th>
-                    <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.koTie')}</th>
-                    <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.final')}</th>
-                    <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.winner')}</th>
-                    <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.bonus')}</th>
-                    <th className="pl-2 pr-3 py-2 text-center whitespace-nowrap font-bold text-foreground border-l">{t('competitionDetail.leaderboard.total')}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {leaderboard.map((entry) => {
-                    const isMe = entry.userId === user?.id;
-                    const b = entry.breakdown;
-                    return (
-                      <tr key={entry.userId} className={rowBg(entry.rank) || (isMe ? 'bg-primary/5' : '')}>
-                        <td className={`pl-3 pr-2 py-2.5 font-bold text-center ${rankColor(entry.rank)}`}>
-                          {entry.rank}
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <img src={entry.imageUrl ?? '/default-avatar.png'} alt="" className="h-5 w-5 rounded-full object-cover flex-shrink-0" />
-                            <span className={`font-medium truncate ${isMe ? 'text-primary' : ''}`}>
-                              {entry.username}
-                              {isMe && <span className="ml-1 font-normal text-muted-foreground">{t('competitionDetail.leaderboard.you')}</span>}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-2 py-2.5 text-center text-muted-foreground">{b.exactScorePoints}</td>
-                        <td className="px-2 py-2.5 text-center text-muted-foreground">{b.correctResultPoints}</td>
-                        <td className="px-2 py-2.5 text-center text-muted-foreground">{b.correctTeamProgressesPoints}</td>
-                        <td className="px-2 py-2.5 text-center text-muted-foreground">{b.correctGroupPositionPoints}</td>
-                        <td className="px-2 py-2.5 text-center text-muted-foreground">{b.correctTeamInKnockoutTiePoints}</td>
-                        <td className="px-2 py-2.5 text-center text-muted-foreground">{b.correctTeamInFinalPoints}</td>
-                        <td className="px-2 py-2.5 text-center text-muted-foreground">{b.correctWinnerPoints}</td>
-                        <td className="px-2 py-2.5 text-center text-muted-foreground">{b.bonusQuestionPoints}</td>
-                        <td className="pl-2 pr-3 py-2.5 text-center font-bold text-sm border-l">{entry.totalPoints}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              </div>
-            </div>
-
-            {/* TV split view: two columns, no headers */}
-            {user?.isLeaderboardUser && (() => {
-              const mid = Math.ceil(leaderboard.length / 2);
-              const renderRows = (entries: typeof leaderboard) => entries.map((entry) => {
-                const b = entry.breakdown;
-                return (
-                  <tr key={entry.userId} className={rowBg(entry.rank)}>
-                    <td className={`pl-4 pr-3 py-3 font-bold text-center text-base ${rankColor(entry.rank)}`}>
-                      {entry.rank}
-                    </td>
-                    <td className="px-3 py-3">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <img src={entry.imageUrl ?? '/default-avatar.png'} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0" />
-                        <span className="font-medium text-base truncate">{entry.username}</span>
-                      </div>
-                    </td>
-                    <td className="px-3 py-3 text-center text-muted-foreground">{b.exactScorePoints}</td>
-                    <td className="px-3 py-3 text-center text-muted-foreground">{b.correctResultPoints}</td>
-                    <td className="px-3 py-3 text-center text-muted-foreground">{b.correctTeamProgressesPoints}</td>
-                    <td className="px-3 py-3 text-center text-muted-foreground">{b.correctGroupPositionPoints}</td>
-                    <td className="px-3 py-3 text-center text-muted-foreground">{b.correctTeamInKnockoutTiePoints}</td>
-                    <td className="px-3 py-3 text-center text-muted-foreground">{b.correctTeamInFinalPoints}</td>
-                    <td className="px-3 py-3 text-center text-muted-foreground">{b.correctWinnerPoints}</td>
-                    <td className="px-3 py-3 text-center text-muted-foreground">{b.bonusQuestionPoints}</td>
-                    <td className="pl-3 pr-4 py-3 text-center font-bold text-base border-l">{entry.totalPoints}</td>
-                  </tr>
-                );
-              });
-              const tableHead = (
-                <thead>
-                  <tr className="border-b bg-muted/50 text-muted-foreground">
-                    <th className="pl-4 pr-3 py-3 text-left w-8">#</th>
-                    <th className="px-3 py-3 text-left">{t('competitionDetail.leaderboard.player')}</th>
-                    <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.exact')}</th>
-                    <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.result')}</th>
-                    <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.progresses')}</th>
-                    <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.group')}</th>
-                    <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.koTie')}</th>
-                    <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.final')}</th>
-                    <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.winner')}</th>
-                    <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.bonus')}</th>
-                    <th className="pl-3 pr-4 py-3 text-center whitespace-nowrap font-bold text-foreground border-l">{t('competitionDetail.leaderboard.total')}</th>
-                  </tr>
-                </thead>
-              );
-              return (
-                <div className="hidden tv:grid tv:grid-cols-2 tv:gap-8 tv:items-start mt-4">
-                  <div className="rounded-lg border dark:bg-white/5 p-2">
-                    <div style={{ position: 'relative' }}>
-                      <SoccerKickAnimation />
-                      <table className="w-full text-sm">
-                        {tableHead}
-                        <tbody className="divide-y">{renderRows(leaderboard.slice(0, mid))}</tbody>
-                      </table>
-                    </div>
-                  </div>
-                  <div className="rounded-lg border dark:bg-white/5 p-2">
-                    <div style={{ position: 'relative' }}>
-                      <CryingPlayerAnimation />
-                      <table className="w-full text-sm">
-                        {tableHead}
-                        <tbody className="divide-y">{renderRows(leaderboard.slice(mid))}</tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-          </>);
-        })()
       )}
 
       {activeTab === 'knockout' && id && (
@@ -1578,6 +1424,177 @@ export default function CompetitionDetailPage() {
       )}
       </>}
       </>)}
+
+      {activeTab === 'leaderboard' && (
+        leaderboard.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-4 text-center">{t('competitionDetail.leaderboard.noScores')}</p>
+        ) : (() => {
+          const lastRank = leaderboard[leaderboard.length - 1].rank;
+          const rankColor = (rank: number) => {
+            if (rank === 1) return 'text-yellow-500';
+            if (rank === 2) return 'text-slate-400';
+            if (rank === 3) return 'text-amber-600';
+            if (rank === lastRank && rank > 3) return 'text-red-500';
+            return 'text-muted-foreground';
+          };
+          const rowBg = (rank: number) => {
+            if (rank === 1) return 'bg-yellow-50 dark:bg-yellow-500/10';
+            if (rank === 2) return 'bg-slate-100 dark:bg-slate-400/10';
+            if (rank === 3) return 'bg-amber-50 dark:bg-amber-600/10';
+            if (rank === lastRank && rank > 3) return 'bg-red-50 dark:bg-red-500/10';
+            return '';
+          };
+          return (<>
+            {tournament?.status !== 'upcoming' && (
+              user?.isLeaderboardUser ? (
+                <div className="tv:relative">
+                  <div className="hidden tv:flex items-center gap-3 absolute left-0 top-0 bottom-0">
+                    {competition.imageUrl && (
+                      <img
+                        src={competition.imageUrl}
+                        alt={competition.name}
+                        className="h-10 w-10 rounded-lg object-cover flex-shrink-0"
+                      />
+                    )}
+                    <div>
+                      <h1 className="text-xl font-bold leading-tight">{competition.name}</h1>
+                      {tournament && <p className="text-sm text-muted-foreground">{tournament.name}</p>}
+                    </div>
+                  </div>
+                  <PlayerPodium leaderboard={leaderboard} large={true} />
+                </div>
+              ) : (
+                <PlayerPodium leaderboard={leaderboard} large={false} />
+              )
+            )}
+
+            {/* Standard table (hidden on TV for leaderboard users) */}
+            <div className={`overflow-x-auto rounded-lg border mt-4 dark:bg-white/5 p-2 ${user?.isLeaderboardUser ? 'tv:hidden' : ''}`}>
+              <div style={{ position: 'relative' }}>
+                <SoccerKickAnimation />
+                <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b bg-muted/50 text-muted-foreground">
+                    <th className="pl-3 pr-2 py-2 text-left w-6">#</th>
+                    <th className="px-3 py-2 text-left min-w-[110px]">{t('competitionDetail.leaderboard.player')}</th>
+                    <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.exact')}</th>
+                    <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.result')}</th>
+                    <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.progresses')}</th>
+                    <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.group')}</th>
+                    <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.koTie')}</th>
+                    <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.final')}</th>
+                    <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.winner')}</th>
+                    <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.bonus')}</th>
+                    <th className="pl-2 pr-3 py-2 text-center whitespace-nowrap font-bold text-foreground border-l">{t('competitionDetail.leaderboard.total')}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {leaderboard.map((entry) => {
+                    const isMe = entry.userId === user?.id;
+                    const b = entry.breakdown;
+                    return (
+                      <tr key={entry.userId} className={rowBg(entry.rank) || (isMe ? 'bg-primary/5' : '')}>
+                        <td className={`pl-3 pr-2 py-2.5 font-bold text-center ${rankColor(entry.rank)}`}>
+                          {entry.rank}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <img src={entry.imageUrl ?? '/default-avatar.png'} alt="" className="h-5 w-5 rounded-full object-cover flex-shrink-0" />
+                            <span className={`font-medium truncate ${isMe ? 'text-primary' : ''}`}>
+                              {entry.username}
+                              {isMe && <span className="ml-1 font-normal text-muted-foreground">{t('competitionDetail.leaderboard.you')}</span>}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-2 py-2.5 text-center text-muted-foreground">{b.exactScorePoints}</td>
+                        <td className="px-2 py-2.5 text-center text-muted-foreground">{b.correctResultPoints}</td>
+                        <td className="px-2 py-2.5 text-center text-muted-foreground">{b.correctTeamProgressesPoints}</td>
+                        <td className="px-2 py-2.5 text-center text-muted-foreground">{b.correctGroupPositionPoints}</td>
+                        <td className="px-2 py-2.5 text-center text-muted-foreground">{b.correctTeamInKnockoutTiePoints}</td>
+                        <td className="px-2 py-2.5 text-center text-muted-foreground">{b.correctTeamInFinalPoints}</td>
+                        <td className="px-2 py-2.5 text-center text-muted-foreground">{b.correctWinnerPoints}</td>
+                        <td className="px-2 py-2.5 text-center text-muted-foreground">{b.bonusQuestionPoints}</td>
+                        <td className="pl-2 pr-3 py-2.5 text-center font-bold text-sm border-l">{entry.totalPoints}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              </div>
+            </div>
+
+            {/* TV split view: two columns, no headers */}
+            {user?.isLeaderboardUser && (() => {
+              const mid = Math.ceil(leaderboard.length / 2);
+              const renderRows = (entries: typeof leaderboard) => entries.map((entry) => {
+                const b = entry.breakdown;
+                return (
+                  <tr key={entry.userId} className={rowBg(entry.rank)}>
+                    <td className={`pl-4 pr-3 py-3 font-bold text-center text-base ${rankColor(entry.rank)}`}>
+                      {entry.rank}
+                    </td>
+                    <td className="px-3 py-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <img src={entry.imageUrl ?? '/default-avatar.png'} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0" />
+                        <span className="font-medium text-base truncate">{entry.username}</span>
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 text-center text-muted-foreground">{b.exactScorePoints}</td>
+                    <td className="px-3 py-3 text-center text-muted-foreground">{b.correctResultPoints}</td>
+                    <td className="px-3 py-3 text-center text-muted-foreground">{b.correctTeamProgressesPoints}</td>
+                    <td className="px-3 py-3 text-center text-muted-foreground">{b.correctGroupPositionPoints}</td>
+                    <td className="px-3 py-3 text-center text-muted-foreground">{b.correctTeamInKnockoutTiePoints}</td>
+                    <td className="px-3 py-3 text-center text-muted-foreground">{b.correctTeamInFinalPoints}</td>
+                    <td className="px-3 py-3 text-center text-muted-foreground">{b.correctWinnerPoints}</td>
+                    <td className="px-3 py-3 text-center text-muted-foreground">{b.bonusQuestionPoints}</td>
+                    <td className="pl-3 pr-4 py-3 text-center font-bold text-base border-l">{entry.totalPoints}</td>
+                  </tr>
+                );
+              });
+              const tableHead = (
+                <thead>
+                  <tr className="border-b bg-muted/50 text-muted-foreground">
+                    <th className="pl-4 pr-3 py-3 text-left w-8">#</th>
+                    <th className="px-3 py-3 text-left">{t('competitionDetail.leaderboard.player')}</th>
+                    <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.exact')}</th>
+                    <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.result')}</th>
+                    <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.progresses')}</th>
+                    <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.group')}</th>
+                    <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.koTie')}</th>
+                    <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.final')}</th>
+                    <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.winner')}</th>
+                    <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.bonus')}</th>
+                    <th className="pl-3 pr-4 py-3 text-center whitespace-nowrap font-bold text-foreground border-l">{t('competitionDetail.leaderboard.total')}</th>
+                  </tr>
+                </thead>
+              );
+              return (
+                <div className="hidden tv:grid tv:grid-cols-2 tv:gap-8 tv:items-start mt-4">
+                  <div className="rounded-lg border dark:bg-white/5 p-2">
+                    <div style={{ position: 'relative' }}>
+                      <SoccerKickAnimation />
+                      <table className="w-full text-sm">
+                        {tableHead}
+                        <tbody className="divide-y">{renderRows(leaderboard.slice(0, mid))}</tbody>
+                      </table>
+                    </div>
+                  </div>
+                  <div className="rounded-lg border dark:bg-white/5 p-2">
+                    <div style={{ position: 'relative' }}>
+                      <CryingPlayerAnimation />
+                      <table className="w-full text-sm">
+                        {tableHead}
+                        <tbody className="divide-y">{renderRows(leaderboard.slice(mid))}</tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </>);
+        })()
+      )}
+
       </div>
 
       {/* Clear predictions confirm */}
