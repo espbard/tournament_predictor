@@ -6,6 +6,8 @@ import { useAuthStore } from '@/store/authStore';
 import ImageUpload from '@/components/ImageUpload';
 import KnockoutStageContent from '@/components/KnockoutStageContent';
 import PlayerPodium from '@/components/PlayerPodium';
+import { SoccerKickAnimation } from '@/components/SoccerKickAnimation';
+import { CryingPlayerAnimation } from '@/components/CryingPlayerAnimation';
 import BonusQuestionsTab from './BonusQuestionsTab';
 import { useT } from '@/lib/useT';
 import type { Competition, Tournament, Prediction, MatchStage, LeaderboardEntry, BracketPredictions } from '@tournament-predictor/shared';
@@ -1118,7 +1120,9 @@ export default function CompetitionDetailPage() {
 
             {/* Standard table (hidden on TV for leaderboard users) */}
             <div className={`overflow-x-auto rounded-lg border mt-4 dark:bg-white/5 p-2 ${user?.isLeaderboardUser ? 'tv:hidden' : ''}`}>
-              <table className="w-full text-xs">
+              <div style={{ position: 'relative' }}>
+                <SoccerKickAnimation />
+                <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b bg-muted/50 text-muted-foreground">
                     <th className="pl-3 pr-2 py-2 text-left w-6">#</th>
@@ -1166,6 +1170,7 @@ export default function CompetitionDetailPage() {
                   })}
                 </tbody>
               </table>
+              </div>
             </div>
 
             {/* TV split view: two columns, no headers */}
@@ -1216,16 +1221,22 @@ export default function CompetitionDetailPage() {
               return (
                 <div className="hidden tv:grid tv:grid-cols-2 tv:gap-8 tv:items-start mt-4">
                   <div className="rounded-lg border dark:bg-white/5 p-2">
-                    <table className="w-full text-sm">
-                      {tableHead}
-                      <tbody className="divide-y">{renderRows(leaderboard.slice(0, mid))}</tbody>
-                    </table>
+                    <div style={{ position: 'relative' }}>
+                      <SoccerKickAnimation />
+                      <table className="w-full text-sm">
+                        {tableHead}
+                        <tbody className="divide-y">{renderRows(leaderboard.slice(0, mid))}</tbody>
+                      </table>
+                    </div>
                   </div>
                   <div className="rounded-lg border dark:bg-white/5 p-2">
-                    <table className="w-full text-sm">
-                      {tableHead}
-                      <tbody className="divide-y">{renderRows(leaderboard.slice(mid))}</tbody>
-                    </table>
+                    <div style={{ position: 'relative' }}>
+                      <CryingPlayerAnimation />
+                      <table className="w-full text-sm">
+                        {tableHead}
+                        <tbody className="divide-y">{renderRows(leaderboard.slice(mid))}</tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               );
