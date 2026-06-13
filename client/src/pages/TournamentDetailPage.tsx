@@ -253,6 +253,8 @@ export default function TournamentDetailPage() {
 
   const [pendingResults, setPendingResults] = useState<Record<string, { home: number; away: number }>>({});
 
+  const [teamsOpen, setTeamsOpen] = useState<boolean | null>(null);
+
   const [completedGamesOpen, setCompletedGamesOpen] = useState(false);
   const [upcomingGamesOpen, setUpcomingGamesOpen] = useState(true);
 
@@ -550,6 +552,9 @@ export default function TournamentDetailPage() {
   if (!tournament) {
     return <div className="p-8 text-sm">{t('tournamentDetail.notFound')}</div>;
   }
+
+  const canEditTeams = isAdmin && tournament.status === 'upcoming';
+  const teamsIsOpen = teamsOpen ?? (tournament.status === 'upcoming');
 
   // ── Standings computation ─────────────────────────────────────────────────────
 
@@ -1078,8 +1083,15 @@ export default function TournamentDetailPage() {
       {/* Teams */}
       <section className="mb-8">
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          <h2 className="text-lg font-semibold">{t('tournamentDetail.teams')} ({teams.length})</h2>
-          {isAdmin && (
+          <button
+            type="button"
+            onClick={() => setTeamsOpen(o => !(o ?? (tournament.status === 'upcoming')))}
+            className="flex items-center gap-1.5 text-left"
+          >
+            <h2 className="text-lg font-semibold">{t('tournamentDetail.teams')} ({teams.length})</h2>
+            <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-200${teamsIsOpen ? ' rotate-180' : ''}`} />
+          </button>
+          {canEditTeams && (
             <div className="ml-auto flex gap-2">
               {!showAddGroup && (
                 <button
@@ -1101,146 +1113,150 @@ export default function TournamentDetailPage() {
           )}
         </div>
 
-        {/* Add Group form */}
-        {isAdmin && showAddGroup && (
-          <form onSubmit={handleAddGroup} className="mb-4 rounded-lg border p-4">
-            <div className="mb-3 flex gap-2">
-              <input
-                type="text"
-                placeholder={t('tournamentDetail.groupNamePlaceholder')}
-                value={groupName}
-                onChange={e => setGroupName(e.target.value)}
-                className="flex-1 rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                required
-                autoFocus
-                maxLength={20}
-              />
-            </div>
-            {addGroupError && <p className="mb-2 text-sm text-red-600">{addGroupError}</p>}
-            <div className="flex gap-2">
-              <button
-                type="submit"
-                disabled={addGroupMutation.isPending}
-                className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-              >
-                {addGroupMutation.isPending ? t('tournamentDetail.addingGroup') : t('tournamentDetail.addGroupBtn')}
-              </button>
-              <button
-                type="button"
-                onClick={() => { setShowAddGroup(false); setGroupName(''); setAddGroupError(''); }}
-                className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
-        )}
-
-        {/* Add Team form */}
-        {isAdmin && showAddTeam && (
-          <form onSubmit={handleAddTeam} className="mb-4 rounded-lg border p-4">
-            <div className="mb-3 flex gap-2">
-              <input
-                type="text"
-                placeholder={t('tournamentDetail.teamNamePlaceholder')}
-                value={teamName}
-                onChange={e => setTeamName(e.target.value)}
-                className="flex-1 rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                required
-                autoFocus
-              />
-              <select
-                value={teamGroupId}
-                onChange={e => setTeamGroupId(e.target.value)}
-                className="w-36 rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-              >
-                <option value="">{t('tournamentDetail.uncategorized')}</option>
-                {groupList.map(g => (
-                  <option key={g.id} value={g.id}>{g.name}</option>
-                ))}
-              </select>
-            </div>
-            <div className="mb-3">
-              <p className="mb-1 text-xs font-medium text-muted-foreground">{t('tournamentDetail.teamIcon')}</p>
-              <ImageUpload
-                type="teams"
-                currentUrl={teamImageUrl}
-                onUploaded={setTeamImageUrl}
-                label="Choose icon"
-              />
-            </div>
-            {addTeamError && <p className="mb-2 text-sm text-red-600">{addTeamError}</p>}
-            <div className="flex gap-2">
-              <button
-                type="submit"
-                disabled={addTeamMutation.isPending}
-                className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-              >
-                {addTeamMutation.isPending ? t('tournamentDetail.addingTeam') : t('tournamentDetail.addTeamBtn')}
-              </button>
-              <button
-                type="button"
-                onClick={() => { setShowAddTeam(false); setTeamName(''); setTeamGroupId(''); setTeamImageUrl(null); setAddTeamError(''); }}
-                className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
-        )}
-
-        {teams.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t('tournamentDetail.noTeams')}</p>
-        ) : isAdmin ? (
-          /* Drag-and-drop board for admins */
-          <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-            <div className="flex flex-wrap gap-3">
-              <DroppableZone
-                id="uncategorized"
-                label={t('tournamentDetail.uncategorized')}
-                teams={teamsByGroup.get(null) ?? []}
-              />
-              {groupList.map(group => (
-                <DroppableZone
-                  key={group.id}
-                  id={group.id}
-                  label={group.name}
-                  teams={teamsByGroup.get(group.id) ?? []}
-                  onDelete={() => deleteGroupMutation.mutate(group.id)}
-                />
-              ))}
-            </div>
-            <DragOverlay dropAnimation={null}>
-              {activeTeam && <TeamChip team={activeTeam} />}
-            </DragOverlay>
-          </DndContext>
-        ) : (
-          /* Simple grouped list for non-admins */
-          <div className="divide-y rounded-lg border">
-            {sortedTeams.map(team => {
-              const gName = team.groupId ? (groupMap.get(team.groupId)?.name ?? null) : null;
-              return (
-                <div
-                  key={team.id}
-                  className="flex items-center justify-between px-4 py-2.5 text-sm"
-                >
-                  <span className="flex items-center gap-2">
-                    {team.imageUrl ? (
-                      <img src={team.imageUrl} alt={team.name} className="h-6 w-6 rounded-sm object-cover" />
-                    ) : (
-                      <span className="h-6 w-6 rounded-sm bg-muted inline-block" />
-                    )}
-                    {team.name}
-                  </span>
-                  {gName && (
-                    <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
-                      Group {gName}
-                    </span>
-                  )}
+        {teamsIsOpen && (
+          <>
+            {/* Add Group form */}
+            {canEditTeams && showAddGroup && (
+              <form onSubmit={handleAddGroup} className="mb-4 rounded-lg border p-4">
+                <div className="mb-3 flex gap-2">
+                  <input
+                    type="text"
+                    placeholder={t('tournamentDetail.groupNamePlaceholder')}
+                    value={groupName}
+                    onChange={e => setGroupName(e.target.value)}
+                    className="flex-1 rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                    required
+                    autoFocus
+                    maxLength={20}
+                  />
                 </div>
-              );
-            })}
-          </div>
+                {addGroupError && <p className="mb-2 text-sm text-red-600">{addGroupError}</p>}
+                <div className="flex gap-2">
+                  <button
+                    type="submit"
+                    disabled={addGroupMutation.isPending}
+                    className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                  >
+                    {addGroupMutation.isPending ? t('tournamentDetail.addingGroup') : t('tournamentDetail.addGroupBtn')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setShowAddGroup(false); setGroupName(''); setAddGroupError(''); }}
+                    className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* Add Team form */}
+            {canEditTeams && showAddTeam && (
+              <form onSubmit={handleAddTeam} className="mb-4 rounded-lg border p-4">
+                <div className="mb-3 flex gap-2">
+                  <input
+                    type="text"
+                    placeholder={t('tournamentDetail.teamNamePlaceholder')}
+                    value={teamName}
+                    onChange={e => setTeamName(e.target.value)}
+                    className="flex-1 rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                    required
+                    autoFocus
+                  />
+                  <select
+                    value={teamGroupId}
+                    onChange={e => setTeamGroupId(e.target.value)}
+                    className="w-36 rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                  >
+                    <option value="">{t('tournamentDetail.uncategorized')}</option>
+                    {groupList.map(g => (
+                      <option key={g.id} value={g.id}>{g.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="mb-3">
+                  <p className="mb-1 text-xs font-medium text-muted-foreground">{t('tournamentDetail.teamIcon')}</p>
+                  <ImageUpload
+                    type="teams"
+                    currentUrl={teamImageUrl}
+                    onUploaded={setTeamImageUrl}
+                    label="Choose icon"
+                  />
+                </div>
+                {addTeamError && <p className="mb-2 text-sm text-red-600">{addTeamError}</p>}
+                <div className="flex gap-2">
+                  <button
+                    type="submit"
+                    disabled={addTeamMutation.isPending}
+                    className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                  >
+                    {addTeamMutation.isPending ? t('tournamentDetail.addingTeam') : t('tournamentDetail.addTeamBtn')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setShowAddTeam(false); setTeamName(''); setTeamGroupId(''); setTeamImageUrl(null); setAddTeamError(''); }}
+                    className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {teams.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{t('tournamentDetail.noTeams')}</p>
+            ) : canEditTeams ? (
+              /* Drag-and-drop board for admins when tournament is upcoming */
+              <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+                <div className="flex flex-wrap gap-3">
+                  <DroppableZone
+                    id="uncategorized"
+                    label={t('tournamentDetail.uncategorized')}
+                    teams={teamsByGroup.get(null) ?? []}
+                  />
+                  {groupList.map(group => (
+                    <DroppableZone
+                      key={group.id}
+                      id={group.id}
+                      label={group.name}
+                      teams={teamsByGroup.get(group.id) ?? []}
+                      onDelete={() => deleteGroupMutation.mutate(group.id)}
+                    />
+                  ))}
+                </div>
+                <DragOverlay dropAnimation={null}>
+                  {activeTeam && <TeamChip team={activeTeam} />}
+                </DragOverlay>
+              </DndContext>
+            ) : (
+              /* Read-only list when tournament is active/completed, or for non-admins */
+              <div className="divide-y rounded-lg border">
+                {sortedTeams.map(team => {
+                  const gName = team.groupId ? (groupMap.get(team.groupId)?.name ?? null) : null;
+                  return (
+                    <div
+                      key={team.id}
+                      className="flex items-center justify-between px-4 py-2.5 text-sm"
+                    >
+                      <span className="flex items-center gap-2">
+                        {team.imageUrl ? (
+                          <img src={team.imageUrl} alt={team.name} className="h-6 w-6 rounded-sm object-cover" />
+                        ) : (
+                          <span className="h-6 w-6 rounded-sm bg-muted inline-block" />
+                        )}
+                        {team.name}
+                      </span>
+                      {gName && (
+                        <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+                          Group {gName}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
         )}
       </section>
 
