@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import ImageUpload from '@/components/ImageUpload';
 import { useT } from '@/lib/useT';
-import type { Team, Group } from '@tournament-predictor/shared';
+import type { Team, Group, Tournament } from '@tournament-predictor/shared';
 
 export default function EditTeamPage() {
   const { teamId } = useParams<{ teamId: string }>();
@@ -21,6 +21,12 @@ export default function EditTeamPage() {
   const { data: groupList = [] } = useQuery({
     queryKey: ['groups', team?.tournamentId],
     queryFn: () => api.get<Group[]>(`/tournaments/${team!.tournamentId}/groups`),
+    enabled: !!team?.tournamentId,
+  });
+
+  const { data: tournament } = useQuery({
+    queryKey: ['tournament', team?.tournamentId],
+    queryFn: () => api.get<Tournament>(`/tournaments/${team!.tournamentId}`),
     enabled: !!team?.tournamentId,
   });
 
@@ -60,6 +66,8 @@ export default function EditTeamPage() {
   if (isLoading) return <div className="p-8 text-sm text-muted-foreground">{t('common.loading')}</div>;
   if (!team) return <div className="p-8 text-sm">{t('editTeam.notFound')}</div>;
 
+  const isLocked = tournament !== undefined && tournament.status !== 'upcoming';
+
   return (
     <main className="mx-auto max-w-sm px-4 py-8">
       <Link
@@ -69,6 +77,12 @@ export default function EditTeamPage() {
         {t('editTeam.backToTournament')}
       </Link>
       <h1 className="mb-6 text-2xl font-bold">{t('editTeam.title')}</h1>
+
+      {isLocked && (
+        <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
+          Teams cannot be edited once a tournament is active or completed.
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
@@ -80,9 +94,10 @@ export default function EditTeamPage() {
             type="text"
             value={name}
             onChange={e => setName(e.target.value)}
-            className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-60"
             required
             maxLength={100}
+            disabled={isLocked}
           />
         </div>
 
@@ -94,7 +109,8 @@ export default function EditTeamPage() {
             id="group"
             value={groupId}
             onChange={e => setGroupId(e.target.value)}
-            className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-60"
+            disabled={isLocked}
           >
             <option value="">{t('editTeam.uncategorized')}</option>
             {groupList.map(g => (
@@ -118,7 +134,7 @@ export default function EditTeamPage() {
         <div className="flex gap-2">
           <button
             type="submit"
-            disabled={saveMutation.isPending || !name.trim()}
+            disabled={saveMutation.isPending || !name.trim() || isLocked}
             className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
             {saveMutation.isPending ? t('common.saving') : t('common.saveChanges')}
