@@ -506,7 +506,7 @@ const translations = {
         groupTables: 'Gruppetabeller',
         knockoutStage: 'Sluttspill',
         bonusQuestions: 'Bonusspørsmål',
-        leaderboard: 'Resultatliste',
+        leaderboard: 'Ledertavle',
       },
       leaderboard: {
         player: 'Spiller',
