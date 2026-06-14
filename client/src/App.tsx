@@ -13,6 +13,7 @@ import TournamentsPage from '@/pages/TournamentsPage';
 import TournamentDetailPage from '@/pages/TournamentDetailPage';
 import CompetitionsPage from '@/pages/CompetitionsPage';
 import CompetitionDetailPage from '@/pages/CompetitionDetailPage';
+import UserPredictionsPage from '@/pages/UserPredictionsPage';
 import EditUserPage from '@/pages/EditUserPage';
 import EditTournamentPage from '@/pages/EditTournamentPage';
 import EditTeamPage from '@/pages/EditTeamPage';
@@ -99,6 +100,14 @@ export default function App() {
         element={
           <PrivateRoute maintenanceMode={maintenanceMode}>
             <CompetitionDetailPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/competitions/:id/predictions/:userId"
+        element={
+          <PrivateRoute maintenanceMode={maintenanceMode}>
+            <UserPredictionsPage />
           </PrivateRoute>
         }
       />

@@ -81,6 +81,7 @@ export default function CompetitionDetailPage() {
   const debounceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const firstGroupUnfilledRef = useRef(false);
   const groupFillInitializedRef = useRef(false);
+  const lastResultFocusedRef = useRef(false);
   useEffect(() => {
     const timers = debounceTimers.current;
     return () => { Object.values(timers).forEach(clearTimeout); };
@@ -487,6 +488,18 @@ export default function CompetitionDetailPage() {
   useEffect(() => {
     if (user?.isLeaderboardUser) setActiveTab('leaderboard');
   }, [user?.isLeaderboardUser]);
+
+  useEffect(() => {
+    if (lastResultFocusedRef.current || allGroupMatchesList.length === 0) return;
+    const lastCompletedIdx = allGroupMatchesList.reduce(
+      (acc, m, i) => (m.status === 'completed' ? i : acc),
+      -1
+    );
+    if (lastCompletedIdx >= 0) {
+      setCurrentGroupMatchIdx(lastCompletedIdx);
+      lastResultFocusedRef.current = true;
+    }
+  }, [allGroupMatchesList]);
 
   const deadlinePassed =
     (competition?.predictionDeadline ? new Date() > new Date(competition.predictionDeadline) : false)
@@ -1461,10 +1474,10 @@ export default function CompetitionDetailPage() {
                       {tournament && <p className="text-sm text-muted-foreground">{tournament.name}</p>}
                     </div>
                   </div>
-                  <PlayerPodium leaderboard={leaderboard} large={true} />
+                  <PlayerPodium leaderboard={leaderboard} large={true} competitionId={id} />
                 </div>
               ) : (
-                <PlayerPodium leaderboard={leaderboard} large={false} />
+                <PlayerPodium leaderboard={leaderboard} large={false} competitionId={id} />
               )
             )}
 
@@ -1498,13 +1511,13 @@ export default function CompetitionDetailPage() {
                           {entry.rank}
                         </td>
                         <td className="px-3 py-2.5">
-                          <div className="flex items-center gap-2 min-w-0">
+                          <Link to={`/competitions/${id}/predictions/${entry.userId}`} className="flex items-center gap-2 min-w-0 hover:opacity-80 transition-opacity">
                             <img src={entry.imageUrl ?? '/default-avatar.png'} alt="" className="h-5 w-5 rounded-full object-cover flex-shrink-0" />
                             <span className={`font-medium truncate ${isMe ? 'text-primary' : ''}`}>
                               {entry.username}
                               {isMe && <span className="ml-1 font-normal text-muted-foreground">{t('competitionDetail.leaderboard.you')}</span>}
                             </span>
-                          </div>
+                          </Link>
                         </td>
                         <td className="px-2 py-2.5 text-center text-muted-foreground">{b.exactScorePoints}</td>
                         <td className="px-2 py-2.5 text-center text-muted-foreground">{b.correctResultPoints}</td>
@@ -1534,10 +1547,10 @@ export default function CompetitionDetailPage() {
                       {entry.rank}
                     </td>
                     <td className="px-3 py-3">
-                      <div className="flex items-center gap-3 min-w-0">
+                      <Link to={`/competitions/${id}/predictions/${entry.userId}`} className="flex items-center gap-3 min-w-0 hover:opacity-80 transition-opacity">
                         <img src={entry.imageUrl ?? '/default-avatar.png'} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0" />
                         <span className="font-medium text-base truncate">{entry.username}</span>
-                      </div>
+                      </Link>
                     </td>
                     <td className="px-3 py-3 text-center text-muted-foreground">{b.exactScorePoints}</td>
                     <td className="px-3 py-3 text-center text-muted-foreground">{b.correctResultPoints}</td>
