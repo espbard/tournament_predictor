@@ -629,6 +629,89 @@ router.post('/:id/bracket-predictions', requireAuth, async (req, res) => {
   }
 });
 
+// ── View another member's predictions ─────────────────────────────────────────
+
+router.get('/:id/predictions/:userId', requireAuth, async (req, res) => {
+  try {
+    const { id, userId } = req.params;
+    const viewer = res.locals.user;
+
+    if (!viewer.isAdmin) {
+      const [membership] = await db
+        .select()
+        .from(competitionMembers)
+        .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, viewer.id)));
+      if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+    }
+
+    const [targetUser] = await db.select({ username: users.username, imageUrl: users.imageUrl }).from(users).where(eq(users.id, userId));
+    if (!targetUser) return res.status(404).json({ error: 'User not found' });
+
+    const preds = await db
+      .select()
+      .from(predictions)
+      .where(and(eq(predictions.competitionId, id), eq(predictions.userId, userId)));
+
+    res.json({ predictions: preds, username: targetUser.username, imageUrl: targetUser.imageUrl ?? null });
+  } catch (err) {
+    console.error('Get user predictions error:', err);
+    res.status(500).json({ error: 'Failed to fetch predictions' });
+  }
+});
+
+router.get('/:id/bracket-predictions/:userId', requireAuth, async (req, res) => {
+  try {
+    const { id, userId } = req.params;
+    const viewer = res.locals.user;
+
+    if (!viewer.isAdmin) {
+      const [membership] = await db
+        .select()
+        .from(competitionMembers)
+        .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, viewer.id)));
+      if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+    }
+
+    const [row] = await db
+      .select()
+      .from(bracketPredictions)
+      .where(and(eq(bracketPredictions.competitionId, id), eq(bracketPredictions.userId, userId)));
+
+    res.json(row?.predictions ?? {});
+  } catch (err) {
+    console.error('Get user bracket predictions error:', err);
+    res.status(500).json({ error: 'Failed to fetch bracket predictions' });
+  }
+});
+
+router.get('/:id/tiebreak-choices/:userId', requireAuth, async (req, res) => {
+  try {
+    const { id, userId } = req.params;
+    const viewer = res.locals.user;
+
+    if (!viewer.isAdmin) {
+      const [membership] = await db
+        .select()
+        .from(competitionMembers)
+        .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, viewer.id)));
+      if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+    }
+
+    const [targetMembership] = await db
+      .select()
+      .from(competitionMembers)
+      .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, userId)));
+
+    res.json({
+      groupChoices: targetMembership?.groupDisciplinaryChoices ?? {},
+      luckyLoserChoices: targetMembership?.luckyLoserChoices ?? {},
+    });
+  } catch (err) {
+    console.error('Get user tiebreak choices error:', err);
+    res.status(500).json({ error: 'Failed to fetch tiebreak choices' });
+  }
+});
+
 // ── Tiebreaker choices ────────────────────────────────────────────────────────
 
 router.get('/:id/tiebreak-choices', requireAuth, async (req, res) => {

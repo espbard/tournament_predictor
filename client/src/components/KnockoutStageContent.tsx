@@ -982,10 +982,12 @@ function FocusedBracketView({
 
 export default function KnockoutStageContent({
   competitionId,
+  viewUserId,
   onAllComplete,
   onGoToGroupStage,
 }: {
   competitionId: string;
+  viewUserId?: string;
   onAllComplete?: () => void;
   onGoToGroupStage?: () => void;
 }) {
@@ -1010,20 +1012,32 @@ export default function KnockoutStageContent({
   });
 
   const { data: savedGroupPredictions = [] } = useQuery({
-    queryKey: ['competitions', id, 'predictions'],
-    queryFn: () => api.get<Prediction[]>(`/competitions/${id}/predictions`),
+    queryKey: viewUserId
+      ? ['competitions', id, 'predictions', viewUserId]
+      : ['competitions', id, 'predictions'],
+    queryFn: viewUserId
+      ? () => api.get<{ predictions: Prediction[] }>(`/competitions/${id}/predictions/${viewUserId}`).then(r => r.predictions)
+      : () => api.get<Prediction[]>(`/competitions/${id}/predictions`),
     enabled: !!competition,
   });
 
   const { data: savedBracketPreds } = useQuery({
-    queryKey: ['competitions', id, 'bracket-predictions'],
-    queryFn: () => api.get<BracketPredictions>(`/competitions/${id}/bracket-predictions`),
+    queryKey: viewUserId
+      ? ['competitions', id, 'bracket-predictions', viewUserId]
+      : ['competitions', id, 'bracket-predictions'],
+    queryFn: viewUserId
+      ? () => api.get<BracketPredictions>(`/competitions/${id}/bracket-predictions/${viewUserId}`)
+      : () => api.get<BracketPredictions>(`/competitions/${id}/bracket-predictions`),
     enabled: !!competition,
   });
 
   const { data: savedTiebreakerChoices } = useQuery({
-    queryKey: ['competitions', id, 'tiebreak-choices'],
-    queryFn: () => api.get<{ groupChoices: DisciplinaryChoices; luckyLoserChoices: DisciplinaryChoices }>(`/competitions/${id}/tiebreak-choices`),
+    queryKey: viewUserId
+      ? ['competitions', id, 'tiebreak-choices', viewUserId]
+      : ['competitions', id, 'tiebreak-choices'],
+    queryFn: viewUserId
+      ? () => api.get<{ groupChoices: DisciplinaryChoices; luckyLoserChoices: DisciplinaryChoices }>(`/competitions/${id}/tiebreak-choices/${viewUserId}`)
+      : () => api.get<{ groupChoices: DisciplinaryChoices; luckyLoserChoices: DisciplinaryChoices }>(`/competitions/${id}/tiebreak-choices`),
     enabled: !!competition,
   });
 
@@ -1060,7 +1074,7 @@ export default function KnockoutStageContent({
     onError: () => setSaveStatus('error'),
   });
 
-  const isReadOnly = tournament?.status === 'active' || tournament?.status === 'completed';
+  const isReadOnly = !!viewUserId || tournament?.status === 'active' || tournament?.status === 'completed';
 
   function updatePrediction(key: string, pred: BracketMatchPrediction) {
     if (isReadOnly) return;
@@ -1320,7 +1334,7 @@ export default function KnockoutStageContent({
   const savedPredMatchIds = new Set(savedGroupPredictions.map(p => p.matchId));
   const missingPredictions = groupMatchesWithTeams.some(m => !savedPredMatchIds.has(m.id));
 
-  if (missingPredictions) {
+  if (missingPredictions && !viewUserId) {
     return (
       <div className="rounded-xl border bg-muted/20 p-6 text-center space-y-3">
         <p className="font-semibold">{t('knockoutContent.missingGroupPreds')}</p>
