@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import KnockoutStageContent from '@/components/KnockoutStageContent';
+import BonusQuestionsTab from '@/pages/BonusQuestionsTab';
 import { useT } from '@/lib/useT';
 import type { Competition, Prediction, MatchStage } from '@tournament-predictor/shared';
 
@@ -41,7 +42,7 @@ export default function UserPredictionsPage() {
   const { id, userId } = useParams<{ id: string; userId: string }>();
   const { t } = useT();
 
-  const [activeTab, setActiveTab] = useState<'group' | 'knockout'>('group');
+  const [activeTab, setActiveTab] = useState<'group' | 'knockout' | 'bonus'>('group');
   const [currentMatchIdx, setCurrentMatchIdx] = useState(0);
   const lastResultInitialized = useRef(false);
 
@@ -134,27 +135,29 @@ export default function UserPredictionsPage() {
         />
         <div>
           <h1 className="text-xl font-bold">{username}</h1>
-          <p className="text-xs text-muted-foreground">{t('competitionDetail.tabs.groupStage')} · {t('competitionDetail.leaderboard.player')}</p>
+          <p className="text-xs text-muted-foreground">{t('competitionDetail.leaderboard.player')}</p>
         </div>
       </div>
 
-      {hasKnockoutMatches && (
-        <div className="flex gap-1 mb-6 border-b">
-          {(['group', 'knockout'] as const).map(tab => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-                activeTab === tab
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {tab === 'group' ? t('competitionDetail.tabs.groupStage') : t('competitionDetail.tabs.knockoutStage')}
-            </button>
-          ))}
-        </div>
-      )}
+      <div className="flex flex-wrap gap-1 mb-6 border-b">
+        {([
+          ['group', t('competitionDetail.tabs.groupStage')],
+          ...(hasKnockoutMatches ? [['knockout', t('competitionDetail.tabs.knockoutStage')] as const] : []),
+          ['bonus', t('competitionDetail.tabs.bonusQuestions')],
+        ] as ['group' | 'knockout' | 'bonus', string][]).map(([tab, label]) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              activeTab === tab
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
       {activeTab === 'group' && (
         <div>
@@ -310,6 +313,15 @@ export default function UserPredictionsPage() {
       {activeTab === 'knockout' && id && (
         <KnockoutStageContent
           competitionId={id}
+          viewUserId={userId}
+        />
+      )}
+
+      {activeTab === 'bonus' && id && competition && (
+        <BonusQuestionsTab
+          tournamentId={competition.tournamentId}
+          competitionId={id}
+          deadlinePassed={true}
           viewUserId={userId}
         />
       )}
