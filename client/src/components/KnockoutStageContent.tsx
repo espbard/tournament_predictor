@@ -1093,59 +1093,6 @@ export default function KnockoutStageContent({
     [savedGroupPredictions]
   );
 
-  const { groupStandings, effectiveGroupResults } = useMemo(() => {
-    const groupMatches = matchList.filter(m => m.stage === 'group');
-    const teamMap = new Map<string, TeamStat>();
-
-    for (const m of groupMatches) {
-      const g = m.groupName;
-      if (!g) continue;
-      if (m.homeTeamId && m.homeTeamName && !teamMap.has(m.homeTeamId)) {
-        teamMap.set(m.homeTeamId, { teamId: m.homeTeamId, teamName: m.homeTeamName, imageUrl: m.homeTeamImageUrl, group: g, P: 0, W: 0, D: 0, L: 0, GF: 0, GA: 0 });
-      }
-      if (m.awayTeamId && m.awayTeamName && !teamMap.has(m.awayTeamId)) {
-        teamMap.set(m.awayTeamId, { teamId: m.awayTeamId, teamName: m.awayTeamName, imageUrl: m.awayTeamImageUrl, group: g, P: 0, W: 0, D: 0, L: 0, GF: 0, GA: 0 });
-      }
-    }
-
-    const groupResultsMap = new Map<string, MatchResult[]>();
-
-    for (const m of groupMatches) {
-      if (!m.homeTeamId || !m.awayTeamId || !m.groupName) continue;
-      let hs: number | null = null, as_: number | null = null;
-      if (m.status === 'completed') {
-        hs = m.homeScore; as_ = m.awayScore;
-      } else {
-        const pred = predMap[m.id];
-        if (pred) { hs = pred.homeScore; as_ = pred.awayScore; }
-      }
-      if (hs === null || as_ === null) continue;
-      const home = teamMap.get(m.homeTeamId);
-      const away = teamMap.get(m.awayTeamId);
-      if (home) { home.P++; home.GF += hs; home.GA += as_; if (hs > as_) home.W++; else if (hs === as_) home.D++; else home.L++; }
-      if (away) { away.P++; away.GF += as_; away.GA += hs; if (as_ > hs) away.W++; else if (hs === as_) away.D++; else away.L++; }
-      if (!groupResultsMap.has(m.groupName)) groupResultsMap.set(m.groupName, []);
-      groupResultsMap.get(m.groupName)!.push({ homeTeamId: m.homeTeamId, awayTeamId: m.awayTeamId, homeScore: hs, awayScore: as_ });
-    }
-
-    const byGroup = new Map<string, TeamStat[]>();
-    for (const t of teamMap.values()) {
-      if (!byGroup.has(t.group)) byGroup.set(t.group, []);
-      byGroup.get(t.group)!.push(t);
-    }
-    for (const [groupName, teams] of byGroup) {
-      const results = groupResultsMap.get(groupName) ?? [];
-      const tiebreakerStats = teams.map(t => ({ teamId: t.teamId, points: t.W * 3 + t.D, gd: t.GF - t.GA, gf: t.GF }));
-      const sortedIds = sortGroupTeams(tiebreakerStats, results, groupDisciplinaryChoices).map(s => s.teamId);
-      teams.sort((a, b) => sortedIds.indexOf(a.teamId) - sortedIds.indexOf(b.teamId));
-    }
-
-    return {
-      groupStandings: [...byGroup.entries()].sort(([a], [b]) => a.localeCompare(b)),
-      effectiveGroupResults: groupResultsMap,
-    };
-  }, [matchList, predMap, groupDisciplinaryChoices]);
-
   const knockoutConfig = tournament?.knockoutConfig ?? null;
 
   // Predicted group standings based solely on the user's group score predictions (not actual results).
