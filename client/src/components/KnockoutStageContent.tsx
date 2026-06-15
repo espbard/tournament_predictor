@@ -1018,6 +1018,10 @@ export default function KnockoutStageContent({
     queryFn: viewUserId
       ? () => api.get<{ predictions: Prediction[] }>(`/competitions/${id}/predictions/${viewUserId}`).then(r => r.predictions)
       : () => api.get<Prediction[]>(`/competitions/${id}/predictions`),
+    // The parent UserPredictionsPage caches the same query key with the full
+    // { predictions, username, imageUrl } shape. Normalize to always get an array.
+    select: (data: Prediction[] | { predictions: Prediction[] }) =>
+      Array.isArray(data) ? data : (data?.predictions ?? []),
     enabled: !!competition,
   });
 
