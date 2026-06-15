@@ -821,6 +821,30 @@ router.get('/:id/bonus-answers', requireAuth, async (req, res) => {
   }
 });
 
+router.get('/:id/bonus-answers/:userId', requireAuth, async (req, res) => {
+  try {
+    const { id, userId } = req.params;
+    const viewer = res.locals.user;
+
+    if (!viewer.isAdmin) {
+      const [membership] = await db
+        .select()
+        .from(competitionMembers)
+        .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, viewer.id)));
+      if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+    }
+
+    const answers = await db
+      .select()
+      .from(bonusAnswers)
+      .where(and(eq(bonusAnswers.competitionId, id), eq(bonusAnswers.userId, userId)));
+    res.json(answers);
+  } catch (err) {
+    console.error('Get user bonus answers error:', err);
+    res.status(500).json({ error: 'Failed to fetch bonus answers' });
+  }
+});
+
 router.post('/:id/bonus-answers', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;

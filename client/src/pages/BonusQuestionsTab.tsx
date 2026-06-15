@@ -26,11 +26,12 @@ interface Props {
   tournamentId: string;
   competitionId?: string;
   deadlinePassed: boolean;
+  viewUserId?: string;
 }
 
 const CREATABLE_TYPES: BonusAnswerType[] = ['number', 'yes_no', 'player', 'team'];
 
-export default function BonusQuestionsTab({ competitionId, tournamentId, deadlinePassed }: Props) {
+export default function BonusQuestionsTab({ competitionId, tournamentId, deadlinePassed, viewUserId }: Props) {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const { t } = useT();
@@ -69,8 +70,10 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
   });
 
   const { data: myAnswers = [] } = useQuery({
-    queryKey: ['competitions', competitionId, 'bonus-answers'],
-    queryFn: () => api.get<BonusAnswer[]>(`/competitions/${competitionId}/bonus-answers`),
+    queryKey: ['competitions', competitionId, 'bonus-answers', viewUserId ?? 'me'],
+    queryFn: () => viewUserId
+      ? api.get<BonusAnswer[]>(`/competitions/${competitionId}/bonus-answers/${viewUserId}`)
+      : api.get<BonusAnswer[]>(`/competitions/${competitionId}/bonus-answers`),
     enabled: !!competitionId,
   });
 
@@ -196,7 +199,7 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
   return (
     <div className="space-y-6">
       {/* Admin: add question form */}
-      {user?.isAdmin && (
+      {user?.isAdmin && !viewUserId && (
         <form onSubmit={handleAddQuestion} className="rounded-lg border p-5 space-y-4">
           <h2 className="font-semibold">{t('bonusQuestions.addTitle')}</h2>
           <div>
@@ -276,7 +279,7 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
                         {typeLabel} · {q.points} {q.points === 1 ? t('bonusQuestions.pt') : t('bonusQuestions.pts')}
                       </p>
                     </div>
-                    {user?.isAdmin && (
+                    {user?.isAdmin && !viewUserId && (
                       <div className="flex gap-2 flex-shrink-0">
                         <button
                           onClick={() => openEdit(q)}
@@ -312,7 +315,7 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
                 )}
 
                 {/* Admin: edit question form */}
-                {user?.isAdmin && isEditing && (
+                {user?.isAdmin && !viewUserId && isEditing && (
                   <div className="space-y-3">
                     <div>
                       <label className="mb-1 block text-xs font-medium text-muted-foreground">{t('bonusQuestions.question')}</label>
@@ -372,7 +375,7 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
                 )}
 
                 {/* Admin: set correct answer */}
-                {user?.isAdmin && isSettingAnswer && !isEditing && (
+                {user?.isAdmin && !viewUserId && isSettingAnswer && !isEditing && (
                   <div className="space-y-2 pt-1 border-t">
                     <label className="text-xs font-medium text-muted-foreground">{t('bonusQuestions.correctAnswer')}</label>
                     <div className="space-y-2">
@@ -508,12 +511,35 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
                 )}
 
                 {/* Admin: show stored correct answer (idle state) */}
-                {user?.isAdmin && !isSettingAnswer && !isEditing && q.correctAnswer !== null && (
+                {user?.isAdmin && !viewUserId && !isSettingAnswer && !isEditing && q.correctAnswer !== null && (
                   <CorrectAnswerDisplay type={q.answerType} value={q.correctAnswer} teams={teams} correctAnswerLabel={t('bonusQuestions.correctAnswer')} />
                 )}
 
+                {/* Read-only view of another user's answer */}
+                {viewUserId && (
+                  <div className="pt-1 border-t space-y-2">
+                    <AnswerReadOnly
+                      type={q.answerType}
+                      value={myAnswer?.answer ?? ''}
+                      teams={teams}
+                      noAnswerLabel={t('bonusQuestions.noAnswerSubmitted')}
+                    />
+                    {myAnswer?.points !== null && myAnswer?.points !== undefined && (
+                      <span className="text-sm font-medium text-green-600">+{myAnswer.points} pts</span>
+                    )}
+                    {q.correctAnswer !== null && q.correctAnswer !== undefined && (
+                      <CorrectAnswerDisplay
+                        type={q.answerType}
+                        value={q.correctAnswer}
+                        teams={teams}
+                        correctAnswerLabel={t('bonusQuestions.correctAnswer')}
+                      />
+                    )}
+                  </div>
+                )}
+
                 {/* User: answer input */}
-                {!user?.isAdmin && (
+                {!viewUserId && !user?.isAdmin && (
                   <div className="pt-1 border-t space-y-2">
                     {q.answerType === 'yes_no' ? (
                       <div className="flex items-center gap-3">
