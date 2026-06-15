@@ -310,6 +310,58 @@ router.get('/:id/leaderboard', requireAuth, async (req, res) => {
   }
 });
 
+router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = res.locals.user;
+
+    const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
+    if (!competition) return res.status(404).json({ error: 'Competition not found' });
+
+    if (!user.isAdmin) {
+      const [membership] = await db
+        .select()
+        .from(competitionMembers)
+        .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
+      if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+    }
+
+    const rows = await db
+      .select({
+        matchId: predictions.matchId,
+        userId: predictions.userId,
+        username: users.username,
+        imageUrl: users.imageUrl,
+        homeScore: predictions.homeScore,
+        awayScore: predictions.awayScore,
+        progressingTeamId: predictions.progressingTeamId,
+        points: predictions.points,
+      })
+      .from(predictions)
+      .innerJoin(users, eq(predictions.userId, users.id))
+      .innerJoin(matches, eq(predictions.matchId, matches.id))
+      .innerJoin(
+        competitionMembers,
+        and(
+          eq(competitionMembers.competitionId, id),
+          eq(competitionMembers.userId, predictions.userId)
+        )
+      )
+      .where(
+        and(
+          eq(predictions.competitionId, id),
+          eq(matches.status, 'completed'),
+          eq(users.isLeaderboardUser, false)
+        )
+      );
+
+    res.json(rows);
+  } catch (err) {
+    console.error('Get all match predictions error:', err);
+    res.status(500).json({ error: 'Failed to fetch match predictions' });
+  }
+});
+
 router.get('/:id/leaderboard/events', requireAuth, async (req, res) => {
   const { id } = req.params;
   const user = res.locals.user;
