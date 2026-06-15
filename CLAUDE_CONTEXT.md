@@ -35,55 +35,77 @@ A web application for predicting sports tournament outcomes. Used by a small pri
 
 ## Repository Structure
 
-[UPDATE AS YOU BUILD — paste output of `eza --tree --git-ignore -L 4` here]
-
 ```
 .
 ├── CLAUDE_CONTEXT.md
+├── README.md
+├── package.json
+├── package-lock.json
+├── railway.toml
+├── .env.example
+├── .gitignore
 ├── client
 │   ├── components.json
 │   ├── index.html
 │   ├── package.json
 │   ├── postcss.config.js
-│   ├── src
-│   │   ├── App.tsx
-│   │   ├── components
-│   │   │   ├── AppLayout.tsx
-│   │   │   ├── ImageUpload.tsx
-│   │   │   ├── KnockoutStageContent.tsx
-│   │   │   ├── Navbar.tsx
-│   │   │   ├── PlayerSearchInput.tsx
-│   │   │   └── TeamSelectInput.tsx
-│   │   ├── index.css
-│   │   ├── lib
-│   │   │   ├── api.ts
-│   │   │   ├── tiebreakers.ts
-│   │   │   └── utils.ts
-│   │   ├── main.tsx
-│   │   ├── pages
-│   │   │   ├── AdminHomePage.tsx
-│   │   │   ├── BonusQuestionsTab.tsx
-│   │   │   ├── CompetitionDetailPage.tsx
-│   │   │   ├── CompetitionsPage.tsx
-│   │   │   ├── EditTeamPage.tsx
-│   │   │   ├── EditTournamentPage.tsx
-│   │   │   ├── EditUserPage.tsx
-│   │   │   ├── HomePage.tsx
-│   │   │   ├── LoginPage.tsx
-│   │   │   ├── RegisterPage.tsx
-│   │   │   ├── TournamentDetailPage.tsx
-│   │   │   ├── TournamentKnockoutPage.tsx
-│   │   │   └── TournamentsPage.tsx
-│   │   └── store
-│   │       └── authStore.ts
 │   ├── tailwind.config.js
 │   ├── tsconfig.json
-│   └── vite.config.ts
-├── package-lock.json
-├── package.json
-├── railway.toml
-├── README.md
+│   ├── vite.config.ts
+│   ├── public
+│   │   ├── apple-touch-icon.png
+│   │   ├── crying-player.png
+│   │   ├── crying-tear.png
+│   │   ├── default-avatar.png
+│   │   ├── favicon-16x16.png
+│   │   ├── favicon-32x32.png
+│   │   ├── favicon.ico
+│   │   ├── soccer-ball.png
+│   │   └── soccer-player.png
+│   └── src
+│       ├── App.tsx
+│       ├── index.css
+│       ├── main.tsx
+│       ├── components
+│       │   ├── AppLayout.tsx
+│       │   ├── CryingPlayerAnimation.tsx
+│       │   ├── ImageUpload.tsx
+│       │   ├── KnockoutStageContent.tsx
+│       │   ├── Navbar.tsx
+│       │   ├── PlayerPodium.tsx
+│       │   ├── PlayerSearchInput.tsx
+│       │   ├── SoccerKickAnimation.tsx
+│       │   └── TeamSelectInput.tsx
+│       ├── lib
+│       │   ├── api.ts
+│       │   ├── tiebreakers.ts
+│       │   ├── translations.ts
+│       │   ├── useT.ts
+│       │   └── utils.ts
+│       ├── pages
+│       │   ├── AdminHomePage.tsx
+│       │   ├── BonusQuestionsTab.tsx
+│       │   ├── CompetitionDetailPage.tsx
+│       │   ├── CompetitionsPage.tsx
+│       │   ├── EditTeamPage.tsx
+│       │   ├── EditTournamentPage.tsx
+│       │   ├── EditUserPage.tsx
+│       │   ├── HomePage.tsx
+│       │   ├── LoginPage.tsx
+│       │   ├── MaintenancePage.tsx
+│       │   ├── RegisterPage.tsx
+│       │   ├── TournamentDetailPage.tsx
+│       │   ├── TournamentKnockoutPage.tsx
+│       │   ├── TournamentsPage.tsx
+│       │   └── UserPredictionsPage.tsx
+│       └── store
+│           ├── authStore.ts
+│           ├── languageStore.ts
+│           └── themeStore.ts
 ├── server
+│   ├── drizzle.config.ts
+│   ├── package.json
+│   ├── tsconfig.json
 │   ├── drizzle
 │   │   ├── 0000_amazing_killmonger.sql
 │   │   ├── 0001_little_blizzard.sql
@@ -100,42 +122,46 @@ A web application for predicting sports tournament outcomes. Used by a small pri
 │   │   ├── 0012_knockout_complete_seen.sql
 │   │   ├── 0013_scoring_breakdown.sql
 │   │   ├── 0014_bonus_questions_tournament.sql
+│   │   ├── 0015_is_test_account.sql
+│   │   ├── 0015_maintenance_mode.sql
+│   │   ├── 0016_leaderboard_user.sql
 │   │   └── meta
 │   │       ├── 0000_snapshot.json
 │   │       ├── 0001_snapshot.json
 │   │       ├── 0002_snapshot.json
 │   │       ├── 0003_snapshot.json
-│   │       └── 0004_snapshot.json
-│   ├── drizzle.config.ts
-│   ├── package.json
-│   ├── src
-│   │   ├── db
-│   │   │   ├── client.ts
-│   │   │   ├── migrate.ts
-│   │   │   └── schema.ts
-│   │   ├── index.ts
-│   │   ├── lib
-│   │   │   ├── r2.ts
-│   │   │   ├── scoring.test.ts
-│   │   │   ├── scoring.ts
-│   │   │   └── scoringTrigger.ts
-│   │   ├── middleware
-│   │   │   └── auth.ts
-│   │   ├── routes
-│   │   │   ├── auth.ts
-│   │   │   ├── competitions.ts
-│   │   │   ├── tournaments.ts
-│   │   │   └── upload.ts
-│   │   └── scripts
-│   │       └── reset-points.ts
-│   └── tsconfig.json
+│   │       ├── 0004_snapshot.json
+│   │       └── _journal.json
+│   └── src
+│       ├── index.ts
+│       ├── db
+│       │   ├── client.ts
+│       │   ├── migrate.ts
+│       │   └── schema.ts
+│       ├── lib
+│       │   ├── leaderboardEvents.ts
+│       │   ├── r2.ts
+│       │   ├── scoring.test.ts
+│       │   ├── scoring.ts
+│       │   └── scoringTrigger.ts
+│       ├── middleware
+│       │   └── auth.ts
+│       ├── routes
+│       │   ├── auth.ts
+│       │   ├── competitions.ts
+│       │   ├── images.ts
+│       │   ├── settings.ts
+│       │   ├── tournaments.ts
+│       │   └── upload.ts
+│       └── scripts
+│           ├── migrate-image-urls.ts
+│           └── reset-points.ts
 └── shared
     ├── package.json
     └── src
         ├── index.ts
         ├── schemas.ts
         └── types.ts
-
 ```
 
 ---
