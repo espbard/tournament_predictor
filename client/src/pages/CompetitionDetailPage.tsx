@@ -453,6 +453,14 @@ export default function CompetitionDetailPage() {
       }));
   }, [groupStandings, tournament?.knockoutConfig, luckyLoserDisciplinaryChoices]);
 
+  const tiebreakerChosenTeams = useMemo(() => {
+    const s = new Set<string>();
+    for (const ids of Object.values(groupDisciplinaryChoices)) {
+      for (const id of ids) s.add(id);
+    }
+    return s;
+  }, [groupDisciplinaryChoices]);
+
   const groupStageLocked = myStatus?.groupStageLocked ?? false;
 
   useEffect(() => {
@@ -924,6 +932,9 @@ export default function CompetitionDetailPage() {
                                       <div className="h-4 w-4 rounded-full bg-muted flex-shrink-0" />
                                     )}
                                     <span className="truncate">{tm.teamName}</span>
+                                    {tiebreakerChosenTeams.has(tm.teamId) && (
+                                      <span className="text-amber-600 dark:text-amber-400 font-bold flex-shrink-0">✓</span>
+                                    )}
                                   </div>
                                 </td>
                                 <td className="py-1.5 text-center text-muted-foreground">{tm.P}</td>
@@ -1003,6 +1014,11 @@ export default function CompetitionDetailPage() {
                 {(tournament?.knockoutConfig?.luckyLosers ?? 0) > 0 && (
                   <span className="flex items-center gap-1.5">
                     <span className="w-2.5 h-2.5 rounded-sm bg-yellow-400/70 inline-block" /> {t('competitionDetail.tables.luckyLoser')}
+                  </span>
+                )}
+                {tiebreakerChosenTeams.size > 0 && (
+                  <span className="flex items-center gap-1.5">
+                    <span className="text-amber-600 dark:text-amber-400 font-bold">✓</span> {t('competitionDetail.tables.tiebreakerChosen')}
                   </span>
                 )}
               </div>

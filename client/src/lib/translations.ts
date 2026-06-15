@@ -132,6 +132,7 @@ const translations = {
         predictionsFilled: '{{filled}} / {{total}} predictions filled — tables update as you predict.',
         qualifying: 'Qualifying',
         luckyLoser: 'Lucky loser (best 3rd place)',
+        tiebreakerChosen: 'Progressed via tiebreaker decision',
         disciplinaryTiebreaker: 'Disciplinary tiebreaker',
         luckyLoserTiebreakers: 'Lucky Loser Tiebreakers',
         luckyLoserTiebreakerDesc:
@@ -545,6 +546,7 @@ const translations = {
         predictionsFilled: '{{filled}} / {{total}} tips fylt ut — tabellene oppdateres etter hvert som du tipper.',
         qualifying: 'Kvalifiserer',
         luckyLoser: 'Lucky loser (beste tredjeplass)',
+        tiebreakerChosen: 'Gikk videre via avgjørelse',
         disciplinaryTiebreaker: 'Disiplinær avgjørelse',
         luckyLoserTiebreakers: 'Lucky Loser-avgjørere',
         luckyLoserTiebreakerDesc:

@@ -83,6 +83,7 @@ async function recomputeAllMemberBreakdowns(
   config: ScoringConfig,
   firstRound: string,
   bracketSlots: Record<string, string> = {},
+  tournamentGroupDisciplinaryChoices: Record<string, string[]> = {},
 ): Promise<void> {
   // --- Group stage data ---
   const completedGroupMatches = await db
@@ -109,7 +110,7 @@ async function recomputeAllMemberBreakdowns(
       if (gName) teamGroupMap.set(t.id, gName);
     }
   }
-  const actualStandings = computeGroupStandings(completedGroupMatches, teamGroupMap);
+  const actualStandings = computeGroupStandings(completedGroupMatches, teamGroupMap, tournamentGroupDisciplinaryChoices);
   const groupMatchIds = completedGroupMatches.map(m => m.id);
 
   // --- Knockout stage data ---
@@ -124,9 +125,12 @@ async function recomputeAllMemberBreakdowns(
     return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
   });
 
-  const memberIds = await getMemberUserIds(competitionId);
+  const memberRows = await db
+    .select({ userId: competitionMembers.userId, groupDisciplinaryChoices: competitionMembers.groupDisciplinaryChoices })
+    .from(competitionMembers)
+    .where(eq(competitionMembers.competitionId, competitionId));
 
-  for (const userId of memberIds) {
+  for (const { userId, groupDisciplinaryChoices: userGroupDisciplinaryChoices } of memberRows) {
     // --- Group match prediction breakdown ---
     const userGroupPreds = groupMatchIds.length > 0
       ? await db
@@ -165,7 +169,7 @@ async function recomputeAllMemberBreakdowns(
         if (!pred) return [];
         return [{ homeTeamId: m.homeTeamId!, awayTeamId: m.awayTeamId!, homeScore: pred.homeScore, awayScore: pred.awayScore }];
       });
-    const predictedStandings = computeGroupStandings(simulatedMatches, teamGroupMap);
+    const predictedStandings = computeGroupStandings(simulatedMatches, teamGroupMap, userGroupDisciplinaryChoices ?? {});
 
     // --- Group position points ---
     let groupPositionPts = 0;
@@ -325,6 +329,7 @@ export async function triggerScoringForMatch(matchId: string, tournamentId: stri
   const knockoutCfg = tourRow?.knockoutConfig as KnockoutConfig | null;
   const firstRound = knockoutCfg?.firstRound ?? 'round_of_16';
   const bracketSlots = knockoutCfg?.bracketSlots ?? {};
+  const tournamentGroupDisciplinaryChoices = knockoutCfg?.groupDisciplinaryChoices ?? {};
 
   for (const comp of allComps) {
     const config = comp.scoringConfig as ScoringConfig;
@@ -340,7 +345,7 @@ export async function triggerScoringForMatch(matchId: string, tournamentId: stri
     }
 
     // Flip marking and full breakdown recompute (flip marking integrated inside)
-    await recomputeAllMemberBreakdowns(tournamentId, comp.id, config, firstRound, bracketSlots);
+    await recomputeAllMemberBreakdowns(tournamentId, comp.id, config, firstRound, bracketSlots, tournamentGroupDisciplinaryChoices);
   }
   notifyLeaderboardUpdate(allComps.map(c => c.id));
 }
@@ -361,6 +366,7 @@ export async function recalculateAllScoresForTournament(tournamentId: string): P
   const knockoutCfgFull = tourRow?.knockoutConfig as KnockoutConfig | null;
   const firstRound = knockoutCfgFull?.firstRound ?? 'round_of_16';
   const bracketSlotsFull = knockoutCfgFull?.bracketSlots ?? {};
+  const tournamentGroupDisciplinaryChoicesFull = knockoutCfgFull?.groupDisciplinaryChoices ?? {};
 
   const completedGroupMatches = await db
     .select()
@@ -382,7 +388,7 @@ export async function recalculateAllScoresForTournament(tournamentId: string): P
     }
 
     // Flip marking is integrated into recomputeAllMemberBreakdowns
-    await recomputeAllMemberBreakdowns(tournamentId, comp.id, config, firstRound, bracketSlotsFull);
+    await recomputeAllMemberBreakdowns(tournamentId, comp.id, config, firstRound, bracketSlotsFull, tournamentGroupDisciplinaryChoicesFull);
   }
   notifyLeaderboardUpdate(allComps.map(c => c.id));
 }
