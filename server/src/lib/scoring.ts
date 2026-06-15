@@ -87,7 +87,11 @@ function computeH2HStats(
   return stats;
 }
 
-function sortGroupTeamsWithH2H(teamList: TeamStat[], groupMatches: RawMatch[]): TeamStat[] {
+function sortGroupTeamsWithH2H(
+  teamList: TeamStat[],
+  groupMatches: RawMatch[],
+  disciplinaryChoices: Record<string, string[]> = {},
+): TeamStat[] {
   if (teamList.length <= 1) return [...teamList];
   const byPoints = new Map<number, TeamStat[]>();
   for (const t of teamList) {
@@ -98,6 +102,8 @@ function sortGroupTeamsWithH2H(teamList: TeamStat[], groupMatches: RawMatch[]): 
   for (const [, group] of [...byPoints].sort(([a], [b]) => b - a)) {
     if (group.length === 1) { result.push(group[0]); continue; }
     const h2h = computeH2HStats(group.map(t => t.teamId), groupMatches);
+    const key = [...group.map(t => t.teamId)].sort().join('|');
+    const ranking = disciplinaryChoices[key];
     const sorted = [...group].sort((a, b) => {
       const ha = h2h.get(a.teamId)!; const hb = h2h.get(b.teamId)!;
       if (hb.points !== ha.points) return hb.points - ha.points;
@@ -105,6 +111,11 @@ function sortGroupTeamsWithH2H(teamList: TeamStat[], groupMatches: RawMatch[]): 
       if (hb.gf !== ha.gf) return hb.gf - ha.gf;
       if (b.gd !== a.gd) return b.gd - a.gd;
       if (b.gf !== a.gf) return b.gf - a.gf;
+      if (ranking) {
+        const da = ranking.indexOf(a.teamId);
+        const db = ranking.indexOf(b.teamId);
+        if (da !== -1 && db !== -1 && da !== db) return da - db;
+      }
       return a.teamId.localeCompare(b.teamId);
     });
     result.push(...sorted);
@@ -115,6 +126,7 @@ function sortGroupTeamsWithH2H(teamList: TeamStat[], groupMatches: RawMatch[]): 
 export function computeGroupStandings(
   matchList: RawMatch[],
   teamGroupMap: Map<string, string>,
+  disciplinaryChoices: Record<string, string[]> = {},
 ): Map<string, TeamStat[]> {
   const groupStats = new Map<string, Map<string, TeamStat>>();
   const groupMatchesMap = new Map<string, RawMatch[]>();
@@ -147,7 +159,7 @@ export function computeGroupStandings(
   const result = new Map<string, TeamStat[]>();
   for (const [groupName, statsMap] of groupStats) {
     const groupMatches = groupMatchesMap.get(groupName) ?? [];
-    result.set(groupName, sortGroupTeamsWithH2H([...statsMap.values()], groupMatches));
+    result.set(groupName, sortGroupTeamsWithH2H([...statsMap.values()], groupMatches, disciplinaryChoices));
   }
   return result;
 }

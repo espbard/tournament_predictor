@@ -1150,7 +1150,7 @@ export default function KnockoutStageContent({
 
   // Predicted group standings based solely on the user's group score predictions (not actual results).
   // Used to determine which teams the user expected to qualify for each first-round knockout slot.
-  const predictedGroupStandings = useMemo<Map<string, TeamStat[]>>(() => {
+  const { predictedGroupStandings, predictedGroupResults } = useMemo(() => {
     const groupMatches = matchList.filter(m => m.stage === 'group');
     const teamMap = new Map<string, TeamStat>();
     for (const m of groupMatches) {
@@ -1165,16 +1165,9 @@ export default function KnockoutStageContent({
     for (const m of groupMatches) {
       if (!m.homeTeamId || !m.awayTeamId || !m.groupName) continue;
       const pred = predMap[m.id];
-      // Prefer the user's prediction; fall back to actual result so the bracket
-      // never shows TBD just because predictions haven't synced yet.
-      let hs: number, as_: number;
-      if (pred) {
-        hs = pred.homeScore; as_ = pred.awayScore;
-      } else if (m.status === 'completed' && m.homeScore !== null && m.awayScore !== null) {
-        hs = m.homeScore; as_ = m.awayScore;
-      } else {
-        continue;
-      }
+      if (!pred) continue;
+      const hs = pred.homeScore;
+      const as_ = pred.awayScore;
       const home = teamMap.get(m.homeTeamId);
       const away = teamMap.get(m.awayTeamId);
       if (home) { home.P++; home.GF += hs; home.GA += as_; if (hs > as_) home.W++; else if (hs === as_) home.D++; else home.L++; }
@@ -1190,11 +1183,11 @@ export default function KnockoutStageContent({
     for (const [groupName, teams] of byGroup) {
       const results = groupResultsMap.get(groupName) ?? [];
       const stats = teams.map(t => ({ teamId: t.teamId, points: t.W * 3 + t.D, gd: t.GF - t.GA, gf: t.GF }));
-      const sortedIds = sortGroupTeams(stats, results, {}).map(s => s.teamId);
+      const sortedIds = sortGroupTeams(stats, results, groupDisciplinaryChoices).map(s => s.teamId);
       teams.sort((a, b) => sortedIds.indexOf(a.teamId) - sortedIds.indexOf(b.teamId));
     }
-    return byGroup;
-  }, [matchList, predMap]);
+    return { predictedGroupStandings: byGroup, predictedGroupResults: groupResultsMap };
+  }, [matchList, predMap, groupDisciplinaryChoices]);
 
   // Maps each first-round predKey (e.g. "round_of_16_0") to the teams the user predicted
   // would qualify for that slot based on their group stage score predictions.
@@ -1284,8 +1277,8 @@ export default function KnockoutStageContent({
   const groupDisciplinaryTies = useMemo(() => {
     const directQualifiers = knockoutConfig?.directQualifiers ?? 2;
     const result: Array<{ groupName: string; teams: TeamStat[]; key: string; requiredRankings: number }> = [];
-    for (const [groupName, teams] of groupStandings) {
-      const results = effectiveGroupResults.get(groupName) ?? [];
+    for (const [groupName, teams] of predictedGroupStandings) {
+      const results = predictedGroupResults.get(groupName) ?? [];
       const tiebreakerStats = teams.map(t => ({ teamId: t.teamId, points: t.W * 3 + t.D, gd: t.GF - t.GA, gf: t.GF }));
       const tiedGroups = findGroupDisciplinaryTies(tiebreakerStats, results);
       for (const tiedGroup of tiedGroups) {
@@ -1300,11 +1293,11 @@ export default function KnockoutStageContent({
       }
     }
     return result;
-  }, [groupStandings, effectiveGroupResults, groupDisciplinaryChoices, knockoutConfig]);
+  }, [predictedGroupStandings, predictedGroupResults, groupDisciplinaryChoices, knockoutConfig]);
 
   const luckyLoserDisciplinaryTies = useMemo(() => {
     if (!knockoutConfig) return [];
-    const third = groupStandings
+    const third = [...predictedGroupStandings.entries()]
       .filter(([, t]) => t.length > knockoutConfig.directQualifiers)
       .map(([, t]) => t[knockoutConfig.directQualifiers]);
     const tiebreakerStats = third.map(t => ({ teamId: t.teamId, points: t.W * 3 + t.D, gd: t.GF - t.GA, gf: t.GF }));
@@ -1318,7 +1311,7 @@ export default function KnockoutStageContent({
         key: makeDisciplinaryKey(group.map(t => t.teamId)),
         teams: group.map(s => third.find(t => t.teamId === s.teamId)!).filter(Boolean),
       }));
-  }, [groupStandings, knockoutConfig, luckyLoserDisciplinaryChoices]);
+  }, [predictedGroupStandings, knockoutConfig, luckyLoserDisciplinaryChoices]);
 
   if (isLoading) return <p className="py-4 text-sm text-muted-foreground">{t('common.loading')}</p>;
   if (error) {
