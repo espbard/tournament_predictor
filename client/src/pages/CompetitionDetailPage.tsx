@@ -1673,7 +1673,14 @@ export default function CompetitionDetailPage() {
 
             const matchPreds = [...allMatchPredictions]
               .filter(p => p.matchId === match.id)
-              .sort((a, b) => (b.points ?? 0) - (a.points ?? 0));
+              .sort((a, b) => {
+                const pointsDiff = (b.points ?? 0) - (a.points ?? 0);
+                if (pointsDiff !== 0) return pointsDiff;
+                const actualGD = (match.homeScore ?? 0) - (match.awayScore ?? 0);
+                const aGDDist = Math.abs((a.homeScore - a.awayScore) - actualGD);
+                const bGDDist = Math.abs((b.homeScore - b.awayScore) - actualGD);
+                return aGDDist - bGDDist;
+              });
 
             const isKnockout = match.stage !== 'group';
 
