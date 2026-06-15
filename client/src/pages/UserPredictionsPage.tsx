@@ -90,6 +90,15 @@ export default function UserPredictionsPage() {
     [matchList]
   );
 
+  const { data: bracketPreds } = useQuery({
+    queryKey: ['competitions', id, 'bracket-predictions', userId],
+    queryFn: () => api.get<Record<string, unknown>>(`/competitions/${id}/bracket-predictions/${userId}`),
+    enabled: !!id && !!userId,
+  });
+
+  const hasBracketPredictions = bracketPreds != null && Object.keys(bracketPreds).length > 0;
+  const showKnockoutTab = hasKnockoutMatches || hasBracketPredictions;
+
   useEffect(() => {
     if (lastResultInitialized.current || allGroupMatches.length === 0) return;
     const lastCompletedIdx = allGroupMatches.reduce(
@@ -142,7 +151,7 @@ export default function UserPredictionsPage() {
       <div className="flex flex-wrap gap-1 mb-6 border-b">
         {([
           ['group', t('competitionDetail.tabs.groupStage')],
-          ...(hasKnockoutMatches ? [['knockout', t('competitionDetail.tabs.knockoutStage')] as const] : []),
+          ...(showKnockoutTab ? [['knockout', t('competitionDetail.tabs.knockoutStage')] as const] : []),
           ['bonus', t('competitionDetail.tabs.bonusQuestions')],
         ] as ['group' | 'knockout' | 'bonus', string][]).map(([tab, label]) => (
           <button
