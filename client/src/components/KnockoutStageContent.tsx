@@ -330,6 +330,7 @@ function FocusedMatchCard({
         ? scoringConfig.correct_team_progresses : 0;
 
     let correctTeamInKnockoutTie = 0, correctTeamInFinal = 0, correctWinner = 0;
+    let isActualHomeTeamCorrect = false, isActualAwayTeamCorrect = false;
     const isBronzeFinal = matchKey.startsWith('bronze_final');
 
     if (!isBronzeFinal) {
@@ -349,12 +350,14 @@ function FocusedMatchCard({
           } else {
             correctTeamInKnockoutTie += scoringConfig.correct_team_in_knockout_tie;
           }
+          if (teamId === actHomeId) isActualHomeTeamCorrect = true;
+          if (teamId === actAwayId) isActualAwayTeamCorrect = true;
         }
       }
     }
 
     const total = exactScore + correctResult + correctTeamProgresses + correctTeamInKnockoutTie + correctTeamInFinal + correctWinner;
-    return { exactScore, correctResult, correctTeamProgresses, correctTeamInKnockoutTie, correctTeamInFinal, correctWinner, total };
+    return { exactScore, correctResult, correctTeamProgresses, correctTeamInKnockoutTie, correctTeamInFinal, correctWinner, total, isActualHomeTeamCorrect, isActualAwayTeamCorrect };
   }, [actualMatch, prediction, scoringConfig, homeTeam, awayTeam, isFinal, isFirstRound]);
   const { t } = useT();
 
@@ -430,6 +433,9 @@ function FocusedMatchCard({
 
   const isFlipped = isCompleted && (!!prediction?.flipped || clientSideFlip);
 
+  const isDisplayHomeTeamCorrect = isCompleted && (isFlipped ? pointsInfo?.isActualAwayTeamCorrect : pointsInfo?.isActualHomeTeamCorrect) === true;
+  const isDisplayAwayTeamCorrect = isCompleted && (isFlipped ? pointsInfo?.isActualHomeTeamCorrect : pointsInfo?.isActualAwayTeamCorrect) === true;
+
   // When flipped: swap teams and scores so the prediction card mirrors the
   // actual result card's home/away layout.
   const displayHomeTeam = isFlipped ? awayTeam : homeTeam;
@@ -459,9 +465,9 @@ function FocusedMatchCard({
             {displayHomeTeam ? (
               <>
                 {displayHomeTeam.imageUrl ? (
-                  <img src={displayHomeTeam.imageUrl} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0" />
+                  <img src={displayHomeTeam.imageUrl} alt="" className={`h-7 w-7 rounded-full object-cover flex-shrink-0${isDisplayHomeTeamCorrect ? ' ring-2 ring-green-400' : ''}`} />
                 ) : (
-                  <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
+                  <div className={`h-7 w-7 rounded-full bg-muted flex-shrink-0${isDisplayHomeTeamCorrect ? ' ring-2 ring-green-400' : ''}`} />
                 )}
                 <span className={`flex-1 text-sm truncate ${displayHomeWins ? 'font-semibold' : 'font-medium'}`}>
                   {displayHomeTeam.teamName}
@@ -520,9 +526,9 @@ function FocusedMatchCard({
             {displayAwayTeam ? (
               <>
                 {displayAwayTeam.imageUrl ? (
-                  <img src={displayAwayTeam.imageUrl} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0" />
+                  <img src={displayAwayTeam.imageUrl} alt="" className={`h-7 w-7 rounded-full object-cover flex-shrink-0${isDisplayAwayTeamCorrect ? ' ring-2 ring-green-400' : ''}`} />
                 ) : (
-                  <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
+                  <div className={`h-7 w-7 rounded-full bg-muted flex-shrink-0${isDisplayAwayTeamCorrect ? ' ring-2 ring-green-400' : ''}`} />
                 )}
                 <span className={`flex-1 text-sm truncate ${displayAwayWins ? 'font-semibold' : 'font-medium'}`}>
                   {displayAwayTeam.teamName}
