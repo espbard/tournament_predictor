@@ -1764,6 +1764,9 @@ export default function CompetitionDetailPage() {
               });
 
             const isKnockout = match.stage !== 'group';
+            const actualIsDraw = isKnockout && match.homeScore !== null && match.awayScore !== null && match.homeScore === match.awayScore;
+            const actualProgressorIsHome = actualIsDraw && match.progressingTeamId !== null && match.progressingTeamId === match.homeTeamId;
+            const actualProgressorIsAway = actualIsDraw && match.progressingTeamId !== null && match.progressingTeamId === match.awayTeamId;
 
             return (
               <div ref={matchPredictionsRef} className={`mt-6 ${user?.isLeaderboardUser ? 'tv:hidden' : ''}`}>
@@ -1824,21 +1827,25 @@ export default function CompetitionDetailPage() {
 
                         <div className="rounded-xl border-2 shadow-sm overflow-hidden w-full max-w-xs mx-auto bg-card">
                           <div className="flex items-center gap-3 px-4 py-3.5">
-                            {match.homeTeamImageUrl ? (
-                              <img src={match.homeTeamImageUrl} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0" />
-                            ) : (
-                              <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
-                            )}
+                            <div className={`flex-shrink-0 ${actualProgressorIsHome ? 'ring-2 ring-amber-400 rounded-full' : ''}`}>
+                              {match.homeTeamImageUrl ? (
+                                <img src={match.homeTeamImageUrl} alt="" className="h-7 w-7 rounded-full object-cover" />
+                              ) : (
+                                <div className="h-7 w-7 rounded-full bg-muted" />
+                              )}
+                            </div>
                             <span className="flex-1 text-sm font-medium truncate">{match.homeTeamName ?? 'TBD'}</span>
                             <span className="w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0">{match.homeScore}</span>
                           </div>
                           <div className="h-px bg-border" />
                           <div className="flex items-center gap-3 px-4 py-3.5">
-                            {match.awayTeamImageUrl ? (
-                              <img src={match.awayTeamImageUrl} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0" />
-                            ) : (
-                              <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
-                            )}
+                            <div className={`flex-shrink-0 ${actualProgressorIsAway ? 'ring-2 ring-amber-400 rounded-full' : ''}`}>
+                              {match.awayTeamImageUrl ? (
+                                <img src={match.awayTeamImageUrl} alt="" className="h-7 w-7 rounded-full object-cover" />
+                              ) : (
+                                <div className="h-7 w-7 rounded-full bg-muted" />
+                              )}
+                            </div>
                             <span className="flex-1 text-sm font-medium truncate">{match.awayTeamName ?? 'TBD'}</span>
                             <span className="w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0">{match.awayScore}</span>
                           </div>
@@ -1906,6 +1913,10 @@ export default function CompetitionDetailPage() {
                             ? pred.predAwayTeamImageUrl
                             : (pred.flipped ? match.homeTeamImageUrl : match.awayTeamImageUrl);
 
+                          const predIsDraw = isKnockout && pred.homeScore === pred.awayScore;
+                          const predProgressorIsHome = predIsDraw && pred.progressingTeamId !== null && pred.progressingTeamId === predHomeId;
+                          const predProgressorIsAway = predIsDraw && pred.progressingTeamId !== null && pred.progressingTeamId === predAwayId;
+
                           const bd = pred.breakdown;
                           const breakdownLines: { label: string; pts: number }[] = bd ? [
                             { label: 'Exact score', pts: bd.exactScore },
@@ -1933,11 +1944,16 @@ export default function CompetitionDetailPage() {
                                 <span className="flex-1 truncate font-medium text-xs">{pred.username}</span>
 
                                 <div className="flex items-center gap-1 flex-shrink-0">
-                                  <div className={homeGetsCircle ? 'ring-2 ring-green-500 rounded-full' : ''}>
-                                    {displayHomeImg ? (
-                                      <img src={displayHomeImg} alt="" className="h-5 w-5 rounded-full object-cover" />
-                                    ) : (
-                                      <div className="h-5 w-5 rounded-full bg-muted" />
+                                  <div className="relative">
+                                    <div className={homeGetsCircle ? 'ring-2 ring-green-500 rounded-full' : ''}>
+                                      {displayHomeImg ? (
+                                        <img src={displayHomeImg} alt="" className="h-5 w-5 rounded-full object-cover" />
+                                      ) : (
+                                        <div className="h-5 w-5 rounded-full bg-muted" />
+                                      )}
+                                    </div>
+                                    {predProgressorIsHome && (
+                                      <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-yellow-500 text-[9px] leading-none pointer-events-none">▲</span>
                                     )}
                                   </div>
 
@@ -1949,11 +1965,16 @@ export default function CompetitionDetailPage() {
                                     {pred.homeScore}–{pred.awayScore}
                                   </span>
 
-                                  <div className={awayGetsCircle ? 'ring-2 ring-green-500 rounded-full' : ''}>
-                                    {displayAwayImg ? (
-                                      <img src={displayAwayImg} alt="" className="h-5 w-5 rounded-full object-cover" />
-                                    ) : (
-                                      <div className="h-5 w-5 rounded-full bg-muted" />
+                                  <div className="relative">
+                                    <div className={awayGetsCircle ? 'ring-2 ring-green-500 rounded-full' : ''}>
+                                      {displayAwayImg ? (
+                                        <img src={displayAwayImg} alt="" className="h-5 w-5 rounded-full object-cover" />
+                                      ) : (
+                                        <div className="h-5 w-5 rounded-full bg-muted" />
+                                      )}
+                                    </div>
+                                    {predProgressorIsAway && (
+                                      <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-yellow-500 text-[9px] leading-none pointer-events-none">▲</span>
                                     )}
                                   </div>
                                 </div>
