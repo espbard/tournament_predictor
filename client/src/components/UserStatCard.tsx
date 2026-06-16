@@ -7,10 +7,13 @@ interface UserStatCardProps {
   iconOnRight: boolean;
 }
 
-const SQUARE_CORNER_ANGLES = [45, 135, 225, 315];
-const COLLAGE_GAP_DEGREES = 6;
+type Point = { x: number; y: number };
+type Vector = { dx: number; dy: number };
 
-function pointOnSquareAtAngle(angleDeg: number): { x: number; y: number } {
+const SQUARE_CORNER_ANGLES = [45, 135, 225, 315];
+const COLLAGE_GAP_PERCENT = 4;
+
+function pointOnSquareAtAngle(angleDeg: number): Point {
   const rad = (angleDeg * Math.PI) / 180;
   const dx = Math.sin(rad);
   const dy = -Math.cos(rad);
@@ -18,19 +21,69 @@ function pointOnSquareAtAngle(angleDeg: number): { x: number; y: number } {
   return { x: 50 + dx * t * 50, y: 50 + dy * t * 50 };
 }
 
-// Slices are trimmed by half the gap on each side, so every seam stays centred between its two neighbours.
+// The outward radial direction at a given angle (0deg = up, clockwise positive).
+function radialUnit(angleDeg: number): Vector {
+  const rad = (angleDeg * Math.PI) / 180;
+  return { dx: Math.sin(rad), dy: -Math.cos(rad) };
+}
+
+// The direction perpendicular to radialUnit, pointing towards increasing angle.
+function tangentUnit(angleDeg: number): Vector {
+  const rad = (angleDeg * Math.PI) / 180;
+  return { dx: Math.cos(rad), dy: Math.sin(rad) };
+}
+
+// Finds where a ray from `origin` in direction `dir` first crosses the 0-100% square boundary.
+function intersectSquareBoundary(origin: Point, dir: Vector): Point {
+  let bestT = Infinity;
+  const candidateTs: number[] = [];
+  if (Math.abs(dir.dx) > 1e-9) candidateTs.push((0 - origin.x) / dir.dx, (100 - origin.x) / dir.dx);
+  if (Math.abs(dir.dy) > 1e-9) candidateTs.push((0 - origin.y) / dir.dy, (100 - origin.y) / dir.dy);
+  for (const t of candidateTs) {
+    if (t <= 1e-6) continue;
+    const x = origin.x + t * dir.dx;
+    const y = origin.y + t * dir.dy;
+    if (x >= -1e-6 && x <= 100.000001 && y >= -1e-6 && y <= 100.000001 && t < bestT) bestT = t;
+  }
+  return { x: origin.x + bestT * dir.dx, y: origin.y + bestT * dir.dy };
+}
+
+function intersectLines(o1: Point, d1: Vector, o2: Point, d2: Vector): Point {
+  const denom = d1.dx * d2.dy - d1.dy * d2.dx;
+  const t = ((o2.x - o1.x) * d2.dy - (o2.y - o1.y) * d2.dx) / denom;
+  return { x: o1.x + t * d1.dx, y: o1.y + t * d1.dy };
+}
+
+// Each slice edge is the original radial cut shifted sideways by half the gap, so the seam
+// between two images keeps the same perpendicular width along its whole length, not just near
+// the outer edge.
 function pieSliceClipPath(index: number, total: number, rotationOffset: number): string {
   const sliceAngle = 360 / total;
-  const start = index * sliceAngle + rotationOffset + COLLAGE_GAP_DEGREES / 2;
-  const end = (index + 1) * sliceAngle + rotationOffset - COLLAGE_GAP_DEGREES / 2;
-  const points = [{ x: 50, y: 50 }, pointOnSquareAtAngle(start)];
+  const start = index * sliceAngle + rotationOffset;
+  const end = start + sliceAngle;
+  const halfGap = COLLAGE_GAP_PERCENT / 2;
+  const center: Point = { x: 50, y: 50 };
+  const tangentStart = tangentUnit(start);
+  const tangentEnd = tangentUnit(end);
+  const originStart = { x: center.x + halfGap * tangentStart.dx, y: center.y + halfGap * tangentStart.dy };
+  const originEnd = { x: center.x - halfGap * tangentEnd.dx, y: center.y - halfGap * tangentEnd.dy };
+  const dirStart = radialUnit(start);
+  const dirEnd = radialUnit(end);
+  // A slice spanning exactly 180 degrees has antiparallel edges (the same line on both sides
+  // of the centre), so the two shifted origins already coincide instead of forming a real
+  // intersection.
+  const innerVertex = sliceAngle === 180 ? originStart : intersectLines(originStart, dirStart, originEnd, dirEnd);
+  const outerStart = intersectSquareBoundary(originStart, dirStart);
+  const outerEnd = intersectSquareBoundary(originEnd, dirEnd);
+
+  const points = [innerVertex, outerStart];
   for (const corner of SQUARE_CORNER_ANGLES) {
     for (const k of [-1, 0, 1, 2]) {
       const angle = corner + k * 360;
       if (angle > start && angle < end) points.push(pointOnSquareAtAngle(angle));
     }
   }
-  points.push(pointOnSquareAtAngle(end));
+  points.push(outerEnd);
   return `polygon(${points.map(p => `${p.x}% ${p.y}%`).join(', ')})`;
 }
 
