@@ -902,7 +902,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         const lowestSentence =
           minPredicted < actualTotalGoals
             ? lang === 'no'
-              ? ` I mellomtiden har ${formatUserList(lowestPredictorGroup.map(u => u.username), lang)} tippet at det bare skulle vært scoret ${minPredicted} mål så langt.`
+              ? ` ${formatUserList(lowestPredictorGroup.map(u => u.username), lang)} har i midlertiden tippet at det bare skulle vært scoret ${minPredicted} mål så langt.`
               : ` Meanwhile ${formatUserList(lowestPredictorGroup.map(u => u.username), lang)} ${lowestPredictorGroup.length === 1 ? 'has' : 'have'} predicted that only ${minPredicted} ${minPredicted === 1 ? 'goal' : 'goals'} should've been scored by now.`
             : '';
 
@@ -1237,7 +1237,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       statistic:
         hitOrMissGroup.length > 0
           ? lang === 'no'
-            ? `${formatUserList(hitOrMissGroup.map(u => u.username), lang)} har truffet eksakt ${hitOrMissGroup[0].exactScores} av ${hitOrMissGroup[0].correctResults} riktige resultater!`
+            ? `${formatUserList(hitOrMissGroup.map(u => u.username), lang)} har greid ${hitOrMissGroup[0].exactScores} fulltreffere på de ${hitOrMissGroup[0].correctResults} resultatene de har tippet riktig!`
             : `${hitOrMissGroup[0].exactScores} out of ${formatUserList(hitOrMissGroup.map(u => u.username), lang)}'s ${hitOrMissGroup[0].correctResults} have been perfect predictions!`
           : lang === 'no'
             ? 'Ingen har tippet minst to perfekte resultater ennå!'
