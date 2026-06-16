@@ -444,6 +444,47 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     const unluckyGroup = groupByCount(topUnluckyCount);
     const nextUnluckyGroup = groupByCount(nextUnluckyCount);
 
+    // ── Hit or Miss: highest exact-score-to-correct-result ratio ──
+    const userResultStats = new Map<
+      string,
+      { username: string; imageUrl: string | null; correctResults: number; exactScores: number }
+    >();
+    for (const row of rows) {
+      if (row.actualHomeScore === null || row.actualAwayScore === null) continue;
+      const predictedResult = Math.sign(row.predHomeScore - row.predAwayScore);
+      const actualResult = Math.sign(row.actualHomeScore - row.actualAwayScore);
+      if (predictedResult !== actualResult) continue;
+      const entry =
+        userResultStats.get(row.userId) ??
+        { username: row.username, imageUrl: row.imageUrl, correctResults: 0, exactScores: 0 };
+      entry.correctResults += 1;
+      if (row.predHomeScore === row.actualHomeScore && row.predAwayScore === row.actualAwayScore) {
+        entry.exactScores += 1;
+      }
+      userResultStats.set(row.userId, entry);
+    }
+
+    const compareExactRatio = (
+      a: { exactScores: number; correctResults: number },
+      b: { exactScores: number; correctResults: number }
+    ) => a.exactScores * b.correctResults - b.exactScores * a.correctResults;
+
+    const hitOrMissCandidates = [...userResultStats.entries()]
+      .map(([userId, entry]) => ({ userId, ...entry }))
+      .filter(candidate => candidate.exactScores >= 2);
+
+    let hitOrMissGroup: typeof hitOrMissCandidates = [];
+    if (hitOrMissCandidates.length > 0) {
+      const bestRatio = hitOrMissCandidates.reduce((best, candidate) =>
+        compareExactRatio(candidate, best) > 0 ? candidate : best
+      );
+      const ratioTied = hitOrMissCandidates.filter(candidate => compareExactRatio(candidate, bestRatio) === 0);
+      const maxExactScores = Math.max(...ratioTied.map(candidate => candidate.exactScores));
+      hitOrMissGroup = ratioTied
+        .filter(candidate => candidate.exactScores === maxExactScores)
+        .sort((a, b) => a.username.localeCompare(b.username));
+    }
+
     const cards: UserStatCardData[] = [];
 
     // ── Best/worst prediction: per-match outcome stats ──
@@ -654,6 +695,16 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           .map(teamId => ({ type: 'team' as const, id: teamId, name: teamName(teamId), imageUrl: teamImageMap.get(teamId) ?? null })),
       });
     }
+
+    cards.push({
+      id: 'hitOrMiss',
+      title: 'Hit or Miss',
+      statistic:
+        hitOrMissGroup.length > 0
+          ? `${formatUserList(hitOrMissGroup.map(u => u.username))} ${hitOrMissGroup.length === 1 ? 'has' : 'have'} predicted only ${hitOrMissGroup[0].correctResults} correct results, but ${hitOrMissGroup[0].exactScores} of those have been perfect scores!`
+          : 'No one has predicted at least two perfect scores yet!',
+      subjects: hitOrMissGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
+    });
 
     res.json(cards);
   } catch (err) {
