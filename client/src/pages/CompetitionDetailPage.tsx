@@ -6,11 +6,12 @@ import { useAuthStore } from '@/store/authStore';
 import ImageUpload from '@/components/ImageUpload';
 import KnockoutStageContent from '@/components/KnockoutStageContent';
 import PlayerPodium from '@/components/PlayerPodium';
+import UserStatCard from '@/components/UserStatCard';
 import { SoccerKickAnimation } from '@/components/SoccerKickAnimation';
 import { CryingPlayerAnimation } from '@/components/CryingPlayerAnimation';
 import BonusQuestionsTab from './BonusQuestionsTab';
 import { useT } from '@/lib/useT';
-import type { Competition, Tournament, Prediction, MatchStage, LeaderboardEntry, BracketPredictions } from '@tournament-predictor/shared';
+import type { Competition, Tournament, Prediction, MatchStage, LeaderboardEntry, BracketPredictions, UserStatCardData } from '@tournament-predictor/shared';
 import {
   sortGroupTeams,
   sortLuckyLosers,
@@ -55,7 +56,7 @@ export default function CompetitionDetailPage() {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const { t } = useT();
+  const { t, language } = useT();
 
   const [editName, setEditName] = useState('');
   const [editImageUrl, setEditImageUrl] = useState<string | null>(null);
@@ -70,7 +71,7 @@ export default function CompetitionDetailPage() {
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [saveErrors, setSaveErrors] = useState<Record<string, string>>({});
 
-  const [activeTab, setActiveTab] = useState<'group' | 'tables' | 'knockout' | 'bonus' | 'leaderboard'>(
+  const [activeTab, setActiveTab] = useState<'group' | 'tables' | 'knockout' | 'bonus' | 'leaderboard' | 'userStats'>(
     () => {
       const u = useAuthStore.getState().user;
       return u?.isLeaderboardUser || u?.isAdmin ? 'leaderboard' : 'group';
@@ -86,6 +87,8 @@ export default function CompetitionDetailPage() {
 
   const [currentPredMatchIdx, setCurrentPredMatchIdx] = useState(0);
   const [matchPredictionsCollapsed, setMatchPredictionsCollapsed] = useState(false);
+  const [pendingScrollMatchId, setPendingScrollMatchId] = useState<string | null>(null);
+  const matchPredictionsRef = useRef<HTMLDivElement>(null);
 
   const [groupDisciplinaryChoices, setGroupDisciplinaryChoices] = useState<DisciplinaryChoices>({});
   const [luckyLoserDisciplinaryChoices, setLuckyLoserDisciplinaryChoices] = useState<DisciplinaryChoices>({});
@@ -160,6 +163,12 @@ export default function CompetitionDetailPage() {
     queryKey: ['competitions', id, 'all-match-predictions'],
     queryFn: () => api.get<MatchPredictionEntry[]>(`/competitions/${id}/all-match-predictions`),
     enabled: !!competition && !user?.isAdmin && (activeTab === 'leaderboard' || !!user?.isLeaderboardUser),
+  });
+
+  const { data: userStats = [] } = useQuery({
+    queryKey: ['competitions', id, 'user-stats', language],
+    queryFn: () => api.get<UserStatCardData[]>(`/competitions/${id}/user-stats?lang=${language}`),
+    enabled: !!competition && activeTab === 'userStats',
   });
 
   useEffect(() => {
@@ -434,6 +443,26 @@ export default function CompetitionDetailPage() {
       setCurrentPredMatchIdx(completedMatchesWithResults.length - 1);
     }
   }, [completedMatchesWithResults]);
+
+  useEffect(() => {
+    if (pendingScrollMatchId && activeTab === 'leaderboard') {
+      matchPredictionsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setPendingScrollMatchId(null);
+    }
+  }, [pendingScrollMatchId, activeTab]);
+
+  const handleStatCardMatchClick = (matchId: string) => {
+    const idx = completedMatchesWithResults.findIndex(m => m.id === matchId);
+    if (idx === -1) return;
+    setActiveTab('leaderboard');
+    setCurrentPredMatchIdx(idx);
+    setMatchPredictionsCollapsed(false);
+    setPendingScrollMatchId(matchId);
+  };
+
+  const handleStatCardLeaderboardClick = () => {
+    setActiveTab('leaderboard');
+  };
 
   const allGroupFilled = useMemo(() => {
     if (scheduledGroupMatches.length === 0) return false;
@@ -896,6 +925,7 @@ export default function CompetitionDetailPage() {
           ['knockout', t('competitionDetail.tabs.knockoutStage')],
           ['bonus', t('competitionDetail.tabs.bonusQuestions')],
           ['leaderboard', t('competitionDetail.tabs.leaderboard')],
+          ['userStats', t('competitionDetail.tabs.userStats')],
         ] as const).map(([tab, label]) => (
           <button
             key={tab}
@@ -1691,7 +1721,7 @@ export default function CompetitionDetailPage() {
             const isKnockout = match.stage !== 'group';
 
             return (
-              <div className={`mt-6 ${user?.isLeaderboardUser ? 'tv:hidden' : ''}`}>
+              <div ref={matchPredictionsRef} className={`mt-6 ${user?.isLeaderboardUser ? 'tv:hidden' : ''}`}>
                 <button
                   type="button"
                   onClick={() => setMatchPredictionsCollapsed(c => !c)}
@@ -1887,6 +1917,21 @@ export default function CompetitionDetailPage() {
       )}
 
       </div>
+
+      {activeTab === 'userStats' && (
+        <div className="space-y-6">
+          {userStats.map((stat, i) => (
+            <UserStatCard
+              key={stat.id}
+              competitionId={id!}
+              data={stat}
+              iconOnRight={i % 2 === 1}
+              onMatchClick={handleStatCardMatchClick}
+              onLeaderboardClick={handleStatCardLeaderboardClick}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Clear predictions confirm */}
       {showClearConfirm && (
