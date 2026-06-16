@@ -1548,15 +1548,15 @@ export default function CompetitionDetailPage() {
                   <tr className="border-b bg-muted/50 text-muted-foreground">
                     <th className="pl-3 pr-2 py-2 text-left w-6">#</th>
                     <th className="px-3 py-2 text-left min-w-[110px]">{t('competitionDetail.leaderboard.player')}</th>
-                    <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.exact')}</th>
+                    <th className="px-2 py-2 text-center whitespace-nowrap font-bold text-foreground border-r">{t('competitionDetail.leaderboard.total')}</th>
                     <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.result')}</th>
-                    <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.progresses')}</th>
+                    <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.exact')}</th>
                     <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.group')}</th>
+                    <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.progresses')}</th>
                     <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.koTie')}</th>
                     <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.final')}</th>
                     <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.winner')}</th>
-                    <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.bonus')}</th>
-                    <th className="pl-2 pr-3 py-2 text-center whitespace-nowrap font-bold text-foreground border-l">{t('competitionDetail.leaderboard.total')}</th>
+                    <th className="pl-2 pr-3 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.bonus')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
@@ -1577,15 +1577,15 @@ export default function CompetitionDetailPage() {
                             </span>
                           </Link>
                         </td>
-                        <td className="px-2 py-2.5 text-center text-muted-foreground">{b.exactScorePoints}</td>
+                        <td className="px-2 py-2.5 text-center font-bold text-sm border-r">{entry.totalPoints}</td>
                         <td className="px-2 py-2.5 text-center text-muted-foreground">{b.correctResultPoints}</td>
-                        <td className="px-2 py-2.5 text-center text-muted-foreground">{b.correctTeamProgressesPoints}</td>
+                        <td className="px-2 py-2.5 text-center text-muted-foreground">{b.exactScorePoints}</td>
                         <td className="px-2 py-2.5 text-center text-muted-foreground">{b.correctGroupPositionPoints}</td>
+                        <td className="px-2 py-2.5 text-center text-muted-foreground">{b.correctTeamProgressesPoints}</td>
                         <td className="px-2 py-2.5 text-center text-muted-foreground">{b.correctTeamInKnockoutTiePoints}</td>
                         <td className="px-2 py-2.5 text-center text-muted-foreground">{b.correctTeamInFinalPoints}</td>
                         <td className="px-2 py-2.5 text-center text-muted-foreground">{b.correctWinnerPoints}</td>
-                        <td className="px-2 py-2.5 text-center text-muted-foreground">{b.bonusQuestionPoints}</td>
-                        <td className="pl-2 pr-3 py-2.5 text-center font-bold text-sm border-l">{entry.totalPoints}</td>
+                        <td className="pl-2 pr-3 py-2.5 text-center text-muted-foreground">{b.bonusQuestionPoints}</td>
                       </tr>
                     );
                   })}
@@ -1610,15 +1610,15 @@ export default function CompetitionDetailPage() {
                         <span className="font-medium text-base truncate">{entry.username}</span>
                       </Link>
                     </td>
-                    <td className="px-3 py-3 text-center text-muted-foreground">{b.exactScorePoints}</td>
+                    <td className="px-3 py-3 text-center font-bold text-base border-r">{entry.totalPoints}</td>
                     <td className="px-3 py-3 text-center text-muted-foreground">{b.correctResultPoints}</td>
-                    <td className="px-3 py-3 text-center text-muted-foreground">{b.correctTeamProgressesPoints}</td>
+                    <td className="px-3 py-3 text-center text-muted-foreground">{b.exactScorePoints}</td>
                     <td className="px-3 py-3 text-center text-muted-foreground">{b.correctGroupPositionPoints}</td>
+                    <td className="px-3 py-3 text-center text-muted-foreground">{b.correctTeamProgressesPoints}</td>
                     <td className="px-3 py-3 text-center text-muted-foreground">{b.correctTeamInKnockoutTiePoints}</td>
                     <td className="px-3 py-3 text-center text-muted-foreground">{b.correctTeamInFinalPoints}</td>
                     <td className="px-3 py-3 text-center text-muted-foreground">{b.correctWinnerPoints}</td>
-                    <td className="px-3 py-3 text-center text-muted-foreground">{b.bonusQuestionPoints}</td>
-                    <td className="pl-3 pr-4 py-3 text-center font-bold text-base border-l">{entry.totalPoints}</td>
+                    <td className="pl-3 pr-4 py-3 text-center text-muted-foreground">{b.bonusQuestionPoints}</td>
                   </tr>
                 );
               });
@@ -1627,15 +1627,15 @@ export default function CompetitionDetailPage() {
                   <tr className="border-b bg-muted/50 text-muted-foreground">
                     <th className="pl-4 pr-3 py-3 text-left w-8">#</th>
                     <th className="px-3 py-3 text-left">{t('competitionDetail.leaderboard.player')}</th>
-                    <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.exact')}</th>
+                    <th className="px-3 py-3 text-center whitespace-nowrap font-bold text-foreground border-r">{t('competitionDetail.leaderboard.total')}</th>
                     <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.result')}</th>
-                    <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.progresses')}</th>
+                    <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.exact')}</th>
                     <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.group')}</th>
+                    <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.progresses')}</th>
                     <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.koTie')}</th>
                     <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.final')}</th>
                     <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.winner')}</th>
-                    <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.bonus')}</th>
-                    <th className="pl-3 pr-4 py-3 text-center whitespace-nowrap font-bold text-foreground border-l">{t('competitionDetail.leaderboard.total')}</th>
+                    <th className="pl-3 pr-4 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.bonus')}</th>
                   </tr>
                 </thead>
               );
