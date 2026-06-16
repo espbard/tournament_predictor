@@ -6,11 +6,12 @@ import { useAuthStore } from '@/store/authStore';
 import ImageUpload from '@/components/ImageUpload';
 import KnockoutStageContent from '@/components/KnockoutStageContent';
 import PlayerPodium from '@/components/PlayerPodium';
+import UserStatCard from '@/components/UserStatCard';
 import { SoccerKickAnimation } from '@/components/SoccerKickAnimation';
 import { CryingPlayerAnimation } from '@/components/CryingPlayerAnimation';
 import BonusQuestionsTab from './BonusQuestionsTab';
 import { useT } from '@/lib/useT';
-import type { Competition, Tournament, Prediction, MatchStage, LeaderboardEntry, BracketPredictions } from '@tournament-predictor/shared';
+import type { Competition, Tournament, Prediction, MatchStage, LeaderboardEntry, BracketPredictions, UserStatCardData } from '@tournament-predictor/shared';
 import {
   sortGroupTeams,
   sortLuckyLosers,
@@ -160,6 +161,12 @@ export default function CompetitionDetailPage() {
     queryKey: ['competitions', id, 'all-match-predictions'],
     queryFn: () => api.get<MatchPredictionEntry[]>(`/competitions/${id}/all-match-predictions`),
     enabled: !!competition && !user?.isAdmin && (activeTab === 'leaderboard' || !!user?.isLeaderboardUser),
+  });
+
+  const { data: userStats = [] } = useQuery({
+    queryKey: ['competitions', id, 'user-stats'],
+    queryFn: () => api.get<UserStatCardData[]>(`/competitions/${id}/user-stats`),
+    enabled: !!competition && activeTab === 'userStats' && !!user?.isTestAccount,
   });
 
   useEffect(() => {
@@ -1879,7 +1886,11 @@ export default function CompetitionDetailPage() {
       </div>
 
       {activeTab === 'userStats' && user?.isTestAccount && (
-        <div />
+        <div className="space-y-4">
+          {userStats.map((stat, i) => (
+            <UserStatCard key={stat.id} competitionId={id!} data={stat} iconOnRight={i % 2 === 1} />
+          ))}
+        </div>
       )}
 
       {/* Clear predictions confirm */}

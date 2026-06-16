@@ -141,6 +141,20 @@ export interface BonusQuestion {
   createdAt: string;
 }
 
+export interface UserStatSubject {
+  type: 'user' | 'team';
+  id: string;
+  name: string;
+  imageUrl?: string | null;
+}
+
+export interface UserStatCardData {
+  id: string;
+  title: string;
+  statistic: string;
+  subject: UserStatSubject | null;
+}
+
 export interface BonusAnswer {
   id: string;
   questionId: string;

@@ -5,6 +5,7 @@ import { db } from '../db/client.js';
 import { competitions, competitionMembers, users, tournaments, predictions, matches, bracketPredictions, bonusQuestions, bonusAnswers } from '../db/schema.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { CreateCompetitionSchema, CreatePredictionSchema, SaveBracketPredictionsSchema, DEFAULT_SCORING_CONFIG, SaveBonusAnswerSchema } from '@tournament-predictor/shared';
+import type { UserStatCardData } from '@tournament-predictor/shared';
 import { recalculateAllScoresForTournament } from '../lib/scoringTrigger.js';
 import { subscribeLeaderboard, unsubscribeLeaderboard } from '../lib/leaderboardEvents.js';
 
@@ -359,6 +360,85 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Get all match predictions error:', err);
     res.status(500).json({ error: 'Failed to fetch match predictions' });
+  }
+});
+
+router.get('/:id/user-stats', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = res.locals.user;
+
+    const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
+    if (!competition) return res.status(404).json({ error: 'Competition not found' });
+
+    if (!user.isAdmin) {
+      const [membership] = await db
+        .select()
+        .from(competitionMembers)
+        .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
+      if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+    }
+
+    const rows = await db
+      .select({
+        userId: predictions.userId,
+        username: users.username,
+        imageUrl: users.imageUrl,
+        predHomeScore: predictions.homeScore,
+        predAwayScore: predictions.awayScore,
+        actualHomeScore: matches.homeScore,
+        actualAwayScore: matches.awayScore,
+      })
+      .from(predictions)
+      .innerJoin(users, eq(predictions.userId, users.id))
+      .innerJoin(matches, eq(predictions.matchId, matches.id))
+      .where(
+        and(
+          eq(predictions.competitionId, id),
+          eq(matches.status, 'completed'),
+          eq(users.isLeaderboardUser, false)
+        )
+      );
+
+    const oneGoalAwayCounts = new Map<string, { username: string; imageUrl: string | null; count: number }>();
+    for (const row of rows) {
+      if (row.actualHomeScore === null || row.actualAwayScore === null) continue;
+      const goalsAway =
+        Math.abs(row.predHomeScore - row.actualHomeScore) + Math.abs(row.predAwayScore - row.actualAwayScore);
+      if (goalsAway !== 1) continue;
+      const entry = oneGoalAwayCounts.get(row.userId) ?? { username: row.username, imageUrl: row.imageUrl, count: 0 };
+      entry.count += 1;
+      oneGoalAwayCounts.set(row.userId, entry);
+    }
+
+    let unluckiest: { userId: string; username: string; imageUrl: string | null; count: number } | null = null;
+    for (const [userId, entry] of oneGoalAwayCounts) {
+      if (
+        !unluckiest ||
+        entry.count > unluckiest.count ||
+        (entry.count === unluckiest.count && entry.username.localeCompare(unluckiest.username) < 0)
+      ) {
+        unluckiest = { userId, ...entry };
+      }
+    }
+
+    const cards: UserStatCardData[] = [
+      {
+        id: 'unlucky',
+        title: 'Unlucky',
+        statistic: unluckiest
+          ? `${unluckiest.username} has been one goal away from predicting a perfect score ${unluckiest.count} ${unluckiest.count === 1 ? 'time' : 'times'}!`
+          : 'No one has been one goal away from a perfect score yet!',
+        subject: unluckiest
+          ? { type: 'user', id: unluckiest.userId, name: unluckiest.username, imageUrl: unluckiest.imageUrl }
+          : null,
+      },
+    ];
+
+    res.json(cards);
+  } catch (err) {
+    console.error('Get user stats error:', err);
+    res.status(500).json({ error: 'Failed to fetch user stats' });
   }
 });
 
