@@ -57,7 +57,7 @@ function intersectLines(o1: Point, d1: Vector, o2: Point, d2: Vector): Point {
 // Each slice edge is the original radial cut shifted sideways by half the gap, so the seam
 // between two images keeps the same perpendicular width along its whole length, not just near
 // the outer edge.
-function pieSliceClipPath(index: number, total: number, rotationOffset: number): string {
+function pieSlicePoints(index: number, total: number, rotationOffset: number): Point[] {
   const sliceAngle = 360 / total;
   const start = index * sliceAngle + rotationOffset;
   const end = start + sliceAngle;
@@ -84,13 +84,36 @@ function pieSliceClipPath(index: number, total: number, rotationOffset: number):
     }
   }
   points.push(outerEnd);
-  return `polygon(${points.map(p => `${p.x}% ${p.y}%`).join(', ')})`;
+  return points;
 }
 
-function collageClipPath(index: number, total: number): string {
+interface SliceLayout {
+  clipPath: string;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+// Sizes and positions the image to its slice's own bounding box (instead of the full collage
+// square), so object-cover centres the image on the slice rather than on the whole collage.
+function collageSliceLayout(index: number, total: number): SliceLayout {
   // Rotating a 2-way split by 45 degrees turns the edge-to-edge cut into a corner-to-corner diagonal.
   const rotationOffset = total === 2 ? 45 : 0;
-  return pieSliceClipPath(index, total, rotationOffset);
+  const points = pieSlicePoints(index, total, rotationOffset);
+
+  const minX = Math.min(...points.map(p => p.x));
+  const maxX = Math.max(...points.map(p => p.x));
+  const minY = Math.min(...points.map(p => p.y));
+  const maxY = Math.max(...points.map(p => p.y));
+  const width = maxX - minX;
+  const height = maxY - minY;
+
+  const clipPath = `polygon(${points
+    .map(p => `${((p.x - minX) / width) * 100}% ${((p.y - minY) / height) * 100}%`)
+    .join(', ')})`;
+
+  return { clipPath, left: minX, top: minY, width, height };
 }
 
 export default function UserStatCard({ competitionId, data, iconOnRight }: UserStatCardProps) {
@@ -100,15 +123,24 @@ export default function UserStatCard({ competitionId, data, iconOnRight }: UserS
     <div className="h-40 w-1/4 flex-shrink-0">
       {subjects.length > 1 ? (
         <div className="relative h-full w-full">
-          {subjects.map((subject, i) => (
-            <img
-              key={subject.id}
-              src={subject.imageUrl ?? '/default-avatar.png'}
-              alt={subject.name}
-              className="absolute inset-0 h-full w-full object-cover"
-              style={{ clipPath: collageClipPath(i, subjects.length) }}
-            />
-          ))}
+          {subjects.map((subject, i) => {
+            const layout = collageSliceLayout(i, subjects.length);
+            return (
+              <img
+                key={subject.id}
+                src={subject.imageUrl ?? '/default-avatar.png'}
+                alt={subject.name}
+                className="absolute object-cover"
+                style={{
+                  left: `${layout.left}%`,
+                  top: `${layout.top}%`,
+                  width: `${layout.width}%`,
+                  height: `${layout.height}%`,
+                  clipPath: layout.clipPath,
+                }}
+              />
+            );
+          })}
         </div>
       ) : (
         <img
