@@ -155,6 +155,7 @@ export interface UserStatCardData {
   subjects: UserStatSubject[];
   linkType: 'match' | 'user' | 'leaderboard' | null;
   matchId?: string | null;
+  overlayImageUrl?: string | null;
 }
 
 export interface BonusAnswer {

@@ -129,7 +129,7 @@ export default function UserStatCard({ competitionId, data, iconOnRight, onMatch
   const { title, statistic, subjects } = data;
 
   const icon = (
-    <div className="h-40 w-1/3 flex-shrink-0 sm:w-1/4">
+    <div className="relative h-40 w-1/3 flex-shrink-0 sm:w-1/4">
       {subjects.length > 1 ? (
         <div className="relative h-full w-full">
           {subjects.map((subject, i) => {
@@ -156,6 +156,13 @@ export default function UserStatCard({ competitionId, data, iconOnRight, onMatch
           src={subjects[0]?.imageUrl ?? '/default-avatar.png'}
           alt={subjects[0]?.name ?? ''}
           className="h-full w-full object-cover"
+        />
+      )}
+      {data.overlayImageUrl && (
+        <img
+          src={data.overlayImageUrl}
+          alt=""
+          className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-40"
         />
       )}
     </div>

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { eq, and, inArray } from 'drizzle-orm';
+import { eq, and, inArray, or } from 'drizzle-orm';
 import { generateId } from 'lucia';
 import { db } from '../db/client.js';
 import { competitions, competitionMembers, users, tournaments, predictions, matches, teams, groups, bracketPredictions, bonusQuestions, bonusAnswers } from '../db/schema.js';
@@ -811,6 +811,85 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
               worstSentence,
             subjects: bestGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
             linkType: 'user',
+          });
+        }
+      }
+    }
+
+    // ── The Patriot: most optimistic predictions for Norway's games ──
+    const tournamentTeamsForPatriot = await db
+      .select({ id: teams.id, name: teams.name, imageUrl: teams.imageUrl })
+      .from(teams)
+      .where(eq(teams.tournamentId, competition.tournamentId));
+    const norwayTeam = tournamentTeamsForPatriot.find(t => ['norway', 'norge'].includes(t.name.trim().toLowerCase()));
+
+    if (norwayTeam) {
+      const norwayMatches = await db
+        .select({ id: matches.id, homeTeamId: matches.homeTeamId, awayTeamId: matches.awayTeamId })
+        .from(matches)
+        .where(
+          and(
+            eq(matches.tournamentId, competition.tournamentId),
+            eq(matches.status, 'completed'),
+            or(eq(matches.homeTeamId, norwayTeam.id), eq(matches.awayTeamId, norwayTeam.id))
+          )
+        );
+
+      if (norwayMatches.length > 0) {
+        const norwayMatchIds = new Set(norwayMatches.map(m => m.id));
+        const norwayHomeByMatch = new Map(norwayMatches.map(m => [m.id, m.homeTeamId === norwayTeam.id]));
+
+        const patriotStatsByUser = new Map<
+          string,
+          { username: string; imageUrl: string | null; wins: number; gf: number; ga: number }
+        >();
+        for (const row of rows) {
+          if (!norwayMatchIds.has(row.matchId)) continue;
+          const norwayIsHome = norwayHomeByMatch.get(row.matchId);
+          const predNorwayGoals = norwayIsHome ? row.predHomeScore : row.predAwayScore;
+          const predOpponentGoals = norwayIsHome ? row.predAwayScore : row.predHomeScore;
+          const entry =
+            patriotStatsByUser.get(row.userId) ?? { username: row.username, imageUrl: row.imageUrl, wins: 0, gf: 0, ga: 0 };
+          if (predNorwayGoals > predOpponentGoals) entry.wins += 1;
+          entry.gf += predNorwayGoals;
+          entry.ga += predOpponentGoals;
+          patriotStatsByUser.set(row.userId, entry);
+        }
+
+        if (patriotStatsByUser.size > 0) {
+          let patriotGroup = [...patriotStatsByUser.entries()].map(([userId, entry]) => ({
+            userId,
+            ...entry,
+            gd: entry.gf - entry.ga,
+          }));
+          const maxWins = Math.max(...patriotGroup.map(p => p.wins));
+          patriotGroup = patriotGroup.filter(p => p.wins === maxWins);
+          const maxGd = Math.max(...patriotGroup.map(p => p.gd));
+          patriotGroup = patriotGroup.filter(p => p.gd === maxGd);
+          const maxGf = Math.max(...patriotGroup.map(p => p.gf));
+          patriotGroup = patriotGroup.filter(p => p.gf === maxGf);
+          patriotGroup.sort((a, b) => a.username.localeCompare(b.username));
+
+          const winner = patriotGroup[0];
+          const concededClause =
+            winner.ga > 0
+              ? lang === 'no'
+                ? `sluppet inn bare ${winner.ga}!`
+                : `conceded only ${winner.ga}!`
+              : lang === 'no'
+                ? 'uten å slippe inn ett eneste mål!'
+                : 'without conceding a single goal!';
+
+          cards.push({
+            id: 'thePatriot',
+            title: 'The Patriot 🇳🇴',
+            statistic:
+              lang === 'no'
+                ? `${formatUserList(patriotGroup.map(u => u.username), lang)} er den største patrioten! De har tippet at Norge har vunnet ${winner.wins} av sine ${norwayMatches.length} kamper så langt! Og at de har scoret hele ${winner.gf} mål og ${concededClause}`
+                : `${formatUserList(patriotGroup.map(u => u.username), lang)} ${patriotGroup.length === 1 ? 'is the biggest patriot' : 'are the biggest patriots'}! They've predicted that Norway has won ${winner.wins} of their ${norwayMatches.length} games so far! And that they've scored a whopping ${winner.gf} goals and ${concededClause}`,
+            subjects: patriotGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
+            linkType: 'user',
+            overlayImageUrl: norwayTeam.imageUrl ?? null,
           });
         }
       }
