@@ -337,13 +337,13 @@ function FocusedAdminMatchCard({
 
   // Highlight the team selected to progress through a drawn tie.
   const adminHomeProgresses =
-    (isQueued && queuedScore!.home === queuedScore!.away && queuedScore!.progressingTeamId === match.homeTeamId) ||
-    (!isQueued && isDrawEntry && selectedWinnerId === match.homeTeamId) ||
-    (isCompleted && match.homeScore === match.awayScore && match.progressingTeamId === match.homeTeamId);
+    (isQueued && queuedScore!.home === queuedScore!.away && queuedScore!.progressingTeamId === match!.homeTeamId) ||
+    (!isQueued && isDrawEntry && selectedWinnerId === match!.homeTeamId) ||
+    (isCompleted && match!.homeScore === match!.awayScore && match!.progressingTeamId === match!.homeTeamId);
   const adminAwayProgresses =
-    (isQueued && queuedScore!.home === queuedScore!.away && queuedScore!.progressingTeamId === match.awayTeamId) ||
-    (!isQueued && isDrawEntry && selectedWinnerId === match.awayTeamId) ||
-    (isCompleted && match.homeScore === match.awayScore && match.progressingTeamId === match.awayTeamId);
+    (isQueued && queuedScore!.home === queuedScore!.away && queuedScore!.progressingTeamId === match!.awayTeamId) ||
+    (!isQueued && isDrawEntry && selectedWinnerId === match!.awayTeamId) ||
+    (isCompleted && match!.homeScore === match!.awayScore && match!.progressingTeamId === match!.awayTeamId);
 
   // Home row is first only when there's no "staged pending" header above it.
   const adminHomeIsFirst = !isQueued;
