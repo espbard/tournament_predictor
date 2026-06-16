@@ -125,7 +125,7 @@ const DARK_RED = 'hsl(358, 70%, 32%)';
 function renderStatistic(text: string) {
   return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
     part.startsWith('**') && part.endsWith('**') ? (
-      <strong key={i} style={{ color: DARK_BLUE }}>
+      <strong key={i} style={{ color: DARK_RED }}>
         {part.slice(2, -2)}
       </strong>
     ) : (
@@ -179,7 +179,7 @@ export default function UserStatCard({ competitionId, data, iconOnRight, onMatch
 
   const content = (
     <div className="min-w-0 flex-1 p-6">
-      <h3 className="text-lg font-bold uppercase tracking-wide" style={{ color: DARK_RED }}>
+      <h3 className="text-lg font-bold uppercase tracking-wide" style={{ color: DARK_BLUE }}>
         {title}
       </h3>
       <p className="mt-2 text-sm">{renderStatistic(statistic)}</p>
