@@ -1828,12 +1828,17 @@ export default function CompetitionDetailPage() {
                                   : 'bg-muted/20'
                               }`}
                             >
-                              <img
-                                src={pred.imageUrl ?? '/default-avatar.png'}
-                                alt=""
-                                className="h-5 w-5 rounded-full object-cover flex-shrink-0"
-                              />
-                              <span className="flex-1 truncate font-medium text-xs">{pred.username}</span>
+                              <Link
+                                to={`/competitions/${id}/predictions/${pred.userId}`}
+                                className="flex-1 flex items-center gap-2 min-w-0 hover:opacity-80 transition-opacity"
+                              >
+                                <img
+                                  src={pred.imageUrl ?? '/default-avatar.png'}
+                                  alt=""
+                                  className="h-5 w-5 rounded-full object-cover flex-shrink-0"
+                                />
+                                <span className="flex-1 truncate font-medium text-xs">{pred.username}</span>
+                              </Link>
 
                               <div className="flex items-center gap-1 flex-shrink-0">
                                 <div className={homeGetsCircle ? 'ring-2 ring-green-500 rounded-full' : ''}>
