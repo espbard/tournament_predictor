@@ -168,7 +168,7 @@ export default function CompetitionDetailPage() {
   const { data: userStats = [] } = useQuery({
     queryKey: ['competitions', id, 'user-stats', language],
     queryFn: () => api.get<UserStatCardData[]>(`/competitions/${id}/user-stats?lang=${language}`),
-    enabled: !!competition && activeTab === 'userStats' && !!user?.isTestAccount,
+    enabled: !!competition && activeTab === 'userStats',
   });
 
   useEffect(() => {
@@ -919,7 +919,7 @@ export default function CompetitionDetailPage() {
           ['knockout', t('competitionDetail.tabs.knockoutStage')],
           ['bonus', t('competitionDetail.tabs.bonusQuestions')],
           ['leaderboard', t('competitionDetail.tabs.leaderboard')],
-          ...(user?.isTestAccount ? [['userStats', t('competitionDetail.tabs.userStats')] as const] : []),
+          ['userStats', t('competitionDetail.tabs.userStats')],
         ] as const).map(([tab, label]) => (
           <button
             key={tab}
@@ -1907,7 +1907,7 @@ export default function CompetitionDetailPage() {
 
       </div>
 
-      {activeTab === 'userStats' && user?.isTestAccount && (
+      {activeTab === 'userStats' && (
         <div className="space-y-6">
           {userStats.map((stat, i) => (
             <UserStatCard
