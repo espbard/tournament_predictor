@@ -514,7 +514,7 @@ const translations = {
         total: 'Totalt',
         result: 'Riktig resultat',
         exact: 'Eksakt resultat',
-        group: 'Gruppeplass',
+        group: 'Gruppeplassering',
         progresses: 'Lag videre',
         koTie: 'KO - Riktig lag',
         final: 'Finale - Riktig lag',
