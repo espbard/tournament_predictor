@@ -628,6 +628,63 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       });
     }
 
+    // ── Bottom of the league: lowest total points vs. the leader ──
+    const memberRows = await db
+      .select({
+        userId: users.id,
+        username: users.username,
+        imageUrl: users.imageUrl,
+        exactScorePoints: competitionMembers.exactScorePoints,
+        correctResultPoints: competitionMembers.correctResultPoints,
+        correctTeamProgressesPoints: competitionMembers.correctTeamProgressesPoints,
+        correctGroupPositionPoints: competitionMembers.correctGroupPositionPoints,
+        correctTeamInKnockoutTiePoints: competitionMembers.correctTeamInKnockoutTiePoints,
+        correctTeamInFinalPoints: competitionMembers.correctTeamInFinalPoints,
+        correctWinnerPoints: competitionMembers.correctWinnerPoints,
+        bonusQuestionPoints: competitionMembers.bonusQuestionPoints,
+      })
+      .from(competitionMembers)
+      .innerJoin(users, eq(competitionMembers.userId, users.id))
+      .where(and(eq(competitionMembers.competitionId, id), eq(users.isLeaderboardUser, false)));
+
+    const memberTotals = memberRows.map(row => ({
+      userId: row.userId,
+      username: row.username,
+      imageUrl: row.imageUrl,
+      totalPoints:
+        row.exactScorePoints +
+        row.correctResultPoints +
+        row.correctTeamProgressesPoints +
+        row.correctGroupPositionPoints +
+        row.correctTeamInKnockoutTiePoints +
+        row.correctTeamInFinalPoints +
+        row.correctWinnerPoints +
+        row.bonusQuestionPoints,
+    }));
+
+    if (memberTotals.length >= 3) {
+      const minPoints = Math.min(...memberTotals.map(m => m.totalPoints));
+      const maxPoints = Math.max(...memberTotals.map(m => m.totalPoints));
+      const bottomGroup = memberTotals
+        .filter(m => m.totalPoints === minPoints)
+        .sort((a, b) => a.username.localeCompare(b.username));
+      const topGroup = memberTotals
+        .filter(m => m.totalPoints === maxPoints)
+        .sort((a, b) => a.username.localeCompare(b.username));
+      const gap = maxPoints - minPoints;
+
+      cards.push({
+        id: 'bottomOfTheLeague',
+        title: lang === 'no' ? 'Kan Bare Bli Bedre' : 'Bottom of the league',
+        statistic:
+          lang === 'no'
+            ? `${formatUserList(bottomGroup.map(u => u.username), lang)} er sist på tabellen med bare ${minPoints} poeng! ${gap} poeng bak ${formatUserList(topGroup.map(u => u.username), lang)} på topp!`
+            : `${formatUserList(bottomGroup.map(u => u.username), lang)} ${bottomGroup.length === 1 ? 'is' : 'are'} bottom of the table with only ${minPoints} point${minPoints === 1 ? '' : 's'}! ${gap} point${gap === 1 ? '' : 's'} behind ${formatUserList(topGroup.map(u => u.username), lang)} in first place!`,
+        subjects: bottomGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
+        linkType: 'user',
+      });
+    }
+
     // ── Best/worst prediction: per-match outcome stats ──
     interface MatchStat {
       matchId: string;
