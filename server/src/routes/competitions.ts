@@ -578,6 +578,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
     // ── Best/worst prediction: per-match outcome stats ──
     interface MatchStat {
+      matchId: string;
       homeTeamId: string | null;
       awayTeamId: string | null;
       homeScore: number;
@@ -593,6 +594,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       let stat = matchStats.get(row.matchId);
       if (!stat) {
         stat = {
+          matchId: row.matchId,
           homeTeamId: row.homeTeamId,
           awayTeamId: row.awayTeamId,
           homeScore: row.actualHomeScore,
@@ -699,6 +701,8 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
             ? `${winner.username} fikk eksakt resultat på ${homeTeamName} mot ${awayTeamName} (${bestPredictionMatch.homeScore}-${bestPredictionMatch.awayScore})! ${resultText}`
             : `${winner.username} got a perfect score on ${homeTeamName} vs ${awayTeamName} (${bestPredictionMatch.homeScore} - ${bestPredictionMatch.awayScore})! ${resultText}`,
         subjects: [{ type: 'user', id: winner.userId, name: winner.username, imageUrl: winner.imageUrl }],
+        linkType: 'match',
+        matchId: bestPredictionMatch.matchId,
       });
     }
 
@@ -720,6 +724,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
             ? 'Ingen har vært ett mål fra et eksakt resultat ennå!'
             : 'No one has been one goal away from a perfect score yet!',
       subjects: unluckyGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
+      linkType: 'user',
     });
 
     if (worstPredictionMatch) {
@@ -764,6 +769,8 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         subjects: sortedWrongGroups
           .flat()
           .map(p => ({ type: 'user' as const, id: p.userId, name: p.username, imageUrl: p.imageUrl })),
+        linkType: 'match',
+        matchId: worstPredictionMatch.matchId,
       });
     }
 
@@ -806,6 +813,8 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         subjects: [unexpectedMatch.homeTeamId, unexpectedMatch.awayTeamId]
           .filter((teamId): teamId is string => teamId !== null)
           .map(teamId => ({ type: 'team' as const, id: teamId, name: teamName(teamId), imageUrl: teamImageMap.get(teamId) ?? null })),
+        linkType: 'match',
+        matchId: unexpectedMatch.matchId,
       });
     }
 
@@ -821,6 +830,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
             ? 'Ingen har tippet minst to perfekte resultater ennå!'
             : 'No one has predicted at least two perfect scores yet!',
       subjects: hitOrMissGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
+      linkType: 'user',
     });
 
     const closeButNoCigarVerb = closeButNoCigarGroup.length === 1 ? 'has' : 'have';
@@ -845,6 +855,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
             ? 'Ingen har tippet riktig resultat ennå!'
             : 'No one has predicted a correct result yet!',
       subjects: closeButNoCigarGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
+      linkType: 'user',
     });
 
     cards.push({
@@ -859,6 +870,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
             ? 'Ingen kamper er fullført ennå!'
             : 'No matches have been completed yet!',
       subjects: bestFormGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
+      linkType: 'user',
     });
 
     if (worstFormGroup.length > 0) {
@@ -870,6 +882,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
             ? `${formatUserList(worstFormGroup.map(u => u.username), lang)} har gått ${worstFormGroup[0].drought} kamper uten å score et eneste poeng!`
             : `${formatUserList(worstFormGroup.map(u => u.username), lang)} ${worstFormGroup.length === 1 ? 'has' : 'have'} gone ${worstFormGroup[0].drought} matches without gaining a single point!`,
         subjects: worstFormGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
+        linkType: 'user',
       });
     }
 

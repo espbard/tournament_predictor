@@ -153,6 +153,8 @@ export interface UserStatCardData {
   title: string;
   statistic: string;
   subjects: UserStatSubject[];
+  linkType: 'match' | 'user' | null;
+  matchId?: string | null;
 }
 
 export interface BonusAnswer {

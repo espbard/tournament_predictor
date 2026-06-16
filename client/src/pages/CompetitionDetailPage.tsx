@@ -87,6 +87,8 @@ export default function CompetitionDetailPage() {
 
   const [currentPredMatchIdx, setCurrentPredMatchIdx] = useState(0);
   const [matchPredictionsCollapsed, setMatchPredictionsCollapsed] = useState(false);
+  const [pendingScrollMatchId, setPendingScrollMatchId] = useState<string | null>(null);
+  const matchPredictionsRef = useRef<HTMLDivElement>(null);
 
   const [groupDisciplinaryChoices, setGroupDisciplinaryChoices] = useState<DisciplinaryChoices>({});
   const [luckyLoserDisciplinaryChoices, setLuckyLoserDisciplinaryChoices] = useState<DisciplinaryChoices>({});
@@ -441,6 +443,22 @@ export default function CompetitionDetailPage() {
       setCurrentPredMatchIdx(completedMatchesWithResults.length - 1);
     }
   }, [completedMatchesWithResults]);
+
+  useEffect(() => {
+    if (pendingScrollMatchId && activeTab === 'leaderboard') {
+      matchPredictionsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setPendingScrollMatchId(null);
+    }
+  }, [pendingScrollMatchId, activeTab]);
+
+  const handleStatCardMatchClick = (matchId: string) => {
+    const idx = completedMatchesWithResults.findIndex(m => m.id === matchId);
+    if (idx === -1) return;
+    setActiveTab('leaderboard');
+    setCurrentPredMatchIdx(idx);
+    setMatchPredictionsCollapsed(false);
+    setPendingScrollMatchId(matchId);
+  };
 
   const allGroupFilled = useMemo(() => {
     if (scheduledGroupMatches.length === 0) return false;
@@ -1693,7 +1711,7 @@ export default function CompetitionDetailPage() {
             const isKnockout = match.stage !== 'group';
 
             return (
-              <div className={`mt-6 ${user?.isLeaderboardUser ? 'tv:hidden' : ''}`}>
+              <div ref={matchPredictionsRef} className={`mt-6 ${user?.isLeaderboardUser ? 'tv:hidden' : ''}`}>
                 <button
                   type="button"
                   onClick={() => setMatchPredictionsCollapsed(c => !c)}
@@ -1888,7 +1906,13 @@ export default function CompetitionDetailPage() {
       {activeTab === 'userStats' && user?.isTestAccount && (
         <div className="space-y-6">
           {userStats.map((stat, i) => (
-            <UserStatCard key={stat.id} competitionId={id!} data={stat} iconOnRight={i % 2 === 1} />
+            <UserStatCard
+              key={stat.id}
+              competitionId={id!}
+              data={stat}
+              iconOnRight={i % 2 === 1}
+              onMatchClick={handleStatCardMatchClick}
+            />
           ))}
         </div>
       )}

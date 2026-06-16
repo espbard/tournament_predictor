@@ -5,6 +5,7 @@ interface UserStatCardProps {
   competitionId: string;
   data: UserStatCardData;
   iconOnRight: boolean;
+  onMatchClick?: (matchId: string) => void;
 }
 
 type Point = { x: number; y: number };
@@ -116,7 +117,7 @@ function collageSliceLayout(index: number, total: number): SliceLayout {
   return { clipPath, left: minX, top: minY, width, height };
 }
 
-export default function UserStatCard({ competitionId, data, iconOnRight }: UserStatCardProps) {
+export default function UserStatCard({ competitionId, data, iconOnRight, onMatchClick }: UserStatCardProps) {
   const { title, statistic, subjects } = data;
 
   const icon = (
@@ -166,7 +167,20 @@ export default function UserStatCard({ competitionId, data, iconOnRight }: UserS
     </div>
   );
 
-  if (subjects.length === 1 && subjects[0].type === 'user') {
+  if (data.linkType === 'match' && data.matchId) {
+    const matchId = data.matchId;
+    return (
+      <button
+        type="button"
+        onClick={() => onMatchClick?.(matchId)}
+        className="block w-full text-left transition-opacity hover:opacity-80"
+      >
+        {card}
+      </button>
+    );
+  }
+
+  if (data.linkType === 'user' && subjects.length > 0) {
     return (
       <Link
         to={`/competitions/${competitionId}/predictions/${subjects[0].id}`}
