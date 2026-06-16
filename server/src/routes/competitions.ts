@@ -518,14 +518,34 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       }
     }
 
+    let unexpectedMatch: MatchStat | null = null;
+    let unexpectedMaxDeviation = -Infinity;
+    for (const stat of matchStats.values()) {
+      if (stat.resultCount !== 0 || stat.wrongPredictors.length === 0) continue;
+      const actualDiff = stat.homeScore - stat.awayScore;
+      const maxDeviation = Math.max(
+        ...stat.wrongPredictors.map(p => Math.abs(p.predHomeScore - p.predAwayScore - actualDiff))
+      );
+      if (
+        !unexpectedMatch ||
+        maxDeviation > unexpectedMaxDeviation ||
+        (maxDeviation === unexpectedMaxDeviation &&
+          (stat.scheduledAt?.getTime() ?? 0) < (unexpectedMatch.scheduledAt?.getTime() ?? 0))
+      ) {
+        unexpectedMatch = stat;
+        unexpectedMaxDeviation = maxDeviation;
+      }
+    }
+
     const neededTeamIds = new Set<string>();
-    for (const m of [bestPredictionMatch, worstPredictionMatch]) {
+    for (const m of [bestPredictionMatch, worstPredictionMatch, unexpectedMatch]) {
       if (m?.homeTeamId) neededTeamIds.add(m.homeTeamId);
       if (m?.awayTeamId) neededTeamIds.add(m.awayTeamId);
     }
     const teamRows =
       neededTeamIds.size > 0 ? await db.select().from(teams).where(inArray(teams.id, [...neededTeamIds])) : [];
     const teamNameMap = new Map(teamRows.map(t => [t.id, t.name]));
+    const teamImageMap = new Map(teamRows.map(t => [t.id, t.imageUrl]));
     const teamName = (teamId: string | null) => (teamId ? teamNameMap.get(teamId) ?? 'Unknown' : 'Unknown');
 
     if (bestPredictionMatch) {
@@ -588,6 +608,44 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         title: 'Worst prediction',
         statistic: `${namesText} predicted ${wrongOutcome} (${worstGroup[0].predHomeScore} - ${worstGroup[0].predAwayScore}). Everyone else predicted ${correctOutcome}.`,
         subjects: worstGroup.map(p => ({ type: 'user' as const, id: p.userId, name: p.username, imageUrl: p.imageUrl })),
+      });
+    }
+
+    if (unexpectedMatch) {
+      const homeTeamName = teamName(unexpectedMatch.homeTeamId);
+      const awayTeamName = teamName(unexpectedMatch.awayTeamId);
+      const actualDiff = unexpectedMatch.homeScore - unexpectedMatch.awayScore;
+
+      const deviationGroups = new Map<string, typeof unexpectedMatch.wrongPredictors>();
+      for (const p of unexpectedMatch.wrongPredictors) {
+        const deviation = Math.abs(p.predHomeScore - p.predAwayScore - actualDiff);
+        if (deviation !== unexpectedMaxDeviation) continue;
+        const key = `${p.predHomeScore}-${p.predAwayScore}`;
+        if (!deviationGroups.has(key)) deviationGroups.set(key, []);
+        deviationGroups.get(key)!.push(p);
+      }
+      let worstDeviationGroup = [...deviationGroups.values()][0];
+      for (const group of deviationGroups.values()) {
+        if (group.length > worstDeviationGroup.length) worstDeviationGroup = group;
+      }
+      worstDeviationGroup = [...worstDeviationGroup].sort((a, b) => a.username.localeCompare(b.username));
+
+      const actualOutcome = describeOutcome(homeTeamName, awayTeamName, unexpectedMatch.homeScore, unexpectedMatch.awayScore);
+      const predictedOutcome = describeOutcome(
+        homeTeamName,
+        awayTeamName,
+        worstDeviationGroup[0].predHomeScore,
+        worstDeviationGroup[0].predAwayScore
+      );
+      const namesText = formatUserList(worstDeviationGroup.map(p => p.username));
+
+      cards.push({
+        id: 'mostUnexpectedResult',
+        title: 'Most unexpected result',
+        statistic: `No one predicted ${actualOutcome}! ${namesText} even predicted ${predictedOutcome} (${worstDeviationGroup[0].predHomeScore} - ${worstDeviationGroup[0].predAwayScore})!`,
+        subjects: [unexpectedMatch.homeTeamId, unexpectedMatch.awayTeamId]
+          .filter((teamId): teamId is string => teamId !== null)
+          .map(teamId => ({ type: 'team' as const, id: teamId, name: teamName(teamId), imageUrl: teamImageMap.get(teamId) ?? null })),
       });
     }
 
