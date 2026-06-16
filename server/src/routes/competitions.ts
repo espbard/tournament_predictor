@@ -5,7 +5,7 @@ import { db } from '../db/client.js';
 import { competitions, competitionMembers, users, tournaments, predictions, matches, teams, groups, bracketPredictions, bonusQuestions, bonusAnswers } from '../db/schema.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { CreateCompetitionSchema, CreatePredictionSchema, SaveBracketPredictionsSchema, DEFAULT_SCORING_CONFIG, SaveBonusAnswerSchema } from '@tournament-predictor/shared';
-import type { UserStatCardData, ScoringConfig, KnockoutConfig } from '@tournament-predictor/shared';
+import type { UserStatCardData, ScoringConfig, KnockoutConfig, BracketPredictions } from '@tournament-predictor/shared';
 import { recalculateAllScoresForTournament } from '../lib/scoringTrigger.js';
 import { computeGroupStandings } from '../lib/scoring.js';
 import { subscribeLeaderboard, unsubscribeLeaderboard } from '../lib/leaderboardEvents.js';
@@ -355,7 +355,7 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
       if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
     }
 
-    const rows = await db
+    const groupRows = await db
       .select({
         matchId: predictions.matchId,
         userId: predictions.userId,
@@ -384,7 +384,85 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
         )
       );
 
-    res.json(rows);
+    const result: Array<{
+      matchId: string;
+      userId: string;
+      username: string;
+      imageUrl: string | null;
+      homeScore: number;
+      awayScore: number;
+      progressingTeamId: string | null;
+      points: number | null;
+    }> = [...groupRows];
+
+    // Knockout predictions come from bracketPredictions (not the predictions table).
+    // Fetch ALL knockout matches (including not-yet-played) so bracket key indices
+    // (round_of_16_0, etc.) stay consistent with how the scoring logic assigns them.
+    const KNOCKOUT_STAGE_LIST = ['round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'bronze_final', 'final'] as const;
+    const allKoMatches = await db
+      .select({ id: matches.id, stage: matches.stage, scheduledAt: matches.scheduledAt, status: matches.status })
+      .from(matches)
+      .where(and(
+        eq(matches.tournamentId, competition.tournamentId),
+        inArray(matches.stage, [...KNOCKOUT_STAGE_LIST]),
+      ));
+
+    allKoMatches.sort((a, b) => {
+      if (!a.scheduledAt && !b.scheduledAt) return 0;
+      if (!a.scheduledAt) return 1;
+      if (!b.scheduledAt) return -1;
+      return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
+    });
+
+    // Map bracket key → matchId for completed matches only
+    const bracketKeyToMatchId = new Map<string, string>();
+    const stageIdx = new Map<string, number>();
+    for (const m of allKoMatches) {
+      const i = stageIdx.get(m.stage) ?? 0;
+      if (m.status === 'completed') bracketKeyToMatchId.set(`${m.stage}_${i}`, m.id);
+      stageIdx.set(m.stage, i + 1);
+    }
+
+    if (bracketKeyToMatchId.size > 0) {
+      const [bpRows, memberUsers] = await Promise.all([
+        db.select({ userId: bracketPredictions.userId, predictions: bracketPredictions.predictions })
+          .from(bracketPredictions)
+          .where(eq(bracketPredictions.competitionId, id)),
+        db.select({ userId: competitionMembers.userId, username: users.username, imageUrl: users.imageUrl, isLeaderboardUser: users.isLeaderboardUser })
+          .from(competitionMembers)
+          .innerJoin(users, eq(users.id, competitionMembers.userId))
+          .where(eq(competitionMembers.competitionId, id)),
+      ]);
+
+      const userInfoMap = new Map(
+        memberUsers.filter(u => !u.isLeaderboardUser).map(u => [u.userId, { username: u.username, imageUrl: u.imageUrl }])
+      );
+
+      for (const bp of bpRows) {
+        const userInfo = userInfoMap.get(bp.userId);
+        if (!userInfo) continue;
+        const bpPreds = bp.predictions as BracketPredictions;
+        for (const [bracketKey, matchId] of bracketKeyToMatchId) {
+          const pred = bpPreds[bracketKey];
+          if (!pred) continue;
+          // Unflip scores so they align with the actual match's home/away orientation
+          const homeScore = pred.flipped ? pred.awayScore : pred.homeScore;
+          const awayScore = pred.flipped ? pred.homeScore : pred.awayScore;
+          result.push({
+            matchId,
+            userId: bp.userId,
+            username: userInfo.username,
+            imageUrl: userInfo.imageUrl,
+            homeScore,
+            awayScore,
+            progressingTeamId: pred.progressingTeamId ?? null,
+            points: null,
+          });
+        }
+      }
+    }
+
+    res.json(result);
   } catch (err) {
     console.error('Get all match predictions error:', err);
     res.status(500).json({ error: 'Failed to fetch match predictions' });
