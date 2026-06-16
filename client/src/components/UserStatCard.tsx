@@ -28,7 +28,7 @@ export default function UserStatCard({ competitionId, data, iconOnRight }: UserS
   );
 
   const card = (
-    <div className={`flex items-stretch overflow-hidden rounded-2xl border bg-muted/50 ${iconOnRight ? 'flex-row-reverse' : 'flex-row'}`}>
+    <div className={`flex h-40 items-stretch overflow-hidden rounded-2xl border bg-muted/50 ${iconOnRight ? 'flex-row-reverse' : 'flex-row'}`}>
       {icon}
       {content}
     </div>

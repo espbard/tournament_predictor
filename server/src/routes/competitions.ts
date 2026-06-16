@@ -426,18 +426,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       }
     }
 
-    const cards: UserStatCardData[] = [
-      {
-        id: 'unlucky',
-        title: 'Unlucky',
-        statistic: unluckiest
-          ? `${unluckiest.username} has been one goal away from predicting a perfect score ${unluckiest.count} ${unluckiest.count === 1 ? 'time' : 'times'}!`
-          : 'No one has been one goal away from a perfect score yet!',
-        subject: unluckiest
-          ? { type: 'user', id: unluckiest.userId, name: unluckiest.username, imageUrl: unluckiest.imageUrl }
-          : null,
-      },
-    ];
+    const cards: UserStatCardData[] = [];
 
     // ── Best prediction: rarest match where exactly one player got a perfect score ──
     interface MatchStat {
@@ -511,6 +500,17 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         subject: { type: 'user', id: winner.userId, name: winner.username, imageUrl: winner.imageUrl },
       });
     }
+
+    cards.push({
+      id: 'unlucky',
+      title: 'Unlucky',
+      statistic: unluckiest
+        ? `${unluckiest.username} has been one goal away from predicting a perfect score ${unluckiest.count} ${unluckiest.count === 1 ? 'time' : 'times'}!`
+        : 'No one has been one goal away from a perfect score yet!',
+      subject: unluckiest
+        ? { type: 'user', id: unluckiest.userId, name: unluckiest.username, imageUrl: unluckiest.imageUrl }
+        : null,
+    });
 
     res.json(cards);
   } catch (err) {
