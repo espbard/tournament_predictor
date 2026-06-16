@@ -621,6 +621,17 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
                 }
               }
             }
+
+            // First-round: award correct_team_in_knockout_tie when the user correctly
+            // predicted which group-stage teams would qualify into the draw.
+            if (koCfg && koMatchData.stage === koCfg.firstRound) {
+              for (const actualTeamId of [koMatchData.homeTeamId, koMatchData.awayTeamId]) {
+                if (!actualTeamId) continue;
+                if (predHomeTeamId !== actualTeamId && predAwayTeamId !== actualTeamId) continue;
+                koPoints += scoringConfig.correct_team_in_knockout_tie;
+                koBd.correctTeamInKnockoutTie += scoringConfig.correct_team_in_knockout_tie;
+              }
+            }
           }
 
           result.push({
