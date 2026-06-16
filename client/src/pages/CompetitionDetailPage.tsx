@@ -484,7 +484,8 @@ export default function CompetitionDetailPage() {
     [user?.isAdmin, tournamentsData, tournamentData, competition?.tournamentId]
   );
 
-  const groupDisciplinaryTies = useMemo(() => {
+  // All disciplinary ties for the group stage, including already-resolved ones.
+  const allGroupDisciplinaryTieInfo = useMemo(() => {
     const directQualifiers = tournament?.knockoutConfig?.directQualifiers ?? 2;
     const result: Array<{ groupName: string; teams: TeamStat[]; key: string; requiredRankings: number }> = [];
     for (const [groupName, teams] of groupStandings) {
@@ -493,17 +494,18 @@ export default function CompetitionDetailPage() {
       const tiedGroups = findGroupDisciplinaryTies(tiebreakerStats, results);
       for (const tiedGroup of tiedGroups) {
         const key = makeDisciplinaryKey(tiedGroup.map(tm => tm.teamId));
-        const existing = groupDisciplinaryChoices[key] ?? [];
-        if (existing.length < tiedGroup.length) {
-          const startIndex = Math.min(...tiedGroup.map(tm => teams.findIndex(tt => tt.teamId === tm.teamId)));
-          const K = Math.max(1, Math.min(directQualifiers, startIndex + tiedGroup.length) - startIndex);
-          const requiredRankings = Math.min(K, tiedGroup.length - 1);
-          result.push({ groupName, teams: tiedGroup.map(s => teams.find(tm => tm.teamId === s.teamId)!).filter(Boolean), key, requiredRankings });
-        }
+        const startIndex = Math.min(...tiedGroup.map(tm => teams.findIndex(tt => tt.teamId === tm.teamId)));
+        const K = Math.max(1, Math.min(directQualifiers, startIndex + tiedGroup.length) - startIndex);
+        const requiredRankings = Math.min(K, tiedGroup.length - 1);
+        result.push({ groupName, teams: tiedGroup.map(s => teams.find(tm => tm.teamId === s.teamId)!).filter(Boolean), key, requiredRankings });
       }
     }
     return result;
-  }, [groupStandings, effectiveGroupResults, groupDisciplinaryChoices, tournament]);
+  }, [groupStandings, effectiveGroupResults, tournament]);
+
+  const groupDisciplinaryTies = useMemo(() => {
+    return allGroupDisciplinaryTieInfo.filter(tie => (groupDisciplinaryChoices[tie.key] ?? []).length < tie.teams.length);
+  }, [allGroupDisciplinaryTieInfo, groupDisciplinaryChoices]);
 
   const luckyLoserDisciplinaryTies = useMemo(() => {
     if (!tournament?.knockoutConfig) return [];
@@ -525,11 +527,12 @@ export default function CompetitionDetailPage() {
 
   const tiebreakerChosenTeams = useMemo(() => {
     const s = new Set<string>();
-    for (const ids of Object.values(groupDisciplinaryChoices)) {
-      for (const id of ids) s.add(id);
+    for (const tie of allGroupDisciplinaryTieInfo) {
+      const ranked = groupDisciplinaryChoices[tie.key] ?? [];
+      for (const id of ranked.slice(0, tie.requiredRankings)) s.add(id);
     }
     return s;
-  }, [groupDisciplinaryChoices]);
+  }, [allGroupDisciplinaryTieInfo, groupDisciplinaryChoices]);
 
   const groupStageLocked = myStatus?.groupStageLocked ?? false;
 
