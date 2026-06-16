@@ -447,6 +447,19 @@ function FocusedMatchCard({
   const isDisplayHomeChampion = isFlipped ? isAwayChampion : isHomeChampion;
   const isDisplayAwayChampion = isFlipped ? isHomeChampion : isAwayChampion;
 
+  // Highlight the team the prediction has progressing on a drawn scoreline.
+  const predHomeProgresses = isDraw && prediction?.progressingTeamId === homeTeam?.teamId;
+  const predAwayProgresses = isDraw && prediction?.progressingTeamId === awayTeam?.teamId;
+  const isDisplayHomeProgressing = (isFlipped ? predAwayProgresses : predHomeProgresses) && !isDisplayHomeChampion;
+  const isDisplayAwayProgressing = (isFlipped ? predHomeProgresses : predAwayProgresses) && !isDisplayAwayChampion;
+
+  // Highlight the team the actual result has progressing on a drawn scoreline.
+  const actualIsDraw = !!actualMatch && actualMatch.homeScore === actualMatch.awayScore;
+  const actualHomeProgresses = actualIsDraw && actualMatch!.progressingTeamId === actualMatch!.homeTeamId;
+  const actualAwayProgresses = actualIsDraw && actualMatch!.progressingTeamId === actualMatch!.awayTeamId;
+
+  const goldenBorderClass = 'ring-2 ring-inset ring-amber-400 bg-amber-50/40 dark:bg-amber-900/15';
+
   return (
     <div className="space-y-3 w-full">
       {/* ── Predicted card ─────────────────────────────────── */}
@@ -459,7 +472,7 @@ function FocusedMatchCard({
         <div className={`rounded-xl border-2 shadow-sm overflow-hidden ${isCorrectResult ? 'border-green-400 bg-green-50/60 dark:bg-green-950/25' : 'bg-card'}`}>
           {/* Home row */}
           <div
-            className={`flex items-center gap-3 px-4 py-3.5 transition-colors ${displayHomeWins && !isDisplayHomeChampion ? 'bg-primary/5' : ''}`}
+            className={`flex items-center gap-3 px-4 py-3.5 transition-colors ${isDisplayHomeProgressing ? goldenBorderClass : displayHomeWins && !isDisplayHomeChampion ? 'bg-primary/5' : ''}`}
             style={isDisplayHomeChampion ? { animation: 'ko_winner_glow 1.8s ease-in-out infinite' } : undefined}
           >
             {displayHomeTeam ? (
@@ -520,7 +533,7 @@ function FocusedMatchCard({
 
           {/* Away row */}
           <div
-            className={`flex items-center gap-3 px-4 py-3.5 transition-colors ${displayAwayWins && !isDisplayAwayChampion ? 'bg-primary/5' : ''}`}
+            className={`flex items-center gap-3 px-4 py-3.5 transition-colors ${isDisplayAwayProgressing ? goldenBorderClass : displayAwayWins && !isDisplayAwayChampion ? 'bg-primary/5' : ''}`}
             style={isDisplayAwayChampion ? { animation: 'ko_winner_glow 1.8s ease-in-out infinite' } : undefined}
           >
             {displayAwayTeam ? (
@@ -629,7 +642,7 @@ function FocusedMatchCard({
           </p>
           <div className="rounded-xl border-2 bg-card shadow-sm overflow-hidden">
             {/* Home row */}
-            <div className="flex items-center gap-3 px-4 py-3.5">
+            <div className={`flex items-center gap-3 px-4 py-3.5 ${actualHomeProgresses ? goldenBorderClass : ''}`}>
               {actualMatch.homeTeamImageUrl ? (
                 <img src={actualMatch.homeTeamImageUrl} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0" />
               ) : (
@@ -644,7 +657,7 @@ function FocusedMatchCard({
             </div>
             <div className="h-px bg-border" />
             {/* Away row */}
-            <div className="flex items-center gap-3 px-4 py-3.5">
+            <div className={`flex items-center gap-3 px-4 py-3.5 ${actualAwayProgresses ? goldenBorderClass : ''}`}>
               {actualMatch.awayTeamImageUrl ? (
                 <img src={actualMatch.awayTeamImageUrl} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0" />
               ) : (
