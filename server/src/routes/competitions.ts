@@ -1331,7 +1331,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       statistic:
         hitOrMissGroup.length > 0
           ? lang === 'no'
-            ? `${formatUserList(hitOrMissGroup.map(u => u.username), lang)} har greid ${hitOrMissGroup[0].exactScores} fulltreffere på de ${hitOrMissGroup[0].correctResults} resultatene de har tippet riktig!`
+            ? `${formatUserList(hitOrMissGroup.map(u => u.username), lang)} har bare tippet korrekt resultat ${hitOrMissGroup[0].correctResults} ${hitOrMissGroup[0].correctResults === 1 ? 'gang' : 'ganger'}, men ${hitOrMissGroup[0].exactScores} av de har vært fulltreffere!`
             : `${hitOrMissGroup[0].exactScores} out of ${formatUserList(hitOrMissGroup.map(u => u.username), lang)}'s ${hitOrMissGroup[0].correctResults} have been perfect predictions!`
           : lang === 'no'
             ? 'Ingen har tippet minst to perfekte resultater ennå!'
@@ -1352,7 +1352,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
     closeButNoCigarCard = {
       id: 'closeButNoCigar',
-      title: 'Close But No Cigar',
+      title: 'Slow and Steady',
       statistic:
         closeButNoCigarGroup.length > 0
           ? lang === 'no'
