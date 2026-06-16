@@ -6,6 +6,7 @@ interface UserStatCardProps {
   data: UserStatCardData;
   iconOnRight: boolean;
   onMatchClick?: (matchId: string) => void;
+  onLeaderboardClick?: () => void;
 }
 
 type Point = { x: number; y: number };
@@ -117,7 +118,7 @@ function collageSliceLayout(index: number, total: number): SliceLayout {
   return { clipPath, left: minX, top: minY, width, height };
 }
 
-export default function UserStatCard({ competitionId, data, iconOnRight, onMatchClick }: UserStatCardProps) {
+export default function UserStatCard({ competitionId, data, iconOnRight, onMatchClick, onLeaderboardClick }: UserStatCardProps) {
   const { title, statistic, subjects } = data;
 
   const icon = (
@@ -173,6 +174,18 @@ export default function UserStatCard({ competitionId, data, iconOnRight, onMatch
       <button
         type="button"
         onClick={() => onMatchClick?.(matchId)}
+        className="block w-full text-left transition-opacity hover:opacity-80"
+      >
+        {card}
+      </button>
+    );
+  }
+
+  if (data.linkType === 'leaderboard') {
+    return (
+      <button
+        type="button"
+        onClick={() => onLeaderboardClick?.()}
         className="block w-full text-left transition-opacity hover:opacity-80"
       >
         {card}

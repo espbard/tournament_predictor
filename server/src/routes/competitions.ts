@@ -32,8 +32,8 @@ function describeOutcome(
   lang: Lang
 ): string {
   if (lang === 'no') {
-    if (homeScore > awayScore) return `${homeTeamName} til å slå ${awayTeamName}`;
-    if (awayScore > homeScore) return `${awayTeamName} til å slå ${homeTeamName}`;
+    if (homeScore > awayScore) return `at ${homeTeamName} slo ${awayTeamName}`;
+    if (awayScore > homeScore) return `at ${awayTeamName} slo ${homeTeamName}`;
     return `uavgjort mellom ${homeTeamName} og ${awayTeamName}`;
   }
   if (homeScore > awayScore) return `${homeTeamName} to beat ${awayTeamName}`;
@@ -574,7 +574,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       }
     }
 
-    // ── The King: how many consecutive recent matches the current leader(s) have topped the table ──
+    // ── The Leader: how many consecutive recent matches the current leader(s) have topped the table ──
     const completedMatchesByOldest = [...completedMatchesByRecency].reverse();
     const cumulativePointsByUser = new Map<string, number>();
     for (const userId of userInfo.keys()) cumulativePointsByUser.set(userId, 0);
@@ -613,6 +613,20 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     }
 
     const cards: UserStatCardData[] = [];
+
+    if (kingGroup.length > 0) {
+      const gameCount = kingGroup[0].streak;
+      cards.push({
+        id: 'theLeader',
+        title: lang === 'no' ? 'Kongen på haugen' : 'The Leader',
+        statistic:
+          lang === 'no'
+            ? `${formatUserList(kingGroup.map(u => u.username), lang)} har regjert på toppen i ${gameCount} kamp${gameCount === 1 ? '' : 'er'}!`
+            : `${formatUserList(kingGroup.map(u => u.username), lang)} ${kingGroup.length === 1 ? 'has' : 'have'} reigned supreme for the last ${gameCount} game${gameCount === 1 ? '' : 's'}!`,
+        subjects: kingGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
+        linkType: 'leaderboard',
+      });
+    }
 
     // ── Best/worst prediction: per-match outcome stats ──
     interface MatchStat {
@@ -733,10 +747,10 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
       cards.push({
         id: 'bestPrediction',
-        title: lang === 'no' ? 'Beste tips!' : 'Best prediction!',
+        title: lang === 'no' ? 'Beste tips' : 'Best prediction',
         statistic:
           lang === 'no'
-            ? `${winner.username} fikk eksakt resultat på ${homeTeamName} mot ${awayTeamName} (${bestPredictionMatch.homeScore}-${bestPredictionMatch.awayScore})! ${resultText}`
+            ? `${winner.username} tippet eksakt resultat på ${homeTeamName} mot ${awayTeamName} (${bestPredictionMatch.homeScore}-${bestPredictionMatch.awayScore})! ${resultText}`
             : `${winner.username} got a perfect score on ${homeTeamName} vs ${awayTeamName} (${bestPredictionMatch.homeScore} - ${bestPredictionMatch.awayScore})! ${resultText}`,
         subjects: [{ type: 'user', id: winner.userId, name: winner.username, imageUrl: winner.imageUrl }],
         linkType: 'match',
@@ -750,7 +764,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       statistic:
         unluckyGroup.length > 0
           ? lang === 'no'
-            ? `${formatUserList(unluckyGroup.map(u => u.username), lang)} har vært ett mål fra å tippe eksakt resultat ${topUnluckyCount} ${topUnluckyCount === 1 ? 'gang' : 'ganger'}!` +
+            ? `${formatUserList(unluckyGroup.map(u => u.username), lang)} har vært bare ett mål unna å tippe eksakt resultat ${topUnluckyCount} ${topUnluckyCount === 1 ? 'gang' : 'ganger'}!` +
               (nextUnluckyGroup.length > 0
                 ? ` ${nextUnluckyGroup.length === 1 ? 'Den' : 'De'} nest mest uheldige er ${formatUserList(nextUnluckyGroup.map(u => u.username), lang)} med ${nextUnluckyCount}.`
                 : '')
@@ -843,7 +857,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
       cards.push({
         id: 'mostUnexpectedResult',
-        title: lang === 'no' ? 'Mest uventede resultat' : 'Most unexpected result',
+        title: lang === 'no' ? 'Sjokkresultat' : 'Most unexpected result',
         statistic:
           lang === 'no'
             ? `Ingen tippet ${actualOutcome}! ${namesText} tippet til og med ${predictedOutcome} (${worstDeviationGroup[0].predHomeScore}-${worstDeviationGroup[0].predAwayScore})!`
@@ -902,7 +916,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       statistic:
         bestFormGroup.length > 0
           ? lang === 'no'
-            ? `${formatUserList(bestFormGroup.map(u => u.username), lang)} har fått ${bestFormGroup[0].points} poeng de siste 5 kampene!`
+            ? `${formatUserList(bestFormGroup.map(u => u.username), lang)} har sanket ${bestFormGroup[0].points} poeng de siste 5 kampene!`
             : `${formatUserList(bestFormGroup.map(u => u.username), lang)} ${bestFormGroup.length === 1 ? 'has' : 'have'} gained ${bestFormGroup[0].points} points in the last 5 matches!`
           : lang === 'no'
             ? 'Ingen kamper er fullført ennå!'
@@ -917,23 +931,9 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         title: lang === 'no' ? 'Dårligste form' : 'Worst form',
         statistic:
           lang === 'no'
-            ? `${formatUserList(worstFormGroup.map(u => u.username), lang)} har gått ${worstFormGroup[0].drought} kamper uten å score et eneste poeng!`
+            ? `${formatUserList(worstFormGroup.map(u => u.username), lang)} har gått ${worstFormGroup[0].drought} kamper på rad uten å sanke et eneste poeng!`
             : `${formatUserList(worstFormGroup.map(u => u.username), lang)} ${worstFormGroup.length === 1 ? 'has' : 'have'} gone ${worstFormGroup[0].drought} matches without gaining a single point!`,
         subjects: worstFormGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
-        linkType: 'user',
-      });
-    }
-
-    if (kingGroup.length > 0) {
-      const gameCount = kingGroup[0].streak;
-      cards.push({
-        id: 'theKing',
-        title: lang === 'no' ? 'Kongen på haugen' : 'The King',
-        statistic:
-          lang === 'no'
-            ? `${formatUserList(kingGroup.map(u => u.username), lang)} har regjert på toppen i ${gameCount} kamp${gameCount === 1 ? '' : 'er'}!`
-            : `${formatUserList(kingGroup.map(u => u.username), lang)} ${kingGroup.length === 1 ? 'has' : 'have'} reigned supreme for the last ${gameCount} game${gameCount === 1 ? '' : 's'}!`,
-        subjects: kingGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
         linkType: 'user',
       });
     }

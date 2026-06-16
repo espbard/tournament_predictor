@@ -460,6 +460,10 @@ export default function CompetitionDetailPage() {
     setPendingScrollMatchId(matchId);
   };
 
+  const handleStatCardLeaderboardClick = () => {
+    setActiveTab('leaderboard');
+  };
+
   const allGroupFilled = useMemo(() => {
     if (scheduledGroupMatches.length === 0) return false;
     return scheduledGroupMatches.every(m => {
@@ -1912,6 +1916,7 @@ export default function CompetitionDetailPage() {
               data={stat}
               iconOnRight={i % 2 === 1}
               onMatchClick={handleStatCardMatchClick}
+              onLeaderboardClick={handleStatCardLeaderboardClick}
             />
           ))}
         </div>

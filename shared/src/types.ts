@@ -153,7 +153,7 @@ export interface UserStatCardData {
   title: string;
   statistic: string;
   subjects: UserStatSubject[];
-  linkType: 'match' | 'user' | null;
+  linkType: 'match' | 'user' | 'leaderboard' | null;
   matchId?: string | null;
 }
 
