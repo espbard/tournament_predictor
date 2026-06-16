@@ -111,14 +111,6 @@ function parseQualifierLabel(label: string): { position: number; groups: string[
   return { position: parseInt(m[1], 10), groups: m[2].split('') };
 }
 
-// Resolve "1A" / "2B" bracket label against predicted standings → team ID
-function resolveQualLabel(label: string, standings: Map<string, TeamStat[]>): string | null {
-  const m = label.match(/^(\d+)([A-Z])$/);
-  if (!m) return null;
-  const pos = parseInt(m[1], 10) - 1;
-  return standings.get(m[2])?.[pos]?.teamId ?? null;
-}
-
 function computeLuckyLoserLabels(
   firstRoundMatchCount: number,
   bracketSlots: Record<string, string>,
@@ -1159,24 +1151,6 @@ export default function KnockoutStageContent({
     return { predictedGroupStandings: byGroup, predictedGroupResults: groupResultsMap };
   }, [matchList, predMap, groupDisciplinaryChoices]);
 
-  // Maps each first-round predKey (e.g. "round_of_16_0") to the teams the user predicted
-  // would qualify for that slot based on their group stage score predictions.
-  const predictedFirstRoundMap = useMemo<Record<string, { predHomeId: string | null; predAwayId: string | null }>>(() => {
-    if (!knockoutConfig) return {};
-    const { bracketSlots, firstRound } = knockoutConfig;
-    const count = FIRST_ROUND_COUNTS[firstRound];
-    const result: Record<string, { predHomeId: string | null; predAwayId: string | null }> = {};
-    for (let i = 0; i < count; i++) {
-      const homeLabel = bracketSlots[`m${i + 1}_home`];
-      const awayLabel = bracketSlots[`m${i + 1}_away`];
-      result[`${firstRound}_${i}`] = {
-        predHomeId: homeLabel ? resolveQualLabel(homeLabel, predictedGroupStandings) : null,
-        predAwayId: awayLabel ? resolveQualLabel(awayLabel, predictedGroupStandings) : null,
-      };
-    }
-    return result;
-  }, [knockoutConfig, predictedGroupStandings]);
-
   const knockoutMatchMap = useMemo(() => {
     const koStages = new Set(['round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'bronze_final', 'final']);
     const byStage = new Map<string, MatchWithTeams[]>();
@@ -1243,6 +1217,23 @@ export default function KnockoutStageContent({
       luckyLoserDisciplinaryChoices,
     );
   }, [knockoutConfig, luckyLoserLabels, predictedGroupStandings, luckyLoserDisciplinaryChoices]);
+
+  // Maps each first-round predKey (e.g. "round_of_16_0") to the teams the user predicted
+  // would qualify for that slot. Derived from resolvedSlots so lucky-loser slots are
+  // resolved the same way as the predicted bracket display.
+  const predictedFirstRoundMap = useMemo<Record<string, { predHomeId: string | null; predAwayId: string | null }>>(() => {
+    if (!knockoutConfig) return {};
+    const { firstRound } = knockoutConfig;
+    const count = FIRST_ROUND_COUNTS[firstRound];
+    const result: Record<string, { predHomeId: string | null; predAwayId: string | null }> = {};
+    for (let i = 0; i < count; i++) {
+      result[`${firstRound}_${i}`] = {
+        predHomeId: resolvedSlots[`m${i + 1}_home`]?.teamId ?? null,
+        predAwayId: resolvedSlots[`m${i + 1}_away`]?.teamId ?? null,
+      };
+    }
+    return result;
+  }, [knockoutConfig, resolvedSlots]);
 
   const groupDisciplinaryTies = useMemo(() => {
     const directQualifiers = knockoutConfig?.directQualifiers ?? 2;
