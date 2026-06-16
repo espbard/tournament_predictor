@@ -566,10 +566,12 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         droughtByUser.set(userId, drought);
       }
       const maxDrought = Math.max(...droughtByUser.values());
-      worstFormGroup = [...droughtByUser.entries()]
-        .filter(([, drought]) => drought === maxDrought)
-        .map(([userId, drought]) => ({ userId, drought, ...userInfo.get(userId)! }))
-        .sort((a, b) => a.username.localeCompare(b.username));
+      if (maxDrought > 1) {
+        worstFormGroup = [...droughtByUser.entries()]
+          .filter(([, drought]) => drought === maxDrought)
+          .map(([userId, drought]) => ({ userId, drought, ...userInfo.get(userId)! }))
+          .sort((a, b) => a.username.localeCompare(b.username));
+      }
     }
 
     const cards: UserStatCardData[] = [];
@@ -726,7 +728,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
       const wrongGroups = new Map<string, typeof worstPredictionMatch.wrongPredictors>();
       for (const p of worstPredictionMatch.wrongPredictors) {
-        const key = `${p.predHomeScore}-${p.predAwayScore}`;
+        const key = String(Math.sign(p.predHomeScore - p.predAwayScore));
         if (!wrongGroups.has(key)) wrongGroups.set(key, []);
         wrongGroups.get(key)!.push(p);
       }
@@ -737,8 +739,8 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       const wrongClauses = sortedWrongGroups.map(group => {
         const outcome = describeOutcome(homeTeamName, awayTeamName, group[0].predHomeScore, group[0].predAwayScore, lang);
         return lang === 'no'
-          ? `${formatUserList(group.map(p => p.username), lang)} tippet ${outcome} (${group[0].predHomeScore}-${group[0].predAwayScore})`
-          : `${formatUserList(group.map(p => p.username), lang)} predicted ${outcome} (${group[0].predHomeScore} - ${group[0].predAwayScore})`;
+          ? `${formatUserList(group.map(p => p.username), lang)} tippet ${outcome}`
+          : `${formatUserList(group.map(p => p.username), lang)} predicted ${outcome}`;
       });
       const correctOutcome = describeOutcome(
         homeTeamName,
@@ -859,19 +861,17 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       subjects: bestFormGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
     });
 
-    cards.push({
-      id: 'worstForm',
-      title: lang === 'no' ? 'Verste form' : 'Worst form',
-      statistic:
-        worstFormGroup.length > 0
-          ? lang === 'no'
-            ? `${formatUserList(worstFormGroup.map(u => u.username), lang)} har gått ${worstFormGroup[0].drought} ${worstFormGroup[0].drought === 1 ? 'kamp' : 'kamper'} uten å score et eneste poeng!`
-            : `${formatUserList(worstFormGroup.map(u => u.username), lang)} ${worstFormGroup.length === 1 ? 'has' : 'have'} gone ${worstFormGroup[0].drought} ${worstFormGroup[0].drought === 1 ? 'match' : 'matches'} without gaining a single point!`
-          : lang === 'no'
-            ? 'Ingen kamper er fullført ennå!'
-            : 'No matches have been completed yet!',
-      subjects: worstFormGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
-    });
+    if (worstFormGroup.length > 0) {
+      cards.push({
+        id: 'worstForm',
+        title: lang === 'no' ? 'Verste form' : 'Worst form',
+        statistic:
+          lang === 'no'
+            ? `${formatUserList(worstFormGroup.map(u => u.username), lang)} har gått ${worstFormGroup[0].drought} kamper uten å score et eneste poeng!`
+            : `${formatUserList(worstFormGroup.map(u => u.username), lang)} ${worstFormGroup.length === 1 ? 'has' : 'have'} gone ${worstFormGroup[0].drought} matches without gaining a single point!`,
+        subjects: worstFormGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
+      });
+    }
 
     res.json(cards);
   } catch (err) {
