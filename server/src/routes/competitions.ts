@@ -404,6 +404,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         homeTeamId: matches.homeTeamId,
         awayTeamId: matches.awayTeamId,
         scheduledAt: matches.scheduledAt,
+        points: predictions.points,
       })
       .from(predictions)
       .innerJoin(users, eq(predictions.userId, users.id))
@@ -482,6 +483,57 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       const maxExactScores = Math.max(...ratioTied.map(candidate => candidate.exactScores));
       hitOrMissGroup = ratioTied
         .filter(candidate => candidate.exactScores === maxExactScores)
+        .sort((a, b) => a.username.localeCompare(b.username));
+    }
+
+    // ── Best/Worst form: points earned across the most recent completed matches ──
+    const completedMatches = await db
+      .select({ id: matches.id, scheduledAt: matches.scheduledAt })
+      .from(matches)
+      .where(and(eq(matches.tournamentId, competition.tournamentId), eq(matches.status, 'completed')));
+    const completedMatchesByRecency = [...completedMatches].sort(
+      (a, b) => (b.scheduledAt?.getTime() ?? 0) - (a.scheduledAt?.getTime() ?? 0)
+    );
+    const last5MatchIds = new Set(completedMatchesByRecency.slice(0, 5).map(m => m.id));
+
+    const userInfo = new Map<string, { username: string; imageUrl: string | null }>();
+    const pointsByUserMatch = new Map<string, number>();
+    for (const row of rows) {
+      userInfo.set(row.userId, { username: row.username, imageUrl: row.imageUrl });
+      pointsByUserMatch.set(`${row.userId}|${row.matchId}`, row.points ?? 0);
+    }
+
+    const recentPointsByUser = new Map<string, number>();
+    for (const row of rows) {
+      if (!last5MatchIds.has(row.matchId)) continue;
+      recentPointsByUser.set(row.userId, (recentPointsByUser.get(row.userId) ?? 0) + (row.points ?? 0));
+    }
+
+    let bestFormGroup: { userId: string; username: string; imageUrl: string | null; points: number }[] = [];
+    if (recentPointsByUser.size > 0) {
+      const maxRecentPoints = Math.max(...recentPointsByUser.values());
+      bestFormGroup = [...recentPointsByUser.entries()]
+        .filter(([, points]) => points === maxRecentPoints)
+        .map(([userId, points]) => ({ userId, points, ...userInfo.get(userId)! }))
+        .sort((a, b) => a.username.localeCompare(b.username));
+    }
+
+    let worstFormGroup: { userId: string; username: string; imageUrl: string | null; drought: number }[] = [];
+    if (completedMatchesByRecency.length > 0) {
+      const droughtByUser = new Map<string, number>();
+      for (const userId of userInfo.keys()) {
+        let drought = 0;
+        for (const match of completedMatchesByRecency) {
+          const points = pointsByUserMatch.get(`${userId}|${match.id}`) ?? 0;
+          if (points > 0) break;
+          drought += 1;
+        }
+        droughtByUser.set(userId, drought);
+      }
+      const maxDrought = Math.max(...droughtByUser.values());
+      worstFormGroup = [...droughtByUser.entries()]
+        .filter(([, drought]) => drought === maxDrought)
+        .map(([userId, drought]) => ({ userId, drought, ...userInfo.get(userId)! }))
         .sort((a, b) => a.username.localeCompare(b.username));
     }
 
@@ -704,6 +756,26 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           ? `${formatUserList(hitOrMissGroup.map(u => u.username))} ${hitOrMissGroup.length === 1 ? 'has' : 'have'} predicted only ${hitOrMissGroup[0].correctResults} correct results, but ${hitOrMissGroup[0].exactScores} of those have been perfect scores!`
           : 'No one has predicted at least two perfect scores yet!',
       subjects: hitOrMissGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
+    });
+
+    cards.push({
+      id: 'bestForm',
+      title: 'Best form',
+      statistic:
+        bestFormGroup.length > 0
+          ? `${formatUserList(bestFormGroup.map(u => u.username))} ${bestFormGroup.length === 1 ? 'has' : 'have'} gained ${bestFormGroup[0].points} points in the last 5 matches!`
+          : 'No matches have been completed yet!',
+      subjects: bestFormGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
+    });
+
+    cards.push({
+      id: 'worstForm',
+      title: 'Worst form',
+      statistic:
+        worstFormGroup.length > 0
+          ? `${formatUserList(worstFormGroup.map(u => u.username))} ${worstFormGroup.length === 1 ? 'has' : 'have'} gone ${worstFormGroup[0].drought} ${worstFormGroup[0].drought === 1 ? 'match' : 'matches'} without gaining a single point!`
+          : 'No matches have been completed yet!',
+      subjects: worstFormGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
     });
 
     res.json(cards);
