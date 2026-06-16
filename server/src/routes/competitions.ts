@@ -415,16 +415,11 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       oneGoalAwayCounts.set(row.userId, entry);
     }
 
-    let unluckiest: { userId: string; username: string; imageUrl: string | null; count: number } | null = null;
-    for (const [userId, entry] of oneGoalAwayCounts) {
-      if (
-        !unluckiest ||
-        entry.count > unluckiest.count ||
-        (entry.count === unluckiest.count && entry.username.localeCompare(unluckiest.username) < 0)
-      ) {
-        unluckiest = { userId, ...entry };
-      }
-    }
+    const rankedUnlucky = [...oneGoalAwayCounts.entries()]
+      .map(([userId, entry]) => ({ userId, ...entry }))
+      .sort((a, b) => b.count - a.count || a.username.localeCompare(b.username));
+    const unluckiest = rankedUnlucky[0] ?? null;
+    const secondUnluckiest = rankedUnlucky[1] ?? null;
 
     const cards: UserStatCardData[] = [];
 
@@ -505,7 +500,8 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       id: 'unlucky',
       title: 'Unlucky',
       statistic: unluckiest
-        ? `${unluckiest.username} has been one goal away from predicting a perfect score ${unluckiest.count} ${unluckiest.count === 1 ? 'time' : 'times'}!`
+        ? `${unluckiest.username} has been one goal away from predicting a perfect score ${unluckiest.count} ${unluckiest.count === 1 ? 'time' : 'times'}!` +
+          (secondUnluckiest ? ` The second unluckiest is ${secondUnluckiest.username} with ${secondUnluckiest.count}.` : '')
         : 'No one has been one goal away from a perfect score yet!',
       subject: unluckiest
         ? { type: 'user', id: unluckiest.userId, name: unluckiest.username, imageUrl: unluckiest.imageUrl }
