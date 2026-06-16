@@ -1886,7 +1886,7 @@ export default function CompetitionDetailPage() {
       </div>
 
       {activeTab === 'userStats' && user?.isTestAccount && (
-        <div className="space-y-4">
+        <div className="space-y-6">
           {userStats.map((stat, i) => (
             <UserStatCard key={stat.id} competitionId={id!} data={stat} iconOnRight={i % 2 === 1} />
           ))}

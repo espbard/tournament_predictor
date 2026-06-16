@@ -11,7 +11,7 @@ export default function UserStatCard({ competitionId, data, iconOnRight }: UserS
   const { title, statistic, subject } = data;
 
   const icon = (
-    <div className="w-1/4 flex-shrink-0 flex items-center justify-center bg-muted/50 p-3">
+    <div className="w-1/4 flex-shrink-0 flex items-center justify-center p-3">
       <img
         src={subject?.imageUrl ?? '/default-avatar.png'}
         alt={subject?.name ?? ''}
@@ -21,14 +21,14 @@ export default function UserStatCard({ competitionId, data, iconOnRight }: UserS
   );
 
   const content = (
-    <div className="min-w-0 flex-1 p-4">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h3>
-      <p className="mt-1 text-sm">{statistic}</p>
+    <div className="min-w-0 flex-1 p-6">
+      <h3 className="text-lg font-semibold uppercase tracking-wide text-muted-foreground">{title}</h3>
+      <p className="mt-2 text-sm">{statistic}</p>
     </div>
   );
 
   const card = (
-    <div className={`flex items-stretch overflow-hidden rounded-lg border ${iconOnRight ? 'flex-row-reverse' : 'flex-row'}`}>
+    <div className={`flex items-stretch overflow-hidden rounded-2xl border bg-muted/50 ${iconOnRight ? 'flex-row-reverse' : 'flex-row'}`}>
       {icon}
       {content}
     </div>
