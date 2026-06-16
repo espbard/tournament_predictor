@@ -615,11 +615,25 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       }
     }
 
-    const cards: UserStatCardData[] = [];
+    let theLeaderCard: UserStatCardData | null = null;
+    let bottomOfTheLeagueCard: UserStatCardData | null = null;
+    let groupStageGuruCard: UserStatCardData | null = null;
+    let thePatriotCard: UserStatCardData | null = null;
+    let theOptimistCard: UserStatCardData | null = null;
+    let bestPredictionCard: UserStatCardData | null = null;
+    let worstPredictionCard: UserStatCardData | null = null;
+    let bestFormCard: UserStatCardData | null = null;
+    let worstFormCard: UserStatCardData | null = null;
+    let unluckyCard: UserStatCardData | null = null;
+    let hitOrMissCard: UserStatCardData | null = null;
+    let closeButNoCigarCard: UserStatCardData | null = null;
+    let mostContrastingPredictionCard: UserStatCardData | null = null;
+    let mostUnexpectedResultCard: UserStatCardData | null = null;
+    let mostPredictableResultCard: UserStatCardData | null = null;
 
     if (kingGroup.length > 0) {
       const gameCount = kingGroup[0].streak;
-      cards.push({
+      theLeaderCard = {
         id: 'theLeader',
         title: lang === 'no' ? 'Kongen på haugen' : 'The Leader',
         statistic:
@@ -628,7 +642,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
             : `${formatUserList(kingGroup.map(u => u.username), lang)} ${kingGroup.length === 1 ? 'has' : 'have'} reigned supreme for the last ${gameCount} game${gameCount === 1 ? '' : 's'}!`,
         subjects: kingGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
         linkType: 'leaderboard',
-      });
+      };
     }
 
     // ── Bottom of the league: lowest total points vs. the leader ──
@@ -676,7 +690,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         .sort((a, b) => a.username.localeCompare(b.username));
       const gap = maxPoints - minPoints;
 
-      cards.push({
+      bottomOfTheLeagueCard = {
         id: 'bottomOfTheLeague',
         title: lang === 'no' ? 'Kan Bare Bli Bedre' : 'Bottom of the league',
         statistic:
@@ -685,7 +699,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
             : `${formatUserList(bottomGroup.map(u => u.username), lang)} ${bottomGroup.length === 1 ? 'is' : 'are'} bottom of the table with only ${minPoints} point${minPoints === 1 ? '' : 's'}! ${gap} point${gap === 1 ? '' : 's'} behind ${formatUserList(topGroup.map(u => u.username), lang)} in first place!`,
         subjects: bottomGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
         linkType: 'leaderboard',
-      });
+      };
     }
 
     // ── Group Stage Guru: accuracy of each user's predicted final group standings ──
@@ -801,7 +815,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
                 : ` ${formatUserList(worstGroup.map(u => u.username), lang)} had the fewest correct, with only ${minCorrect}.`;
           }
 
-          cards.push({
+          groupStageGuruCard = {
             id: 'groupStageGuru',
             title: lang === 'no' ? 'Gruppespill-Geni' : 'Group Stage Guru',
             statistic:
@@ -811,7 +825,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
               worstSentence,
             subjects: bestGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
             linkType: 'user',
-          });
+          };
         }
       }
     }
@@ -880,7 +894,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
                 ? 'uten å slippe inn ett eneste mål!'
                 : 'without conceding a single goal!';
 
-          cards.push({
+          thePatriotCard = {
             id: 'thePatriot',
             title: 'The Patriot 🇳🇴',
             statistic:
@@ -890,7 +904,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
             subjects: patriotGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
             linkType: 'user',
             overlayImageUrl: norwayTeam.imageUrl ?? null,
-          });
+          };
         }
       }
     }
@@ -986,7 +1000,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
               : ` Meanwhile ${formatUserList(lowestPredictorGroup.map(u => u.username), lang)} ${lowestPredictorGroup.length === 1 ? 'has' : 'have'} predicted that only ${minPredicted} ${minPredicted === 1 ? 'goal' : 'goals'} should've been scored by now.`
             : '';
 
-        cards.push({
+        theOptimistCard = {
           id: 'theOptimist',
           title: lang === 'no' ? 'Optimisten' : 'The Optimist',
           statistic:
@@ -996,7 +1010,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
             lowestSentence,
           subjects: highestPredictorGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
           linkType: 'user',
-        });
+        };
       }
     }
 
@@ -1106,7 +1120,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
             ? 'No one else even got the correct result!'
             : `Only ${bestPredictionMatch.resultCount} players even got the result right!`;
 
-      cards.push({
+      bestPredictionCard = {
         id: 'bestPrediction',
         title: lang === 'no' ? 'Synsk' : 'Best prediction',
         statistic:
@@ -1116,10 +1130,10 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         subjects: [{ type: 'user', id: winner.userId, name: winner.username, imageUrl: winner.imageUrl }],
         linkType: 'match',
         matchId: bestPredictionMatch.matchId,
-      });
+      };
     }
 
-    cards.push({
+    unluckyCard = {
       id: 'unlucky',
       title: lang === 'no' ? 'Uflaks' : 'Unlucky',
       statistic:
@@ -1138,7 +1152,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
             : 'No one has been one goal away from a perfect score yet!',
       subjects: unluckyGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
       linkType: 'user',
-    });
+    };
 
     if (worstPredictionMatch) {
       const homeTeamName = teamName(worstPredictionMatch.homeTeamId);
@@ -1175,7 +1189,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           : `${wrongClauses.join('; ')}.` +
             (worstPredictionMatch.resultCount > 0 ? ` Everyone else correctly predicted ${correctOutcome}.` : '');
 
-      cards.push({
+      worstPredictionCard = {
         id: 'worstPrediction',
         title: lang === 'no' ? 'Skivebom' : 'Worst prediction',
         statistic,
@@ -1184,7 +1198,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           .map(p => ({ type: 'user' as const, id: p.userId, name: p.username, imageUrl: p.imageUrl })),
         linkType: 'match',
         matchId: worstPredictionMatch.matchId,
-      });
+      };
     }
 
     if (unexpectedMatch) {
@@ -1216,7 +1230,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       );
       const namesText = formatUserList(worstDeviationGroup.map(p => p.username), lang);
 
-      cards.push({
+      mostUnexpectedResultCard = {
         id: 'mostUnexpectedResult',
         title: lang === 'no' ? 'Sjokkresultat' : 'Most unexpected result',
         statistic:
@@ -1228,7 +1242,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           .map(teamId => ({ type: 'team' as const, id: teamId, name: teamName(teamId), imageUrl: teamImageMap.get(teamId) ?? null })),
         linkType: 'match',
         matchId: unexpectedMatch.matchId,
-      });
+      };
     }
 
     if (mostPredictableMatch) {
@@ -1259,7 +1273,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
             : ` Still ${formatUserList(onePointUsers.map(u => u.username), lang)} earned only 1 point.`;
       }
 
-      cards.push({
+      mostPredictableResultCard = {
         id: 'mostPredictableResult',
         title: lang === 'no' ? 'Forventet resultat' : 'The most expected result',
         statistic:
@@ -1272,7 +1286,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           .map(teamId => ({ type: 'team' as const, id: teamId, name: teamName(teamId), imageUrl: teamImageMap.get(teamId) ?? null })),
         linkType: 'match',
         matchId: mostPredictableMatch.matchId,
-      });
+      };
     }
 
     if (contrastMatch) {
@@ -1298,7 +1312,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           : `${winnerName} to win by ${margin} ${margin === 1 ? 'goal' : 'goals'}`;
       };
 
-      cards.push({
+      mostContrastingPredictionCard = {
         id: 'mostContrastingPrediction',
         title: lang === 'no' ? 'Natt Og Dag' : 'Most Contrasting Predictions',
         statistic:
@@ -1308,10 +1322,10 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         subjects: [...highGroup, ...lowGroup].map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
         linkType: 'match',
         matchId: contrastMatch.matchId,
-      });
+      };
     }
 
-    cards.push({
+    hitOrMissCard = {
       id: 'hitOrMiss',
       title: 'Hit or Miss',
       statistic:
@@ -1324,7 +1338,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
             : 'No one has predicted at least two perfect scores yet!',
       subjects: hitOrMissGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
       linkType: 'user',
-    });
+    };
 
     const closeButNoCigarVerb = closeButNoCigarGroup.length === 1 ? 'has' : 'have';
     const closeButNoCigarTail =
@@ -1336,7 +1350,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         ? `har bare truffet eksakt resultat ${closeButNoCigarGroup[0].exactScores} ${closeButNoCigarGroup[0].exactScores === 1 ? 'gang' : 'ganger'}!`
         : 'har aldri truffet eksakt resultat!';
 
-    cards.push({
+    closeButNoCigarCard = {
       id: 'closeButNoCigar',
       title: 'Close But No Cigar',
       statistic:
@@ -1349,9 +1363,9 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
             : 'No one has predicted a correct result yet!',
       subjects: closeButNoCigarGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
       linkType: 'user',
-    });
+    };
 
-    cards.push({
+    bestFormCard = {
       id: 'bestForm',
       title: lang === 'no' ? 'I fyr og flamme 🔥' : 'Best form',
       statistic:
@@ -1364,10 +1378,10 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
             : 'No matches have been completed yet!',
       subjects: bestFormGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
       linkType: 'user',
-    });
+    };
 
     if (worstFormGroup.length > 0) {
-      cards.push({
+      worstFormCard = {
         id: 'worstForm',
         title: lang === 'no' ? 'Send Hjelp' : 'Worst form',
         statistic:
@@ -1376,8 +1390,26 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
             : `${formatUserList(worstFormGroup.map(u => u.username), lang)} ${worstFormGroup.length === 1 ? 'has' : 'have'} gone ${worstFormGroup[0].drought} matches without gaining a single point!`,
         subjects: worstFormGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
         linkType: 'user',
-      });
+      };
     }
+
+    const cards = [
+      theLeaderCard,
+      bottomOfTheLeagueCard,
+      bestPredictionCard,
+      worstPredictionCard,
+      bestFormCard,
+      worstFormCard,
+      unluckyCard,
+      thePatriotCard,
+      hitOrMissCard,
+      closeButNoCigarCard,
+      groupStageGuruCard,
+      theOptimistCard,
+      mostContrastingPredictionCard,
+      mostUnexpectedResultCard,
+      mostPredictableResultCard,
+    ].filter((card): card is UserStatCardData => card !== null);
 
     res.json(cards);
   } catch (err) {
