@@ -736,6 +736,51 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       }
     }
 
+    // ── The Optimist: highest vs. lowest total predicted goals across played matches ──
+    const actualTotalGoals = [...matchStats.values()].reduce((sum, m) => sum + m.homeScore + m.awayScore, 0);
+    const predictedGoalsByUser = new Map<string, number>();
+    for (const row of rows) {
+      if (row.actualHomeScore === null || row.actualAwayScore === null) continue;
+      predictedGoalsByUser.set(
+        row.userId,
+        (predictedGoalsByUser.get(row.userId) ?? 0) + row.predHomeScore + row.predAwayScore
+      );
+    }
+
+    if (predictedGoalsByUser.size > 0) {
+      const maxPredicted = Math.max(...predictedGoalsByUser.values());
+      if (maxPredicted > actualTotalGoals) {
+        const minPredicted = Math.min(...predictedGoalsByUser.values());
+        const highestPredictorGroup = [...predictedGoalsByUser.entries()]
+          .filter(([, total]) => total === maxPredicted)
+          .map(([userId]) => ({ userId, ...userInfo.get(userId)! }))
+          .sort((a, b) => a.username.localeCompare(b.username));
+        const lowestPredictorGroup = [...predictedGoalsByUser.entries()]
+          .filter(([, total]) => total === minPredicted)
+          .map(([userId]) => ({ userId, ...userInfo.get(userId)! }))
+          .sort((a, b) => a.username.localeCompare(b.username));
+
+        const lowestSentence =
+          minPredicted < actualTotalGoals
+            ? lang === 'no'
+              ? ` I mellomtiden har ${formatUserList(lowestPredictorGroup.map(u => u.username), lang)} tippet at det bare skulle vært scoret ${minPredicted} mål så langt.`
+              : ` Meanwhile ${formatUserList(lowestPredictorGroup.map(u => u.username), lang)} ${lowestPredictorGroup.length === 1 ? 'has' : 'have'} predicted that only ${minPredicted} ${minPredicted === 1 ? 'goal' : 'goals'} should've been scored by now.`
+            : '';
+
+        cards.push({
+          id: 'theOptimist',
+          title: lang === 'no' ? 'Optimisten' : 'The Optimist',
+          statistic:
+            (lang === 'no'
+              ? `${formatUserList(highestPredictorGroup.map(u => u.username), lang)} har tippet at det totalt skulle vært scoret ${maxPredicted} mål på dette tidspunktet! Bare ${actualTotalGoals} mål har faktisk blitt scoret.`
+              : `${formatUserList(highestPredictorGroup.map(u => u.username), lang)} ${highestPredictorGroup.length === 1 ? 'has' : 'have'} predicted that a total of ${maxPredicted} ${maxPredicted === 1 ? 'goal' : 'goals'} should have been scored by this point! Only ${actualTotalGoals} ${actualTotalGoals === 1 ? 'goal' : 'goals'} ${actualTotalGoals === 1 ? 'has' : 'have'} actually been scored.`) +
+            lowestSentence,
+          subjects: highestPredictorGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
+          linkType: 'user',
+        });
+      }
+    }
+
     let bestPredictionMatch: MatchStat | null = null;
     for (const stat of matchStats.values()) {
       if (stat.perfectScorers.length !== 1) continue;
