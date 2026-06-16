@@ -639,6 +639,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       perfectScorers: { userId: string; username: string; imageUrl: string | null }[];
       resultCount: number;
       wrongPredictors: { userId: string; username: string; imageUrl: string | null; predHomeScore: number; predAwayScore: number }[];
+      predictorPoints: { userId: string; username: string; imageUrl: string | null; points: number | null }[];
     }
     const matchStats = new Map<string, MatchStat>();
     for (const row of rows) {
@@ -655,9 +656,11 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           perfectScorers: [],
           resultCount: 0,
           wrongPredictors: [],
+          predictorPoints: [],
         };
         matchStats.set(row.matchId, stat);
       }
+      stat.predictorPoints.push({ userId: row.userId, username: row.username, imageUrl: row.imageUrl, points: row.points });
       if (row.predHomeScore === row.actualHomeScore && row.predAwayScore === row.actualAwayScore) {
         stat.perfectScorers.push({ userId: row.userId, username: row.username, imageUrl: row.imageUrl });
       }
@@ -721,8 +724,24 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       }
     }
 
+    let mostPredictableMatch: MatchStat | null = null;
+    for (const stat of matchStats.values()) {
+      if (stat.resultCount === 0) continue;
+      if (stat.predictorPoints.length === 0 || stat.predictorPoints.some(p => p.points === null)) continue;
+      if (
+        !mostPredictableMatch ||
+        stat.resultCount > mostPredictableMatch.resultCount ||
+        (stat.resultCount === mostPredictableMatch.resultCount &&
+          (stat.perfectScorers.length > mostPredictableMatch.perfectScorers.length ||
+            (stat.perfectScorers.length === mostPredictableMatch.perfectScorers.length &&
+              (stat.scheduledAt?.getTime() ?? 0) < (mostPredictableMatch.scheduledAt?.getTime() ?? 0))))
+      ) {
+        mostPredictableMatch = stat;
+      }
+    }
+
     const neededTeamIds = new Set<string>();
-    for (const m of [bestPredictionMatch, worstPredictionMatch, unexpectedMatch]) {
+    for (const m of [bestPredictionMatch, worstPredictionMatch, unexpectedMatch, mostPredictableMatch]) {
       if (m?.homeTeamId) neededTeamIds.add(m.homeTeamId);
       if (m?.awayTeamId) neededTeamIds.add(m.awayTeamId);
     }
@@ -867,6 +886,50 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           .map(teamId => ({ type: 'team' as const, id: teamId, name: teamName(teamId), imageUrl: teamImageMap.get(teamId) ?? null })),
         linkType: 'match',
         matchId: unexpectedMatch.matchId,
+      });
+    }
+
+    if (mostPredictableMatch) {
+      const homeTeamName = teamName(mostPredictableMatch.homeTeamId);
+      const awayTeamName = teamName(mostPredictableMatch.awayTeamId);
+      const resultCount = mostPredictableMatch.resultCount;
+      const exactCount = mostPredictableMatch.perfectScorers.length;
+      const scoredPoints = mostPredictableMatch.predictorPoints.map(p => p.points ?? 0);
+      const avgPoints = (scoredPoints.reduce((sum, p) => sum + p, 0) / scoredPoints.length).toFixed(2);
+
+      const zeroPointUsers = mostPredictableMatch.predictorPoints
+        .filter(p => p.points === 0)
+        .sort((a, b) => a.username.localeCompare(b.username));
+      const onePointUsers = mostPredictableMatch.predictorPoints
+        .filter(p => p.points === 1)
+        .sort((a, b) => a.username.localeCompare(b.username));
+
+      let appendText = '';
+      if (zeroPointUsers.length > 0) {
+        appendText =
+          lang === 'no'
+            ? ` Likevel sanket ${formatUserList(zeroPointUsers.map(u => u.username), lang)} 0 poeng.`
+            : ` Still ${formatUserList(zeroPointUsers.map(u => u.username), lang)} earned 0 points.`;
+      } else if (onePointUsers.length >= 1 && onePointUsers.length <= 4) {
+        appendText =
+          lang === 'no'
+            ? ` Likevel sanket ${formatUserList(onePointUsers.map(u => u.username), lang)} bare 1 poeng.`
+            : ` Still ${formatUserList(onePointUsers.map(u => u.username), lang)} earned only 1 point.`;
+      }
+
+      cards.push({
+        id: 'mostPredictableResult',
+        title: lang === 'no' ? 'Forventet resultat' : 'The most expected result',
+        statistic:
+          (lang === 'no'
+            ? `${homeTeamName} mot ${awayTeamName} (${mostPredictableMatch.homeScore}-${mostPredictableMatch.awayScore}) var det mest forutsigbare resultatet! Totalt tippet ${resultCount} ${resultCount === 1 ? 'spiller' : 'spillere'} riktig resultat, og ${exactCount} av dem tippet eksakt resultat! Hver spiller sanket i snitt ${avgPoints} poeng.`
+            : `${homeTeamName} vs ${awayTeamName} (${mostPredictableMatch.homeScore} - ${mostPredictableMatch.awayScore}) was the most predictable outcome! A total of ${resultCount} ${resultCount === 1 ? 'user' : 'users'} predicted the correct result, and ${exactCount} of those predicted the exact score! Each user scored on average ${avgPoints} points.`) +
+          appendText,
+        subjects: [mostPredictableMatch.homeTeamId, mostPredictableMatch.awayTeamId]
+          .filter((teamId): teamId is string => teamId !== null)
+          .map(teamId => ({ type: 'team' as const, id: teamId, name: teamName(teamId), imageUrl: teamImageMap.get(teamId) ?? null })),
+        linkType: 'match',
+        matchId: mostPredictableMatch.matchId,
       });
     }
 
