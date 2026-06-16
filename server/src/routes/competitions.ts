@@ -1,8 +1,8 @@
 import { Router } from 'express';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import { generateId } from 'lucia';
 import { db } from '../db/client.js';
-import { competitions, competitionMembers, users, tournaments, predictions, matches, bracketPredictions, bonusQuestions, bonusAnswers } from '../db/schema.js';
+import { competitions, competitionMembers, users, tournaments, predictions, matches, teams, bracketPredictions, bonusQuestions, bonusAnswers } from '../db/schema.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { CreateCompetitionSchema, CreatePredictionSchema, SaveBracketPredictionsSchema, DEFAULT_SCORING_CONFIG, SaveBonusAnswerSchema } from '@tournament-predictor/shared';
 import type { UserStatCardData } from '@tournament-predictor/shared';
@@ -384,10 +384,14 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         userId: predictions.userId,
         username: users.username,
         imageUrl: users.imageUrl,
+        matchId: predictions.matchId,
         predHomeScore: predictions.homeScore,
         predAwayScore: predictions.awayScore,
         actualHomeScore: matches.homeScore,
         actualAwayScore: matches.awayScore,
+        homeTeamId: matches.homeTeamId,
+        awayTeamId: matches.awayTeamId,
+        scheduledAt: matches.scheduledAt,
       })
       .from(predictions)
       .innerJoin(users, eq(predictions.userId, users.id))
@@ -434,6 +438,79 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           : null,
       },
     ];
+
+    // ── Best prediction: rarest match where exactly one player got a perfect score ──
+    interface MatchStat {
+      homeTeamId: string | null;
+      awayTeamId: string | null;
+      homeScore: number;
+      awayScore: number;
+      scheduledAt: Date | null;
+      perfectScorers: { userId: string; username: string; imageUrl: string | null }[];
+      resultCount: number;
+    }
+    const matchStats = new Map<string, MatchStat>();
+    for (const row of rows) {
+      if (row.actualHomeScore === null || row.actualAwayScore === null) continue;
+      let stat = matchStats.get(row.matchId);
+      if (!stat) {
+        stat = {
+          homeTeamId: row.homeTeamId,
+          awayTeamId: row.awayTeamId,
+          homeScore: row.actualHomeScore,
+          awayScore: row.actualAwayScore,
+          scheduledAt: row.scheduledAt,
+          perfectScorers: [],
+          resultCount: 0,
+        };
+        matchStats.set(row.matchId, stat);
+      }
+      if (row.predHomeScore === row.actualHomeScore && row.predAwayScore === row.actualAwayScore) {
+        stat.perfectScorers.push({ userId: row.userId, username: row.username, imageUrl: row.imageUrl });
+      }
+      const predictedResult = Math.sign(row.predHomeScore - row.predAwayScore);
+      const actualResult = Math.sign(row.actualHomeScore - row.actualAwayScore);
+      if (predictedResult === actualResult) stat.resultCount += 1;
+    }
+
+    let bestPredictionMatch: MatchStat | null = null;
+    for (const stat of matchStats.values()) {
+      if (stat.perfectScorers.length !== 1) continue;
+      if (
+        !bestPredictionMatch ||
+        stat.resultCount < bestPredictionMatch.resultCount ||
+        (stat.resultCount === bestPredictionMatch.resultCount &&
+          (stat.scheduledAt?.getTime() ?? 0) < (bestPredictionMatch.scheduledAt?.getTime() ?? 0))
+      ) {
+        bestPredictionMatch = stat;
+      }
+    }
+
+    if (bestPredictionMatch) {
+      const teamIds = [bestPredictionMatch.homeTeamId, bestPredictionMatch.awayTeamId].filter(
+        (tid): tid is string => tid !== null
+      );
+      const teamRows = teamIds.length > 0 ? await db.select().from(teams).where(inArray(teams.id, teamIds)) : [];
+      const teamNameMap = new Map(teamRows.map(t => [t.id, t.name]));
+      const homeTeamName = bestPredictionMatch.homeTeamId
+        ? teamNameMap.get(bestPredictionMatch.homeTeamId) ?? 'Unknown'
+        : 'Unknown';
+      const awayTeamName = bestPredictionMatch.awayTeamId
+        ? teamNameMap.get(bestPredictionMatch.awayTeamId) ?? 'Unknown'
+        : 'Unknown';
+      const winner = bestPredictionMatch.perfectScorers[0];
+      const resultText =
+        bestPredictionMatch.resultCount === 1
+          ? 'No one else even got the correct result!'
+          : `Only ${bestPredictionMatch.resultCount} players even got the result right!`;
+
+      cards.push({
+        id: 'bestPrediction',
+        title: 'Best prediction!',
+        statistic: `${winner.username} got a perfect score on ${homeTeamName} vs ${awayTeamName} (${bestPredictionMatch.homeScore} - ${bestPredictionMatch.awayScore})! ${resultText}`,
+        subject: { type: 'user', id: winner.userId, name: winner.username, imageUrl: winner.imageUrl },
+      });
+    }
 
     res.json(cards);
   } catch (err) {
