@@ -44,7 +44,7 @@ export default function UserStatCard({ competitionId, data, iconOnRight }: UserS
   const { title, statistic, subjects } = data;
 
   const icon = (
-    <div className="w-1/4 flex-shrink-0">
+    <div className="h-40 w-1/4 flex-shrink-0">
       {subjects.length > 1 ? (
         <div className="relative h-full w-full">
           {subjects.map((subject, i) => (
@@ -75,7 +75,7 @@ export default function UserStatCard({ competitionId, data, iconOnRight }: UserS
   );
 
   const card = (
-    <div className={`flex h-40 items-stretch overflow-hidden rounded-2xl border bg-muted/50 ${iconOnRight ? 'flex-row-reverse' : 'flex-row'}`}>
+    <div className={`flex items-center overflow-hidden rounded-2xl border bg-muted/50 ${iconOnRight ? 'flex-row-reverse' : 'flex-row'}`}>
       {icon}
       {content}
     </div>
