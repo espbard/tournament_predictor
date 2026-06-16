@@ -574,6 +574,44 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       }
     }
 
+    // ── The King: how many consecutive recent matches the current leader(s) have topped the table ──
+    const completedMatchesByOldest = [...completedMatchesByRecency].reverse();
+    const cumulativePointsByUser = new Map<string, number>();
+    for (const userId of userInfo.keys()) cumulativePointsByUser.set(userId, 0);
+
+    const leadingSetsByMatch: Set<string>[] = [];
+    for (const match of completedMatchesByOldest) {
+      for (const userId of userInfo.keys()) {
+        const points = pointsByUserMatch.get(`${userId}|${match.id}`) ?? 0;
+        cumulativePointsByUser.set(userId, (cumulativePointsByUser.get(userId) ?? 0) + points);
+      }
+      const maxPoints = Math.max(...cumulativePointsByUser.values());
+      leadingSetsByMatch.push(
+        new Set([...cumulativePointsByUser.entries()].filter(([, p]) => p === maxPoints).map(([userId]) => userId))
+      );
+    }
+
+    let kingGroup: { userId: string; username: string; imageUrl: string | null; streak: number }[] = [];
+    if (leadingSetsByMatch.length > 0) {
+      const streakFor = (userId: string) => {
+        let streak = 0;
+        for (let i = leadingSetsByMatch.length - 1; i >= 0; i--) {
+          if (!leadingSetsByMatch[i].has(userId)) break;
+          streak += 1;
+        }
+        return streak;
+      };
+      const currentLeaders = leadingSetsByMatch[leadingSetsByMatch.length - 1];
+      const leaderStreaks = [...currentLeaders].map(userId => ({ userId, streak: streakFor(userId) }));
+      if (leaderStreaks.length > 0) {
+        const maxStreak = Math.max(...leaderStreaks.map(l => l.streak));
+        kingGroup = leaderStreaks
+          .filter(l => l.streak === maxStreak)
+          .map(l => ({ userId: l.userId, streak: l.streak, ...userInfo.get(l.userId)! }))
+          .sort((a, b) => a.username.localeCompare(b.username));
+      }
+    }
+
     const cards: UserStatCardData[] = [];
 
     // ── Best/worst prediction: per-match outcome stats ──
@@ -882,6 +920,20 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
             ? `${formatUserList(worstFormGroup.map(u => u.username), lang)} har gått ${worstFormGroup[0].drought} kamper uten å score et eneste poeng!`
             : `${formatUserList(worstFormGroup.map(u => u.username), lang)} ${worstFormGroup.length === 1 ? 'has' : 'have'} gone ${worstFormGroup[0].drought} matches without gaining a single point!`,
         subjects: worstFormGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
+        linkType: 'user',
+      });
+    }
+
+    if (kingGroup.length > 0) {
+      const gameCount = kingGroup[0].streak;
+      cards.push({
+        id: 'theKing',
+        title: lang === 'no' ? 'Kongen på haugen' : 'The King',
+        statistic:
+          lang === 'no'
+            ? `${formatUserList(kingGroup.map(u => u.username), lang)} har regjert på toppen i ${gameCount} kamp${gameCount === 1 ? '' : 'er'}!`
+            : `${formatUserList(kingGroup.map(u => u.username), lang)} ${kingGroup.length === 1 ? 'has' : 'have'} reigned supreme for the last ${gameCount} game${gameCount === 1 ? '' : 's'}!`,
+        subjects: kingGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
         linkType: 'user',
       });
     }
