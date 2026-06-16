@@ -753,7 +753,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       title: 'Hit or Miss',
       statistic:
         hitOrMissGroup.length > 0
-          ? `${formatUserList(hitOrMissGroup.map(u => u.username))} ${hitOrMissGroup.length === 1 ? 'has' : 'have'} predicted only ${hitOrMissGroup[0].correctResults} correct results, but ${hitOrMissGroup[0].exactScores} of those have been perfect scores!`
+          ? `${hitOrMissGroup[0].exactScores} out of ${formatUserList(hitOrMissGroup.map(u => u.username))}'s ${hitOrMissGroup[0].correctResults} have been perfect predictions!`
           : 'No one has predicted at least two perfect scores yet!',
       subjects: hitOrMissGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
     });
