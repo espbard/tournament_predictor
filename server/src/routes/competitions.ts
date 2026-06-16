@@ -698,6 +698,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       resultCount: number;
       wrongPredictors: { userId: string; username: string; imageUrl: string | null; predHomeScore: number; predAwayScore: number }[];
       predictorPoints: { userId: string; username: string; imageUrl: string | null; points: number | null }[];
+      predictions: { userId: string; username: string; imageUrl: string | null; predHomeScore: number; predAwayScore: number }[];
     }
     const matchStats = new Map<string, MatchStat>();
     for (const row of rows) {
@@ -715,10 +716,18 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           resultCount: 0,
           wrongPredictors: [],
           predictorPoints: [],
+          predictions: [],
         };
         matchStats.set(row.matchId, stat);
       }
       stat.predictorPoints.push({ userId: row.userId, username: row.username, imageUrl: row.imageUrl, points: row.points });
+      stat.predictions.push({
+        userId: row.userId,
+        username: row.username,
+        imageUrl: row.imageUrl,
+        predHomeScore: row.predHomeScore,
+        predAwayScore: row.predAwayScore,
+      });
       if (row.predHomeScore === row.actualHomeScore && row.predAwayScore === row.actualAwayScore) {
         stat.perfectScorers.push({ userId: row.userId, username: row.username, imageUrl: row.imageUrl });
       }
@@ -846,8 +855,26 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       }
     }
 
+    // ── Most contrasting prediction: biggest gap between two users' predicted goal differences ──
+    let contrastMatch: MatchStat | null = null;
+    let contrastGap = -Infinity;
+    for (const stat of matchStats.values()) {
+      if (stat.predictions.length < 2) continue;
+      const diffs = stat.predictions.map(p => p.predHomeScore - p.predAwayScore);
+      const gap = Math.max(...diffs) - Math.min(...diffs);
+      if (gap <= 0) continue;
+      if (
+        !contrastMatch ||
+        gap > contrastGap ||
+        (gap === contrastGap && (stat.scheduledAt?.getTime() ?? 0) < (contrastMatch.scheduledAt?.getTime() ?? 0))
+      ) {
+        contrastMatch = stat;
+        contrastGap = gap;
+      }
+    }
+
     const neededTeamIds = new Set<string>();
-    for (const m of [bestPredictionMatch, worstPredictionMatch, unexpectedMatch, mostPredictableMatch]) {
+    for (const m of [bestPredictionMatch, worstPredictionMatch, unexpectedMatch, mostPredictableMatch, contrastMatch]) {
       if (m?.homeTeamId) neededTeamIds.add(m.homeTeamId);
       if (m?.awayTeamId) neededTeamIds.add(m.awayTeamId);
     }
@@ -1036,6 +1063,42 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           .map(teamId => ({ type: 'team' as const, id: teamId, name: teamName(teamId), imageUrl: teamImageMap.get(teamId) ?? null })),
         linkType: 'match',
         matchId: mostPredictableMatch.matchId,
+      });
+    }
+
+    if (contrastMatch) {
+      const homeTeamName = teamName(contrastMatch.homeTeamId);
+      const awayTeamName = teamName(contrastMatch.awayTeamId);
+      const diffs = contrastMatch.predictions.map(p => p.predHomeScore - p.predAwayScore);
+      const maxDiff = Math.max(...diffs);
+      const minDiff = Math.min(...diffs);
+
+      const highGroup = contrastMatch.predictions
+        .filter(p => p.predHomeScore - p.predAwayScore === maxDiff)
+        .sort((a, b) => a.username.localeCompare(b.username));
+      const lowGroup = contrastMatch.predictions
+        .filter(p => p.predHomeScore - p.predAwayScore === minDiff)
+        .sort((a, b) => a.username.localeCompare(b.username));
+
+      const describeGoalDiff = (diff: number) => {
+        if (diff === 0) return lang === 'no' ? 'uavgjort' : 'a draw';
+        const winnerName = diff > 0 ? homeTeamName : awayTeamName;
+        const margin = Math.abs(diff);
+        return lang === 'no'
+          ? `${winnerName} vinne med ${margin} mål`
+          : `${winnerName} to win by ${margin} ${margin === 1 ? 'goal' : 'goals'}`;
+      };
+
+      cards.push({
+        id: 'mostContrastingPrediction',
+        title: lang === 'no' ? 'Natt Og Dag' : 'Most Contrasting Predictions',
+        statistic:
+          lang === 'no'
+            ? `${homeTeamName} mot ${awayTeamName} (${contrastMatch.homeScore}-${contrastMatch.awayScore}) fikk de mest sprikende tippene! ${formatUserList(highGroup.map(u => u.username), lang)} tippet ${describeGoalDiff(maxDiff)}, mens ${formatUserList(lowGroup.map(u => u.username), lang)} tippet ${describeGoalDiff(minDiff)} — en forskjell på ${contrastGap} mål!`
+            : `${homeTeamName} vs ${awayTeamName} (${contrastMatch.homeScore} - ${contrastMatch.awayScore}) caused the most contrasting predictions! ${formatUserList(highGroup.map(u => u.username), lang)} predicted ${describeGoalDiff(maxDiff)}, while ${formatUserList(lowGroup.map(u => u.username), lang)} predicted ${describeGoalDiff(minDiff)} — a ${contrastGap}-goal swing!`,
+        subjects: [...highGroup, ...lowGroup].map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
+        linkType: 'match',
+        matchId: contrastMatch.matchId,
       });
     }
 
