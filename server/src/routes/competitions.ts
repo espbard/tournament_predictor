@@ -2,11 +2,12 @@ import { Router } from 'express';
 import { eq, and, inArray } from 'drizzle-orm';
 import { generateId } from 'lucia';
 import { db } from '../db/client.js';
-import { competitions, competitionMembers, users, tournaments, predictions, matches, teams, bracketPredictions, bonusQuestions, bonusAnswers } from '../db/schema.js';
+import { competitions, competitionMembers, users, tournaments, predictions, matches, teams, groups, bracketPredictions, bonusQuestions, bonusAnswers } from '../db/schema.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { CreateCompetitionSchema, CreatePredictionSchema, SaveBracketPredictionsSchema, DEFAULT_SCORING_CONFIG, SaveBonusAnswerSchema } from '@tournament-predictor/shared';
-import type { UserStatCardData, ScoringConfig } from '@tournament-predictor/shared';
+import type { UserStatCardData, ScoringConfig, KnockoutConfig } from '@tournament-predictor/shared';
 import { recalculateAllScoresForTournament } from '../lib/scoringTrigger.js';
+import { computeGroupStandings } from '../lib/scoring.js';
 import { subscribeLeaderboard, unsubscribeLeaderboard } from '../lib/leaderboardEvents.js';
 
 const router = Router();
@@ -684,6 +685,134 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         subjects: bottomGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
         linkType: 'user',
       });
+    }
+
+    // ── Group Stage Guru: accuracy of each user's predicted final group standings ──
+    const tournamentGroupMatches = await db
+      .select({
+        id: matches.id,
+        status: matches.status,
+        homeTeamId: matches.homeTeamId,
+        awayTeamId: matches.awayTeamId,
+        homeScore: matches.homeScore,
+        awayScore: matches.awayScore,
+      })
+      .from(matches)
+      .where(and(eq(matches.tournamentId, competition.tournamentId), eq(matches.stage, 'group')));
+
+    const groupStageComplete =
+      tournamentGroupMatches.length > 0 && tournamentGroupMatches.every(m => m.status === 'completed');
+
+    if (groupStageComplete) {
+      const groupRows = await db.select().from(groups).where(eq(groups.tournamentId, competition.tournamentId));
+      const groupNameMap = new Map(groupRows.map(g => [g.id, g.name]));
+      const groupTeamRows = await db
+        .select({ id: teams.id, groupId: teams.groupId })
+        .from(teams)
+        .where(eq(teams.tournamentId, competition.tournamentId));
+      const teamGroupMap = new Map<string, string>();
+      for (const t of groupTeamRows) {
+        if (t.groupId) {
+          const gName = groupNameMap.get(t.groupId);
+          if (gName) teamGroupMap.set(t.id, gName);
+        }
+      }
+
+      const [tournamentRow] = await db.select().from(tournaments).where(eq(tournaments.id, competition.tournamentId));
+      const tournamentKnockoutConfig = tournamentRow?.knockoutConfig as KnockoutConfig | null;
+      const tournamentGroupDisciplinaryChoices = tournamentKnockoutConfig?.groupDisciplinaryChoices ?? {};
+
+      const actualStandings = computeGroupStandings(tournamentGroupMatches, teamGroupMap, tournamentGroupDisciplinaryChoices);
+      const totalTeamCount = [...actualStandings.values()].reduce((sum, teamList) => sum + teamList.length, 0);
+
+      if (totalTeamCount > 0) {
+        const groupMatchIds = tournamentGroupMatches.map(m => m.id);
+        const memberPredRows = await db
+          .select({
+            userId: predictions.userId,
+            matchId: predictions.matchId,
+            predHomeScore: predictions.homeScore,
+            predAwayScore: predictions.awayScore,
+          })
+          .from(predictions)
+          .where(and(eq(predictions.competitionId, id), inArray(predictions.matchId, groupMatchIds)));
+
+        const predsByUser = new Map<string, typeof memberPredRows>();
+        for (const p of memberPredRows) {
+          if (!predsByUser.has(p.userId)) predsByUser.set(p.userId, []);
+          predsByUser.get(p.userId)!.push(p);
+        }
+
+        const memberChoiceRows = await db
+          .select({
+            userId: competitionMembers.userId,
+            username: users.username,
+            imageUrl: users.imageUrl,
+            groupDisciplinaryChoices: competitionMembers.groupDisciplinaryChoices,
+          })
+          .from(competitionMembers)
+          .innerJoin(users, eq(competitionMembers.userId, users.id))
+          .where(and(eq(competitionMembers.competitionId, id), eq(users.isLeaderboardUser, false)));
+
+        const memberInfoByUserId = new Map(
+          memberChoiceRows.map(m => [m.userId, { userId: m.userId, username: m.username, imageUrl: m.imageUrl }])
+        );
+
+        const correctCountByUser = new Map<string, number>();
+        for (const { userId, groupDisciplinaryChoices } of memberChoiceRows) {
+          const predMap = new Map((predsByUser.get(userId) ?? []).map(p => [p.matchId, p]));
+          const simulatedMatches = tournamentGroupMatches
+            .filter(m => m.homeTeamId && m.awayTeamId)
+            .flatMap(m => {
+              const pred = predMap.get(m.id);
+              if (!pred) return [];
+              return [{ homeTeamId: m.homeTeamId!, awayTeamId: m.awayTeamId!, homeScore: pred.predHomeScore, awayScore: pred.predAwayScore }];
+            });
+          const predictedStandings = computeGroupStandings(simulatedMatches, teamGroupMap, groupDisciplinaryChoices ?? {});
+
+          let correct = 0;
+          for (const [group, actualTeams] of actualStandings) {
+            const predictedTeams = predictedStandings.get(group) ?? [];
+            for (let i = 0; i < actualTeams.length; i++) {
+              if (predictedTeams[i]?.teamId === actualTeams[i].teamId) correct += 1;
+            }
+          }
+          correctCountByUser.set(userId, correct);
+        }
+
+        if (correctCountByUser.size > 0) {
+          const maxCorrect = Math.max(...correctCountByUser.values());
+          const minCorrect = Math.min(...correctCountByUser.values());
+          const bestGroup = [...correctCountByUser.entries()]
+            .filter(([, count]) => count === maxCorrect)
+            .map(([userId]) => memberInfoByUserId.get(userId)!)
+            .sort((a, b) => a.username.localeCompare(b.username));
+
+          let worstSentence = '';
+          if (minCorrect < maxCorrect) {
+            const worstGroup = [...correctCountByUser.entries()]
+              .filter(([, count]) => count === minCorrect)
+              .map(([userId]) => memberInfoByUserId.get(userId)!)
+              .sort((a, b) => a.username.localeCompare(b.username));
+            worstSentence =
+              lang === 'no'
+                ? ` ${formatUserList(worstGroup.map(u => u.username), lang)} hadde færrest riktige, med bare ${minCorrect}.`
+                : ` ${formatUserList(worstGroup.map(u => u.username), lang)} had the fewest correct, with only ${minCorrect}.`;
+          }
+
+          cards.push({
+            id: 'groupStageGuru',
+            title: lang === 'no' ? 'Gruppespill-Geni' : 'Group Stage Guru',
+            statistic:
+              (lang === 'no'
+                ? `${formatUserList(bestGroup.map(u => u.username), lang)} tippet ${maxCorrect} av ${totalTeamCount} lag i riktig posisjon i gruppespillet!`
+                : `${formatUserList(bestGroup.map(u => u.username), lang)} predicted ${maxCorrect} out of ${totalTeamCount} teams in their correct final group position!`) +
+              worstSentence,
+            subjects: bestGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
+            linkType: 'user',
+          });
+        }
+      }
     }
 
     // ── Best/worst prediction: per-match outcome stats ──
