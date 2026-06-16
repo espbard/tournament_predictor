@@ -704,7 +704,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
     cards.push({
       id: 'unlucky',
-      title: lang === 'no' ? 'Uheldig' : 'Unlucky',
+      title: lang === 'no' ? 'Uflaks' : 'Unlucky',
       statistic:
         unluckyGroup.length > 0
           ? lang === 'no'
@@ -811,7 +811,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
     cards.push({
       id: 'hitOrMiss',
-      title: lang === 'no' ? 'Bom eller fulltreffer' : 'Hit or Miss',
+      title: 'Hit or Miss',
       statistic:
         hitOrMissGroup.length > 0
           ? lang === 'no'
@@ -835,7 +835,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
     cards.push({
       id: 'closeButNoCigar',
-      title: lang === 'no' ? 'Nesten, men ikke helt' : 'Close But No Cigar',
+      title: 'Close But No Cigar',
       statistic:
         closeButNoCigarGroup.length > 0
           ? lang === 'no'
@@ -864,7 +864,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     if (worstFormGroup.length > 0) {
       cards.push({
         id: 'worstForm',
-        title: lang === 'no' ? 'Verste form' : 'Worst form',
+        title: lang === 'no' ? 'Dårligste form' : 'Worst form',
         statistic:
           lang === 'no'
             ? `${formatUserList(worstFormGroup.map(u => u.username), lang)} har gått ${worstFormGroup[0].drought} kamper uten å score et eneste poeng!`
