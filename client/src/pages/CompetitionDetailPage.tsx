@@ -70,7 +70,7 @@ export default function CompetitionDetailPage() {
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [saveErrors, setSaveErrors] = useState<Record<string, string>>({});
 
-  const [activeTab, setActiveTab] = useState<'group' | 'tables' | 'knockout' | 'bonus' | 'leaderboard'>(
+  const [activeTab, setActiveTab] = useState<'group' | 'tables' | 'knockout' | 'bonus' | 'leaderboard' | 'userStats'>(
     () => {
       const u = useAuthStore.getState().user;
       return u?.isLeaderboardUser || u?.isAdmin ? 'leaderboard' : 'group';
@@ -890,6 +890,7 @@ export default function CompetitionDetailPage() {
           ['knockout', t('competitionDetail.tabs.knockoutStage')],
           ['bonus', t('competitionDetail.tabs.bonusQuestions')],
           ['leaderboard', t('competitionDetail.tabs.leaderboard')],
+          ...(user?.isTestAccount ? [['userStats', t('competitionDetail.tabs.userStats')] as const] : []),
         ] as const).map(([tab, label]) => (
           <button
             key={tab}
@@ -1876,6 +1877,10 @@ export default function CompetitionDetailPage() {
       )}
 
       </div>
+
+      {activeTab === 'userStats' && user?.isTestAccount && (
+        <div />
+      )}
 
       {/* Clear predictions confirm */}
       {showClearConfirm && (

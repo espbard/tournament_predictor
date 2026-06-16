@@ -94,6 +94,7 @@ const translations = {
         knockoutStage: 'Knockout Stage',
         bonusQuestions: 'Bonus Questions',
         leaderboard: 'Leaderboard',
+        userStats: 'User Stats',
       },
       leaderboard: {
         player: 'Player',
@@ -508,6 +509,7 @@ const translations = {
         knockoutStage: 'Sluttspill',
         bonusQuestions: 'Bonusspørsmål',
         leaderboard: 'Ledertavle',
+        userStats: 'Brukerstatistikk',
       },
       leaderboard: {
         player: 'Spiller',
