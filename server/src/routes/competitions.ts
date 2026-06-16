@@ -1444,7 +1444,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           title: lang === 'no' ? 'Brautometeret' : 'The Brautometer',
           statistic:
             lang === 'no'
-              ? `Deltakerne har i gjennomsnitt tippet at Haaland kommer til å score ${average.toFixed(2)} mål i turneringen. ${formatUserList(mostFaithGroup.map(u => u.username), lang)} har mest tro og tror han kommer til å score utrolige ${maxGoals} mål! Mens ${formatUserList(leastFaithGroup.map(u => u.username), lang)} bare tror han kommer til å score ${minGoals} mål.`
+              ? `Deltakerne har i gjennomsnitt tippet at Haaland kommer til å score ${average.toFixed(2)} mål i turneringen. ${formatUserList(mostFaithGroup.map(u => u.username), lang)} har mest tro og tror han kommer til å score utrolige ${maxGoals} mål! Mens ${formatUserList(leastFaithGroup.map(u => u.username), lang)} tror han bare kommer til å score ${minGoals} mål.`
               : `The participants have on average predicted that Haaland will score ${average.toFixed(2)} goals in the tournament. ${formatUserList(mostFaithGroup.map(u => u.username), lang)} ${mostFaithGroup.length === 1 ? 'has' : 'have'} the most faith and ${mostFaithGroup.length === 1 ? 'believes' : 'believe'} he will score an incredible ${maxGoals} goals! While ${formatUserList(leastFaithGroup.map(u => u.username), lang)} only ${leastFaithGroup.length === 1 ? 'believes' : 'believe'} he will score ${minGoals} goals.`,
           subjects: mostFaithGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
           linkType: 'userBonus',
