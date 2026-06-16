@@ -153,9 +153,10 @@ export interface UserStatCardData {
   title: string;
   statistic: string;
   subjects: UserStatSubject[];
-  linkType: 'match' | 'user' | 'leaderboard' | null;
+  linkType: 'match' | 'user' | 'userBonus' | 'leaderboard' | null;
   matchId?: string | null;
   overlayImageUrl?: string | null;
+  iconImageUrl?: string | null;
 }
 
 export interface BonusAnswer {

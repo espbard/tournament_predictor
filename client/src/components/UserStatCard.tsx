@@ -118,10 +118,19 @@ function collageSliceLayout(index: number, total: number): SliceLayout {
   return { clipPath, left: minX, top: minY, width, height };
 }
 
+const DARK_BLUE = 'hsl(231, 70%, 28%)';
+const DARK_RED = 'hsl(358, 70%, 32%)';
+
 // Renders `**bold**` markers in stat text (e.g. usernames) as <strong> spans.
 function renderStatistic(text: string) {
   return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
-    part.startsWith('**') && part.endsWith('**') ? <strong key={i}>{part.slice(2, -2)}</strong> : part
+    part.startsWith('**') && part.endsWith('**') ? (
+      <strong key={i} style={{ color: DARK_RED }}>
+        {part.slice(2, -2)}
+      </strong>
+    ) : (
+      part
+    )
   );
 }
 
@@ -129,8 +138,10 @@ export default function UserStatCard({ competitionId, data, iconOnRight, onMatch
   const { title, statistic, subjects } = data;
 
   const icon = (
-    <div className="relative h-40 w-1/3 flex-shrink-0 sm:w-1/4">
-      {subjects.length > 1 ? (
+    <div className="relative min-h-40 w-1/3 flex-shrink-0 sm:w-1/4">
+      {data.iconImageUrl ? (
+        <img src={data.iconImageUrl} alt="" className="h-full w-full object-cover" />
+      ) : subjects.length > 1 ? (
         <div className="relative h-full w-full">
           {subjects.map((subject, i) => {
             const layout = collageSliceLayout(i, subjects.length);
@@ -170,13 +181,18 @@ export default function UserStatCard({ competitionId, data, iconOnRight, onMatch
 
   const content = (
     <div className="min-w-0 flex-1 p-6">
-      <h3 className="text-lg font-semibold uppercase tracking-wide text-muted-foreground">{title}</h3>
+      <h3 className="text-lg font-bold uppercase tracking-wide" style={{ color: DARK_BLUE }}>
+        {title}
+      </h3>
       <p className="mt-2 text-sm">{renderStatistic(statistic)}</p>
     </div>
   );
 
   const card = (
-    <div className={`flex items-center overflow-hidden rounded-2xl border bg-muted/50 ${iconOnRight ? 'flex-row-reverse' : 'flex-row'}`}>
+    <div
+      className={`flex items-stretch overflow-hidden rounded-2xl border-4 bg-[hsla(120,3%,91%,0.5)] dark:bg-[hsl(120,3%,91%)] ${iconOnRight ? 'flex-row-reverse' : 'flex-row'}`}
+      style={{ color: 'hsl(180, 2%, 28%)', borderColor: DARK_BLUE }}
+    >
       {icon}
       {content}
     </div>
@@ -211,6 +227,17 @@ export default function UserStatCard({ competitionId, data, iconOnRight, onMatch
     return (
       <Link
         to={`/competitions/${competitionId}/predictions/${subjects[0].id}`}
+        className="block transition-opacity hover:opacity-80"
+      >
+        {card}
+      </Link>
+    );
+  }
+
+  if (data.linkType === 'userBonus' && subjects.length > 0) {
+    return (
+      <Link
+        to={`/competitions/${competitionId}/predictions/${subjects[0].id}?tab=bonus`}
         className="block transition-opacity hover:opacity-80"
       >
         {card}

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { eq, and, inArray, or } from 'drizzle-orm';
+import { eq, and, inArray, or, ilike } from 'drizzle-orm';
 import { generateId } from 'lucia';
 import { db } from '../db/client.js';
 import { competitions, competitionMembers, users, tournaments, predictions, matches, teams, groups, bracketPredictions, bonusQuestions, bonusAnswers } from '../db/schema.js';
@@ -630,6 +630,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     let mostContrastingPredictionCard: UserStatCardData | null = null;
     let mostUnexpectedResultCard: UserStatCardData | null = null;
     let mostPredictableResultCard: UserStatCardData | null = null;
+    let brautometerCard: UserStatCardData | null = null;
 
     if (kingGroup.length > 0) {
       const gameCount = kingGroup[0].streak;
@@ -1331,7 +1332,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       statistic:
         hitOrMissGroup.length > 0
           ? lang === 'no'
-            ? `${formatUserList(hitOrMissGroup.map(u => u.username), lang)} har greid ${hitOrMissGroup[0].exactScores} fulltreffere på de ${hitOrMissGroup[0].correctResults} resultatene de har tippet riktig!`
+            ? `${formatUserList(hitOrMissGroup.map(u => u.username), lang)} har bare tippet korrekt resultat ${hitOrMissGroup[0].correctResults} ${hitOrMissGroup[0].correctResults === 1 ? 'gang' : 'ganger'}, men ${hitOrMissGroup[0].exactScores} av de har vært fulltreffere!`
             : `${hitOrMissGroup[0].exactScores} out of ${formatUserList(hitOrMissGroup.map(u => u.username), lang)}'s ${hitOrMissGroup[0].correctResults} have been perfect predictions!`
           : lang === 'no'
             ? 'Ingen har tippet minst to perfekte resultater ennå!'
@@ -1352,7 +1353,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
     closeButNoCigarCard = {
       id: 'closeButNoCigar',
-      title: 'Close But No Cigar',
+      title: 'Slow and Steady',
       statistic:
         closeButNoCigarGroup.length > 0
           ? lang === 'no'
@@ -1393,6 +1394,65 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       };
     }
 
+    // ── The Brautometer: average/highest/lowest predicted Haaland tournament goals ──
+    const [haalandQuestion] = await db
+      .select()
+      .from(bonusQuestions)
+      .where(
+        and(
+          eq(bonusQuestions.tournamentId, competition.tournamentId),
+          eq(bonusQuestions.answerType, 'number'),
+          ilike(bonusQuestions.question, '%haaland%')
+        )
+      );
+
+    if (haalandQuestion) {
+      const haalandAnswerRows = await db
+        .select({
+          userId: bonusAnswers.userId,
+          username: users.username,
+          imageUrl: users.imageUrl,
+          answer: bonusAnswers.answer,
+        })
+        .from(bonusAnswers)
+        .innerJoin(users, eq(bonusAnswers.userId, users.id))
+        .where(
+          and(
+            eq(bonusAnswers.competitionId, id),
+            eq(bonusAnswers.questionId, haalandQuestion.id),
+            eq(users.isLeaderboardUser, false)
+          )
+        );
+
+      const haalandPredictions = haalandAnswerRows
+        .map(row => ({ userId: row.userId, username: row.username, imageUrl: row.imageUrl, goals: Number(row.answer) }))
+        .filter(row => Number.isFinite(row.goals));
+
+      if (haalandPredictions.length > 0) {
+        const average = haalandPredictions.reduce((sum, p) => sum + p.goals, 0) / haalandPredictions.length;
+        const maxGoals = Math.max(...haalandPredictions.map(p => p.goals));
+        const minGoals = Math.min(...haalandPredictions.map(p => p.goals));
+        const mostFaithGroup = haalandPredictions
+          .filter(p => p.goals === maxGoals)
+          .sort((a, b) => a.username.localeCompare(b.username));
+        const leastFaithGroup = haalandPredictions
+          .filter(p => p.goals === minGoals)
+          .sort((a, b) => a.username.localeCompare(b.username));
+
+        brautometerCard = {
+          id: 'brautometer',
+          title: lang === 'no' ? 'Brautometeret' : 'The Brautometer',
+          statistic:
+            lang === 'no'
+              ? `Deltakerne har i gjennomsnitt tippet at Haaland kommer til å score ${average.toFixed(2)} mål i turneringen. ${formatUserList(mostFaithGroup.map(u => u.username), lang)} har mest tro og tror han kommer til å score utrolige ${maxGoals} mål! Mens ${formatUserList(leastFaithGroup.map(u => u.username), lang)} bare tror han kommer til å score ${minGoals} mål.`
+              : `The participants have on average predicted that Haaland will score ${average.toFixed(2)} goals in the tournament. ${formatUserList(mostFaithGroup.map(u => u.username), lang)} ${mostFaithGroup.length === 1 ? 'has' : 'have'} the most faith and ${mostFaithGroup.length === 1 ? 'believes' : 'believe'} he will score an incredible ${maxGoals} goals! While ${formatUserList(leastFaithGroup.map(u => u.username), lang)} only ${leastFaithGroup.length === 1 ? 'believes' : 'believe'} he will score ${minGoals} goals.`,
+          subjects: mostFaithGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
+          linkType: 'userBonus',
+          iconImageUrl: '/haaland.jpg',
+        };
+      }
+    }
+
     const cards = [
       theLeaderCard,
       bottomOfTheLeagueCard,
@@ -1409,6 +1469,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       mostContrastingPredictionCard,
       mostUnexpectedResultCard,
       mostPredictableResultCard,
+      brautometerCard,
     ].filter((card): card is UserStatCardData => card !== null);
 
     res.json(cards);
