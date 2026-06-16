@@ -19,10 +19,11 @@ function generateInviteCode(): string {
 type Lang = 'en' | 'no';
 
 function formatUserList(names: string[], lang: Lang): string {
+  const bolded = names.map(n => `**${n}**`);
   const and = lang === 'no' ? 'og' : 'and';
-  if (names.length === 1) return names[0];
-  if (names.length === 2) return `${names[0]} ${and} ${names[1]}`;
-  return `${names.slice(0, -1).join(', ')}, ${and} ${names[names.length - 1]}`;
+  if (bolded.length === 1) return bolded[0];
+  if (bolded.length === 2) return `${bolded[0]} ${and} ${bolded[1]}`;
+  return `${bolded.slice(0, -1).join(', ')}, ${and} ${bolded[bolded.length - 1]}`;
 }
 
 function describeOutcome(
@@ -1031,8 +1032,8 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         title: lang === 'no' ? 'Synsk' : 'Best prediction',
         statistic:
           lang === 'no'
-            ? `${winner.username} tippet eksakt resultat på ${homeTeamName} mot ${awayTeamName} (${bestPredictionMatch.homeScore}-${bestPredictionMatch.awayScore})! ${resultText}`
-            : `${winner.username} got a perfect score on ${homeTeamName} vs ${awayTeamName} (${bestPredictionMatch.homeScore} - ${bestPredictionMatch.awayScore})! ${resultText}`,
+            ? `**${winner.username}** tippet eksakt resultat på ${homeTeamName} mot ${awayTeamName} (${bestPredictionMatch.homeScore}-${bestPredictionMatch.awayScore})! ${resultText}`
+            : `**${winner.username}** got a perfect score on ${homeTeamName} vs ${awayTeamName} (${bestPredictionMatch.homeScore} - ${bestPredictionMatch.awayScore})! ${resultText}`,
         subjects: [{ type: 'user', id: winner.userId, name: winner.username, imageUrl: winner.imageUrl }],
         linkType: 'match',
         matchId: bestPredictionMatch.matchId,
