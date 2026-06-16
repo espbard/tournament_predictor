@@ -11,11 +11,11 @@ export default function UserStatCard({ competitionId, data, iconOnRight }: UserS
   const { title, statistic, subject } = data;
 
   const icon = (
-    <div className="w-1/4 flex-shrink-0 flex items-center justify-center p-3">
+    <div className="w-1/4 flex-shrink-0">
       <img
         src={subject?.imageUrl ?? '/default-avatar.png'}
         alt={subject?.name ?? ''}
-        className="h-14 w-14 rounded-full object-cover"
+        className="h-full w-full object-cover"
       />
     </div>
   );
