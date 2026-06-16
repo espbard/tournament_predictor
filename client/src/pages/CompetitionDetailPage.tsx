@@ -56,7 +56,7 @@ export default function CompetitionDetailPage() {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const { t } = useT();
+  const { t, language } = useT();
 
   const [editName, setEditName] = useState('');
   const [editImageUrl, setEditImageUrl] = useState<string | null>(null);
@@ -164,8 +164,8 @@ export default function CompetitionDetailPage() {
   });
 
   const { data: userStats = [] } = useQuery({
-    queryKey: ['competitions', id, 'user-stats'],
-    queryFn: () => api.get<UserStatCardData[]>(`/competitions/${id}/user-stats`),
+    queryKey: ['competitions', id, 'user-stats', language],
+    queryFn: () => api.get<UserStatCardData[]>(`/competitions/${id}/user-stats?lang=${language}`),
     enabled: !!competition && activeTab === 'userStats' && !!user?.isTestAccount,
   });
 

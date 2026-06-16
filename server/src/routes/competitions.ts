@@ -15,13 +15,27 @@ function generateInviteCode(): string {
   return Math.floor(10000 + Math.random() * 90000).toString();
 }
 
-function formatUserList(names: string[]): string {
+type Lang = 'en' | 'no';
+
+function formatUserList(names: string[], lang: Lang): string {
+  const and = lang === 'no' ? 'og' : 'and';
   if (names.length === 1) return names[0];
-  if (names.length === 2) return `${names[0]} and ${names[1]}`;
-  return `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`;
+  if (names.length === 2) return `${names[0]} ${and} ${names[1]}`;
+  return `${names.slice(0, -1).join(', ')}, ${and} ${names[names.length - 1]}`;
 }
 
-function describeOutcome(homeTeamName: string, awayTeamName: string, homeScore: number, awayScore: number): string {
+function describeOutcome(
+  homeTeamName: string,
+  awayTeamName: string,
+  homeScore: number,
+  awayScore: number,
+  lang: Lang
+): string {
+  if (lang === 'no') {
+    if (homeScore > awayScore) return `${homeTeamName} til å slå ${awayTeamName}`;
+    if (awayScore > homeScore) return `${awayTeamName} til å slå ${homeTeamName}`;
+    return `uavgjort mellom ${homeTeamName} og ${awayTeamName}`;
+  }
   if (homeScore > awayScore) return `${homeTeamName} to beat ${awayTeamName}`;
   if (awayScore > homeScore) return `${awayTeamName} to beat ${homeTeamName}`;
   return `${homeTeamName} to draw against ${awayTeamName}`;
@@ -378,6 +392,7 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
 router.get('/:id/user-stats', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
+    const lang: Lang = req.query.lang === 'no' ? 'no' : 'en';
     const user = res.locals.user;
 
     const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
@@ -666,28 +681,42 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       const awayTeamName = teamName(bestPredictionMatch.awayTeamId);
       const winner = bestPredictionMatch.perfectScorers[0];
       const resultText =
-        bestPredictionMatch.resultCount === 1
-          ? 'No one else even got the correct result!'
-          : `Only ${bestPredictionMatch.resultCount} players even got the result right!`;
+        lang === 'no'
+          ? bestPredictionMatch.resultCount === 1
+            ? 'Ingen andre fikk i det hele tatt riktig resultat!'
+            : `Bare ${bestPredictionMatch.resultCount} spillere fikk i det hele tatt riktig resultat!`
+          : bestPredictionMatch.resultCount === 1
+            ? 'No one else even got the correct result!'
+            : `Only ${bestPredictionMatch.resultCount} players even got the result right!`;
 
       cards.push({
         id: 'bestPrediction',
-        title: 'Best prediction!',
-        statistic: `${winner.username} got a perfect score on ${homeTeamName} vs ${awayTeamName} (${bestPredictionMatch.homeScore} - ${bestPredictionMatch.awayScore})! ${resultText}`,
+        title: lang === 'no' ? 'Beste tips!' : 'Best prediction!',
+        statistic:
+          lang === 'no'
+            ? `${winner.username} fikk eksakt resultat på ${homeTeamName} mot ${awayTeamName} (${bestPredictionMatch.homeScore}-${bestPredictionMatch.awayScore})! ${resultText}`
+            : `${winner.username} got a perfect score on ${homeTeamName} vs ${awayTeamName} (${bestPredictionMatch.homeScore} - ${bestPredictionMatch.awayScore})! ${resultText}`,
         subjects: [{ type: 'user', id: winner.userId, name: winner.username, imageUrl: winner.imageUrl }],
       });
     }
 
     cards.push({
       id: 'unlucky',
-      title: 'Unlucky',
+      title: lang === 'no' ? 'Uheldig' : 'Unlucky',
       statistic:
         unluckyGroup.length > 0
-          ? `${formatUserList(unluckyGroup.map(u => u.username))} ${unluckyGroup.length === 1 ? 'has' : 'have'} been one goal away from predicting a perfect score ${topUnluckyCount} ${topUnluckyCount === 1 ? 'time' : 'times'}!` +
-            (nextUnluckyGroup.length > 0
-              ? ` The next unluckiest ${nextUnluckyGroup.length === 1 ? 'is' : 'are'} ${formatUserList(nextUnluckyGroup.map(u => u.username))} with ${nextUnluckyCount}.`
-              : '')
-          : 'No one has been one goal away from a perfect score yet!',
+          ? lang === 'no'
+            ? `${formatUserList(unluckyGroup.map(u => u.username), lang)} har vært ett mål fra å tippe eksakt resultat ${topUnluckyCount} ${topUnluckyCount === 1 ? 'gang' : 'ganger'}!` +
+              (nextUnluckyGroup.length > 0
+                ? ` ${nextUnluckyGroup.length === 1 ? 'Den' : 'De'} nest mest uheldige er ${formatUserList(nextUnluckyGroup.map(u => u.username), lang)} med ${nextUnluckyCount}.`
+                : '')
+            : `${formatUserList(unluckyGroup.map(u => u.username), lang)} ${unluckyGroup.length === 1 ? 'has' : 'have'} been one goal away from predicting a perfect score ${topUnluckyCount} ${topUnluckyCount === 1 ? 'time' : 'times'}!` +
+              (nextUnluckyGroup.length > 0
+                ? ` The next unluckiest ${nextUnluckyGroup.length === 1 ? 'is' : 'are'} ${formatUserList(nextUnluckyGroup.map(u => u.username), lang)} with ${nextUnluckyCount}.`
+                : '')
+          : lang === 'no'
+            ? 'Ingen har vært ett mål fra et eksakt resultat ennå!'
+            : 'No one has been one goal away from a perfect score yet!',
       subjects: unluckyGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
     });
 
@@ -706,23 +735,29 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         .sort((a, b) => b.length - a.length || a[0].username.localeCompare(b[0].username));
 
       const wrongClauses = sortedWrongGroups.map(group => {
-        const outcome = describeOutcome(homeTeamName, awayTeamName, group[0].predHomeScore, group[0].predAwayScore);
-        return `${formatUserList(group.map(p => p.username))} predicted ${outcome} (${group[0].predHomeScore} - ${group[0].predAwayScore})`;
+        const outcome = describeOutcome(homeTeamName, awayTeamName, group[0].predHomeScore, group[0].predAwayScore, lang);
+        return lang === 'no'
+          ? `${formatUserList(group.map(p => p.username), lang)} tippet ${outcome} (${group[0].predHomeScore}-${group[0].predAwayScore})`
+          : `${formatUserList(group.map(p => p.username), lang)} predicted ${outcome} (${group[0].predHomeScore} - ${group[0].predAwayScore})`;
       });
       const correctOutcome = describeOutcome(
         homeTeamName,
         awayTeamName,
         worstPredictionMatch.homeScore,
-        worstPredictionMatch.awayScore
+        worstPredictionMatch.awayScore,
+        lang
       );
 
       const statistic =
-        `${wrongClauses.join('; ')}.` +
-        (worstPredictionMatch.resultCount > 0 ? ` Everyone else predicted ${correctOutcome}.` : '');
+        lang === 'no'
+          ? `${wrongClauses.join('; ')}.` +
+            (worstPredictionMatch.resultCount > 0 ? ` Alle andre tippet ${correctOutcome}.` : '')
+          : `${wrongClauses.join('; ')}.` +
+            (worstPredictionMatch.resultCount > 0 ? ` Everyone else predicted ${correctOutcome}.` : '');
 
       cards.push({
         id: 'worstPrediction',
-        title: 'Worst prediction',
+        title: lang === 'no' ? 'Dårligste tips' : 'Worst prediction',
         statistic,
         subjects: sortedWrongGroups
           .flat()
@@ -749,19 +784,23 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       }
       worstDeviationGroup = [...worstDeviationGroup].sort((a, b) => a.username.localeCompare(b.username));
 
-      const actualOutcome = describeOutcome(homeTeamName, awayTeamName, unexpectedMatch.homeScore, unexpectedMatch.awayScore);
+      const actualOutcome = describeOutcome(homeTeamName, awayTeamName, unexpectedMatch.homeScore, unexpectedMatch.awayScore, lang);
       const predictedOutcome = describeOutcome(
         homeTeamName,
         awayTeamName,
         worstDeviationGroup[0].predHomeScore,
-        worstDeviationGroup[0].predAwayScore
+        worstDeviationGroup[0].predAwayScore,
+        lang
       );
-      const namesText = formatUserList(worstDeviationGroup.map(p => p.username));
+      const namesText = formatUserList(worstDeviationGroup.map(p => p.username), lang);
 
       cards.push({
         id: 'mostUnexpectedResult',
-        title: 'Most unexpected result',
-        statistic: `No one predicted ${actualOutcome}! ${namesText} even predicted ${predictedOutcome} (${worstDeviationGroup[0].predHomeScore} - ${worstDeviationGroup[0].predAwayScore})!`,
+        title: lang === 'no' ? 'Mest uventede resultat' : 'Most unexpected result',
+        statistic:
+          lang === 'no'
+            ? `Ingen tippet ${actualOutcome}! ${namesText} tippet til og med ${predictedOutcome} (${worstDeviationGroup[0].predHomeScore}-${worstDeviationGroup[0].predAwayScore})!`
+            : `No one predicted ${actualOutcome}! ${namesText} even predicted ${predictedOutcome} (${worstDeviationGroup[0].predHomeScore} - ${worstDeviationGroup[0].predAwayScore})!`,
         subjects: [unexpectedMatch.homeTeamId, unexpectedMatch.awayTeamId]
           .filter((teamId): teamId is string => teamId !== null)
           .map(teamId => ({ type: 'team' as const, id: teamId, name: teamName(teamId), imageUrl: teamImageMap.get(teamId) ?? null })),
@@ -770,11 +809,15 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
     cards.push({
       id: 'hitOrMiss',
-      title: 'Hit or Miss',
+      title: lang === 'no' ? 'Bom eller fulltreffer' : 'Hit or Miss',
       statistic:
         hitOrMissGroup.length > 0
-          ? `${hitOrMissGroup[0].exactScores} out of ${formatUserList(hitOrMissGroup.map(u => u.username))}'s ${hitOrMissGroup[0].correctResults} have been perfect predictions!`
-          : 'No one has predicted at least two perfect scores yet!',
+          ? lang === 'no'
+            ? `${formatUserList(hitOrMissGroup.map(u => u.username), lang)} har truffet eksakt ${hitOrMissGroup[0].exactScores} av ${hitOrMissGroup[0].correctResults} riktige resultater!`
+            : `${hitOrMissGroup[0].exactScores} out of ${formatUserList(hitOrMissGroup.map(u => u.username), lang)}'s ${hitOrMissGroup[0].correctResults} have been perfect predictions!`
+          : lang === 'no'
+            ? 'Ingen har tippet minst to perfekte resultater ennå!'
+            : 'No one has predicted at least two perfect scores yet!',
       subjects: hitOrMissGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
     });
 
@@ -783,14 +826,22 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       closeButNoCigarGroup.length > 0 && closeButNoCigarGroup[0].exactScores > 0
         ? `only managed ${closeButNoCigarGroup[0].exactScores} exact prediction${closeButNoCigarGroup[0].exactScores === 1 ? '' : 's'}!`
         : 'never got an exact score correct!';
+    const closeButNoCigarTailNo =
+      closeButNoCigarGroup.length > 0 && closeButNoCigarGroup[0].exactScores > 0
+        ? `har bare truffet eksakt resultat ${closeButNoCigarGroup[0].exactScores} ${closeButNoCigarGroup[0].exactScores === 1 ? 'gang' : 'ganger'}!`
+        : 'har aldri truffet eksakt resultat!';
 
     cards.push({
       id: 'closeButNoCigar',
-      title: 'Close But No Cigar',
+      title: lang === 'no' ? 'Nesten, men ikke helt' : 'Close But No Cigar',
       statistic:
         closeButNoCigarGroup.length > 0
-          ? `${formatUserList(closeButNoCigarGroup.map(u => u.username))} ${closeButNoCigarVerb} predicted the correct result ${closeButNoCigarGroup[0].correctResults} times, but ${closeButNoCigarVerb} ${closeButNoCigarTail}`
-          : 'No one has predicted a correct result yet!',
+          ? lang === 'no'
+            ? `${formatUserList(closeButNoCigarGroup.map(u => u.username), lang)} har tippet riktig resultat ${closeButNoCigarGroup[0].correctResults} ${closeButNoCigarGroup[0].correctResults === 1 ? 'gang' : 'ganger'}, men ${closeButNoCigarTailNo}`
+            : `${formatUserList(closeButNoCigarGroup.map(u => u.username), lang)} ${closeButNoCigarVerb} predicted the correct result ${closeButNoCigarGroup[0].correctResults} times, but ${closeButNoCigarVerb} ${closeButNoCigarTail}`
+          : lang === 'no'
+            ? 'Ingen har tippet riktig resultat ennå!'
+            : 'No one has predicted a correct result yet!',
       subjects: closeButNoCigarGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
     });
 
@@ -799,18 +850,26 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       title: 'Best form',
       statistic:
         bestFormGroup.length > 0
-          ? `${formatUserList(bestFormGroup.map(u => u.username))} ${bestFormGroup.length === 1 ? 'has' : 'have'} gained ${bestFormGroup[0].points} points in the last 5 matches!`
-          : 'No matches have been completed yet!',
+          ? lang === 'no'
+            ? `${formatUserList(bestFormGroup.map(u => u.username), lang)} har fått ${bestFormGroup[0].points} poeng de siste 5 kampene!`
+            : `${formatUserList(bestFormGroup.map(u => u.username), lang)} ${bestFormGroup.length === 1 ? 'has' : 'have'} gained ${bestFormGroup[0].points} points in the last 5 matches!`
+          : lang === 'no'
+            ? 'Ingen kamper er fullført ennå!'
+            : 'No matches have been completed yet!',
       subjects: bestFormGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
     });
 
     cards.push({
       id: 'worstForm',
-      title: 'Worst form',
+      title: lang === 'no' ? 'Verste form' : 'Worst form',
       statistic:
         worstFormGroup.length > 0
-          ? `${formatUserList(worstFormGroup.map(u => u.username))} ${worstFormGroup.length === 1 ? 'has' : 'have'} gone ${worstFormGroup[0].drought} ${worstFormGroup[0].drought === 1 ? 'match' : 'matches'} without gaining a single point!`
-          : 'No matches have been completed yet!',
+          ? lang === 'no'
+            ? `${formatUserList(worstFormGroup.map(u => u.username), lang)} har gått ${worstFormGroup[0].drought} ${worstFormGroup[0].drought === 1 ? 'kamp' : 'kamper'} uten å score et eneste poeng!`
+            : `${formatUserList(worstFormGroup.map(u => u.username), lang)} ${worstFormGroup.length === 1 ? 'has' : 'have'} gone ${worstFormGroup[0].drought} ${worstFormGroup[0].drought === 1 ? 'match' : 'matches'} without gaining a single point!`
+          : lang === 'no'
+            ? 'Ingen kamper er fullført ennå!'
+            : 'No matches have been completed yet!',
       subjects: worstFormGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
     });
 
