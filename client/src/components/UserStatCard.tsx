@@ -170,7 +170,7 @@ export default function UserStatCard({ competitionId, data, iconOnRight, onMatch
 
   const content = (
     <div className="min-w-0 flex-1 p-6">
-      <h3 className="text-lg font-semibold uppercase tracking-wide" style={{ color: 'hsl(180, 2%, 42%)' }}>
+      <h3 className="text-lg font-semibold uppercase tracking-wide" style={{ color: 'hsl(231, 70%, 28%)' }}>
         {title}
       </h3>
       <p className="mt-2 text-sm">{renderStatistic(statistic)}</p>
@@ -179,8 +179,8 @@ export default function UserStatCard({ competitionId, data, iconOnRight, onMatch
 
   const card = (
     <div
-      className={`flex items-stretch overflow-hidden rounded-2xl border ${iconOnRight ? 'flex-row-reverse' : 'flex-row'}`}
-      style={{ backgroundColor: 'hsla(120, 3%, 91%, 0.5)', borderColor: 'hsl(120, 3%, 83%)', color: 'hsl(180, 2%, 28%)' }}
+      className={`flex items-stretch overflow-hidden rounded-2xl border bg-[hsla(120,3%,91%,0.5)] border-[hsl(120,3%,83%)] dark:bg-[hsl(120,3%,91%)] dark:border-[hsl(120,3%,78%)] ${iconOnRight ? 'flex-row-reverse' : 'flex-row'}`}
+      style={{ color: 'hsl(180, 2%, 28%)' }}
     >
       {icon}
       {content}
