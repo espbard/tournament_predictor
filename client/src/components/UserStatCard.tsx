@@ -7,8 +7,8 @@ interface UserStatCardProps {
   iconOnRight: boolean;
 }
 
-const DIAGONAL_CLIP_PATHS = ['polygon(0% 0%, 100% 0%, 0% 100%)', 'polygon(100% 0%, 100% 100%, 0% 100%)'];
 const SQUARE_CORNER_ANGLES = [45, 135, 225, 315];
+const COLLAGE_GAP_DEGREES = 6;
 
 function pointOnSquareAtAngle(angleDeg: number): { x: number; y: number } {
   const rad = (angleDeg * Math.PI) / 180;
@@ -18,20 +18,26 @@ function pointOnSquareAtAngle(angleDeg: number): { x: number; y: number } {
   return { x: 50 + dx * t * 50, y: 50 + dy * t * 50 };
 }
 
-function pieSliceClipPath(index: number, total: number): string {
+// Slices are trimmed by half the gap on each side, so every seam stays centred between its two neighbours.
+function pieSliceClipPath(index: number, total: number, rotationOffset: number): string {
   const sliceAngle = 360 / total;
-  const start = index * sliceAngle;
-  const end = start + sliceAngle;
+  const start = index * sliceAngle + rotationOffset + COLLAGE_GAP_DEGREES / 2;
+  const end = (index + 1) * sliceAngle + rotationOffset - COLLAGE_GAP_DEGREES / 2;
   const points = [{ x: 50, y: 50 }, pointOnSquareAtAngle(start)];
   for (const corner of SQUARE_CORNER_ANGLES) {
-    if (corner > start && corner < end) points.push(pointOnSquareAtAngle(corner));
+    for (const k of [-1, 0, 1, 2]) {
+      const angle = corner + k * 360;
+      if (angle > start && angle < end) points.push(pointOnSquareAtAngle(angle));
+    }
   }
   points.push(pointOnSquareAtAngle(end));
   return `polygon(${points.map(p => `${p.x}% ${p.y}%`).join(', ')})`;
 }
 
 function collageClipPath(index: number, total: number): string {
-  return total === 2 ? DIAGONAL_CLIP_PATHS[index] : pieSliceClipPath(index, total);
+  // Rotating a 2-way split by 45 degrees turns the edge-to-edge cut into a corner-to-corner diagonal.
+  const rotationOffset = total === 2 ? 45 : 0;
+  return pieSliceClipPath(index, total, rotationOffset);
 }
 
 export default function UserStatCard({ competitionId, data, iconOnRight }: UserStatCardProps) {
