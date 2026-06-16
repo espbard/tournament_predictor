@@ -19,19 +19,10 @@ import {
   calculateGroupPositionPoints,
   calculateKnockoutPoints,
   getUserPredictedTeamForKnockoutSlot,
-  type TeamStat,
   type KnockoutMatchSlot,
   type FirstRoundPredTeams,
 } from './scoring.js';
-import type { KnockoutConfig, BracketPredictions, ScoringConfig } from '@tournament-predictor/shared';
-
-// Resolve "1A" / "2B" bracket label against predicted standings → team ID
-function resolveQualLabel(label: string, standings: Map<string, TeamStat[]>): string | null {
-  const m = label.match(/^(\d+)([A-Z])$/);
-  if (!m) return null;
-  const pos = parseInt(m[1]) - 1;
-  return standings.get(m[2])?.[pos]?.teamId ?? null;
-}
+import { resolveFirstRoundSlots, type KnockoutConfig, type BracketPredictions, type ScoringConfig } from '@tournament-predictor/shared';
 
 const KNOCKOUT_STAGES = [
   'round_of_32',
@@ -84,6 +75,7 @@ async function recomputeAllMemberBreakdowns(
   firstRound: string,
   bracketSlots: Record<string, string> = {},
   tournamentGroupDisciplinaryChoices: Record<string, string[]> = {},
+  directQualifiers = 2,
 ): Promise<void> {
   // --- Group stage data ---
   const completedGroupMatches = await db
@@ -126,11 +118,19 @@ async function recomputeAllMemberBreakdowns(
   });
 
   const memberRows = await db
-    .select({ userId: competitionMembers.userId, groupDisciplinaryChoices: competitionMembers.groupDisciplinaryChoices })
+    .select({
+      userId: competitionMembers.userId,
+      groupDisciplinaryChoices: competitionMembers.groupDisciplinaryChoices,
+      luckyLoserChoices: competitionMembers.luckyLoserChoices,
+    })
     .from(competitionMembers)
     .where(eq(competitionMembers.competitionId, competitionId));
 
-  for (const { userId, groupDisciplinaryChoices: userGroupDisciplinaryChoices } of memberRows) {
+  for (const {
+    userId,
+    groupDisciplinaryChoices: userGroupDisciplinaryChoices,
+    luckyLoserChoices: userLuckyLoserChoices,
+  } of memberRows) {
     // --- Group match prediction breakdown ---
     const userGroupPreds = groupMatchIds.length > 0
       ? await db
@@ -185,15 +185,22 @@ async function recomputeAllMemberBreakdowns(
     let userBracketPreds: BracketPredictions = bpRow?.predictions ?? {};
 
     // Build per-user first-round predicted teams (bracket slot labels → team IDs
-    // using this user's predicted group standings).
+    // using this user's predicted group standings). Resolves both direct
+    // qualifier slots (e.g. "1A") and lucky-loser slots, matching the same
+    // cross-group eligibility logic used for the predicted bracket display.
     const firstRoundPredTeams: FirstRoundPredTeams = {};
     const allFirstRoundMatches = allKoMatches.filter(m => m.stage === firstRound);
+    const resolvedFirstRoundSlots = resolveFirstRoundSlots(
+      bracketSlots,
+      predictedStandings,
+      directQualifiers,
+      allFirstRoundMatches.length,
+      userLuckyLoserChoices ?? {},
+    );
     allFirstRoundMatches.forEach((match, i) => {
-      const homeLabel = bracketSlots[`m${i + 1}_home`];
-      const awayLabel = bracketSlots[`m${i + 1}_away`];
       firstRoundPredTeams[`${firstRound}_${i}`] = {
-        predHomeId: homeLabel ? resolveQualLabel(homeLabel, predictedStandings) : null,
-        predAwayId: awayLabel ? resolveQualLabel(awayLabel, predictedStandings) : null,
+        predHomeId: resolvedFirstRoundSlots[`m${i + 1}_home`] ?? null,
+        predAwayId: resolvedFirstRoundSlots[`m${i + 1}_away`] ?? null,
       };
     });
 
@@ -345,7 +352,10 @@ export async function triggerScoringForMatch(matchId: string, tournamentId: stri
     }
 
     // Flip marking and full breakdown recompute (flip marking integrated inside)
-    await recomputeAllMemberBreakdowns(tournamentId, comp.id, config, firstRound, bracketSlots, tournamentGroupDisciplinaryChoices);
+    await recomputeAllMemberBreakdowns(
+      tournamentId, comp.id, config, firstRound, bracketSlots, tournamentGroupDisciplinaryChoices,
+      knockoutCfg?.directQualifiers ?? 2,
+    );
   }
   notifyLeaderboardUpdate(allComps.map(c => c.id));
 }
@@ -388,7 +398,10 @@ export async function recalculateAllScoresForTournament(tournamentId: string): P
     }
 
     // Flip marking is integrated into recomputeAllMemberBreakdowns
-    await recomputeAllMemberBreakdowns(tournamentId, comp.id, config, firstRound, bracketSlotsFull, tournamentGroupDisciplinaryChoicesFull);
+    await recomputeAllMemberBreakdowns(
+      tournamentId, comp.id, config, firstRound, bracketSlotsFull, tournamentGroupDisciplinaryChoicesFull,
+      knockoutCfgFull?.directQualifiers ?? 2,
+    );
   }
   notifyLeaderboardUpdate(allComps.map(c => c.id));
 }

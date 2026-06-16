@@ -14,7 +14,6 @@ import { useT } from '@/lib/useT';
 import type { Competition, Tournament, Prediction, MatchStage, LeaderboardEntry, BracketPredictions, UserStatCardData } from '@tournament-predictor/shared';
 import {
   sortGroupTeams,
-  sortLuckyLosers,
   findGroupDisciplinaryTies,
   findLuckyLoserDisciplinaryTies,
   makeDisciplinaryKey,
@@ -40,6 +39,15 @@ interface MatchWithTeams {
   progressingTeamId: string | null;
 }
 
+interface PredBreakdown {
+  exactScore: number;
+  correctResult: number;
+  correctTeamProgresses: number;
+  correctTeamInKnockoutTie: number;
+  correctTeamInFinal: number;
+  correctWinner: number;
+}
+
 interface MatchPredictionEntry {
   matchId: string;
   userId: string;
@@ -49,6 +57,12 @@ interface MatchPredictionEntry {
   awayScore: number;
   progressingTeamId: string | null;
   points: number | null;
+  breakdown: PredBreakdown;
+  flipped?: boolean;
+  predHomeTeamId?: string | null;
+  predAwayTeamId?: string | null;
+  predHomeTeamImageUrl?: string | null;
+  predAwayTeamImageUrl?: string | null;
 }
 
 export default function CompetitionDetailPage() {
@@ -87,6 +101,7 @@ export default function CompetitionDetailPage() {
 
   const [currentPredMatchIdx, setCurrentPredMatchIdx] = useState(0);
   const [matchPredictionsCollapsed, setMatchPredictionsCollapsed] = useState(false);
+  const [expandedPredKey, setExpandedPredKey] = useState<string | null>(null);
   const [pendingScrollMatchId, setPendingScrollMatchId] = useState<string | null>(null);
   const matchPredictionsRef = useRef<HTMLDivElement>(null);
 
@@ -343,26 +358,6 @@ export default function CompetitionDetailPage() {
     return { actualGroupStandings: byGroup, completedGroupMatchCounts: matchCounts };
   }, [matchList]);
 
-  const qualifyingThirdPlaceIds = useMemo(() => {
-    const third = groupStandings
-      .filter(([, teams]) => teams.length >= 3)
-      .map(([, teams]) => teams[2]);
-    const tiebreakerStats = third.map(tm => ({ teamId: tm.teamId, points: tm.W * 3 + tm.D, gd: tm.GF - tm.GA, gf: tm.GF }));
-    const sortedIds = sortLuckyLosers(tiebreakerStats, luckyLoserDisciplinaryChoices).map(s => s.teamId);
-    const sortedThird = sortedIds.map(sid => third.find(tm => tm.teamId === sid)!).filter(Boolean);
-    const qualifying = sortedThird.slice(0, 8);
-    if (qualifying.length === 8 && sortedThird.length > 8) {
-      const edge = qualifying[7];
-      const edgePts = edge.W * 3 + edge.D; const edgeGD = edge.GF - edge.GA;
-      for (const tm of sortedThird.slice(8)) {
-        const pts = tm.W * 3 + tm.D; const gd = tm.GF - tm.GA;
-        if (pts === edgePts && gd === edgeGD && tm.GF === edge.GF) qualifying.push(tm);
-        else break;
-      }
-    }
-    return new Set(qualifying.map(tm => tm.teamId));
-  }, [groupStandings, luckyLoserDisciplinaryChoices]);
-
   const matchesByDate = useMemo(() => {
     const sorted = [...matchList].sort((a, b) => {
       if (!a.scheduledAt && !b.scheduledAt) return 0;
@@ -484,7 +479,55 @@ export default function CompetitionDetailPage() {
     [user?.isAdmin, tournamentsData, tournamentData, competition?.tournamentId]
   );
 
-  const groupDisciplinaryTies = useMemo(() => {
+  const qualifyingThirdPlaceIds = useMemo(() => {
+    const luckyLosers = tournament?.knockoutConfig?.luckyLosers ?? 0;
+    if (luckyLosers <= 0) return new Set<string>();
+    const third = groupStandings
+      .filter(([, teams]) => teams.length >= 3)
+      .map(([, teams]) => teams[2]);
+
+    // Sort by natural criteria only (no disciplinary tiebreaker) so tied teams stay grouped together.
+    const sorted = [...third].sort((a, b) => {
+      const pa = a.W * 3 + a.D, pb = b.W * 3 + b.D;
+      if (pb !== pa) return pb - pa;
+      const ga = a.GF - a.GA, gb = b.GF - b.GA;
+      if (gb !== ga) return gb - ga;
+      return b.GF - a.GF;
+    });
+
+    const qualifying = new Set<string>();
+    let filled = 0;
+    let i = 0;
+    while (i < sorted.length && filled < luckyLosers) {
+      let j = i + 1;
+      while (
+        j < sorted.length &&
+        sorted[j].W * 3 + sorted[j].D === sorted[i].W * 3 + sorted[i].D &&
+        sorted[j].GF - sorted[j].GA === sorted[i].GF - sorted[i].GA &&
+        sorted[j].GF === sorted[i].GF
+      ) j++;
+      const bucket = sorted.slice(i, j);
+      const remaining = luckyLosers - filled;
+      if (bucket.length <= remaining) {
+        for (const tm of bucket) qualifying.add(tm.teamId);
+        filled += bucket.length;
+      } else {
+        // Tied bucket straddles the cutoff — only highlight once the tiebreaker is resolved.
+        const key = makeDisciplinaryKey(bucket.map(tm => tm.teamId));
+        const ranked = luckyLoserDisciplinaryChoices[key] ?? [];
+        if (ranked.length >= bucket.length) {
+          for (const id of ranked.slice(0, remaining)) qualifying.add(id);
+        }
+        filled += remaining;
+        break;
+      }
+      i = j;
+    }
+    return qualifying;
+  }, [groupStandings, luckyLoserDisciplinaryChoices, tournament]);
+
+  // All disciplinary ties for the group stage, including already-resolved ones.
+  const allGroupDisciplinaryTieInfo = useMemo(() => {
     const directQualifiers = tournament?.knockoutConfig?.directQualifiers ?? 2;
     const result: Array<{ groupName: string; teams: TeamStat[]; key: string; requiredRankings: number }> = [];
     for (const [groupName, teams] of groupStandings) {
@@ -493,17 +536,18 @@ export default function CompetitionDetailPage() {
       const tiedGroups = findGroupDisciplinaryTies(tiebreakerStats, results);
       for (const tiedGroup of tiedGroups) {
         const key = makeDisciplinaryKey(tiedGroup.map(tm => tm.teamId));
-        const existing = groupDisciplinaryChoices[key] ?? [];
-        if (existing.length < tiedGroup.length) {
-          const startIndex = Math.min(...tiedGroup.map(tm => teams.findIndex(tt => tt.teamId === tm.teamId)));
-          const K = Math.max(1, Math.min(directQualifiers, startIndex + tiedGroup.length) - startIndex);
-          const requiredRankings = Math.min(K, tiedGroup.length - 1);
-          result.push({ groupName, teams: tiedGroup.map(s => teams.find(tm => tm.teamId === s.teamId)!).filter(Boolean), key, requiredRankings });
-        }
+        const startIndex = Math.min(...tiedGroup.map(tm => teams.findIndex(tt => tt.teamId === tm.teamId)));
+        const K = Math.max(1, Math.min(directQualifiers, startIndex + tiedGroup.length) - startIndex);
+        const requiredRankings = Math.min(K, tiedGroup.length - 1);
+        result.push({ groupName, teams: tiedGroup.map(s => teams.find(tm => tm.teamId === s.teamId)!).filter(Boolean), key, requiredRankings });
       }
     }
     return result;
-  }, [groupStandings, effectiveGroupResults, groupDisciplinaryChoices, tournament]);
+  }, [groupStandings, effectiveGroupResults, tournament]);
+
+  const groupDisciplinaryTies = useMemo(() => {
+    return allGroupDisciplinaryTieInfo.filter(tie => (groupDisciplinaryChoices[tie.key] ?? []).length < tie.teams.length);
+  }, [allGroupDisciplinaryTieInfo, groupDisciplinaryChoices]);
 
   const luckyLoserDisciplinaryTies = useMemo(() => {
     if (!tournament?.knockoutConfig) return [];
@@ -525,11 +569,12 @@ export default function CompetitionDetailPage() {
 
   const tiebreakerChosenTeams = useMemo(() => {
     const s = new Set<string>();
-    for (const ids of Object.values(groupDisciplinaryChoices)) {
-      for (const id of ids) s.add(id);
+    for (const tie of allGroupDisciplinaryTieInfo) {
+      const ranked = groupDisciplinaryChoices[tie.key] ?? [];
+      for (const id of ranked.slice(0, tie.requiredRankings)) s.add(id);
     }
     return s;
-  }, [groupDisciplinaryChoices]);
+  }, [allGroupDisciplinaryTieInfo, groupDisciplinaryChoices]);
 
   const groupStageLocked = myStatus?.groupStageLocked ?? false;
 
@@ -1719,6 +1764,9 @@ export default function CompetitionDetailPage() {
               });
 
             const isKnockout = match.stage !== 'group';
+            const actualIsDraw = isKnockout && match.homeScore !== null && match.awayScore !== null && match.homeScore === match.awayScore;
+            const actualProgressorIsHome = actualIsDraw && match.progressingTeamId !== null && match.progressingTeamId === match.homeTeamId;
+            const actualProgressorIsAway = actualIsDraw && match.progressingTeamId !== null && match.progressingTeamId === match.awayTeamId;
 
             return (
               <div ref={matchPredictionsRef} className={`mt-6 ${user?.isLeaderboardUser ? 'tv:hidden' : ''}`}>
@@ -1779,21 +1827,25 @@ export default function CompetitionDetailPage() {
 
                         <div className="rounded-xl border-2 shadow-sm overflow-hidden w-full max-w-xs mx-auto bg-card">
                           <div className="flex items-center gap-3 px-4 py-3.5">
-                            {match.homeTeamImageUrl ? (
-                              <img src={match.homeTeamImageUrl} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0" />
-                            ) : (
-                              <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
-                            )}
+                            <div className={`flex-shrink-0 ${actualProgressorIsHome ? 'ring-2 ring-amber-400 rounded-full' : ''}`}>
+                              {match.homeTeamImageUrl ? (
+                                <img src={match.homeTeamImageUrl} alt="" className="h-7 w-7 rounded-full object-cover" />
+                              ) : (
+                                <div className="h-7 w-7 rounded-full bg-muted" />
+                              )}
+                            </div>
                             <span className="flex-1 text-sm font-medium truncate">{match.homeTeamName ?? 'TBD'}</span>
                             <span className="w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0">{match.homeScore}</span>
                           </div>
                           <div className="h-px bg-border" />
                           <div className="flex items-center gap-3 px-4 py-3.5">
-                            {match.awayTeamImageUrl ? (
-                              <img src={match.awayTeamImageUrl} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0" />
-                            ) : (
-                              <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
-                            )}
+                            <div className={`flex-shrink-0 ${actualProgressorIsAway ? 'ring-2 ring-amber-400 rounded-full' : ''}`}>
+                              {match.awayTeamImageUrl ? (
+                                <img src={match.awayTeamImageUrl} alt="" className="h-7 w-7 rounded-full object-cover" />
+                              ) : (
+                                <div className="h-7 w-7 rounded-full bg-muted" />
+                              )}
+                            </div>
                             <span className="flex-1 text-sm font-medium truncate">{match.awayTeamName ?? 'TBD'}</span>
                             <span className="w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0">{match.awayScore}</span>
                           </div>
@@ -1830,37 +1882,59 @@ export default function CompetitionDetailPage() {
                     ) : (
                       <div className="space-y-1">
                         {matchPreds.map(pred => {
+                          const predKey = `${match.id}_${pred.userId}`;
+                          const isExpanded = expandedPredKey === predKey;
+                          const effectiveMatchHome = pred.flipped ? (match.awayScore ?? 0) : (match.homeScore ?? 0);
+                          const effectiveMatchAway = pred.flipped ? (match.homeScore ?? 0) : (match.awayScore ?? 0);
                           const isCorrectResult =
                             match.homeScore !== null && match.awayScore !== null &&
-                            Math.sign(pred.homeScore - pred.awayScore) === Math.sign(match.homeScore - match.awayScore);
+                            Math.sign(pred.homeScore - pred.awayScore) === Math.sign(effectiveMatchHome - effectiveMatchAway);
                           const isExactScore =
                             match.homeScore !== null && match.awayScore !== null &&
-                            pred.homeScore === match.homeScore && pred.awayScore === match.awayScore;
+                            pred.homeScore === effectiveMatchHome && pred.awayScore === effectiveMatchAway;
+                          const predHomeId = pred.predHomeTeamId ?? match.homeTeamId;
+                          const predAwayId = pred.predAwayTeamId ?? match.awayTeamId;
                           const homeGetsCircle =
                             isKnockout &&
                             pred.progressingTeamId !== null &&
                             match.progressingTeamId !== null &&
                             pred.progressingTeamId === match.progressingTeamId &&
-                            pred.progressingTeamId === match.homeTeamId;
+                            pred.progressingTeamId === predHomeId;
                           const awayGetsCircle =
                             isKnockout &&
                             pred.progressingTeamId !== null &&
                             match.progressingTeamId !== null &&
                             pred.progressingTeamId === match.progressingTeamId &&
-                            pred.progressingTeamId === match.awayTeamId;
+                            pred.progressingTeamId === predAwayId;
+                          const displayHomeImg = pred.predHomeTeamImageUrl !== undefined
+                            ? pred.predHomeTeamImageUrl
+                            : (pred.flipped ? match.awayTeamImageUrl : match.homeTeamImageUrl);
+                          const displayAwayImg = pred.predAwayTeamImageUrl !== undefined
+                            ? pred.predAwayTeamImageUrl
+                            : (pred.flipped ? match.homeTeamImageUrl : match.awayTeamImageUrl);
+
+                          const predIsDraw = isKnockout && pred.homeScore === pred.awayScore;
+                          const predProgressorIsHome = predIsDraw && pred.progressingTeamId !== null && pred.progressingTeamId === predHomeId;
+                          const predProgressorIsAway = predIsDraw && pred.progressingTeamId !== null && pred.progressingTeamId === predAwayId;
+
+                          const bd = pred.breakdown;
+                          const breakdownLines: { label: string; pts: number }[] = bd ? [
+                            { label: t('competitionDetail.leaderboard.exact'), pts: bd.exactScore },
+                            { label: t('competitionDetail.leaderboard.result'), pts: bd.correctResult },
+                            { label: t('competitionDetail.leaderboard.progresses'), pts: bd.correctTeamProgresses },
+                            { label: t('competitionDetail.leaderboard.koTie'), pts: bd.correctTeamInKnockoutTie },
+                            { label: t('competitionDetail.leaderboard.final'), pts: bd.correctTeamInFinal },
+                            { label: t('competitionDetail.leaderboard.winner'), pts: bd.correctWinner },
+                          ].filter(l => l.pts > 0) : [];
 
                           return (
-                            <div
-                              key={pred.userId}
-                              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${
-                                isCorrectResult
-                                  ? 'bg-green-50 dark:bg-green-950/25'
-                                  : 'bg-muted/20'
-                              }`}
-                            >
-                              <Link
-                                to={`/competitions/${id}/predictions/${pred.userId}`}
-                                className="flex-1 flex items-center gap-2 min-w-0 hover:opacity-80 transition-opacity"
+                            <div key={pred.userId} className="rounded-lg overflow-hidden">
+                              <button
+                                type="button"
+                                onClick={() => setExpandedPredKey(k => k === predKey ? null : predKey)}
+                                className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-opacity hover:opacity-80 ${
+                                  isCorrectResult ? 'bg-green-50 dark:bg-green-950/25' : 'bg-muted/20'
+                                }`}
                               >
                                 <img
                                   src={pred.imageUrl ?? '/default-avatar.png'}
@@ -1868,41 +1942,70 @@ export default function CompetitionDetailPage() {
                                   className="h-5 w-5 rounded-full object-cover flex-shrink-0"
                                 />
                                 <span className="flex-1 truncate font-medium text-xs">{pred.username}</span>
-                              </Link>
 
-                              <div className="flex items-center gap-1 flex-shrink-0">
-                                <div className={homeGetsCircle ? 'ring-2 ring-green-500 rounded-full' : ''}>
-                                  {match.homeTeamImageUrl ? (
-                                    <img src={match.homeTeamImageUrl} alt="" className="h-5 w-5 rounded-full object-cover" />
-                                  ) : (
-                                    <div className="h-5 w-5 rounded-full bg-muted" />
-                                  )}
+                                <div className="flex items-center gap-1 flex-shrink-0">
+                                  <div className="relative">
+                                    <div className={homeGetsCircle ? 'ring-2 ring-green-500 rounded-full' : ''}>
+                                      {displayHomeImg ? (
+                                        <img src={displayHomeImg} alt="" className="h-5 w-5 rounded-full object-cover" />
+                                      ) : (
+                                        <div className="h-5 w-5 rounded-full bg-muted" />
+                                      )}
+                                    </div>
+                                    {predProgressorIsHome && (
+                                      <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-yellow-500 text-[9px] leading-none pointer-events-none">▲</span>
+                                    )}
+                                  </div>
+
+                                  <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-bold tabular-nums min-w-[2.5rem] justify-center ${
+                                    isExactScore
+                                      ? 'bg-amber-50 dark:bg-amber-900/30 border border-amber-400 text-amber-600 dark:text-amber-400'
+                                      : 'bg-background border'
+                                  }`}>
+                                    {pred.homeScore}–{pred.awayScore}
+                                  </span>
+
+                                  <div className="relative">
+                                    <div className={awayGetsCircle ? 'ring-2 ring-green-500 rounded-full' : ''}>
+                                      {displayAwayImg ? (
+                                        <img src={displayAwayImg} alt="" className="h-5 w-5 rounded-full object-cover" />
+                                      ) : (
+                                        <div className="h-5 w-5 rounded-full bg-muted" />
+                                      )}
+                                    </div>
+                                    {predProgressorIsAway && (
+                                      <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-yellow-500 text-[9px] leading-none pointer-events-none">▲</span>
+                                    )}
+                                  </div>
                                 </div>
 
-                                <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-bold tabular-nums min-w-[2.5rem] justify-center ${
-                                  isExactScore
-                                    ? 'bg-amber-50 dark:bg-amber-900/30 border border-amber-400 text-amber-600 dark:text-amber-400'
-                                    : 'bg-background border'
+                                <span className={`text-xs font-bold flex-shrink-0 w-7 text-right ${
+                                  (pred.points ?? 0) > 0
+                                    ? 'text-green-600 dark:text-green-400'
+                                    : 'text-muted-foreground'
                                 }`}>
-                                  {pred.homeScore}–{pred.awayScore}
+                                  {pred.points !== null ? ((pred.points > 0) ? `+${pred.points}` : `${pred.points}`) : '—'}
                                 </span>
 
-                                <div className={awayGetsCircle ? 'ring-2 ring-green-500 rounded-full' : ''}>
-                                  {match.awayTeamImageUrl ? (
-                                    <img src={match.awayTeamImageUrl} alt="" className="h-5 w-5 rounded-full object-cover" />
-                                  ) : (
-                                    <div className="h-5 w-5 rounded-full bg-muted" />
-                                  )}
-                                </div>
-                              </div>
+                                <span className="text-muted-foreground flex-shrink-0 text-xs w-3">
+                                  {isExpanded ? '▴' : '▾'}
+                                </span>
+                              </button>
 
-                              <span className={`text-xs font-bold flex-shrink-0 w-7 text-right ${
-                                (pred.points ?? 0) > 0
-                                  ? 'text-green-600 dark:text-green-400'
-                                  : 'text-muted-foreground'
-                              }`}>
-                                {pred.points !== null ? ((pred.points > 0) ? `+${pred.points}` : `${pred.points}`) : '—'}
-                              </span>
+                              {isExpanded && (
+                                <div className={`px-3 py-2 text-xs space-y-1 border-t ${
+                                  isCorrectResult ? 'bg-green-50/50 dark:bg-green-950/10 border-green-100 dark:border-green-900/30' : 'bg-muted/10 border-border'
+                                }`}>
+                                  {breakdownLines.length === 0 ? (
+                                    <p className="text-muted-foreground">No points earned</p>
+                                  ) : breakdownLines.map(line => (
+                                    <div key={line.label} className="flex justify-between">
+                                      <span className="text-muted-foreground">{line.label}</span>
+                                      <span className="font-semibold text-green-600 dark:text-green-400">+{line.pts}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           );
                         })}
