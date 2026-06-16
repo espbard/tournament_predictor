@@ -751,9 +751,9 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       const statistic =
         lang === 'no'
           ? `${wrongClauses.join('; ')}.` +
-            (worstPredictionMatch.resultCount > 0 ? ` Alle andre tippet ${correctOutcome}.` : '')
+            (worstPredictionMatch.resultCount > 0 ? ` Alle andre tippet riktig: ${correctOutcome}.` : '')
           : `${wrongClauses.join('; ')}.` +
-            (worstPredictionMatch.resultCount > 0 ? ` Everyone else predicted ${correctOutcome}.` : '');
+            (worstPredictionMatch.resultCount > 0 ? ` Everyone else correctly predicted ${correctOutcome}.` : '');
 
       cards.push({
         id: 'worstPrediction',
