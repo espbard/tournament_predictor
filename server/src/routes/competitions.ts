@@ -427,11 +427,22 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       oneGoalAwayCounts.set(row.userId, entry);
     }
 
-    const rankedUnlucky = [...oneGoalAwayCounts.entries()]
-      .map(([userId, entry]) => ({ userId, ...entry }))
-      .sort((a, b) => b.count - a.count || a.username.localeCompare(b.username));
-    const unluckiest = rankedUnlucky[0] ?? null;
-    const secondUnluckiest = rankedUnlucky[1] ?? null;
+    const distinctUnluckyCounts = [...new Set([...oneGoalAwayCounts.values()].map(e => e.count))].sort(
+      (a, b) => b - a
+    );
+    const topUnluckyCount = distinctUnluckyCounts[0];
+    const nextUnluckyCount = distinctUnluckyCounts[1];
+
+    const groupByCount = (count: number | undefined) =>
+      count === undefined
+        ? []
+        : [...oneGoalAwayCounts.entries()]
+            .filter(([, entry]) => entry.count === count)
+            .map(([userId, entry]) => ({ userId, ...entry }))
+            .sort((a, b) => a.username.localeCompare(b.username));
+
+    const unluckyGroup = groupByCount(topUnluckyCount);
+    const nextUnluckyGroup = groupByCount(nextUnluckyCount);
 
     const cards: UserStatCardData[] = [];
 
@@ -530,20 +541,21 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         id: 'bestPrediction',
         title: 'Best prediction!',
         statistic: `${winner.username} got a perfect score on ${homeTeamName} vs ${awayTeamName} (${bestPredictionMatch.homeScore} - ${bestPredictionMatch.awayScore})! ${resultText}`,
-        subject: { type: 'user', id: winner.userId, name: winner.username, imageUrl: winner.imageUrl },
+        subjects: [{ type: 'user', id: winner.userId, name: winner.username, imageUrl: winner.imageUrl }],
       });
     }
 
     cards.push({
       id: 'unlucky',
       title: 'Unlucky',
-      statistic: unluckiest
-        ? `${unluckiest.username} has been one goal away from predicting a perfect score ${unluckiest.count} ${unluckiest.count === 1 ? 'time' : 'times'}!` +
-          (secondUnluckiest ? ` The second unluckiest is ${secondUnluckiest.username} with ${secondUnluckiest.count}.` : '')
-        : 'No one has been one goal away from a perfect score yet!',
-      subject: unluckiest
-        ? { type: 'user', id: unluckiest.userId, name: unluckiest.username, imageUrl: unluckiest.imageUrl }
-        : null,
+      statistic:
+        unluckyGroup.length > 0
+          ? `${formatUserList(unluckyGroup.map(u => u.username))} ${unluckyGroup.length === 1 ? 'has' : 'have'} been one goal away from predicting a perfect score ${topUnluckyCount} ${topUnluckyCount === 1 ? 'time' : 'times'}!` +
+            (nextUnluckyGroup.length > 0
+              ? ` The next unluckiest ${nextUnluckyGroup.length === 1 ? 'is' : 'are'} ${formatUserList(nextUnluckyGroup.map(u => u.username))} with ${nextUnluckyCount}.`
+              : '')
+          : 'No one has been one goal away from a perfect score yet!',
+      subjects: unluckyGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
     });
 
     if (worstPredictionMatch) {
@@ -575,7 +587,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         id: 'worstPrediction',
         title: 'Worst prediction',
         statistic: `${namesText} predicted ${wrongOutcome} (${worstGroup[0].predHomeScore} - ${worstGroup[0].predAwayScore}). Everyone else predicted ${correctOutcome}.`,
-        subject: { type: 'user', id: worstGroup[0].userId, name: worstGroup[0].username, imageUrl: worstGroup[0].imageUrl },
+        subjects: worstGroup.map(p => ({ type: 'user' as const, id: p.userId, name: p.username, imageUrl: p.imageUrl })),
       });
     }
 

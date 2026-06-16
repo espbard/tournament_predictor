@@ -152,7 +152,7 @@ export interface UserStatCardData {
   id: string;
   title: string;
   statistic: string;
-  subject: UserStatSubject | null;
+  subjects: UserStatSubject[];
 }
 
 export interface BonusAnswer {

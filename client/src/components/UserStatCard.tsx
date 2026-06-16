@@ -8,15 +8,28 @@ interface UserStatCardProps {
 }
 
 export default function UserStatCard({ competitionId, data, iconOnRight }: UserStatCardProps) {
-  const { title, statistic, subject } = data;
+  const { title, statistic, subjects } = data;
 
   const icon = (
     <div className="w-1/4 flex-shrink-0">
-      <img
-        src={subject?.imageUrl ?? '/default-avatar.png'}
-        alt={subject?.name ?? ''}
-        className="h-full w-full object-cover"
-      />
+      {subjects.length > 1 ? (
+        <div className="grid h-full w-full grid-cols-2">
+          {subjects.map(subject => (
+            <img
+              key={subject.id}
+              src={subject.imageUrl ?? '/default-avatar.png'}
+              alt={subject.name}
+              className="h-full w-full object-cover"
+            />
+          ))}
+        </div>
+      ) : (
+        <img
+          src={subjects[0]?.imageUrl ?? '/default-avatar.png'}
+          alt={subjects[0]?.name ?? ''}
+          className="h-full w-full object-cover"
+        />
+      )}
     </div>
   );
 
@@ -34,10 +47,10 @@ export default function UserStatCard({ competitionId, data, iconOnRight }: UserS
     </div>
   );
 
-  if (subject?.type === 'user') {
+  if (subjects.length === 1 && subjects[0].type === 'user') {
     return (
       <Link
-        to={`/competitions/${competitionId}/predictions/${subject.id}`}
+        to={`/competitions/${competitionId}/predictions/${subjects[0].id}`}
         className="block transition-opacity hover:opacity-80"
       >
         {card}
