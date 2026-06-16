@@ -118,10 +118,18 @@ function collageSliceLayout(index: number, total: number): SliceLayout {
   return { clipPath, left: minX, top: minY, width, height };
 }
 
+const DARK_BLUE = 'hsl(231, 70%, 28%)';
+
 // Renders `**bold**` markers in stat text (e.g. usernames) as <strong> spans.
 function renderStatistic(text: string) {
   return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
-    part.startsWith('**') && part.endsWith('**') ? <strong key={i}>{part.slice(2, -2)}</strong> : part
+    part.startsWith('**') && part.endsWith('**') ? (
+      <strong key={i} style={{ color: DARK_BLUE }}>
+        {part.slice(2, -2)}
+      </strong>
+    ) : (
+      part
+    )
   );
 }
 
@@ -170,7 +178,7 @@ export default function UserStatCard({ competitionId, data, iconOnRight, onMatch
 
   const content = (
     <div className="min-w-0 flex-1 p-6">
-      <h3 className="text-lg font-semibold uppercase tracking-wide" style={{ color: 'hsl(231, 70%, 28%)' }}>
+      <h3 className="text-lg font-semibold uppercase tracking-wide" style={{ color: DARK_BLUE }}>
         {title}
       </h3>
       <p className="mt-2 text-sm">{renderStatistic(statistic)}</p>
@@ -179,8 +187,8 @@ export default function UserStatCard({ competitionId, data, iconOnRight, onMatch
 
   const card = (
     <div
-      className={`flex items-stretch overflow-hidden rounded-2xl border bg-[hsla(120,3%,91%,0.5)] border-[hsl(120,3%,83%)] dark:bg-[hsl(120,3%,91%)] dark:border-[hsl(120,3%,78%)] ${iconOnRight ? 'flex-row-reverse' : 'flex-row'}`}
-      style={{ color: 'hsl(180, 2%, 28%)' }}
+      className={`flex items-stretch overflow-hidden rounded-2xl border bg-[hsla(120,3%,91%,0.5)] dark:bg-[hsl(120,3%,91%)] ${iconOnRight ? 'flex-row-reverse' : 'flex-row'}`}
+      style={{ color: 'hsl(180, 2%, 28%)', borderColor: DARK_BLUE }}
     >
       {icon}
       {content}
