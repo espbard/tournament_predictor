@@ -588,26 +588,32 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         if (!wrongGroups.has(key)) wrongGroups.set(key, []);
         wrongGroups.get(key)!.push(p);
       }
-      let worstGroup = [...wrongGroups.values()][0];
-      for (const group of wrongGroups.values()) {
-        if (group.length > worstGroup.length) worstGroup = group;
-      }
-      worstGroup = [...worstGroup].sort((a, b) => a.username.localeCompare(b.username));
+      const sortedWrongGroups = [...wrongGroups.values()]
+        .map(group => [...group].sort((a, b) => a.username.localeCompare(b.username)))
+        .sort((a, b) => b.length - a.length || a[0].username.localeCompare(b[0].username));
 
-      const wrongOutcome = describeOutcome(homeTeamName, awayTeamName, worstGroup[0].predHomeScore, worstGroup[0].predAwayScore);
+      const wrongClauses = sortedWrongGroups.map(group => {
+        const outcome = describeOutcome(homeTeamName, awayTeamName, group[0].predHomeScore, group[0].predAwayScore);
+        return `${formatUserList(group.map(p => p.username))} predicted ${outcome} (${group[0].predHomeScore} - ${group[0].predAwayScore})`;
+      });
       const correctOutcome = describeOutcome(
         homeTeamName,
         awayTeamName,
         worstPredictionMatch.homeScore,
         worstPredictionMatch.awayScore
       );
-      const namesText = formatUserList(worstGroup.map(p => p.username));
+
+      const statistic =
+        `${wrongClauses.join('; ')}.` +
+        (worstPredictionMatch.resultCount > 0 ? ` Everyone else predicted ${correctOutcome}.` : '');
 
       cards.push({
         id: 'worstPrediction',
         title: 'Worst prediction',
-        statistic: `${namesText} predicted ${wrongOutcome} (${worstGroup[0].predHomeScore} - ${worstGroup[0].predAwayScore}). Everyone else predicted ${correctOutcome}.`,
-        subjects: worstGroup.map(p => ({ type: 'user' as const, id: p.userId, name: p.username, imageUrl: p.imageUrl })),
+        statistic,
+        subjects: sortedWrongGroups
+          .flat()
+          .map(p => ({ type: 'user' as const, id: p.userId, name: p.username, imageUrl: p.imageUrl })),
       });
     }
 
