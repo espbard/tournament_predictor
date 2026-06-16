@@ -738,7 +738,7 @@ export default function CompetitionDetailPage() {
   return (
     <main className={`mx-auto px-4 py-12 ${
       user?.isLeaderboardUser
-        ? 'max-w-2xl tv:max-w-none tv:px-16'
+        ? 'max-w-2xl md:max-w-4xl lg:max-w-6xl tv:max-w-none tv:px-16'
         : activeTab === 'leaderboard'
           ? 'max-w-2xl md:max-w-4xl lg:max-w-6xl'
           : 'max-w-2xl'
