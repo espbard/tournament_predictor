@@ -1919,12 +1919,12 @@ export default function CompetitionDetailPage() {
 
                           const bd = pred.breakdown;
                           const breakdownLines: { label: string; pts: number }[] = bd ? [
-                            { label: 'Exact score', pts: bd.exactScore },
-                            { label: 'Correct result', pts: bd.correctResult },
-                            { label: 'Correct progressor', pts: bd.correctTeamProgresses },
-                            { label: 'Teams in tie', pts: bd.correctTeamInKnockoutTie },
-                            { label: 'Teams in final', pts: bd.correctTeamInFinal },
-                            { label: 'Correct winner', pts: bd.correctWinner },
+                            { label: t('competitionDetail.leaderboard.exact'), pts: bd.exactScore },
+                            { label: t('competitionDetail.leaderboard.result'), pts: bd.correctResult },
+                            { label: t('competitionDetail.leaderboard.progresses'), pts: bd.correctTeamProgresses },
+                            { label: t('competitionDetail.leaderboard.koTie'), pts: bd.correctTeamInKnockoutTie },
+                            { label: t('competitionDetail.leaderboard.final'), pts: bd.correctTeamInFinal },
+                            { label: t('competitionDetail.leaderboard.winner'), pts: bd.correctWinner },
                           ].filter(l => l.pts > 0) : [];
 
                           return (
