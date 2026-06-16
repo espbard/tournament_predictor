@@ -122,7 +122,7 @@ export default function UserStatCard({ competitionId, data, iconOnRight, onMatch
   const { title, statistic, subjects } = data;
 
   const icon = (
-    <div className="h-40 w-1/4 flex-shrink-0">
+    <div className="h-40 w-1/3 flex-shrink-0 sm:w-1/4">
       {subjects.length > 1 ? (
         <div className="relative h-full w-full">
           {subjects.map((subject, i) => {

@@ -766,7 +766,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
       cards.push({
         id: 'bestPrediction',
-        title: lang === 'no' ? 'Beste tips' : 'Best prediction',
+        title: lang === 'no' ? 'Synsk' : 'Best prediction',
         statistic:
           lang === 'no'
             ? `${winner.username} tippet eksakt resultat på ${homeTeamName} mot ${awayTeamName} (${bestPredictionMatch.homeScore}-${bestPredictionMatch.awayScore})! ${resultText}`
@@ -835,7 +835,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
       cards.push({
         id: 'worstPrediction',
-        title: lang === 'no' ? 'Dårligste tips' : 'Worst prediction',
+        title: lang === 'no' ? 'Skivebom' : 'Worst prediction',
         statistic,
         subjects: sortedWrongGroups
           .flat()
@@ -975,7 +975,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
     cards.push({
       id: 'bestForm',
-      title: 'Best form',
+      title: lang === 'no' ? 'I fyr og flamme 🔥' : 'Best form',
       statistic:
         bestFormGroup.length > 0
           ? lang === 'no'
@@ -991,7 +991,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     if (worstFormGroup.length > 0) {
       cards.push({
         id: 'worstForm',
-        title: lang === 'no' ? 'Dårligste form' : 'Worst form',
+        title: lang === 'no' ? 'Send Hjelp' : 'Worst form',
         statistic:
           lang === 'no'
             ? `${formatUserList(worstFormGroup.map(u => u.username), lang)} har gått ${worstFormGroup[0].drought} kamper på rad uten å sanke et eneste poeng!`
