@@ -736,7 +736,13 @@ export default function CompetitionDetailPage() {
   if (!competition) return null;
 
   return (
-    <main className={`mx-auto px-4 py-12 ${user?.isLeaderboardUser ? 'max-w-2xl tv:max-w-none tv:px-16' : 'max-w-2xl'}`}>
+    <main className={`mx-auto px-4 py-12 ${
+      user?.isLeaderboardUser
+        ? 'max-w-2xl md:max-w-4xl lg:max-w-6xl tv:max-w-none tv:px-16'
+        : activeTab === 'leaderboard'
+          ? 'max-w-2xl md:max-w-4xl lg:max-w-6xl'
+          : 'max-w-2xl'
+    }`}>
       <div>
       {!user?.isLeaderboardUser && (
         <div className="mb-2 text-sm text-muted-foreground">
@@ -1548,15 +1554,15 @@ export default function CompetitionDetailPage() {
                   <tr className="border-b bg-muted/50 text-muted-foreground">
                     <th className="pl-3 pr-2 py-2 text-left w-6">#</th>
                     <th className="px-3 py-2 text-left min-w-[110px]">{t('competitionDetail.leaderboard.player')}</th>
-                    <th className="px-2 py-2 text-center whitespace-nowrap font-bold text-foreground border-r">{t('competitionDetail.leaderboard.total')}</th>
-                    <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.result')}</th>
-                    <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.exact')}</th>
-                    <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.group')}</th>
-                    <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.progresses')}</th>
-                    <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.koTie')}</th>
-                    <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.final')}</th>
-                    <th className="px-2 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.winner')}</th>
-                    <th className="pl-2 pr-3 py-2 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.bonus')}</th>
+                    <th className="px-2 py-2 text-center font-bold text-foreground border-r max-w-[4.5rem] break-words">{t('competitionDetail.leaderboard.total')}</th>
+                    <th className="px-2 py-2 text-center max-w-[4.5rem] break-words">{t('competitionDetail.leaderboard.result')}</th>
+                    <th className="px-2 py-2 text-center max-w-[4.5rem] break-words">{t('competitionDetail.leaderboard.exact')}</th>
+                    <th className="px-2 py-2 text-center max-w-[4.5rem] break-words">{t('competitionDetail.leaderboard.group')}</th>
+                    <th className="px-2 py-2 text-center max-w-[4.5rem] break-words">{t('competitionDetail.leaderboard.progresses')}</th>
+                    <th className="px-2 py-2 text-center max-w-[4.5rem] break-words">{t('competitionDetail.leaderboard.koTie')}</th>
+                    <th className="px-2 py-2 text-center max-w-[4.5rem] break-words">{t('competitionDetail.leaderboard.final')}</th>
+                    <th className="px-2 py-2 text-center max-w-[4.5rem] break-words">{t('competitionDetail.leaderboard.winner')}</th>
+                    <th className="pl-2 pr-3 py-2 text-center max-w-[4.5rem] break-words">{t('competitionDetail.leaderboard.bonus')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
@@ -1627,15 +1633,15 @@ export default function CompetitionDetailPage() {
                   <tr className="border-b bg-muted/50 text-muted-foreground">
                     <th className="pl-4 pr-3 py-3 text-left w-8">#</th>
                     <th className="px-3 py-3 text-left">{t('competitionDetail.leaderboard.player')}</th>
-                    <th className="px-3 py-3 text-center whitespace-nowrap font-bold text-foreground border-r">{t('competitionDetail.leaderboard.total')}</th>
-                    <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.result')}</th>
-                    <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.exact')}</th>
-                    <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.group')}</th>
-                    <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.progresses')}</th>
-                    <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.koTie')}</th>
-                    <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.final')}</th>
-                    <th className="px-3 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.winner')}</th>
-                    <th className="pl-3 pr-4 py-3 text-center whitespace-nowrap">{t('competitionDetail.leaderboard.bonus')}</th>
+                    <th className="px-3 py-3 text-center font-bold text-foreground border-r max-w-[6rem] break-words">{t('competitionDetail.leaderboard.total')}</th>
+                    <th className="px-3 py-3 text-center max-w-[6rem] break-words">{t('competitionDetail.leaderboard.result')}</th>
+                    <th className="px-3 py-3 text-center max-w-[6rem] break-words">{t('competitionDetail.leaderboard.exact')}</th>
+                    <th className="px-3 py-3 text-center max-w-[6rem] break-words">{t('competitionDetail.leaderboard.group')}</th>
+                    <th className="px-3 py-3 text-center max-w-[6rem] break-words">{t('competitionDetail.leaderboard.progresses')}</th>
+                    <th className="px-3 py-3 text-center max-w-[6rem] break-words">{t('competitionDetail.leaderboard.koTie')}</th>
+                    <th className="px-3 py-3 text-center max-w-[6rem] break-words">{t('competitionDetail.leaderboard.final')}</th>
+                    <th className="px-3 py-3 text-center max-w-[6rem] break-words">{t('competitionDetail.leaderboard.winner')}</th>
+                    <th className="pl-3 pr-4 py-3 text-center max-w-[6rem] break-words">{t('competitionDetail.leaderboard.bonus')}</th>
                   </tr>
                 </thead>
               );
@@ -1822,12 +1828,17 @@ export default function CompetitionDetailPage() {
                                   : 'bg-muted/20'
                               }`}
                             >
-                              <img
-                                src={pred.imageUrl ?? '/default-avatar.png'}
-                                alt=""
-                                className="h-5 w-5 rounded-full object-cover flex-shrink-0"
-                              />
-                              <span className="flex-1 truncate font-medium text-xs">{pred.username}</span>
+                              <Link
+                                to={`/competitions/${id}/predictions/${pred.userId}`}
+                                className="flex-1 flex items-center gap-2 min-w-0 hover:opacity-80 transition-opacity"
+                              >
+                                <img
+                                  src={pred.imageUrl ?? '/default-avatar.png'}
+                                  alt=""
+                                  className="h-5 w-5 rounded-full object-cover flex-shrink-0"
+                                />
+                                <span className="flex-1 truncate font-medium text-xs">{pred.username}</span>
+                              </Link>
 
                               <div className="flex items-center gap-1 flex-shrink-0">
                                 <div className={homeGetsCircle ? 'ring-2 ring-green-500 rounded-full' : ''}>
