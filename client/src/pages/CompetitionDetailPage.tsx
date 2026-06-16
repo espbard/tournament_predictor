@@ -1239,7 +1239,7 @@ export default function CompetitionDetailPage() {
                 {t('competitionDetail.predictions.simulate')}
               </button>
             )}
-            {allGroupMatchesList.length > 0 && (
+            {allGroupMatchesList.length > 0 && tournament?.status === 'upcoming' && (
               <button
                 onClick={() => setShowClearConfirm(true)}
                 className="text-xs rounded border px-2.5 py-1 text-destructive border-destructive/30 hover:bg-destructive/5"
