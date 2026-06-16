@@ -129,7 +129,7 @@ export default function UserStatCard({ competitionId, data, iconOnRight, onMatch
   const { title, statistic, subjects } = data;
 
   const icon = (
-    <div className="relative h-40 w-1/3 flex-shrink-0 sm:w-1/4">
+    <div className="relative min-h-40 w-1/3 flex-shrink-0 sm:w-1/4">
       {subjects.length > 1 ? (
         <div className="relative h-full w-full">
           {subjects.map((subject, i) => {
@@ -179,7 +179,7 @@ export default function UserStatCard({ competitionId, data, iconOnRight, onMatch
 
   const card = (
     <div
-      className={`flex items-center overflow-hidden rounded-2xl border ${iconOnRight ? 'flex-row-reverse' : 'flex-row'}`}
+      className={`flex items-stretch overflow-hidden rounded-2xl border ${iconOnRight ? 'flex-row-reverse' : 'flex-row'}`}
       style={{ backgroundColor: 'hsla(120, 3%, 91%, 0.5)', borderColor: 'hsl(120, 3%, 83%)', color: 'hsl(180, 2%, 28%)' }}
     >
       {icon}
