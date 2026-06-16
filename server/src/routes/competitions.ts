@@ -355,6 +355,8 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
       if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
     }
 
+    const scoringConfig = competition.scoringConfig as ScoringConfig;
+
     const groupRows = await db
       .select({
         matchId: predictions.matchId,
@@ -365,6 +367,10 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
         awayScore: predictions.awayScore,
         progressingTeamId: predictions.progressingTeamId,
         points: predictions.points,
+        actualHomeScore: matches.homeScore,
+        actualAwayScore: matches.awayScore,
+        matchStage: matches.stage,
+        actualProgressingTeamId: matches.progressingTeamId,
       })
       .from(predictions)
       .innerJoin(users, eq(predictions.userId, users.id))
@@ -384,6 +390,11 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
         )
       );
 
+    type PredBreakdown = {
+      exactScore: number; correctResult: number; correctTeamProgresses: number;
+      correctTeamInKnockoutTie: number; correctTeamInFinal: number; correctWinner: number;
+    };
+
     const result: Array<{
       matchId: string;
       userId: string;
@@ -393,12 +404,26 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
       awayScore: number;
       progressingTeamId: string | null;
       points: number | null;
+      breakdown: PredBreakdown;
       flipped?: boolean;
       predHomeTeamId?: string | null;
       predAwayTeamId?: string | null;
       predHomeTeamImageUrl?: string | null;
       predAwayTeamImageUrl?: string | null;
-    }> = [...groupRows];
+    }> = groupRows.map(row => {
+      const bd: PredBreakdown = { exactScore: 0, correctResult: 0, correctTeamProgresses: 0, correctTeamInKnockoutTie: 0, correctTeamInFinal: 0, correctWinner: 0 };
+      if (row.actualHomeScore !== null && row.actualAwayScore !== null) {
+        const r = calculateMatchPoints(
+          { homeScore: row.homeScore, awayScore: row.awayScore, progressingTeamId: row.progressingTeamId },
+          { homeScore: row.actualHomeScore, awayScore: row.actualAwayScore, stage: row.matchStage, actualProgressingTeamId: row.actualProgressingTeamId },
+          scoringConfig,
+        );
+        bd.exactScore = r.breakdown.exactScore;
+        bd.correctResult = r.breakdown.correctResult;
+        bd.correctTeamProgresses = r.breakdown.correctTeamProgresses;
+      }
+      return { matchId: row.matchId, userId: row.userId, username: row.username, imageUrl: row.imageUrl, homeScore: row.homeScore, awayScore: row.awayScore, progressingTeamId: row.progressingTeamId, points: row.points, breakdown: bd };
+    });
 
     // Knockout predictions come from bracketPredictions (not the predictions table).
     // Fetch ALL knockout matches (including not-yet-played) so bracket key indices
@@ -546,8 +571,8 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
 
           // Calculate points using the same logic as the scoring engine
           const koMatchData = matchIdToKoData.get(matchId);
-          const scoringConfig = competition.scoringConfig as ScoringConfig;
           let koPoints = 0;
+          const koBd: PredBreakdown = { exactScore: 0, correctResult: 0, correctTeamProgresses: 0, correctTeamInKnockoutTie: 0, correctTeamInFinal: 0, correctWinner: 0 };
           if (koMatchData && koMatchData.homeScore !== null && koMatchData.awayScore !== null) {
             const shouldFlip = pred.flipped ?? false;
             const scoredMatch = {
@@ -556,10 +581,14 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
               stage: koMatchData.stage,
               actualProgressingTeamId: koMatchData.progressingTeamId,
             };
-            koPoints = calculateMatchPoints(
+            const basicResult = calculateMatchPoints(
               { homeScore: pred.homeScore, awayScore: pred.awayScore, progressingTeamId: pred.progressingTeamId ?? null },
               scoredMatch, scoringConfig,
-            ).points;
+            );
+            koPoints = basicResult.points;
+            koBd.exactScore = basicResult.breakdown.exactScore;
+            koBd.correctResult = basicResult.breakdown.correctResult;
+            koBd.correctTeamProgresses = basicResult.breakdown.correctTeamProgresses;
 
             // correct_team_in_knockout_tie / correct_team_in_final / correct_winner
             if (koCfg && koMatchData.stage !== koCfg.firstRound && koMatchData.stage !== 'bronze_final') {
@@ -581,11 +610,14 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
                 if (koMatchData.stage === 'final') {
                   if (actualTeamId === koMatchData.progressingTeamId && actualTeamId === userPredictedWinner) {
                     koPoints += scoringConfig.correct_winner;
+                    koBd.correctWinner += scoringConfig.correct_winner;
                   } else {
                     koPoints += scoringConfig.correct_team_in_final;
+                    koBd.correctTeamInFinal += scoringConfig.correct_team_in_final;
                   }
                 } else {
                   koPoints += scoringConfig.correct_team_in_knockout_tie;
+                  koBd.correctTeamInKnockoutTie += scoringConfig.correct_team_in_knockout_tie;
                 }
               }
             }
@@ -600,6 +632,7 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
             awayScore: pred.awayScore,
             progressingTeamId: pred.progressingTeamId ?? null,
             points: koPoints,
+            breakdown: koBd,
             flipped: pred.flipped ?? false,
             predHomeTeamId,
             predAwayTeamId,

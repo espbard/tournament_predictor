@@ -39,6 +39,15 @@ interface MatchWithTeams {
   progressingTeamId: string | null;
 }
 
+interface PredBreakdown {
+  exactScore: number;
+  correctResult: number;
+  correctTeamProgresses: number;
+  correctTeamInKnockoutTie: number;
+  correctTeamInFinal: number;
+  correctWinner: number;
+}
+
 interface MatchPredictionEntry {
   matchId: string;
   userId: string;
@@ -48,6 +57,7 @@ interface MatchPredictionEntry {
   awayScore: number;
   progressingTeamId: string | null;
   points: number | null;
+  breakdown: PredBreakdown;
   flipped?: boolean;
   predHomeTeamId?: string | null;
   predAwayTeamId?: string | null;
@@ -91,6 +101,7 @@ export default function CompetitionDetailPage() {
 
   const [currentPredMatchIdx, setCurrentPredMatchIdx] = useState(0);
   const [matchPredictionsCollapsed, setMatchPredictionsCollapsed] = useState(false);
+  const [expandedPredKey, setExpandedPredKey] = useState<string | null>(null);
   const [pendingScrollMatchId, setPendingScrollMatchId] = useState<string | null>(null);
   const matchPredictionsRef = useRef<HTMLDivElement>(null);
 
@@ -1864,9 +1875,8 @@ export default function CompetitionDetailPage() {
                     ) : (
                       <div className="space-y-1">
                         {matchPreds.map(pred => {
-                          // For knockout predictions: scores are in the user's predicted orientation
-                          // (home = their predicted home team). The flipped flag means the
-                          // actual match had home/away swapped relative to the user's predicted order.
+                          const predKey = `${match.id}_${pred.userId}`;
+                          const isExpanded = expandedPredKey === predKey;
                           const effectiveMatchHome = pred.flipped ? (match.awayScore ?? 0) : (match.homeScore ?? 0);
                           const effectiveMatchAway = pred.flipped ? (match.homeScore ?? 0) : (match.awayScore ?? 0);
                           const isCorrectResult =
@@ -1875,7 +1885,6 @@ export default function CompetitionDetailPage() {
                           const isExactScore =
                             match.homeScore !== null && match.awayScore !== null &&
                             pred.homeScore === effectiveMatchHome && pred.awayScore === effectiveMatchAway;
-                          // Use predicted team IDs for circle highlights; fall back to actual match teams
                           const predHomeId = pred.predHomeTeamId ?? match.homeTeamId;
                           const predAwayId = pred.predAwayTeamId ?? match.awayTeamId;
                           const homeGetsCircle =
@@ -1890,8 +1899,6 @@ export default function CompetitionDetailPage() {
                             match.progressingTeamId !== null &&
                             pred.progressingTeamId === match.progressingTeamId &&
                             pred.progressingTeamId === predAwayId;
-                          // Show the team icons the user predicted; fall back to actual match icons
-                          // (accounting for flip so icons stay aligned with the score direction).
                           const displayHomeImg = pred.predHomeTeamImageUrl !== undefined
                             ? pred.predHomeTeamImageUrl
                             : (pred.flipped ? match.awayTeamImageUrl : match.homeTeamImageUrl);
@@ -1899,18 +1906,24 @@ export default function CompetitionDetailPage() {
                             ? pred.predAwayTeamImageUrl
                             : (pred.flipped ? match.homeTeamImageUrl : match.awayTeamImageUrl);
 
+                          const bd = pred.breakdown;
+                          const breakdownLines: { label: string; pts: number }[] = bd ? [
+                            { label: 'Exact score', pts: bd.exactScore },
+                            { label: 'Correct result', pts: bd.correctResult },
+                            { label: 'Correct progressor', pts: bd.correctTeamProgresses },
+                            { label: 'Teams in tie', pts: bd.correctTeamInKnockoutTie },
+                            { label: 'Teams in final', pts: bd.correctTeamInFinal },
+                            { label: 'Correct winner', pts: bd.correctWinner },
+                          ].filter(l => l.pts > 0) : [];
+
                           return (
-                            <div
-                              key={pred.userId}
-                              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${
-                                isCorrectResult
-                                  ? 'bg-green-50 dark:bg-green-950/25'
-                                  : 'bg-muted/20'
-                              }`}
-                            >
-                              <Link
-                                to={`/competitions/${id}/predictions/${pred.userId}`}
-                                className="flex-1 flex items-center gap-2 min-w-0 hover:opacity-80 transition-opacity"
+                            <div key={pred.userId} className="rounded-lg overflow-hidden">
+                              <button
+                                type="button"
+                                onClick={() => setExpandedPredKey(k => k === predKey ? null : predKey)}
+                                className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-opacity hover:opacity-80 ${
+                                  isCorrectResult ? 'bg-green-50 dark:bg-green-950/25' : 'bg-muted/20'
+                                }`}
                               >
                                 <img
                                   src={pred.imageUrl ?? '/default-avatar.png'}
@@ -1918,41 +1931,60 @@ export default function CompetitionDetailPage() {
                                   className="h-5 w-5 rounded-full object-cover flex-shrink-0"
                                 />
                                 <span className="flex-1 truncate font-medium text-xs">{pred.username}</span>
-                              </Link>
 
-                              <div className="flex items-center gap-1 flex-shrink-0">
-                                <div className={homeGetsCircle ? 'ring-2 ring-green-500 rounded-full' : ''}>
-                                  {displayHomeImg ? (
-                                    <img src={displayHomeImg} alt="" className="h-5 w-5 rounded-full object-cover" />
-                                  ) : (
-                                    <div className="h-5 w-5 rounded-full bg-muted" />
-                                  )}
+                                <div className="flex items-center gap-1 flex-shrink-0">
+                                  <div className={homeGetsCircle ? 'ring-2 ring-green-500 rounded-full' : ''}>
+                                    {displayHomeImg ? (
+                                      <img src={displayHomeImg} alt="" className="h-5 w-5 rounded-full object-cover" />
+                                    ) : (
+                                      <div className="h-5 w-5 rounded-full bg-muted" />
+                                    )}
+                                  </div>
+
+                                  <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-bold tabular-nums min-w-[2.5rem] justify-center ${
+                                    isExactScore
+                                      ? 'bg-amber-50 dark:bg-amber-900/30 border border-amber-400 text-amber-600 dark:text-amber-400'
+                                      : 'bg-background border'
+                                  }`}>
+                                    {pred.homeScore}–{pred.awayScore}
+                                  </span>
+
+                                  <div className={awayGetsCircle ? 'ring-2 ring-green-500 rounded-full' : ''}>
+                                    {displayAwayImg ? (
+                                      <img src={displayAwayImg} alt="" className="h-5 w-5 rounded-full object-cover" />
+                                    ) : (
+                                      <div className="h-5 w-5 rounded-full bg-muted" />
+                                    )}
+                                  </div>
                                 </div>
 
-                                <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-bold tabular-nums min-w-[2.5rem] justify-center ${
-                                  isExactScore
-                                    ? 'bg-amber-50 dark:bg-amber-900/30 border border-amber-400 text-amber-600 dark:text-amber-400'
-                                    : 'bg-background border'
+                                <span className={`text-xs font-bold flex-shrink-0 w-7 text-right ${
+                                  (pred.points ?? 0) > 0
+                                    ? 'text-green-600 dark:text-green-400'
+                                    : 'text-muted-foreground'
                                 }`}>
-                                  {pred.homeScore}–{pred.awayScore}
+                                  {pred.points !== null ? ((pred.points > 0) ? `+${pred.points}` : `${pred.points}`) : '—'}
                                 </span>
 
-                                <div className={awayGetsCircle ? 'ring-2 ring-green-500 rounded-full' : ''}>
-                                  {displayAwayImg ? (
-                                    <img src={displayAwayImg} alt="" className="h-5 w-5 rounded-full object-cover" />
-                                  ) : (
-                                    <div className="h-5 w-5 rounded-full bg-muted" />
-                                  )}
-                                </div>
-                              </div>
+                                <span className="text-muted-foreground flex-shrink-0 text-xs w-3">
+                                  {isExpanded ? '▴' : '▾'}
+                                </span>
+                              </button>
 
-                              <span className={`text-xs font-bold flex-shrink-0 w-7 text-right ${
-                                (pred.points ?? 0) > 0
-                                  ? 'text-green-600 dark:text-green-400'
-                                  : 'text-muted-foreground'
-                              }`}>
-                                {pred.points !== null ? ((pred.points > 0) ? `+${pred.points}` : `${pred.points}`) : '—'}
-                              </span>
+                              {isExpanded && (
+                                <div className={`px-3 py-2 text-xs space-y-1 border-t ${
+                                  isCorrectResult ? 'bg-green-50/50 dark:bg-green-950/10 border-green-100 dark:border-green-900/30' : 'bg-muted/10 border-border'
+                                }`}>
+                                  {breakdownLines.length === 0 ? (
+                                    <p className="text-muted-foreground">No points earned</p>
+                                  ) : breakdownLines.map(line => (
+                                    <div key={line.label} className="flex justify-between">
+                                      <span className="text-muted-foreground">{line.label}</span>
+                                      <span className="font-semibold text-green-600 dark:text-green-400">+{line.pts}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           );
                         })}
