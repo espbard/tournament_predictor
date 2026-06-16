@@ -60,6 +60,7 @@ A web application for predicting sports tournament outcomes. Used by a small pri
 │   │   ├── favicon-16x16.png
 │   │   ├── favicon-32x32.png
 │   │   ├── favicon.ico
+│   │   ├── haaland.jpg
 │   │   ├── soccer-ball.png
 │   │   └── soccer-player.png
 │   └── src
@@ -75,7 +76,8 @@ A web application for predicting sports tournament outcomes. Used by a small pri
 │       │   ├── PlayerPodium.tsx
 │       │   ├── PlayerSearchInput.tsx
 │       │   ├── SoccerKickAnimation.tsx
-│       │   └── TeamSelectInput.tsx
+│       │   ├── TeamSelectInput.tsx
+│       │   └── UserStatCard.tsx
 │       ├── lib
 │       │   ├── api.ts
 │       │   ├── tiebreakers.ts
@@ -139,6 +141,7 @@ A web application for predicting sports tournament outcomes. Used by a small pri
 │       │   ├── migrate.ts
 │       │   └── schema.ts
 │       ├── lib
+│       │   ├── bracketSlots.test.ts
 │       │   ├── leaderboardEvents.ts
 │       │   ├── r2.ts
 │       │   ├── scoring.test.ts
@@ -159,6 +162,7 @@ A web application for predicting sports tournament outcomes. Used by a small pri
 └── shared
     ├── package.json
     └── src
+        ├── bracketSlots.ts
         ├── index.ts
         ├── schemas.ts
         └── types.ts
