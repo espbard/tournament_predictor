@@ -7,19 +7,47 @@ interface UserStatCardProps {
   iconOnRight: boolean;
 }
 
+const DIAGONAL_CLIP_PATHS = ['polygon(0% 0%, 100% 0%, 0% 100%)', 'polygon(100% 0%, 100% 100%, 0% 100%)'];
+const SQUARE_CORNER_ANGLES = [45, 135, 225, 315];
+
+function pointOnSquareAtAngle(angleDeg: number): { x: number; y: number } {
+  const rad = (angleDeg * Math.PI) / 180;
+  const dx = Math.sin(rad);
+  const dy = -Math.cos(rad);
+  const t = 1 / Math.max(Math.abs(dx), Math.abs(dy), 1e-9);
+  return { x: 50 + dx * t * 50, y: 50 + dy * t * 50 };
+}
+
+function pieSliceClipPath(index: number, total: number): string {
+  const sliceAngle = 360 / total;
+  const start = index * sliceAngle;
+  const end = start + sliceAngle;
+  const points = [{ x: 50, y: 50 }, pointOnSquareAtAngle(start)];
+  for (const corner of SQUARE_CORNER_ANGLES) {
+    if (corner > start && corner < end) points.push(pointOnSquareAtAngle(corner));
+  }
+  points.push(pointOnSquareAtAngle(end));
+  return `polygon(${points.map(p => `${p.x}% ${p.y}%`).join(', ')})`;
+}
+
+function collageClipPath(index: number, total: number): string {
+  return total === 2 ? DIAGONAL_CLIP_PATHS[index] : pieSliceClipPath(index, total);
+}
+
 export default function UserStatCard({ competitionId, data, iconOnRight }: UserStatCardProps) {
   const { title, statistic, subjects } = data;
 
   const icon = (
     <div className="w-1/4 flex-shrink-0">
       {subjects.length > 1 ? (
-        <div className="grid h-full w-full grid-cols-2">
-          {subjects.map(subject => (
+        <div className="relative h-full w-full">
+          {subjects.map((subject, i) => (
             <img
               key={subject.id}
               src={subject.imageUrl ?? '/default-avatar.png'}
               alt={subject.name}
-              className="h-full w-full object-cover"
+              className="absolute inset-0 h-full w-full object-cover"
+              style={{ clipPath: collageClipPath(i, subjects.length) }}
             />
           ))}
         </div>
