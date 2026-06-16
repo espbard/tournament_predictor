@@ -343,26 +343,6 @@ export default function CompetitionDetailPage() {
     return { actualGroupStandings: byGroup, completedGroupMatchCounts: matchCounts };
   }, [matchList]);
 
-  const qualifyingThirdPlaceIds = useMemo(() => {
-    const third = groupStandings
-      .filter(([, teams]) => teams.length >= 3)
-      .map(([, teams]) => teams[2]);
-    const tiebreakerStats = third.map(tm => ({ teamId: tm.teamId, points: tm.W * 3 + tm.D, gd: tm.GF - tm.GA, gf: tm.GF }));
-    const sortedIds = sortLuckyLosers(tiebreakerStats, luckyLoserDisciplinaryChoices).map(s => s.teamId);
-    const sortedThird = sortedIds.map(sid => third.find(tm => tm.teamId === sid)!).filter(Boolean);
-    const qualifying = sortedThird.slice(0, 8);
-    if (qualifying.length === 8 && sortedThird.length > 8) {
-      const edge = qualifying[7];
-      const edgePts = edge.W * 3 + edge.D; const edgeGD = edge.GF - edge.GA;
-      for (const tm of sortedThird.slice(8)) {
-        const pts = tm.W * 3 + tm.D; const gd = tm.GF - tm.GA;
-        if (pts === edgePts && gd === edgeGD && tm.GF === edge.GF) qualifying.push(tm);
-        else break;
-      }
-    }
-    return new Set(qualifying.map(tm => tm.teamId));
-  }, [groupStandings, luckyLoserDisciplinaryChoices]);
-
   const matchesByDate = useMemo(() => {
     const sorted = [...matchList].sort((a, b) => {
       if (!a.scheduledAt && !b.scheduledAt) return 0;
@@ -483,6 +463,28 @@ export default function CompetitionDetailPage() {
       : tournamentData,
     [user?.isAdmin, tournamentsData, tournamentData, competition?.tournamentId]
   );
+
+  const qualifyingThirdPlaceIds = useMemo(() => {
+    const luckyLosers = tournament?.knockoutConfig?.luckyLosers ?? 0;
+    if (luckyLosers <= 0) return new Set<string>();
+    const third = groupStandings
+      .filter(([, teams]) => teams.length >= 3)
+      .map(([, teams]) => teams[2]);
+    const tiebreakerStats = third.map(tm => ({ teamId: tm.teamId, points: tm.W * 3 + tm.D, gd: tm.GF - tm.GA, gf: tm.GF }));
+    const sortedIds = sortLuckyLosers(tiebreakerStats, luckyLoserDisciplinaryChoices).map(s => s.teamId);
+    const sortedThird = sortedIds.map(sid => third.find(tm => tm.teamId === sid)!).filter(Boolean);
+    const qualifying = sortedThird.slice(0, luckyLosers);
+    if (qualifying.length === luckyLosers && sortedThird.length > luckyLosers) {
+      const edge = qualifying[luckyLosers - 1];
+      const edgePts = edge.W * 3 + edge.D; const edgeGD = edge.GF - edge.GA;
+      for (const tm of sortedThird.slice(luckyLosers)) {
+        const pts = tm.W * 3 + tm.D; const gd = tm.GF - tm.GA;
+        if (pts === edgePts && gd === edgeGD && tm.GF === edge.GF) qualifying.push(tm);
+        else break;
+      }
+    }
+    return new Set(qualifying.map(tm => tm.teamId));
+  }, [groupStandings, luckyLoserDisciplinaryChoices, tournament]);
 
   // All disciplinary ties for the group stage, including already-resolved ones.
   const allGroupDisciplinaryTieInfo = useMemo(() => {
