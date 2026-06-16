@@ -14,7 +14,6 @@ import { useT } from '@/lib/useT';
 import type { Competition, Tournament, Prediction, MatchStage, LeaderboardEntry, BracketPredictions, UserStatCardData } from '@tournament-predictor/shared';
 import {
   sortGroupTeams,
-  sortLuckyLosers,
   findGroupDisciplinaryTies,
   findLuckyLoserDisciplinaryTies,
   makeDisciplinaryKey,
@@ -470,20 +469,45 @@ export default function CompetitionDetailPage() {
     const third = groupStandings
       .filter(([, teams]) => teams.length >= 3)
       .map(([, teams]) => teams[2]);
-    const tiebreakerStats = third.map(tm => ({ teamId: tm.teamId, points: tm.W * 3 + tm.D, gd: tm.GF - tm.GA, gf: tm.GF }));
-    const sortedIds = sortLuckyLosers(tiebreakerStats, luckyLoserDisciplinaryChoices).map(s => s.teamId);
-    const sortedThird = sortedIds.map(sid => third.find(tm => tm.teamId === sid)!).filter(Boolean);
-    const qualifying = sortedThird.slice(0, luckyLosers);
-    if (qualifying.length === luckyLosers && sortedThird.length > luckyLosers) {
-      const edge = qualifying[luckyLosers - 1];
-      const edgePts = edge.W * 3 + edge.D; const edgeGD = edge.GF - edge.GA;
-      for (const tm of sortedThird.slice(luckyLosers)) {
-        const pts = tm.W * 3 + tm.D; const gd = tm.GF - tm.GA;
-        if (pts === edgePts && gd === edgeGD && tm.GF === edge.GF) qualifying.push(tm);
-        else break;
+
+    // Sort by natural criteria only (no disciplinary tiebreaker) so tied teams stay grouped together.
+    const sorted = [...third].sort((a, b) => {
+      const pa = a.W * 3 + a.D, pb = b.W * 3 + b.D;
+      if (pb !== pa) return pb - pa;
+      const ga = a.GF - a.GA, gb = b.GF - b.GA;
+      if (gb !== ga) return gb - ga;
+      return b.GF - a.GF;
+    });
+
+    const qualifying = new Set<string>();
+    let filled = 0;
+    let i = 0;
+    while (i < sorted.length && filled < luckyLosers) {
+      let j = i + 1;
+      while (
+        j < sorted.length &&
+        sorted[j].W * 3 + sorted[j].D === sorted[i].W * 3 + sorted[i].D &&
+        sorted[j].GF - sorted[j].GA === sorted[i].GF - sorted[i].GA &&
+        sorted[j].GF === sorted[i].GF
+      ) j++;
+      const bucket = sorted.slice(i, j);
+      const remaining = luckyLosers - filled;
+      if (bucket.length <= remaining) {
+        for (const tm of bucket) qualifying.add(tm.teamId);
+        filled += bucket.length;
+      } else {
+        // Tied bucket straddles the cutoff — only highlight once the tiebreaker is resolved.
+        const key = makeDisciplinaryKey(bucket.map(tm => tm.teamId));
+        const ranked = luckyLoserDisciplinaryChoices[key] ?? [];
+        if (ranked.length >= bucket.length) {
+          for (const id of ranked.slice(0, remaining)) qualifying.add(id);
+        }
+        filled += remaining;
+        break;
       }
+      i = j;
     }
-    return new Set(qualifying.map(tm => tm.teamId));
+    return qualifying;
   }, [groupStandings, luckyLoserDisciplinaryChoices, tournament]);
 
   // All disciplinary ties for the group stage, including already-resolved ones.
