@@ -486,6 +486,26 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         .sort((a, b) => a.username.localeCompare(b.username));
     }
 
+    // ── Close But No Cigar: widest gap between correct results and exact scores ──
+    const computeResultExactGap = (entry: { correctResults: number; exactScores: number }) =>
+      entry.correctResults - entry.exactScores;
+
+    const closeButNoCigarCandidates = [...userResultStats.entries()]
+      .map(([userId, entry]) => ({ userId, ...entry }))
+      .filter(candidate => candidate.correctResults > 0);
+
+    let closeButNoCigarGroup: typeof closeButNoCigarCandidates = [];
+    if (closeButNoCigarCandidates.length > 0) {
+      const widestGap = Math.max(...closeButNoCigarCandidates.map(computeResultExactGap));
+      const gapTied = closeButNoCigarCandidates.filter(candidate => computeResultExactGap(candidate) === widestGap);
+      const lowestRatio = gapTied.reduce((best, candidate) =>
+        compareExactRatio(candidate, best) < 0 ? candidate : best
+      );
+      closeButNoCigarGroup = gapTied
+        .filter(candidate => compareExactRatio(candidate, lowestRatio) === 0)
+        .sort((a, b) => a.username.localeCompare(b.username));
+    }
+
     // ── Best/Worst form: points earned across the most recent completed matches ──
     const completedMatches = await db
       .select({ id: matches.id, scheduledAt: matches.scheduledAt })
@@ -756,6 +776,22 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           ? `${hitOrMissGroup[0].exactScores} out of ${formatUserList(hitOrMissGroup.map(u => u.username))}'s ${hitOrMissGroup[0].correctResults} have been perfect predictions!`
           : 'No one has predicted at least two perfect scores yet!',
       subjects: hitOrMissGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
+    });
+
+    const closeButNoCigarVerb = closeButNoCigarGroup.length === 1 ? 'has' : 'have';
+    const closeButNoCigarTail =
+      closeButNoCigarGroup.length > 0 && closeButNoCigarGroup[0].exactScores > 0
+        ? `only managed ${closeButNoCigarGroup[0].exactScores} exact prediction${closeButNoCigarGroup[0].exactScores === 1 ? '' : 's'}!`
+        : 'never got an exact score correct!';
+
+    cards.push({
+      id: 'closeButNoCigar',
+      title: 'Close But No Cigar',
+      statistic:
+        closeButNoCigarGroup.length > 0
+          ? `${formatUserList(closeButNoCigarGroup.map(u => u.username))} ${closeButNoCigarVerb} predicted the correct result ${closeButNoCigarGroup[0].correctResults} times, but ${closeButNoCigarVerb} ${closeButNoCigarTail}`
+          : 'No one has predicted a correct result yet!',
+      subjects: closeButNoCigarGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
     });
 
     cards.push({
