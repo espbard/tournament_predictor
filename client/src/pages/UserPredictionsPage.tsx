@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import KnockoutStageContent from '@/components/KnockoutStageContent';
@@ -40,9 +40,12 @@ function stageLabel(stage: MatchStage, groupName?: string | null): string {
 
 export default function UserPredictionsPage() {
   const { id, userId } = useParams<{ id: string; userId: string }>();
+  const [searchParams] = useSearchParams();
   const { t } = useT();
 
-  const [activeTab, setActiveTab] = useState<'group' | 'knockout' | 'bonus'>('group');
+  const [activeTab, setActiveTab] = useState<'group' | 'knockout' | 'bonus'>(
+    searchParams.get('tab') === 'bonus' ? 'bonus' : 'group'
+  );
   const [currentMatchIdx, setCurrentMatchIdx] = useState(0);
   const lastResultInitialized = useRef(false);
 

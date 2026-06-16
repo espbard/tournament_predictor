@@ -139,7 +139,9 @@ export default function UserStatCard({ competitionId, data, iconOnRight, onMatch
 
   const icon = (
     <div className="relative min-h-40 w-1/3 flex-shrink-0 sm:w-1/4">
-      {subjects.length > 1 ? (
+      {data.iconImageUrl ? (
+        <img src={data.iconImageUrl} alt="" className="h-full w-full object-cover" />
+      ) : subjects.length > 1 ? (
         <div className="relative h-full w-full">
           {subjects.map((subject, i) => {
             const layout = collageSliceLayout(i, subjects.length);
@@ -225,6 +227,17 @@ export default function UserStatCard({ competitionId, data, iconOnRight, onMatch
     return (
       <Link
         to={`/competitions/${competitionId}/predictions/${subjects[0].id}`}
+        className="block transition-opacity hover:opacity-80"
+      >
+        {card}
+      </Link>
+    );
+  }
+
+  if (data.linkType === 'userBonus' && subjects.length > 0) {
+    return (
+      <Link
+        to={`/competitions/${competitionId}/predictions/${subjects[0].id}?tab=bonus`}
         className="block transition-opacity hover:opacity-80"
       >
         {card}
