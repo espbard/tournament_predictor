@@ -1223,7 +1223,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         title: lang === 'no' ? 'Natt Og Dag' : 'Most Contrasting Predictions',
         statistic:
           lang === 'no'
-            ? `${homeTeamName} mot ${awayTeamName} (${contrastMatch.homeScore}-${contrastMatch.awayScore}) fikk de mest sprikende tippene! ${formatUserList(highGroup.map(u => u.username), lang)} tippet ${describeGoalDiff(maxDiff)}, mens ${formatUserList(lowGroup.map(u => u.username), lang)} tippet ${describeGoalDiff(minDiff)} — en forskjell på ${contrastGap} mål!`
+            ? `Det største spriket i tippingen så langt kom i kampen mellom ${homeTeamName} og ${awayTeamName} (${contrastMatch.homeScore}-${contrastMatch.awayScore}), hvor ${formatUserList(highGroup.map(u => u.username), lang)} tippet ${highGroup[0].predHomeScore}-${highGroup[0].predAwayScore} og ${formatUserList(lowGroup.map(u => u.username), lang)} tippet ${lowGroup[0].predHomeScore}-${lowGroup[0].predAwayScore}! Kampen endte til slutt med ${contrastMatch.homeScore}-${contrastMatch.awayScore}.`
             : `${homeTeamName} vs ${awayTeamName} (${contrastMatch.homeScore} - ${contrastMatch.awayScore}) caused the most contrasting predictions! ${formatUserList(highGroup.map(u => u.username), lang)} predicted ${describeGoalDiff(maxDiff)}, while ${formatUserList(lowGroup.map(u => u.username), lang)} predicted ${describeGoalDiff(minDiff)} — a ${contrastGap}-goal swing!`,
         subjects: [...highGroup, ...lowGroup].map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
         linkType: 'match',
