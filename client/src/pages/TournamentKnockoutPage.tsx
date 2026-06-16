@@ -333,6 +333,23 @@ function FocusedAdminMatchCard({
 
   const isQueued = !!queuedScore;
 
+  const goldenBorderClass = 'ring-2 ring-inset ring-amber-400 bg-amber-50/40 dark:bg-amber-900/15';
+
+  // Highlight the team selected to progress through a drawn tie.
+  const adminHomeProgresses =
+    (isQueued && queuedScore!.home === queuedScore!.away && queuedScore!.progressingTeamId === match.homeTeamId) ||
+    (!isQueued && isDrawEntry && selectedWinnerId === match.homeTeamId) ||
+    (isCompleted && match.homeScore === match.awayScore && match.progressingTeamId === match.homeTeamId);
+  const adminAwayProgresses =
+    (isQueued && queuedScore!.home === queuedScore!.away && queuedScore!.progressingTeamId === match.awayTeamId) ||
+    (!isQueued && isDrawEntry && selectedWinnerId === match.awayTeamId) ||
+    (isCompleted && match.homeScore === match.awayScore && match.progressingTeamId === match.awayTeamId);
+
+  // Home row is first only when there's no "staged pending" header above it.
+  const adminHomeIsFirst = !isQueued;
+  // Away row is last only when there's no tiebreaker section below it.
+  const adminAwayIsLast = !showTiebreaker;
+
   function tryAutoQueue(hStr: string, aStr: string, winnerId: string | null) {
     const h = hStr === '' ? null : parseInt(hStr, 10);
     const a = aStr === '' ? null : parseInt(aStr, 10);
@@ -361,7 +378,7 @@ function FocusedAdminMatchCard({
       )}
 
       {/* Home */}
-      <div className={`flex items-center gap-3 px-4 py-3.5 ${homeWins ? 'bg-primary/5' : ''}`}>
+      <div className={`flex items-center gap-3 px-4 py-3.5 ${adminHomeProgresses ? goldenBorderClass + (adminHomeIsFirst ? ' rounded-t-xl' : '') : homeWins ? 'bg-primary/5' : ''}`}>
         {match.homeTeamImageUrl
           ? <img src={match.homeTeamImageUrl} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0" />
           : <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
@@ -411,7 +428,7 @@ function FocusedAdminMatchCard({
       <div className="h-px bg-border" />
 
       {/* Away */}
-      <div className={`flex items-center gap-3 px-4 py-3.5 ${awayWins ? 'bg-primary/5' : ''}`}>
+      <div className={`flex items-center gap-3 px-4 py-3.5 ${adminAwayProgresses ? goldenBorderClass + (adminAwayIsLast ? ' rounded-b-xl' : '') : awayWins ? 'bg-primary/5' : ''}`}>
         {match.awayTeamImageUrl
           ? <img src={match.awayTeamImageUrl} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0" />
           : <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />

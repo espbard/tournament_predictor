@@ -452,6 +452,10 @@ function FocusedMatchCard({
 
   const goldenBorderClass = 'ring-2 ring-inset ring-amber-400 bg-amber-50/40 dark:bg-amber-900/15';
 
+  // The "who advances" section only renders when editing a draw, so the away row is the
+  // last item in the prediction card when completed or read-only (no section below it).
+  const predCardAwayIsLast = isCompleted || !!readOnly || !homeTeam || !awayTeam;
+
   return (
     <div className="space-y-3 w-full">
       {/* ── Predicted card ─────────────────────────────────── */}
@@ -464,7 +468,7 @@ function FocusedMatchCard({
         <div className={`rounded-xl border-2 shadow-sm overflow-hidden ${isCorrectResult ? 'border-green-400 bg-green-50/60 dark:bg-green-950/25' : 'bg-card'}`}>
           {/* Home row */}
           <div
-            className={`flex items-center gap-3 px-4 py-3.5 transition-colors ${isDisplayHomeProgressing ? goldenBorderClass : displayHomeWins && !isDisplayHomeChampion ? 'bg-primary/5' : ''}`}
+            className={`flex items-center gap-3 px-4 py-3.5 transition-colors ${isDisplayHomeProgressing ? goldenBorderClass + ' rounded-t-xl' : displayHomeWins && !isDisplayHomeChampion ? 'bg-primary/5' : ''}`}
             style={isDisplayHomeChampion ? { animation: 'ko_winner_glow 1.8s ease-in-out infinite' } : undefined}
           >
             {displayHomeTeam ? (
@@ -525,7 +529,7 @@ function FocusedMatchCard({
 
           {/* Away row */}
           <div
-            className={`flex items-center gap-3 px-4 py-3.5 transition-colors ${isDisplayAwayProgressing ? goldenBorderClass : displayAwayWins && !isDisplayAwayChampion ? 'bg-primary/5' : ''}`}
+            className={`flex items-center gap-3 px-4 py-3.5 transition-colors ${isDisplayAwayProgressing ? goldenBorderClass + (predCardAwayIsLast ? ' rounded-b-xl' : '') : displayAwayWins && !isDisplayAwayChampion ? 'bg-primary/5' : ''}`}
             style={isDisplayAwayChampion ? { animation: 'ko_winner_glow 1.8s ease-in-out infinite' } : undefined}
           >
             {displayAwayTeam ? (
@@ -634,7 +638,7 @@ function FocusedMatchCard({
           </p>
           <div className="rounded-xl border-2 bg-card shadow-sm overflow-hidden">
             {/* Home row */}
-            <div className={`flex items-center gap-3 px-4 py-3.5 ${actualHomeProgresses ? goldenBorderClass : ''}`}>
+            <div className={`flex items-center gap-3 px-4 py-3.5 ${actualHomeProgresses ? goldenBorderClass + ' rounded-t-xl' : ''}`}>
               {actualMatch.homeTeamImageUrl ? (
                 <img src={actualMatch.homeTeamImageUrl} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0" />
               ) : (
