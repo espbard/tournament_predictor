@@ -48,6 +48,11 @@ interface MatchPredictionEntry {
   awayScore: number;
   progressingTeamId: string | null;
   points: number | null;
+  flipped?: boolean;
+  predHomeTeamId?: string | null;
+  predAwayTeamId?: string | null;
+  predHomeTeamImageUrl?: string | null;
+  predAwayTeamImageUrl?: string | null;
 }
 
 export default function CompetitionDetailPage() {
@@ -1859,24 +1864,40 @@ export default function CompetitionDetailPage() {
                     ) : (
                       <div className="space-y-1">
                         {matchPreds.map(pred => {
+                          // For knockout predictions: scores are in the user's predicted orientation
+                          // (home = their predicted home team). The flipped flag means the
+                          // actual match had home/away swapped relative to the user's predicted order.
+                          const effectiveMatchHome = pred.flipped ? (match.awayScore ?? 0) : (match.homeScore ?? 0);
+                          const effectiveMatchAway = pred.flipped ? (match.homeScore ?? 0) : (match.awayScore ?? 0);
                           const isCorrectResult =
                             match.homeScore !== null && match.awayScore !== null &&
-                            Math.sign(pred.homeScore - pred.awayScore) === Math.sign(match.homeScore - match.awayScore);
+                            Math.sign(pred.homeScore - pred.awayScore) === Math.sign(effectiveMatchHome - effectiveMatchAway);
                           const isExactScore =
                             match.homeScore !== null && match.awayScore !== null &&
-                            pred.homeScore === match.homeScore && pred.awayScore === match.awayScore;
+                            pred.homeScore === effectiveMatchHome && pred.awayScore === effectiveMatchAway;
+                          // Use predicted team IDs for circle highlights; fall back to actual match teams
+                          const predHomeId = pred.predHomeTeamId ?? match.homeTeamId;
+                          const predAwayId = pred.predAwayTeamId ?? match.awayTeamId;
                           const homeGetsCircle =
                             isKnockout &&
                             pred.progressingTeamId !== null &&
                             match.progressingTeamId !== null &&
                             pred.progressingTeamId === match.progressingTeamId &&
-                            pred.progressingTeamId === match.homeTeamId;
+                            pred.progressingTeamId === predHomeId;
                           const awayGetsCircle =
                             isKnockout &&
                             pred.progressingTeamId !== null &&
                             match.progressingTeamId !== null &&
                             pred.progressingTeamId === match.progressingTeamId &&
-                            pred.progressingTeamId === match.awayTeamId;
+                            pred.progressingTeamId === predAwayId;
+                          // Show the team icons the user predicted; fall back to actual match icons
+                          // (accounting for flip so icons stay aligned with the score direction).
+                          const displayHomeImg = pred.predHomeTeamImageUrl !== undefined
+                            ? pred.predHomeTeamImageUrl
+                            : (pred.flipped ? match.awayTeamImageUrl : match.homeTeamImageUrl);
+                          const displayAwayImg = pred.predAwayTeamImageUrl !== undefined
+                            ? pred.predAwayTeamImageUrl
+                            : (pred.flipped ? match.homeTeamImageUrl : match.awayTeamImageUrl);
 
                           return (
                             <div
@@ -1901,8 +1922,8 @@ export default function CompetitionDetailPage() {
 
                               <div className="flex items-center gap-1 flex-shrink-0">
                                 <div className={homeGetsCircle ? 'ring-2 ring-green-500 rounded-full' : ''}>
-                                  {match.homeTeamImageUrl ? (
-                                    <img src={match.homeTeamImageUrl} alt="" className="h-5 w-5 rounded-full object-cover" />
+                                  {displayHomeImg ? (
+                                    <img src={displayHomeImg} alt="" className="h-5 w-5 rounded-full object-cover" />
                                   ) : (
                                     <div className="h-5 w-5 rounded-full bg-muted" />
                                   )}
@@ -1917,8 +1938,8 @@ export default function CompetitionDetailPage() {
                                 </span>
 
                                 <div className={awayGetsCircle ? 'ring-2 ring-green-500 rounded-full' : ''}>
-                                  {match.awayTeamImageUrl ? (
-                                    <img src={match.awayTeamImageUrl} alt="" className="h-5 w-5 rounded-full object-cover" />
+                                  {displayAwayImg ? (
+                                    <img src={displayAwayImg} alt="" className="h-5 w-5 rounded-full object-cover" />
                                   ) : (
                                     <div className="h-5 w-5 rounded-full bg-muted" />
                                   )}

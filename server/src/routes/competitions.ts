@@ -4,10 +4,10 @@ import { generateId } from 'lucia';
 import { db } from '../db/client.js';
 import { competitions, competitionMembers, users, tournaments, predictions, matches, teams, groups, bracketPredictions, bonusQuestions, bonusAnswers } from '../db/schema.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
-import { CreateCompetitionSchema, CreatePredictionSchema, SaveBracketPredictionsSchema, DEFAULT_SCORING_CONFIG, SaveBonusAnswerSchema } from '@tournament-predictor/shared';
+import { CreateCompetitionSchema, CreatePredictionSchema, SaveBracketPredictionsSchema, DEFAULT_SCORING_CONFIG, SaveBonusAnswerSchema, resolveFirstRoundSlots } from '@tournament-predictor/shared';
 import type { UserStatCardData, ScoringConfig, KnockoutConfig, BracketPredictions } from '@tournament-predictor/shared';
 import { recalculateAllScoresForTournament } from '../lib/scoringTrigger.js';
-import { computeGroupStandings } from '../lib/scoring.js';
+import { computeGroupStandings, getUserPredictedTeamForKnockoutSlot, type KnockoutMatchSlot } from '../lib/scoring.js';
 import { subscribeLeaderboard, unsubscribeLeaderboard } from '../lib/leaderboardEvents.js';
 
 const router = Router();
@@ -393,6 +393,11 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
       awayScore: number;
       progressingTeamId: string | null;
       points: number | null;
+      flipped?: boolean;
+      predHomeTeamId?: string | null;
+      predAwayTeamId?: string | null;
+      predHomeTeamImageUrl?: string | null;
+      predAwayTeamImageUrl?: string | null;
     }> = [...groupRows];
 
     // Knockout predictions come from bracketPredictions (not the predictions table).
@@ -400,7 +405,7 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
     // (round_of_16_0, etc.) stay consistent with how the scoring logic assigns them.
     const KNOCKOUT_STAGE_LIST = ['round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'bronze_final', 'final'] as const;
     const allKoMatches = await db
-      .select({ id: matches.id, stage: matches.stage, scheduledAt: matches.scheduledAt, status: matches.status })
+      .select({ id: matches.id, stage: matches.stage, scheduledAt: matches.scheduledAt, status: matches.status, homeTeamId: matches.homeTeamId, awayTeamId: matches.awayTeamId })
       .from(matches)
       .where(and(
         eq(matches.tournamentId, competition.tournamentId),
@@ -424,39 +429,131 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
     }
 
     if (bracketKeyToMatchId.size > 0) {
-      const [bpRows, memberUsers] = await Promise.all([
+      // Batch-fetch everything needed for predicted-team resolution alongside bpRows/members
+      const [bpRows, memberUsersWithChoices, [tournamentRow], teamInfoRows, completedGroupMatchRows] = await Promise.all([
         db.select({ userId: bracketPredictions.userId, predictions: bracketPredictions.predictions })
-          .from(bracketPredictions)
-          .where(eq(bracketPredictions.competitionId, id)),
-        db.select({ userId: competitionMembers.userId, username: users.username, imageUrl: users.imageUrl, isLeaderboardUser: users.isLeaderboardUser })
-          .from(competitionMembers)
-          .innerJoin(users, eq(users.id, competitionMembers.userId))
-          .where(eq(competitionMembers.competitionId, id)),
+          .from(bracketPredictions).where(eq(bracketPredictions.competitionId, id)),
+        db.select({
+          userId: competitionMembers.userId,
+          username: users.username,
+          imageUrl: users.imageUrl,
+          isLeaderboardUser: users.isLeaderboardUser,
+          groupDisciplinaryChoices: competitionMembers.groupDisciplinaryChoices,
+          luckyLoserChoices: competitionMembers.luckyLoserChoices,
+        }).from(competitionMembers).innerJoin(users, eq(users.id, competitionMembers.userId)).where(eq(competitionMembers.competitionId, id)),
+        db.select({ knockoutConfig: tournaments.knockoutConfig }).from(tournaments).where(eq(tournaments.id, competition.tournamentId)),
+        db.select({ id: teams.id, imageUrl: teams.imageUrl, groupName: groups.name })
+          .from(teams).leftJoin(groups, eq(groups.id, teams.groupId)).where(eq(teams.tournamentId, competition.tournamentId)),
+        db.select({ id: matches.id, homeTeamId: matches.homeTeamId, awayTeamId: matches.awayTeamId })
+          .from(matches).where(and(eq(matches.tournamentId, competition.tournamentId), eq(matches.stage, 'group'), eq(matches.status, 'completed'))),
       ]);
 
       const userInfoMap = new Map(
-        memberUsers.filter(u => !u.isLeaderboardUser).map(u => [u.userId, { username: u.username, imageUrl: u.imageUrl }])
+        memberUsersWithChoices.filter(u => !u.isLeaderboardUser).map(u => [u.userId, u])
       );
+
+      const koCfg = tournamentRow?.knockoutConfig as KnockoutConfig | null;
+      const teamImageMap = new Map(teamInfoRows.map(t => [t.id, t.imageUrl ?? null]));
+      const teamGroupMap = new Map<string, string>();
+      for (const t of teamInfoRows) { if (t.groupName) teamGroupMap.set(t.id, t.groupName); }
+
+      const groupMatchIds = completedGroupMatchRows.map(m => m.id);
+      const allGroupPreds = groupMatchIds.length > 0
+        ? await db.select({ userId: predictions.userId, matchId: predictions.matchId, homeScore: predictions.homeScore, awayScore: predictions.awayScore })
+            .from(predictions).where(and(eq(predictions.competitionId, id), inArray(predictions.matchId, groupMatchIds)))
+        : [];
+      const groupPredsByUser = new Map<string, typeof allGroupPreds>();
+      for (const p of allGroupPreds) {
+        if (!groupPredsByUser.has(p.userId)) groupPredsByUser.set(p.userId, []);
+        groupPredsByUser.get(p.userId)!.push(p);
+      }
+
+      // matchesByStageActual: used as baseline for trajectory tracing (non-first-round)
+      const matchesByStageActual = new Map<string, KnockoutMatchSlot[]>();
+      for (const m of allKoMatches) {
+        if (!matchesByStageActual.has(m.stage)) matchesByStageActual.set(m.stage, []);
+        matchesByStageActual.get(m.stage)!.push({ id: m.id, stage: m.stage, homeTeamId: m.homeTeamId ?? null, awayTeamId: m.awayTeamId ?? null });
+      }
 
       for (const bp of bpRows) {
         const userInfo = userInfoMap.get(bp.userId);
         if (!userInfo) continue;
         const bpPreds = bp.predictions as BracketPredictions;
+
+        // Resolve per-user predicted first-round teams from their group predictions
+        let firstRoundPredTeams: Record<string, { predHomeId: string | null; predAwayId: string | null }> = {};
+        let matchesByStageForPred: Map<string, KnockoutMatchSlot[]> = matchesByStageActual;
+
+        if (koCfg) {
+          const { firstRound, bracketSlots, directQualifiers } = koCfg;
+          const userGroupPredMap = new Map((groupPredsByUser.get(bp.userId) ?? []).map(p => [p.matchId, p]));
+          const simulatedMatches = completedGroupMatchRows
+            .filter(m => m.homeTeamId && m.awayTeamId)
+            .flatMap(m => {
+              const p = userGroupPredMap.get(m.id);
+              return p ? [{ homeTeamId: m.homeTeamId!, awayTeamId: m.awayTeamId!, homeScore: p.homeScore, awayScore: p.awayScore }] : [];
+            });
+          const predictedStandings = computeGroupStandings(simulatedMatches, teamGroupMap, (userInfo.groupDisciplinaryChoices ?? {}) as Record<string, string[]>);
+          const allFirstRoundMatches = allKoMatches.filter(m => m.stage === firstRound);
+          const resolvedSlots = resolveFirstRoundSlots(bracketSlots, predictedStandings, directQualifiers, allFirstRoundMatches.length, (userInfo.luckyLoserChoices ?? {}) as Record<string, string[]>);
+          allFirstRoundMatches.forEach((m, i) => {
+            firstRoundPredTeams[`${firstRound}_${i}`] = { predHomeId: resolvedSlots[`m${i + 1}_home`] ?? null, predAwayId: resolvedSlots[`m${i + 1}_away`] ?? null };
+          });
+
+          // Build matchesByStage where first-round slots use predicted teams so that
+          // later-round trajectory tracing via getUserPredictedTeamForKnockoutSlot
+          // correctly propagates predicted (not actual) first-round occupants.
+          const modMatchesByStage = new Map<string, KnockoutMatchSlot[]>();
+          const stageIdxCounter = new Map<string, number>();
+          for (const m of allKoMatches) {
+            if (!modMatchesByStage.has(m.stage)) modMatchesByStage.set(m.stage, []);
+            const idx = stageIdxCounter.get(m.stage) ?? 0;
+            stageIdxCounter.set(m.stage, idx + 1);
+            const slot = m.stage === firstRound ? firstRoundPredTeams[`${firstRound}_${idx}`] : null;
+            modMatchesByStage.get(m.stage)!.push({
+              id: m.id, stage: m.stage,
+              homeTeamId: slot ? slot.predHomeId : (m.homeTeamId ?? null),
+              awayTeamId: slot ? slot.predAwayId : (m.awayTeamId ?? null),
+            });
+          }
+          matchesByStageForPred = modMatchesByStage;
+        }
+
         for (const [bracketKey, matchId] of bracketKeyToMatchId) {
           const pred = bpPreds[bracketKey];
           if (!pred) continue;
-          // Unflip scores so they align with the actual match's home/away orientation
-          const homeScore = pred.flipped ? pred.awayScore : pred.homeScore;
-          const awayScore = pred.flipped ? pred.homeScore : pred.awayScore;
+
+          let predHomeTeamId: string | null = null;
+          let predAwayTeamId: string | null = null;
+
+          if (koCfg) {
+            const { firstRound } = koCfg;
+            const lastUnderscore = bracketKey.lastIndexOf('_');
+            const bracketStage = bracketKey.slice(0, lastUnderscore);
+            const matchIdx = parseInt(bracketKey.slice(lastUnderscore + 1), 10);
+            if (bracketStage === firstRound) {
+              predHomeTeamId = firstRoundPredTeams[bracketKey]?.predHomeId ?? null;
+              predAwayTeamId = firstRoundPredTeams[bracketKey]?.predAwayId ?? null;
+            } else {
+              predHomeTeamId = getUserPredictedTeamForKnockoutSlot(bracketStage, matchIdx, 'home', firstRound, matchesByStageForPred, bpPreds);
+              predAwayTeamId = getUserPredictedTeamForKnockoutSlot(bracketStage, matchIdx, 'away', firstRound, matchesByStageForPred, bpPreds);
+            }
+          }
+
           result.push({
             matchId,
             userId: bp.userId,
             username: userInfo.username,
             imageUrl: userInfo.imageUrl,
-            homeScore,
-            awayScore,
+            homeScore: pred.homeScore,
+            awayScore: pred.awayScore,
             progressingTeamId: pred.progressingTeamId ?? null,
             points: null,
+            flipped: pred.flipped ?? false,
+            predHomeTeamId,
+            predAwayTeamId,
+            predHomeTeamImageUrl: predHomeTeamId ? (teamImageMap.get(predHomeTeamId) ?? null) : null,
+            predAwayTeamImageUrl: predAwayTeamId ? (teamImageMap.get(predAwayTeamId) ?? null) : null,
           });
         }
       }
