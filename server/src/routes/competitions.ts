@@ -5,7 +5,7 @@ import { db } from '../db/client.js';
 import { competitions, competitionMembers, users, tournaments, predictions, matches, teams, bracketPredictions, bonusQuestions, bonusAnswers } from '../db/schema.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { CreateCompetitionSchema, CreatePredictionSchema, SaveBracketPredictionsSchema, DEFAULT_SCORING_CONFIG, SaveBonusAnswerSchema } from '@tournament-predictor/shared';
-import type { UserStatCardData } from '@tournament-predictor/shared';
+import type { UserStatCardData, ScoringConfig } from '@tournament-predictor/shared';
 import { recalculateAllScoresForTournament } from '../lib/scoringTrigger.js';
 import { subscribeLeaderboard, unsubscribeLeaderboard } from '../lib/leaderboardEvents.js';
 
@@ -397,6 +397,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
     const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
     if (!competition) return res.status(404).json({ error: 'Competition not found' });
+    const scoringConfig = competition.scoringConfig as ScoringConfig;
 
     if (!user.isAdmin) {
       const [membership] = await db
@@ -826,17 +827,20 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       }
     }
 
+    // Total points awarded across all predictors for this match from the correct-result and
+    // exact-score categories only (resultCount already includes perfect scorers as a subset).
+    const predictablePoints = (stat: MatchStat) =>
+      stat.resultCount * scoringConfig.correct_result + stat.perfectScorers.length * scoringConfig.exact_score;
+
     let mostPredictableMatch: MatchStat | null = null;
     for (const stat of matchStats.values()) {
       if (stat.resultCount === 0) continue;
       if (stat.predictorPoints.length === 0 || stat.predictorPoints.some(p => p.points === null)) continue;
       if (
         !mostPredictableMatch ||
-        stat.resultCount > mostPredictableMatch.resultCount ||
-        (stat.resultCount === mostPredictableMatch.resultCount &&
-          (stat.perfectScorers.length > mostPredictableMatch.perfectScorers.length ||
-            (stat.perfectScorers.length === mostPredictableMatch.perfectScorers.length &&
-              (stat.scheduledAt?.getTime() ?? 0) < (mostPredictableMatch.scheduledAt?.getTime() ?? 0))))
+        predictablePoints(stat) > predictablePoints(mostPredictableMatch) ||
+        (predictablePoints(stat) === predictablePoints(mostPredictableMatch) &&
+          (stat.scheduledAt?.getTime() ?? 0) < (mostPredictableMatch.scheduledAt?.getTime() ?? 0))
       ) {
         mostPredictableMatch = stat;
       }
