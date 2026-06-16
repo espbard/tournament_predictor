@@ -119,6 +119,7 @@ function collageSliceLayout(index: number, total: number): SliceLayout {
 }
 
 const DARK_BLUE = 'hsl(231, 70%, 28%)';
+const DARK_RED = 'hsl(358, 70%, 32%)';
 
 // Renders `**bold**` markers in stat text (e.g. usernames) as <strong> spans.
 function renderStatistic(text: string) {
@@ -178,7 +179,7 @@ export default function UserStatCard({ competitionId, data, iconOnRight, onMatch
 
   const content = (
     <div className="min-w-0 flex-1 p-6">
-      <h3 className="text-lg font-semibold uppercase tracking-wide" style={{ color: DARK_BLUE }}>
+      <h3 className="text-lg font-bold uppercase tracking-wide" style={{ color: DARK_RED }}>
         {title}
       </h3>
       <p className="mt-2 text-sm">{renderStatistic(statistic)}</p>
