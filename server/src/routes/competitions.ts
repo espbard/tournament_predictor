@@ -15,6 +15,18 @@ function generateInviteCode(): string {
   return Math.floor(10000 + Math.random() * 90000).toString();
 }
 
+function formatUserList(names: string[]): string {
+  if (names.length === 1) return names[0];
+  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  return `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`;
+}
+
+function describeOutcome(homeTeamName: string, awayTeamName: string, homeScore: number, awayScore: number): string {
+  if (homeScore > awayScore) return `${homeTeamName} to beat ${awayTeamName}`;
+  if (awayScore > homeScore) return `${awayTeamName} to beat ${homeTeamName}`;
+  return `${homeTeamName} to draw against ${awayTeamName}`;
+}
+
 router.get('/', requireAuth, async (_req, res) => {
   try {
     const user = res.locals.user;
@@ -423,7 +435,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
     const cards: UserStatCardData[] = [];
 
-    // ── Best prediction: rarest match where exactly one player got a perfect score ──
+    // ── Best/worst prediction: per-match outcome stats ──
     interface MatchStat {
       homeTeamId: string | null;
       awayTeamId: string | null;
@@ -432,6 +444,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       scheduledAt: Date | null;
       perfectScorers: { userId: string; username: string; imageUrl: string | null }[];
       resultCount: number;
+      wrongPredictors: { userId: string; username: string; imageUrl: string | null; predHomeScore: number; predAwayScore: number }[];
     }
     const matchStats = new Map<string, MatchStat>();
     for (const row of rows) {
@@ -446,6 +459,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           scheduledAt: row.scheduledAt,
           perfectScorers: [],
           resultCount: 0,
+          wrongPredictors: [],
         };
         matchStats.set(row.matchId, stat);
       }
@@ -454,7 +468,17 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       }
       const predictedResult = Math.sign(row.predHomeScore - row.predAwayScore);
       const actualResult = Math.sign(row.actualHomeScore - row.actualAwayScore);
-      if (predictedResult === actualResult) stat.resultCount += 1;
+      if (predictedResult === actualResult) {
+        stat.resultCount += 1;
+      } else {
+        stat.wrongPredictors.push({
+          userId: row.userId,
+          username: row.username,
+          imageUrl: row.imageUrl,
+          predHomeScore: row.predHomeScore,
+          predAwayScore: row.predAwayScore,
+        });
+      }
     }
 
     let bestPredictionMatch: MatchStat | null = null;
@@ -470,18 +494,32 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       }
     }
 
+    let worstPredictionMatch: MatchStat | null = null;
+    for (const stat of matchStats.values()) {
+      if (stat.wrongPredictors.length === 0) continue;
+      if (
+        !worstPredictionMatch ||
+        stat.wrongPredictors.length < worstPredictionMatch.wrongPredictors.length ||
+        (stat.wrongPredictors.length === worstPredictionMatch.wrongPredictors.length &&
+          (stat.scheduledAt?.getTime() ?? 0) < (worstPredictionMatch.scheduledAt?.getTime() ?? 0))
+      ) {
+        worstPredictionMatch = stat;
+      }
+    }
+
+    const neededTeamIds = new Set<string>();
+    for (const m of [bestPredictionMatch, worstPredictionMatch]) {
+      if (m?.homeTeamId) neededTeamIds.add(m.homeTeamId);
+      if (m?.awayTeamId) neededTeamIds.add(m.awayTeamId);
+    }
+    const teamRows =
+      neededTeamIds.size > 0 ? await db.select().from(teams).where(inArray(teams.id, [...neededTeamIds])) : [];
+    const teamNameMap = new Map(teamRows.map(t => [t.id, t.name]));
+    const teamName = (teamId: string | null) => (teamId ? teamNameMap.get(teamId) ?? 'Unknown' : 'Unknown');
+
     if (bestPredictionMatch) {
-      const teamIds = [bestPredictionMatch.homeTeamId, bestPredictionMatch.awayTeamId].filter(
-        (tid): tid is string => tid !== null
-      );
-      const teamRows = teamIds.length > 0 ? await db.select().from(teams).where(inArray(teams.id, teamIds)) : [];
-      const teamNameMap = new Map(teamRows.map(t => [t.id, t.name]));
-      const homeTeamName = bestPredictionMatch.homeTeamId
-        ? teamNameMap.get(bestPredictionMatch.homeTeamId) ?? 'Unknown'
-        : 'Unknown';
-      const awayTeamName = bestPredictionMatch.awayTeamId
-        ? teamNameMap.get(bestPredictionMatch.awayTeamId) ?? 'Unknown'
-        : 'Unknown';
+      const homeTeamName = teamName(bestPredictionMatch.homeTeamId);
+      const awayTeamName = teamName(bestPredictionMatch.awayTeamId);
       const winner = bestPredictionMatch.perfectScorers[0];
       const resultText =
         bestPredictionMatch.resultCount === 1
@@ -507,6 +545,39 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         ? { type: 'user', id: unluckiest.userId, name: unluckiest.username, imageUrl: unluckiest.imageUrl }
         : null,
     });
+
+    if (worstPredictionMatch) {
+      const homeTeamName = teamName(worstPredictionMatch.homeTeamId);
+      const awayTeamName = teamName(worstPredictionMatch.awayTeamId);
+
+      const wrongGroups = new Map<string, typeof worstPredictionMatch.wrongPredictors>();
+      for (const p of worstPredictionMatch.wrongPredictors) {
+        const key = `${p.predHomeScore}-${p.predAwayScore}`;
+        if (!wrongGroups.has(key)) wrongGroups.set(key, []);
+        wrongGroups.get(key)!.push(p);
+      }
+      let worstGroup = [...wrongGroups.values()][0];
+      for (const group of wrongGroups.values()) {
+        if (group.length > worstGroup.length) worstGroup = group;
+      }
+      worstGroup = [...worstGroup].sort((a, b) => a.username.localeCompare(b.username));
+
+      const wrongOutcome = describeOutcome(homeTeamName, awayTeamName, worstGroup[0].predHomeScore, worstGroup[0].predAwayScore);
+      const correctOutcome = describeOutcome(
+        homeTeamName,
+        awayTeamName,
+        worstPredictionMatch.homeScore,
+        worstPredictionMatch.awayScore
+      );
+      const namesText = formatUserList(worstGroup.map(p => p.username));
+
+      cards.push({
+        id: 'worstPrediction',
+        title: 'Worst prediction',
+        statistic: `${namesText} predicted ${wrongOutcome} (${worstGroup[0].predHomeScore} - ${worstGroup[0].predAwayScore}). Everyone else predicted ${correctOutcome}.`,
+        subject: { type: 'user', id: worstGroup[0].userId, name: worstGroup[0].username, imageUrl: worstGroup[0].imageUrl },
+      });
+    }
 
     res.json(cards);
   } catch (err) {
