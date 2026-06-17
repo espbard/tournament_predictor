@@ -182,7 +182,7 @@ export default function UserPredictionsPage() {
                   {allGroupMatches.map((m, idx) => {
                     const isCurrent = idx === currentMatchIdx;
                     const pred = predMap[m.id];
-                    const hasPred = m.status === 'completed' || !!pred;
+                    const hasPred = !!pred;
                     return (
                       <button
                         key={m.id}
