@@ -806,10 +806,19 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
     const userInfo = new Map<string, { username: string; imageUrl: string | null }>();
     const pointsByUserMatch = new Map<string, number>();
+    const predCountByUser = new Map<string, number>();
     for (const row of rows) {
       userInfo.set(row.userId, { username: row.username, imageUrl: row.imageUrl });
       pointsByUserMatch.set(`${row.userId}|${row.matchId}`, row.points ?? 0);
+      predCountByUser.set(row.userId, (predCountByUser.get(row.userId) ?? 0) + 1);
     }
+
+    const completedMatchCountInCompetition = new Set(rows.map(r => r.matchId)).size;
+    const usersWithAllPredictions = new Set(
+      [...predCountByUser.entries()]
+        .filter(([, count]) => count === completedMatchCountInCompetition)
+        .map(([userId]) => userId)
+    );
 
     const recentPointsByUser = new Map<string, number>();
     for (const row of rows) {
@@ -830,6 +839,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     if (completedMatchesByRecency.length > 0) {
       const droughtByUser = new Map<string, number>();
       for (const userId of userInfo.keys()) {
+        if (!usersWithAllPredictions.has(userId)) continue;
         let drought = 0;
         for (const match of completedMatchesByRecency) {
           const points = pointsByUserMatch.get(`${userId}|${match.id}`) ?? 0;
@@ -1245,6 +1255,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     const predictedGoalsByUser = new Map<string, number>();
     for (const row of rows) {
       if (row.actualHomeScore === null || row.actualAwayScore === null) continue;
+      if (!usersWithAllPredictions.has(row.userId)) continue;
       predictedGoalsByUser.set(
         row.userId,
         (predictedGoalsByUser.get(row.userId) ?? 0) + row.predHomeScore + row.predAwayScore

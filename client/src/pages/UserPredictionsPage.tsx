@@ -182,7 +182,7 @@ export default function UserPredictionsPage() {
                   {allGroupMatches.map((m, idx) => {
                     const isCurrent = idx === currentMatchIdx;
                     const pred = predMap[m.id];
-                    const hasPred = m.status === 'completed' || !!pred;
+                    const hasPred = !!pred;
                     return (
                       <button
                         key={m.id}
@@ -247,7 +247,7 @@ export default function UserPredictionsPage() {
                             )}
                             <span className="flex-1 text-sm font-medium truncate">{match.homeTeamName ?? 'TBD'}</span>
                             <span className={`w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400 border border-amber-400 bg-amber-50/70 dark:bg-amber-900/30' : ''}`}>
-                              {pred ? pred.homeScore : (hasActual ? match.homeScore : '—')}
+                              {pred ? pred.homeScore : '—'}
                             </span>
                           </div>
                           <div className="h-px bg-border" />
@@ -259,7 +259,7 @@ export default function UserPredictionsPage() {
                             )}
                             <span className="flex-1 text-sm font-medium truncate">{match.awayTeamName ?? 'TBD'}</span>
                             <span className={`w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400 border border-amber-400 bg-amber-50/70 dark:bg-amber-900/30' : ''}`}>
-                              {pred ? pred.awayScore : (hasActual ? match.awayScore : '—')}
+                              {pred ? pred.awayScore : '—'}
                             </span>
                           </div>
                         </div>
