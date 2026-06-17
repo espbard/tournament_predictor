@@ -1623,7 +1623,6 @@ export default function CompetitionDetailPage() {
             {/* Standard table (hidden on TV for leaderboard users) */}
             <div className={`overflow-x-auto rounded-lg border mt-4 dark:bg-white/5 p-2 ${user?.isLeaderboardUser ? 'tv:hidden' : ''}`}>
               <div style={{ position: 'relative' }}>
-                <SoccerKickAnimation />
                 <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b bg-muted/50 text-muted-foreground">
@@ -1656,7 +1655,7 @@ export default function CompetitionDetailPage() {
                               {entry.username}
                               {isMe && <span className="ml-1 font-normal text-muted-foreground">{t('competitionDetail.leaderboard.you')}</span>}
                             </span>
-                            {entry.inactive && <span className="inline-block w-2 h-2 rounded-full bg-muted-foreground/40 flex-shrink-0" title={t('competitionDetail.leaderboard.inactiveLegend')} />}
+                            {entry.inactive && <span className="inline-block w-2 h-2 rounded-full bg-red-500 flex-shrink-0" title={t('competitionDetail.leaderboard.inactiveLegend')} />}
                           </Link>
                         </td>
                         <td className="px-2 py-2.5 text-center font-bold text-sm border-r">{entry.totalPoints}</td>
@@ -1690,7 +1689,7 @@ export default function CompetitionDetailPage() {
                       <Link to={`/competitions/${id}/predictions/${entry.userId}`} className="flex items-center gap-3 min-w-0 hover:opacity-80 transition-opacity">
                         <img src={entry.imageUrl ?? '/default-avatar.png'} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0" />
                         <span className="font-medium text-base truncate">{entry.username}</span>
-                        {entry.inactive && <span className="inline-block w-2 h-2 rounded-full bg-muted-foreground/40 flex-shrink-0" />}
+                        {entry.inactive && <span className="inline-block w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />}
                       </Link>
                     </td>
                     <td className="px-3 py-3 text-center font-bold text-base border-r">{entry.totalPoints}</td>
@@ -1748,7 +1747,7 @@ export default function CompetitionDetailPage() {
 
             {leaderboard.some(e => e.inactive) && (
               <p className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground mt-3">
-                <span className="inline-block w-2 h-2 rounded-full bg-muted-foreground/40 flex-shrink-0" />
+                <span className="inline-block w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />
                 {t('competitionDetail.leaderboard.inactiveLegend')}
               </p>
             )}
