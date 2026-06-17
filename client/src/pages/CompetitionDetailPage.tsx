@@ -1768,7 +1768,11 @@ export default function CompetitionDetailPage() {
                 const actualGD = (match.homeScore ?? 0) - (match.awayScore ?? 0);
                 const aGDDist = Math.abs((a.homeScore - a.awayScore) - actualGD);
                 const bGDDist = Math.abs((b.homeScore - b.awayScore) - actualGD);
-                return aGDDist - bGDDist;
+                const gdDiff = aGDDist - bGDDist;
+                if (gdDiff !== 0) return gdDiff;
+                const aHomeDist = Math.abs(a.homeScore - (match.homeScore ?? 0));
+                const bHomeDist = Math.abs(b.homeScore - (match.homeScore ?? 0));
+                return aHomeDist - bHomeDist;
               });
 
             const isKnockout = match.stage !== 'group';
