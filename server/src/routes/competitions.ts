@@ -1167,7 +1167,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
           thePatriotCard = {
             id: 'thePatriot',
-            title: 'The Patriot 🇳🇴',
+            title: lang === 'no' ? 'Patrioten 🇳🇴' : 'The Patriot 🇳🇴',
             statistic:
               lang === 'no'
                 ? `${formatUserList(patriotGroup.map(u => u.username), lang)} er den største patrioten! De har tippet at Norge har vunnet ${winner.wins} av sine ${norwayMatches.length} kamper så langt! Og at de har scoret hele ${winner.gf} mål og ${concededClause}`
