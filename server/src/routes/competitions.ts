@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { eq, and, inArray, or, ilike } from 'drizzle-orm';
+import { eq, and, inArray, or, ilike, desc } from 'drizzle-orm';
 import { generateId } from 'lucia';
 import { db } from '../db/client.js';
 import { competitions, competitionMembers, users, tournaments, predictions, matches, teams, groups, bracketPredictions, bonusQuestions, bonusAnswers } from '../db/schema.js';
@@ -310,6 +310,23 @@ router.get('/:id/leaderboard', requireAuth, async (req, res) => {
     }));
     rowsWithTotal.sort((a, b) => b.totalPoints - a.totalPoints);
 
+    const recentCompletedMatches = await db
+      .select({ id: matches.id })
+      .from(matches)
+      .where(and(eq(matches.tournamentId, competition.tournamentId), eq(matches.status, 'completed')))
+      .orderBy(desc(matches.scheduledAt))
+      .limit(5);
+
+    const recentMatchIds = recentCompletedMatches.map(m => m.id);
+    const usersWithRecentPreds = new Set<string>();
+    if (recentMatchIds.length > 0) {
+      const recentPredRows = await db
+        .select({ userId: predictions.userId })
+        .from(predictions)
+        .where(and(eq(predictions.competitionId, id), inArray(predictions.matchId, recentMatchIds)));
+      for (const p of recentPredRows) usersWithRecentPreds.add(p.userId);
+    }
+
     let rank = 1;
     const leaderboard = rowsWithTotal.map((row, i) => {
       if (i > 0 && row.totalPoints < rowsWithTotal[i - 1].totalPoints) rank = i + 1;
@@ -329,6 +346,7 @@ router.get('/:id/leaderboard', requireAuth, async (req, res) => {
           correctWinnerPoints: row.correctWinnerPoints,
           bonusQuestionPoints: row.bonusQuestionPoints,
         },
+        inactive: recentMatchIds.length >= 5 && !usersWithRecentPreds.has(row.userId),
       };
     });
 

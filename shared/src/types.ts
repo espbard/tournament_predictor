@@ -118,6 +118,7 @@ export interface LeaderboardEntry {
   totalPoints: number;
   rank: number;
   breakdown: ScoreBreakdown;
+  inactive?: boolean;
 }
 
 export interface BracketMatchPrediction {

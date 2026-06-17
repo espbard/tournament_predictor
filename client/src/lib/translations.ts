@@ -110,6 +110,7 @@ const translations = {
         noScores: 'No scores yet.',
         you: '(you)',
         points: 'points',
+        inactiveLegend: '= Inactive — missing predictions for recent matches',
       },
       predictions: {
         title: 'Predictions',
@@ -525,6 +526,7 @@ const translations = {
         noScores: 'Ingen poeng ennå.',
         you: '(deg)',
         points: 'poeng',
+        inactiveLegend: '= Inaktiv — mangler tips på de siste kampene',
       },
       predictions: {
         title: 'Tips',
