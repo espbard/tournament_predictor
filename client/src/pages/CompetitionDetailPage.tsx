@@ -626,12 +626,14 @@ export default function CompetitionDetailPage() {
   }, [allGroupMatchesList]);
 
   const deadlinePassed =
-    (competition?.predictionDeadline ? new Date() > new Date(competition.predictionDeadline) : false)
-    || tournament?.status === 'active'
-    || tournament?.status === 'completed';
+    !user?.isComparisonUser && (
+      (competition?.predictionDeadline ? new Date() > new Date(competition.predictionDeadline) : false)
+      || tournament?.status === 'active'
+      || tournament?.status === 'completed'
+    );
 
   const hasKnockoutPredictions = Object.keys(bracketPreds ?? {}).length > 0;
-  const isLocked = deadlinePassed || (groupStageLocked && hasKnockoutPredictions);
+  const isLocked = deadlinePassed || (!user?.isComparisonUser && groupStageLocked && hasKnockoutPredictions);
 
   async function savePrediction(matchId: string) {
     const edit = localEditsRef.current[matchId];
