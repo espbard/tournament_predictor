@@ -55,22 +55,36 @@ async function start() {
   await migrate(db, { migrationsFolder: path.join(__dirname, '../drizzle') });
   // Defensive: ensure is_leaderboard_user column exists regardless of migration state
   await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS "is_leaderboard_user" boolean NOT NULL DEFAULT false`);
+  // Defensive: ensure players table exists regardless of migration state
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "players" (
+      "id" text PRIMARY KEY NOT NULL,
+      "tournament_id" text NOT NULL REFERENCES "tournaments"("id") ON DELETE CASCADE,
+      "name" text NOT NULL,
+      "games_played" integer NOT NULL DEFAULT 0,
+      "goals_scored" integer NOT NULL DEFAULT 0
+    )
+  `);
   console.log('Migrations complete.');
 
   // Seed initial Haaland player if no players exist
-  const existingPlayers = await db.select().from(players).limit(1);
-  if (existingPlayers.length === 0) {
-    const [firstTournament] = await db.select().from(tournaments).limit(1);
-    if (firstTournament) {
-      await db.insert(players).values({
-        id: generateId(15),
-        tournamentId: firstTournament.id,
-        name: 'Erling Haaland',
-        gamesPlayed: 1,
-        goalsScored: 2,
-      });
-      console.log('Seeded initial player: Erling Haaland');
+  try {
+    const existingPlayers = await db.select().from(players).limit(1);
+    if (existingPlayers.length === 0) {
+      const [firstTournament] = await db.select().from(tournaments).limit(1);
+      if (firstTournament) {
+        await db.insert(players).values({
+          id: generateId(15),
+          tournamentId: firstTournament.id,
+          name: 'Erling Haaland',
+          gamesPlayed: 1,
+          goalsScored: 2,
+        });
+        console.log('Seeded initial player: Erling Haaland');
+      }
     }
+  } catch (err) {
+    console.warn('Player seed skipped:', err);
   }
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
