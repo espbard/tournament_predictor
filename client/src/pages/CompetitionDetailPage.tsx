@@ -1589,7 +1589,7 @@ export default function CompetitionDetailPage() {
                 onChange={e => setShowComparisonUsers(e.target.checked)}
                 className="rounded"
               />
-              Show comparison users (AI bots)
+              {language === 'no' ? 'Vis AI brukere' : 'Show AI users'}
             </label>
           )}
           {leaderboard.length === 0 ? (
