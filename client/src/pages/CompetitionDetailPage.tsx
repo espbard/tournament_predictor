@@ -1596,8 +1596,8 @@ export default function CompetitionDetailPage() {
           {leaderboard.length === 0 ? (
             <p className="text-sm text-muted-foreground py-4 text-center">{t('competitionDetail.leaderboard.noScores')}</p>
           ) : (() => {
-          const nonComparisonEntries = leaderboard.filter(e => !e.isComparisonUser);
-          const lastRank = nonComparisonEntries.length > 0 ? nonComparisonEntries[nonComparisonEntries.length - 1].rank : leaderboard[leaderboard.length - 1].rank;
+          const rankEntries = showComparisonUsers ? leaderboard : leaderboard.filter(e => !e.isComparisonUser);
+          const lastRank = rankEntries.length > 0 ? rankEntries[rankEntries.length - 1].rank : leaderboard[leaderboard.length - 1].rank;
           const rankColor = (rank: number) => {
             if (rank === 1) return 'text-yellow-500';
             if (rank === 2) return 'text-slate-400';
@@ -1629,10 +1629,10 @@ export default function CompetitionDetailPage() {
                       {tournament && <p className="text-sm text-muted-foreground">{tournament.name}</p>}
                     </div>
                   </div>
-                  <PlayerPodium leaderboard={leaderboard.filter(e => !e.isComparisonUser)} large={true} competitionId={id} />
+                  <PlayerPodium leaderboard={showComparisonUsers ? leaderboard : leaderboard.filter(e => !e.isComparisonUser)} large={true} competitionId={id} />
                 </div>
               ) : (
-                <PlayerPodium leaderboard={leaderboard.filter(e => !e.isComparisonUser)} large={false} competitionId={id} />
+                <PlayerPodium leaderboard={showComparisonUsers ? leaderboard : leaderboard.filter(e => !e.isComparisonUser)} large={false} competitionId={id} />
               )
             )}
 
@@ -1661,9 +1661,9 @@ export default function CompetitionDetailPage() {
                     const isComparison = entry.isComparisonUser;
                     const b = entry.breakdown;
                     return (
-                      <tr key={entry.userId} className={isComparison ? 'opacity-60 italic bg-muted/30' : (rowBg(entry.rank) || (isMe ? 'bg-primary/5' : ''))}>
-                        <td className={`pl-3 pr-2 py-2.5 font-bold text-center ${isComparison ? 'text-muted-foreground' : rankColor(entry.rank)}`}>
-                          {isComparison ? '—' : entry.rank}
+                      <tr key={entry.userId} className={isComparison && !showComparisonUsers ? 'opacity-60 italic bg-muted/30' : `${rowBg(entry.rank) || (isMe ? 'bg-primary/5' : '')}${isComparison ? ' italic opacity-80' : ''}`}>
+                        <td className={`pl-3 pr-2 py-2.5 font-bold text-center ${isComparison && !showComparisonUsers ? 'text-muted-foreground' : rankColor(entry.rank)}`}>
+                          {isComparison && !showComparisonUsers ? '—' : entry.rank}
                         </td>
                         <td className="px-3 py-2.5">
                           <Link to={`/competitions/${id}/predictions/${entry.userId}`} className="flex items-center gap-2 min-w-0 hover:opacity-80 transition-opacity">
