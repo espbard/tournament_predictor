@@ -5,6 +5,16 @@ import { api } from '@/lib/api';
 import { useT } from '@/lib/useT';
 import type { User } from '@tournament-predictor/shared';
 
+interface CopyReport {
+  username: string;
+  tournament: string;
+  source: string;
+  targets: string[];
+  matchPredsCopied: number;
+  bracketCopied: boolean;
+  bonusAnswersCopied: number;
+}
+
 interface Props {
   maintenanceMode: boolean;
 }
@@ -13,6 +23,12 @@ export default function AdminHomePage({ maintenanceMode }: Props) {
   const { t } = useT();
   const queryClient = useQueryClient();
   const [pending, setPending] = useState(false);
+  const [copyReport, setCopyReport] = useState<CopyReport[] | null>(null);
+
+  const copyPredictionsMutation = useMutation({
+    mutationFn: () => api.post<{ ok: boolean; report: CopyReport[] }>('/competitions/admin/copy-comparison-predictions', {}),
+    onSuccess: (data) => setCopyReport(data.report),
+  });
 
   const toggleMutation = useMutation({
     mutationFn: (value: boolean) =>
@@ -86,6 +102,43 @@ export default function AdminHomePage({ maintenanceMode }: Props) {
             />
           </button>
         </div>
+      </div>
+
+      <div className="mt-8 rounded-lg border p-5">
+        <div className="flex items-center justify-between gap-4 mb-3">
+          <div>
+            <h2 className="font-semibold">Sync AI user predictions</h2>
+            <p className="text-sm text-muted-foreground">Copies each AI user's predictions to all other competitions sharing the same tournament.</p>
+          </div>
+          <button
+            onClick={() => { setCopyReport(null); copyPredictionsMutation.mutate(); }}
+            disabled={copyPredictionsMutation.isPending}
+            className="shrink-0 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          >
+            {copyPredictionsMutation.isPending ? 'Running…' : 'Run'}
+          </button>
+        </div>
+        {copyPredictionsMutation.isError && (
+          <p className="text-sm text-destructive">Failed to run sync.</p>
+        )}
+        {copyReport !== null && (
+          copyReport.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nothing to copy — either no AI users have predictions, or all competitions are already in sync.</p>
+          ) : (
+            <ul className="mt-2 space-y-2 text-sm">
+              {copyReport.map((r, i) => (
+                <li key={i} className="rounded border bg-muted/20 px-3 py-2">
+                  <span className="font-medium">{r.username}</span>
+                  <span className="text-muted-foreground"> — copied from </span>
+                  <span className="font-medium">"{r.source}"</span>
+                  <span className="text-muted-foreground"> to </span>
+                  <span className="font-medium">{r.targets.map(t => `"${t}"`).join(', ')}</span>
+                  <span className="text-muted-foreground"> ({r.matchPredsCopied} match preds{r.bracketCopied ? ', bracket' : ''}{r.bonusAnswersCopied > 0 ? `, ${r.bonusAnswersCopied} bonus answers` : ''})</span>
+                </li>
+              ))}
+            </ul>
+          )
+        )}
       </div>
 
       {userList && userList.length > 0 && (

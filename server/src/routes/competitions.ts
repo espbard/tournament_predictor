@@ -2421,4 +2421,189 @@ router.post('/:id/bonus-answers', requireAuth, async (req, res) => {
   }
 });
 
+// ── Admin: copy comparison user predictions across same-tournament competitions ──
+
+router.post('/admin/copy-comparison-predictions', requireAdmin, async (req, res) => {
+  try {
+    const comparisonUsers = await db
+      .select({ id: users.id, username: users.username })
+      .from(users)
+      .where(eq(users.isComparisonUser, true));
+
+    const report: Array<{
+      username: string;
+      tournament: string;
+      source: string;
+      targets: string[];
+      matchPredsCopied: number;
+      bracketCopied: boolean;
+      bonusAnswersCopied: number;
+    }> = [];
+
+    const affectedTournamentIds = new Set<string>();
+
+    for (const compUser of comparisonUsers) {
+      const memberships = await db
+        .select({
+          competitionId: competitionMembers.competitionId,
+          tournamentId: competitions.tournamentId,
+          competitionName: competitions.name,
+          groupDisciplinaryChoices: competitionMembers.groupDisciplinaryChoices,
+          luckyLoserChoices: competitionMembers.luckyLoserChoices,
+        })
+        .from(competitionMembers)
+        .innerJoin(competitions, eq(competitions.id, competitionMembers.competitionId))
+        .where(eq(competitionMembers.userId, compUser.id));
+
+      const byTournament = new Map<string, typeof memberships>();
+      for (const m of memberships) {
+        if (!byTournament.has(m.tournamentId)) byTournament.set(m.tournamentId, []);
+        byTournament.get(m.tournamentId)!.push(m);
+      }
+
+      for (const [tournamentId, comps] of byTournament) {
+        if (comps.length <= 1) continue;
+
+        let sourceComp: typeof comps[number] | null = null;
+        let maxPredCount = -1;
+
+        for (const comp of comps) {
+          const rows = await db
+            .select({ id: predictions.id })
+            .from(predictions)
+            .where(and(eq(predictions.competitionId, comp.competitionId), eq(predictions.userId, compUser.id)));
+          if (rows.length > maxPredCount) {
+            maxPredCount = rows.length;
+            sourceComp = comp;
+          }
+        }
+
+        if (!sourceComp || maxPredCount === 0) continue;
+
+        const sourcePreds = await db
+          .select()
+          .from(predictions)
+          .where(and(eq(predictions.competitionId, sourceComp.competitionId), eq(predictions.userId, compUser.id)));
+
+        const [sourceBracket] = await db
+          .select()
+          .from(bracketPredictions)
+          .where(and(
+            eq(bracketPredictions.competitionId, sourceComp.competitionId),
+            eq(bracketPredictions.userId, compUser.id),
+          ));
+
+        const sourceAnswers = await db
+          .select()
+          .from(bonusAnswers)
+          .where(and(
+            eq(bonusAnswers.competitionId, sourceComp.competitionId),
+            eq(bonusAnswers.userId, compUser.id),
+          ));
+
+        const targets = comps.filter(c => c.competitionId !== sourceComp!.competitionId);
+        const copiedTargetNames: string[] = [];
+
+        for (const target of targets) {
+          if (sourcePreds.length > 0) {
+            await db.delete(predictions).where(and(
+              eq(predictions.competitionId, target.competitionId),
+              eq(predictions.userId, compUser.id),
+            ));
+            await db.insert(predictions).values(
+              sourcePreds.map(p => ({
+                id: generateId(15),
+                competitionId: target.competitionId,
+                userId: compUser.id,
+                matchId: p.matchId,
+                homeScore: p.homeScore,
+                awayScore: p.awayScore,
+                progressingTeamId: p.progressingTeamId,
+                points: null,
+              })),
+            );
+          }
+
+          if (sourceBracket) {
+            await db.insert(bracketPredictions)
+              .values({
+                competitionId: target.competitionId,
+                userId: compUser.id,
+                predictions: sourceBracket.predictions,
+                updatedAt: new Date(),
+              })
+              .onConflictDoUpdate({
+                target: [bracketPredictions.competitionId, bracketPredictions.userId],
+                set: { predictions: sourceBracket.predictions, updatedAt: new Date() },
+              });
+          }
+
+          if (sourceAnswers.length > 0) {
+            const questionIds = [...new Set(sourceAnswers.map(a => a.questionId))];
+            const validQuestions = await db
+              .select({ id: bonusQuestions.id })
+              .from(bonusQuestions)
+              .where(and(eq(bonusQuestions.tournamentId, tournamentId), inArray(bonusQuestions.id, questionIds)));
+            const validQuestionIds = new Set(validQuestions.map(q => q.id));
+            const answersToInsert = sourceAnswers.filter(a => validQuestionIds.has(a.questionId));
+            if (answersToInsert.length > 0) {
+              await db.delete(bonusAnswers).where(and(
+                eq(bonusAnswers.competitionId, target.competitionId),
+                eq(bonusAnswers.userId, compUser.id),
+              ));
+              await db.insert(bonusAnswers).values(
+                answersToInsert.map(a => ({
+                  id: generateId(15),
+                  questionId: a.questionId,
+                  competitionId: target.competitionId,
+                  userId: compUser.id,
+                  answer: a.answer,
+                  points: null,
+                })),
+              );
+            }
+          }
+
+          if (sourceComp.groupDisciplinaryChoices || sourceComp.luckyLoserChoices) {
+            await db.update(competitionMembers)
+              .set({
+                groupDisciplinaryChoices: sourceComp.groupDisciplinaryChoices,
+                luckyLoserChoices: sourceComp.luckyLoserChoices,
+              })
+              .where(and(
+                eq(competitionMembers.competitionId, target.competitionId),
+                eq(competitionMembers.userId, compUser.id),
+              ));
+          }
+
+          copiedTargetNames.push(target.competitionName);
+          affectedTournamentIds.add(tournamentId);
+        }
+
+        report.push({
+          username: compUser.username,
+          tournament: tournamentId,
+          source: sourceComp.competitionName,
+          targets: copiedTargetNames,
+          matchPredsCopied: sourcePreds.length,
+          bracketCopied: !!sourceBracket,
+          bonusAnswersCopied: sourceAnswers.length,
+        });
+      }
+    }
+
+    // Recalculate scores for all affected tournaments
+    await Promise.all([...affectedTournamentIds].map(tid =>
+      recalculateAllScoresForTournament(tid).catch(err =>
+        console.error('Scoring recalculate error:', err)
+      )
+    ));
+
+    res.json({ ok: true, report });
+  } catch (err) {
+    console.error('Copy comparison predictions error:', err);
+    res.status(500).json({ error: 'Failed to copy predictions' });
+  }
+});
+
 export { router as competitionsRouter };
