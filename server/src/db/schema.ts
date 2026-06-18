@@ -188,6 +188,16 @@ export const bonusQuestions = pgTable('bonus_questions', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
+export const players = pgTable('players', {
+  id: text('id').primaryKey(),
+  tournamentId: text('tournament_id')
+    .notNull()
+    .references(() => tournaments.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  gamesPlayed: integer('games_played').notNull().default(0),
+  goalsScored: integer('goals_scored').notNull().default(0),
+});
+
 export const bonusAnswers = pgTable('bonus_answers', {
   id: text('id').primaryKey(),
   questionId: text('question_id')
@@ -218,6 +228,14 @@ export const tournamentsRelations = relations(tournaments, ({ many }) => ({
   matches: many(matches),
   competitions: many(competitions),
   bonusQuestions: many(bonusQuestions),
+  players: many(players),
+}));
+
+export const playersRelations = relations(players, ({ one }) => ({
+  tournament: one(tournaments, {
+    fields: [players.tournamentId],
+    references: [tournaments.id],
+  }),
 }));
 
 export const groupsRelations = relations(groups, ({ one, many }) => ({

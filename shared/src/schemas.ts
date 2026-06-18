@@ -132,6 +132,21 @@ export const UpdateBonusQuestionSchema = z.object({
   correctAnswer: z.string().nullable().optional(),
 });
 
+export const CreatePlayerSchema = z.object({
+  name: z.string().min(1).max(100),
+  gamesPlayed: z.number().int().min(0).optional(),
+  goalsScored: z.number().int().min(0).optional(),
+});
+
+export const UpdatePlayerSchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  gamesPlayed: z.number().int().min(0).optional(),
+  goalsScored: z.number().int().min(0).optional(),
+});
+
+export type CreatePlayerInput = z.infer<typeof CreatePlayerSchema>;
+export type UpdatePlayerInput = z.infer<typeof UpdatePlayerSchema>;
+
 export const SaveBonusAnswerSchema = z.object({
   questionId: z.string().min(1),
   answer: z.string().min(1),

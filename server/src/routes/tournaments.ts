@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { eq, inArray, and, isNotNull } from 'drizzle-orm';
 import { db } from '../db/client';
-import { tournaments, teams, matches, groups, bonusQuestions, competitions } from '../db/schema';
+import { tournaments, teams, matches, groups, bonusQuestions, competitions, players } from '../db/schema';
 import { requireAuth, requireAdmin } from '../middleware/auth';
 import {
   CreateTournamentSchema,
@@ -14,6 +14,8 @@ import {
   UpdateKnockoutConfigSchema,
   CreateBonusQuestionSchema,
   UpdateBonusQuestionSchema,
+  CreatePlayerSchema,
+  UpdatePlayerSchema,
 } from '@tournament-predictor/shared';
 import type { KnockoutConfig } from '@tournament-predictor/shared';
 import { triggerScoringForMatch, triggerBonusScoring, recalculateAllScoresForTournament } from '../lib/scoringTrigger';
@@ -1094,4 +1096,61 @@ teamsRouter.patch('/:id', requireAdmin, async (req, res) => {
     console.error(err);
     return res.status(500).json({ error: 'Internal server error' });
   }
+});
+
+// ── Players ───────────────────────────────────────────────────────────────────
+
+tournamentsRouter.get('/:id/players', requireAuth, requireAdmin, async (req, res) => {
+  const playerList = await db
+    .select()
+    .from(players)
+    .where(eq(players.tournamentId, req.params.id));
+  return res.json(playerList);
+});
+
+tournamentsRouter.post('/:id/players', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const data = CreatePlayerSchema.parse(req.body);
+    const [tournament] = await db.select().from(tournaments).where(eq(tournaments.id, req.params.id));
+    if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
+    const [player] = await db.insert(players).values({
+      id: generateId(15),
+      tournamentId: req.params.id,
+      name: data.name,
+      gamesPlayed: data.gamesPlayed ?? 0,
+      goalsScored: data.goalsScored ?? 0,
+    }).returning();
+    return res.status(201).json(player);
+  } catch (err: any) {
+    if (err?.name === 'ZodError') return res.status(400).json({ error: 'Invalid input', details: err.errors });
+    console.error(err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+tournamentsRouter.patch('/:id/players/:playerId', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const data = UpdatePlayerSchema.parse(req.body);
+    if (Object.keys(data).length === 0) return res.status(400).json({ error: 'No fields to update' });
+    const [player] = await db
+      .update(players)
+      .set(data)
+      .where(and(eq(players.id, req.params.playerId), eq(players.tournamentId, req.params.id)))
+      .returning();
+    if (!player) return res.status(404).json({ error: 'Player not found' });
+    return res.json(player);
+  } catch (err: any) {
+    if (err?.name === 'ZodError') return res.status(400).json({ error: 'Invalid input', details: err.errors });
+    console.error(err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+tournamentsRouter.delete('/:id/players/:playerId', requireAuth, requireAdmin, async (req, res) => {
+  const [player] = await db
+    .delete(players)
+    .where(and(eq(players.id, req.params.playerId), eq(players.tournamentId, req.params.id)))
+    .returning();
+  if (!player) return res.status(404).json({ error: 'Player not found' });
+  return res.status(204).end();
 });
