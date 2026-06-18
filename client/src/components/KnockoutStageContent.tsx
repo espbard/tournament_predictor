@@ -264,6 +264,7 @@ function FocusedMatchCard({
   scoringConfig,
   predictedFirstRoundTeams,
   readOnly,
+  editOverride,
 }: {
   matchKey: string;
   homeTeam: TeamStat | null;
