@@ -714,6 +714,7 @@ function FocusedBracketView({
   scoringConfig,
   predictedFirstRoundMap,
   readOnly,
+  editOverride,
 }: {
   knockoutConfig: KnockoutConfig;
   resolvedSlots: Record<string, TeamStat | null>;
