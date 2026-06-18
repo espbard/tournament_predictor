@@ -30,109 +30,112 @@ async function main() {
   for (const compUser of comparisonUsers) {
     console.log(`\n── ${compUser.username} ──`);
 
-    const memberships = await db
+    // Find competitions where this user already has predictions (potential sources)
+    const sourceCandidates = await db
       .select({
-        competitionId: competitionMembers.competitionId,
-        tournamentId: competitions.tournamentId,
+        competitionId: predictions.competitionId,
         competitionName: competitions.name,
-        groupDisciplinaryChoices: competitionMembers.groupDisciplinaryChoices,
-        luckyLoserChoices: competitionMembers.luckyLoserChoices,
+        tournamentId: competitions.tournamentId,
       })
-      .from(competitionMembers)
-      .innerJoin(competitions, eq(competitions.id, competitionMembers.competitionId))
-      .where(eq(competitionMembers.userId, compUser.id));
+      .from(predictions)
+      .innerJoin(competitions, eq(competitions.id, predictions.competitionId))
+      .where(eq(predictions.userId, compUser.id));
 
-    // Group by tournamentId
-    const byTournament = new Map<string, typeof memberships>();
-    for (const m of memberships) {
-      if (!byTournament.has(m.tournamentId)) byTournament.set(m.tournamentId, []);
-      byTournament.get(m.tournamentId)!.push(m);
+    if (sourceCandidates.length === 0) {
+      console.log('  No predictions found in any competition, skipping');
+      continue;
     }
 
-    for (const [tournamentId, comps] of byTournament) {
-      if (comps.length <= 1) {
+    // Group by tournament, pick the competition with the most predictions as source
+    const byTournament = new Map<string, { competitionId: string; competitionName: string; count: number }>();
+    for (const row of sourceCandidates) {
+      const existing = byTournament.get(row.tournamentId);
+      if (!existing) {
+        byTournament.set(row.tournamentId, { competitionId: row.competitionId, competitionName: row.competitionName, count: 1 });
+      } else {
+        existing.count += 1;
+      }
+    }
+
+    for (const [tournamentId, source] of byTournament) {
+      // Find ALL competitions for this tournament (not just ones the user is a member of)
+      const allCompsForTournament = await db
+        .select({ id: competitions.id, name: competitions.name })
+        .from(competitions)
+        .where(eq(competitions.tournamentId, tournamentId));
+
+      const targets = allCompsForTournament.filter(c => c.id !== source.competitionId);
+      if (targets.length === 0) {
         console.log(`  Tournament ${tournamentId}: only 1 competition, skipping`);
         continue;
       }
 
-      // Pick source: competition with the most match predictions
-      let sourceComp: typeof comps[number] | null = null;
-      let maxPredCount = -1;
+      console.log(`  Tournament ${tournamentId}: source = "${source.competitionName}" → ${targets.length} target(s)`);
 
-      for (const comp of comps) {
-        const rows = await db
-          .select({ id: predictions.id })
-          .from(predictions)
-          .where(and(eq(predictions.competitionId, comp.competitionId), eq(predictions.userId, compUser.id)));
-        if (rows.length > maxPredCount) {
-          maxPredCount = rows.length;
-          sourceComp = comp;
-        }
-      }
+      const [sourceMembership] = await db
+        .select({ groupDisciplinaryChoices: competitionMembers.groupDisciplinaryChoices, luckyLoserChoices: competitionMembers.luckyLoserChoices })
+        .from(competitionMembers)
+        .where(and(eq(competitionMembers.competitionId, source.competitionId), eq(competitionMembers.userId, compUser.id)));
 
-      if (!sourceComp || maxPredCount === 0) {
-        console.log(`  Tournament ${tournamentId}: no predictions found in any competition, skipping`);
-        continue;
-      }
-
-      console.log(`  Tournament ${tournamentId}: source = "${sourceComp.competitionName}" (${maxPredCount} match predictions)`);
-
-      // Fetch all source data
       const sourcePreds = await db
         .select()
         .from(predictions)
-        .where(and(eq(predictions.competitionId, sourceComp.competitionId), eq(predictions.userId, compUser.id)));
+        .where(and(eq(predictions.competitionId, source.competitionId), eq(predictions.userId, compUser.id)));
 
       const [sourceBracket] = await db
         .select()
         .from(bracketPredictions)
         .where(and(
-          eq(bracketPredictions.competitionId, sourceComp.competitionId),
+          eq(bracketPredictions.competitionId, source.competitionId),
           eq(bracketPredictions.userId, compUser.id),
         ));
 
-      // Bonus answers: keyed by questionId so we can look them up per question
       const sourceAnswers = await db
         .select()
         .from(bonusAnswers)
         .where(and(
-          eq(bonusAnswers.competitionId, sourceComp.competitionId),
+          eq(bonusAnswers.competitionId, source.competitionId),
           eq(bonusAnswers.userId, compUser.id),
         ));
 
-      const targets = comps.filter(c => c.competitionId !== sourceComp!.competitionId);
-
       for (const target of targets) {
-        console.log(`    → copying to "${target.competitionName}"`);
+        console.log(`    → copying to "${target.name}"`);
 
-        // ── 1. Match predictions ──────────────────────────────────────────────
+        // Ensure membership (add if missing)
+        const [existingMembership] = await db
+          .select()
+          .from(competitionMembers)
+          .where(and(eq(competitionMembers.competitionId, target.id), eq(competitionMembers.userId, compUser.id)));
+
+        if (!existingMembership) {
+          await db.insert(competitionMembers).values({ competitionId: target.id, userId: compUser.id });
+          console.log(`      (added as member)`);
+        }
+
         if (sourcePreds.length > 0) {
-          // Remove any existing predictions the user may have in the target competition
-          await db
-            .delete(predictions)
-            .where(and(eq(predictions.competitionId, target.competitionId), eq(predictions.userId, compUser.id)));
-
+          await db.delete(predictions).where(and(
+            eq(predictions.competitionId, target.id),
+            eq(predictions.userId, compUser.id),
+          ));
           await db.insert(predictions).values(
             sourcePreds.map(p => ({
               id: generateId(15),
-              competitionId: target.competitionId,
+              competitionId: target.id,
               userId: compUser.id,
               matchId: p.matchId,
               homeScore: p.homeScore,
               awayScore: p.awayScore,
               progressingTeamId: p.progressingTeamId,
-              points: null, // will be recalculated
+              points: null,
             })),
           );
           console.log(`      ${sourcePreds.length} match predictions copied`);
         }
 
-        // ── 2. Bracket predictions ────────────────────────────────────────────
         if (sourceBracket) {
-          await db
-            .insert(bracketPredictions)
+          await db.insert(bracketPredictions)
             .values({
-              competitionId: target.competitionId,
+              competitionId: target.id,
               userId: compUser.id,
               predictions: sourceBracket.predictions,
               updatedAt: new Date(),
@@ -144,33 +147,24 @@ async function main() {
           console.log(`      bracket predictions copied`);
         }
 
-        // ── 3. Bonus answers ──────────────────────────────────────────────────
         if (sourceAnswers.length > 0) {
-          // Verify questions belong to this tournament (they should — same tournamentId)
           const questionIds = [...new Set(sourceAnswers.map(a => a.questionId))];
           const validQuestions = await db
             .select({ id: bonusQuestions.id })
             .from(bonusQuestions)
-            .where(and(
-              eq(bonusQuestions.tournamentId, tournamentId),
-              inArray(bonusQuestions.id, questionIds),
-            ));
+            .where(and(eq(bonusQuestions.tournamentId, tournamentId), inArray(bonusQuestions.id, questionIds)));
           const validQuestionIds = new Set(validQuestions.map(q => q.id));
           const answersToInsert = sourceAnswers.filter(a => validQuestionIds.has(a.questionId));
-
           if (answersToInsert.length > 0) {
-            await db
-              .delete(bonusAnswers)
-              .where(and(
-                eq(bonusAnswers.competitionId, target.competitionId),
-                eq(bonusAnswers.userId, compUser.id),
-              ));
-
+            await db.delete(bonusAnswers).where(and(
+              eq(bonusAnswers.competitionId, target.id),
+              eq(bonusAnswers.userId, compUser.id),
+            ));
             await db.insert(bonusAnswers).values(
               answersToInsert.map(a => ({
                 id: generateId(15),
                 questionId: a.questionId,
-                competitionId: target.competitionId,
+                competitionId: target.id,
                 userId: compUser.id,
                 answer: a.answer,
                 points: null,
@@ -180,16 +174,14 @@ async function main() {
           }
         }
 
-        // ── 4. Tiebreaker choices (groupDisciplinary + luckyLoser) ────────────
-        if (sourceComp.groupDisciplinaryChoices || sourceComp.luckyLoserChoices) {
-          await db
-            .update(competitionMembers)
+        if (sourceMembership?.groupDisciplinaryChoices || sourceMembership?.luckyLoserChoices) {
+          await db.update(competitionMembers)
             .set({
-              groupDisciplinaryChoices: sourceComp.groupDisciplinaryChoices,
-              luckyLoserChoices: sourceComp.luckyLoserChoices,
+              groupDisciplinaryChoices: sourceMembership.groupDisciplinaryChoices,
+              luckyLoserChoices: sourceMembership.luckyLoserChoices,
             })
             .where(and(
-              eq(competitionMembers.competitionId, target.competitionId),
+              eq(competitionMembers.competitionId, target.id),
               eq(competitionMembers.userId, compUser.id),
             ));
           console.log(`      tiebreaker choices copied`);

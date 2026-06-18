@@ -2435,6 +2435,7 @@ router.post('/admin/copy-comparison-predictions', requireAdmin, async (req, res)
       tournament: string;
       source: string;
       targets: string[];
+      membersAdded: string[];
       matchPredsCopied: number;
       bracketCopied: boolean;
       bonusAnswersCopied: number;
@@ -2443,53 +2444,57 @@ router.post('/admin/copy-comparison-predictions', requireAdmin, async (req, res)
     const affectedTournamentIds = new Set<string>();
 
     for (const compUser of comparisonUsers) {
-      const memberships = await db
+      // Find competitions where this user has predictions (these are the potential sources)
+      const sourceCandidates = await db
         .select({
-          competitionId: competitionMembers.competitionId,
-          tournamentId: competitions.tournamentId,
+          competitionId: predictions.competitionId,
           competitionName: competitions.name,
-          groupDisciplinaryChoices: competitionMembers.groupDisciplinaryChoices,
-          luckyLoserChoices: competitionMembers.luckyLoserChoices,
+          tournamentId: competitions.tournamentId,
+          predCount: predictions.id, // used just to count below
         })
-        .from(competitionMembers)
-        .innerJoin(competitions, eq(competitions.id, competitionMembers.competitionId))
-        .where(eq(competitionMembers.userId, compUser.id));
+        .from(predictions)
+        .innerJoin(competitions, eq(competitions.id, predictions.competitionId))
+        .where(eq(predictions.userId, compUser.id));
 
-      const byTournament = new Map<string, typeof memberships>();
-      for (const m of memberships) {
-        if (!byTournament.has(m.tournamentId)) byTournament.set(m.tournamentId, []);
-        byTournament.get(m.tournamentId)!.push(m);
+      if (sourceCandidates.length === 0) continue;
+
+      // Group by tournament, pick the competition with most predictions as source
+      const byTournament = new Map<string, { competitionId: string; competitionName: string; count: number }>();
+      for (const row of sourceCandidates) {
+        const existing = byTournament.get(row.tournamentId);
+        if (!existing) {
+          byTournament.set(row.tournamentId, { competitionId: row.competitionId, competitionName: row.competitionName, count: 1 });
+        } else {
+          existing.count += 1;
+        }
       }
 
-      for (const [tournamentId, comps] of byTournament) {
-        if (comps.length <= 1) continue;
+      for (const [tournamentId, source] of byTournament) {
+        // Find ALL competitions for this tournament (not just ones user is a member of)
+        const allCompsForTournament = await db
+          .select({ id: competitions.id, name: competitions.name })
+          .from(competitions)
+          .where(eq(competitions.tournamentId, tournamentId));
 
-        let sourceComp: typeof comps[number] | null = null;
-        let maxPredCount = -1;
+        const targets = allCompsForTournament.filter(c => c.id !== source.competitionId);
+        if (targets.length === 0) continue;
 
-        for (const comp of comps) {
-          const rows = await db
-            .select({ id: predictions.id })
-            .from(predictions)
-            .where(and(eq(predictions.competitionId, comp.competitionId), eq(predictions.userId, compUser.id)));
-          if (rows.length > maxPredCount) {
-            maxPredCount = rows.length;
-            sourceComp = comp;
-          }
-        }
-
-        if (!sourceComp || maxPredCount === 0) continue;
+        // Fetch membership info for the source competition (for tiebreaker choices)
+        const [sourceMembership] = await db
+          .select({ groupDisciplinaryChoices: competitionMembers.groupDisciplinaryChoices, luckyLoserChoices: competitionMembers.luckyLoserChoices })
+          .from(competitionMembers)
+          .where(and(eq(competitionMembers.competitionId, source.competitionId), eq(competitionMembers.userId, compUser.id)));
 
         const sourcePreds = await db
           .select()
           .from(predictions)
-          .where(and(eq(predictions.competitionId, sourceComp.competitionId), eq(predictions.userId, compUser.id)));
+          .where(and(eq(predictions.competitionId, source.competitionId), eq(predictions.userId, compUser.id)));
 
         const [sourceBracket] = await db
           .select()
           .from(bracketPredictions)
           .where(and(
-            eq(bracketPredictions.competitionId, sourceComp.competitionId),
+            eq(bracketPredictions.competitionId, source.competitionId),
             eq(bracketPredictions.userId, compUser.id),
           ));
 
@@ -2497,23 +2502,35 @@ router.post('/admin/copy-comparison-predictions', requireAdmin, async (req, res)
           .select()
           .from(bonusAnswers)
           .where(and(
-            eq(bonusAnswers.competitionId, sourceComp.competitionId),
+            eq(bonusAnswers.competitionId, source.competitionId),
             eq(bonusAnswers.userId, compUser.id),
           ));
 
-        const targets = comps.filter(c => c.competitionId !== sourceComp!.competitionId);
         const copiedTargetNames: string[] = [];
+        const addedMemberNames: string[] = [];
 
         for (const target of targets) {
+          // Ensure the user is a member of this competition (add if missing)
+          const [existingMembership] = await db
+            .select()
+            .from(competitionMembers)
+            .where(and(eq(competitionMembers.competitionId, target.id), eq(competitionMembers.userId, compUser.id)));
+
+          if (!existingMembership) {
+            await db.insert(competitionMembers).values({ competitionId: target.id, userId: compUser.id });
+            addedMemberNames.push(target.name);
+          }
+
+          // Copy match predictions
           if (sourcePreds.length > 0) {
             await db.delete(predictions).where(and(
-              eq(predictions.competitionId, target.competitionId),
+              eq(predictions.competitionId, target.id),
               eq(predictions.userId, compUser.id),
             ));
             await db.insert(predictions).values(
               sourcePreds.map(p => ({
                 id: generateId(15),
-                competitionId: target.competitionId,
+                competitionId: target.id,
                 userId: compUser.id,
                 matchId: p.matchId,
                 homeScore: p.homeScore,
@@ -2524,10 +2541,11 @@ router.post('/admin/copy-comparison-predictions', requireAdmin, async (req, res)
             );
           }
 
+          // Copy bracket predictions
           if (sourceBracket) {
             await db.insert(bracketPredictions)
               .values({
-                competitionId: target.competitionId,
+                competitionId: target.id,
                 userId: compUser.id,
                 predictions: sourceBracket.predictions,
                 updatedAt: new Date(),
@@ -2538,6 +2556,7 @@ router.post('/admin/copy-comparison-predictions', requireAdmin, async (req, res)
               });
           }
 
+          // Copy bonus answers
           if (sourceAnswers.length > 0) {
             const questionIds = [...new Set(sourceAnswers.map(a => a.questionId))];
             const validQuestions = await db
@@ -2548,14 +2567,14 @@ router.post('/admin/copy-comparison-predictions', requireAdmin, async (req, res)
             const answersToInsert = sourceAnswers.filter(a => validQuestionIds.has(a.questionId));
             if (answersToInsert.length > 0) {
               await db.delete(bonusAnswers).where(and(
-                eq(bonusAnswers.competitionId, target.competitionId),
+                eq(bonusAnswers.competitionId, target.id),
                 eq(bonusAnswers.userId, compUser.id),
               ));
               await db.insert(bonusAnswers).values(
                 answersToInsert.map(a => ({
                   id: generateId(15),
                   questionId: a.questionId,
-                  competitionId: target.competitionId,
+                  competitionId: target.id,
                   userId: compUser.id,
                   answer: a.answer,
                   points: null,
@@ -2564,27 +2583,29 @@ router.post('/admin/copy-comparison-predictions', requireAdmin, async (req, res)
             }
           }
 
-          if (sourceComp.groupDisciplinaryChoices || sourceComp.luckyLoserChoices) {
+          // Copy tiebreaker choices
+          if (sourceMembership?.groupDisciplinaryChoices || sourceMembership?.luckyLoserChoices) {
             await db.update(competitionMembers)
               .set({
-                groupDisciplinaryChoices: sourceComp.groupDisciplinaryChoices,
-                luckyLoserChoices: sourceComp.luckyLoserChoices,
+                groupDisciplinaryChoices: sourceMembership.groupDisciplinaryChoices,
+                luckyLoserChoices: sourceMembership.luckyLoserChoices,
               })
               .where(and(
-                eq(competitionMembers.competitionId, target.competitionId),
+                eq(competitionMembers.competitionId, target.id),
                 eq(competitionMembers.userId, compUser.id),
               ));
           }
 
-          copiedTargetNames.push(target.competitionName);
+          copiedTargetNames.push(target.name);
           affectedTournamentIds.add(tournamentId);
         }
 
         report.push({
           username: compUser.username,
           tournament: tournamentId,
-          source: sourceComp.competitionName,
+          source: source.competitionName,
           targets: copiedTargetNames,
+          membersAdded: addedMemberNames,
           matchPredsCopied: sourcePreds.length,
           bracketCopied: !!sourceBracket,
           bonusAnswersCopied: sourceAnswers.length,
@@ -2607,3 +2628,4 @@ router.post('/admin/copy-comparison-predictions', requireAdmin, async (req, res)
 });
 
 export { router as competitionsRouter };
+

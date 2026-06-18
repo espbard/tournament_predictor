@@ -10,6 +10,7 @@ interface CopyReport {
   tournament: string;
   source: string;
   targets: string[];
+  membersAdded: string[];
   matchPredsCopied: number;
   bracketCopied: boolean;
   bonusAnswersCopied: number;
@@ -133,7 +134,7 @@ export default function AdminHomePage({ maintenanceMode }: Props) {
                   <span className="font-medium">"{r.source}"</span>
                   <span className="text-muted-foreground"> to </span>
                   <span className="font-medium">{r.targets.map(t => `"${t}"`).join(', ')}</span>
-                  <span className="text-muted-foreground"> ({r.matchPredsCopied} match preds{r.bracketCopied ? ', bracket' : ''}{r.bonusAnswersCopied > 0 ? `, ${r.bonusAnswersCopied} bonus answers` : ''})</span>
+                  <span className="text-muted-foreground"> ({r.matchPredsCopied} match preds{r.bracketCopied ? ', bracket' : ''}{r.bonusAnswersCopied > 0 ? `, ${r.bonusAnswersCopied} bonus answers` : ''}{r.membersAdded.length > 0 ? ` — also added to: ${r.membersAdded.map(n => `"${n}"`).join(', ')}` : ''})</span>
                 </li>
               ))}
             </ul>
