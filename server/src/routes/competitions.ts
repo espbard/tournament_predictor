@@ -379,6 +379,7 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const user = res.locals.user;
+    const includeComparison = req.query.includeComparison === 'true';
 
     const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
     if (!competition) return res.status(404).json({ error: 'Competition not found' });
@@ -419,12 +420,9 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
         )
       )
       .where(
-        and(
-          eq(predictions.competitionId, id),
-          eq(matches.status, 'completed'),
-          eq(users.isLeaderboardUser, false),
-          eq(users.isComparisonUser, false)
-        )
+        includeComparison
+          ? and(eq(predictions.competitionId, id), eq(matches.status, 'completed'), eq(users.isLeaderboardUser, false))
+          : and(eq(predictions.competitionId, id), eq(matches.status, 'completed'), eq(users.isLeaderboardUser, false), eq(users.isComparisonUser, false))
       );
 
     type PredBreakdown = {
@@ -516,7 +514,7 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
       ]);
 
       const userInfoMap = new Map(
-        memberUsersWithChoices.filter(u => !u.isLeaderboardUser && !u.isComparisonUser).map(u => [u.userId, u])
+        memberUsersWithChoices.filter(u => !u.isLeaderboardUser && (includeComparison || !u.isComparisonUser)).map(u => [u.userId, u])
       );
 
       const koCfg = tournamentRow?.knockoutConfig as KnockoutConfig | null;

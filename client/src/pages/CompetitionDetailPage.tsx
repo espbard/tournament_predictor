@@ -176,8 +176,8 @@ export default function CompetitionDetailPage() {
   });
 
   const { data: allMatchPredictions = [] } = useQuery({
-    queryKey: ['competitions', id, 'all-match-predictions'],
-    queryFn: () => api.get<MatchPredictionEntry[]>(`/competitions/${id}/all-match-predictions`),
+    queryKey: ['competitions', id, 'all-match-predictions', showComparisonUsers],
+    queryFn: () => api.get<MatchPredictionEntry[]>(`/competitions/${id}/all-match-predictions${showComparisonUsers ? '?includeComparison=true' : ''}`),
     enabled: !!competition && !user?.isAdmin && (activeTab === 'leaderboard' || !!user?.isLeaderboardUser),
   });
 
