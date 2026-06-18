@@ -400,6 +400,7 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
         userId: predictions.userId,
         username: users.username,
         imageUrl: users.imageUrl,
+        isComparisonUser: users.isComparisonUser,
         homeScore: predictions.homeScore,
         awayScore: predictions.awayScore,
         progressingTeamId: predictions.progressingTeamId,
@@ -435,6 +436,7 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
       userId: string;
       username: string;
       imageUrl: string | null;
+      isComparisonUser: boolean;
       homeScore: number;
       awayScore: number;
       progressingTeamId: string | null;
@@ -457,7 +459,7 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
         bd.correctResult = r.breakdown.correctResult;
         bd.correctTeamProgresses = r.breakdown.correctTeamProgresses;
       }
-      return { matchId: row.matchId, userId: row.userId, username: row.username, imageUrl: row.imageUrl, homeScore: row.homeScore, awayScore: row.awayScore, progressingTeamId: row.progressingTeamId, points: row.points, breakdown: bd };
+      return { matchId: row.matchId, userId: row.userId, username: row.username, imageUrl: row.imageUrl, isComparisonUser: row.isComparisonUser, homeScore: row.homeScore, awayScore: row.awayScore, progressingTeamId: row.progressingTeamId, points: row.points, breakdown: bd };
     });
 
     // Knockout predictions come from bracketPredictions (not the predictions table).
@@ -675,6 +677,7 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
             userId: bp.userId,
             username: userInfo.username,
             imageUrl: userInfo.imageUrl,
+            isComparisonUser: userInfo.isComparisonUser,
             homeScore: pred.homeScore,
             awayScore: pred.awayScore,
             progressingTeamId: pred.progressingTeamId ?? null,

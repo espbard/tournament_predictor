@@ -53,6 +53,7 @@ interface MatchPredictionEntry {
   userId: string;
   username: string;
   imageUrl: string | null;
+  isComparisonUser?: boolean;
   homeScore: number;
   awayScore: number;
   progressingTeamId: string | null;
@@ -1970,7 +1971,10 @@ export default function CompetitionDetailPage() {
                                   alt=""
                                   className="h-5 w-5 rounded-full object-cover flex-shrink-0"
                                 />
-                                <span className="flex-1 truncate font-medium text-xs">{pred.username}</span>
+                                <span className="flex-1 truncate font-medium text-xs">
+                                  {pred.username}
+                                  {pred.isComparisonUser && <span className="ml-1 font-normal text-muted-foreground not-italic">(AI)</span>}
+                                </span>
 
                                 <div className="flex items-center gap-1 flex-shrink-0">
                                   <div className="relative">
