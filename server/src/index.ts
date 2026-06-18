@@ -5,6 +5,8 @@ import path from 'path';
 import { sql } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { db } from './db/client';
+import { tournaments, players } from './db/schema';
+import { generateId } from 'lucia';
 import { authRouter } from './routes/auth';
 import { tournamentsRouter, matchesRouter, teamsRouter } from './routes/tournaments';
 import { uploadRouter } from './routes/upload';
@@ -54,6 +56,22 @@ async function start() {
   // Defensive: ensure is_leaderboard_user column exists regardless of migration state
   await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS "is_leaderboard_user" boolean NOT NULL DEFAULT false`);
   console.log('Migrations complete.');
+
+  // Seed initial Haaland player if no players exist
+  const existingPlayers = await db.select().from(players).limit(1);
+  if (existingPlayers.length === 0) {
+    const [firstTournament] = await db.select().from(tournaments).limit(1);
+    if (firstTournament) {
+      await db.insert(players).values({
+        id: generateId(15),
+        tournamentId: firstTournament.id,
+        name: 'Erling Haaland',
+        gamesPlayed: 1,
+        goalsScored: 2,
+      });
+      console.log('Seeded initial player: Erling Haaland');
+    }
+  }
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
   });

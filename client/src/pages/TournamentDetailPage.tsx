@@ -17,7 +17,7 @@ import ImageUpload from '@/components/ImageUpload';
 import { useT } from '@/lib/useT';
 import BonusQuestionsTab from './BonusQuestionsTab';
 import { TournamentKnockoutTabContent } from './TournamentKnockoutPage';
-import type { Tournament, Team, Match, MatchStage, Group } from '@tournament-predictor/shared';
+import type { Tournament, Team, Match, MatchStage, Group, Player } from '@tournament-predictor/shared';
 import {
   sortGroupTeams,
   sortLuckyLosers,
@@ -217,7 +217,7 @@ export default function TournamentDetailPage() {
   const [scoreMatchId, setScoreMatchId] = useState<string | null>(null);
   const [activeTeamId, setActiveTeamId] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState<'group' | 'standings' | 'knockout' | 'bonus'>('group');
+  const [activeTab, setActiveTab] = useState<'group' | 'standings' | 'knockout' | 'bonus' | 'players'>('group');
 
   const [showAddGroup, setShowAddGroup] = useState(false);
   const [groupName, setGroupName] = useState('');
@@ -261,6 +261,18 @@ export default function TournamentDetailPage() {
   const [addTeamError, setAddTeamError] = useState('');
   const [addMatchError, setAddMatchError] = useState('');
 
+  // Players tab state
+  const [showAddPlayer, setShowAddPlayer] = useState(false);
+  const [playerName, setPlayerName] = useState('');
+  const [playerGamesPlayed, setPlayerGamesPlayed] = useState('');
+  const [playerGoalsScored, setPlayerGoalsScored] = useState('');
+  const [addPlayerError, setAddPlayerError] = useState('');
+  const [editPlayerId, setEditPlayerId] = useState<string | null>(null);
+  const [editPlayerName, setEditPlayerName] = useState('');
+  const [editPlayerGamesPlayed, setEditPlayerGamesPlayed] = useState('');
+  const [editPlayerGoalsScored, setEditPlayerGoalsScored] = useState('');
+  const [editPlayerError, setEditPlayerError] = useState('');
+
   const { data: tournament, isLoading: tournamentLoading } = useQuery({
     queryKey: ['tournament', id],
     queryFn: () => api.get<Tournament>(`/tournaments/${id}`),
@@ -283,6 +295,12 @@ export default function TournamentDetailPage() {
     queryKey: ['matches', id],
     queryFn: () => api.get<MatchWithTeams[]>(`/tournaments/${id}/matches`),
     enabled: !!id,
+  });
+
+  const { data: playerList = [] } = useQuery({
+    queryKey: ['players', id],
+    queryFn: () => api.get<Player[]>(`/tournaments/${id}/players`),
+    enabled: !!id && isAdmin,
   });
 
   const groupMap = new Map(groupList.map(g => [g.id, g]));
@@ -424,6 +442,36 @@ export default function TournamentDetailPage() {
       luckyLoserDisciplinaryChoices?: Record<string, string[]>;
     }) => api.patch(`/tournaments/${id}/knockout-config`, body),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tournament', id] }),
+  });
+
+  const addPlayerMutation = useMutation({
+    mutationFn: (data: { name: string; gamesPlayed: number; goalsScored: number }) =>
+      api.post<Player>(`/tournaments/${id}/players`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['players', id] });
+      setPlayerName('');
+      setPlayerGamesPlayed('');
+      setPlayerGoalsScored('');
+      setShowAddPlayer(false);
+      setAddPlayerError('');
+    },
+    onError: (err: any) => setAddPlayerError(err.message),
+  });
+
+  const updatePlayerMutation = useMutation({
+    mutationFn: ({ playerId, data }: { playerId: string; data: { name?: string; gamesPlayed?: number; goalsScored?: number } }) =>
+      api.patch<Player>(`/tournaments/${id}/players/${playerId}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['players', id] });
+      setEditPlayerId(null);
+      setEditPlayerError('');
+    },
+    onError: (err: any) => setEditPlayerError(err.message),
+  });
+
+  const deletePlayerMutation = useMutation({
+    mutationFn: (playerId: string) => api.delete(`/tournaments/${id}/players/${playerId}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['players', id] }),
   });
 
   // ── DnD handlers ────────────────────────────────────────────────────────────
@@ -817,6 +865,16 @@ export default function TournamentDetailPage() {
             {label}
           </button>
         ))}
+        {isAdmin && (
+          <button
+            onClick={() => setActiveTab('players')}
+            className={`whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              activeTab === 'players' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Players
+          </button>
+        )}
       </div>
 
       {/* Header */}
@@ -1076,6 +1134,212 @@ export default function TournamentDetailPage() {
 
       {activeTab === 'knockout' && (
         <TournamentKnockoutTabContent tournamentId={id!} />
+      )}
+
+      {activeTab === 'players' && isAdmin && (
+        <section>
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Players ({playerList.length})</h2>
+            {!showAddPlayer && (
+              <button
+                onClick={() => setShowAddPlayer(true)}
+                className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+              >
+                Add Player
+              </button>
+            )}
+          </div>
+
+          {showAddPlayer && (
+            <form
+              onSubmit={e => {
+                e.preventDefault();
+                addPlayerMutation.mutate({
+                  name: playerName.trim(),
+                  gamesPlayed: parseInt(playerGamesPlayed, 10) || 0,
+                  goalsScored: parseInt(playerGoalsScored, 10) || 0,
+                });
+              }}
+              className="mb-4 rounded-lg border p-4"
+            >
+              <div className="mb-3 grid grid-cols-3 gap-3">
+                <div className="col-span-3 sm:col-span-1">
+                  <label className="mb-1 block text-xs font-medium text-muted-foreground">Name</label>
+                  <input
+                    type="text"
+                    value={playerName}
+                    onChange={e => setPlayerName(e.target.value)}
+                    className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                    required
+                    maxLength={100}
+                    autoFocus
+                    placeholder="Player name"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-muted-foreground">Games Played</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={playerGamesPlayed}
+                    onChange={e => setPlayerGamesPlayed(e.target.value)}
+                    className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                    placeholder="0"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-muted-foreground">Goals Scored</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={playerGoalsScored}
+                    onChange={e => setPlayerGoalsScored(e.target.value)}
+                    className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+              {addPlayerError && <p className="mb-2 text-sm text-red-600">{addPlayerError}</p>}
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  disabled={addPlayerMutation.isPending || !playerName.trim()}
+                  className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {addPlayerMutation.isPending ? 'Adding…' : 'Add Player'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowAddPlayer(false); setPlayerName(''); setPlayerGamesPlayed(''); setPlayerGoalsScored(''); setAddPlayerError(''); }}
+                  className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
+
+          {playerList.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No players yet.</p>
+          ) : (
+            <div className="rounded-lg border overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-xs text-muted-foreground bg-muted/30">
+                    <th className="px-4 py-2.5 text-left">Name</th>
+                    <th className="px-4 py-2.5 text-center">Games Played</th>
+                    <th className="px-4 py-2.5 text-center">Goals Scored</th>
+                    <th className="px-4 py-2.5 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {playerList.map(player => (
+                    <tr key={player.id} className="border-b last:border-0">
+                      {editPlayerId === player.id ? (
+                        <td colSpan={4} className="px-4 py-3">
+                          <form
+                            onSubmit={e => {
+                              e.preventDefault();
+                              updatePlayerMutation.mutate({
+                                playerId: player.id,
+                                data: {
+                                  name: editPlayerName.trim(),
+                                  gamesPlayed: parseInt(editPlayerGamesPlayed, 10) || 0,
+                                  goalsScored: parseInt(editPlayerGoalsScored, 10) || 0,
+                                },
+                              });
+                            }}
+                          >
+                            <div className="mb-2 grid grid-cols-3 gap-3">
+                              <div className="col-span-3 sm:col-span-1">
+                                <label className="mb-1 block text-xs font-medium text-muted-foreground">Name</label>
+                                <input
+                                  type="text"
+                                  value={editPlayerName}
+                                  onChange={e => setEditPlayerName(e.target.value)}
+                                  className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                                  required
+                                  maxLength={100}
+                                  autoFocus
+                                />
+                              </div>
+                              <div>
+                                <label className="mb-1 block text-xs font-medium text-muted-foreground">Games Played</label>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={editPlayerGamesPlayed}
+                                  onChange={e => setEditPlayerGamesPlayed(e.target.value)}
+                                  className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                                />
+                              </div>
+                              <div>
+                                <label className="mb-1 block text-xs font-medium text-muted-foreground">Goals Scored</label>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={editPlayerGoalsScored}
+                                  onChange={e => setEditPlayerGoalsScored(e.target.value)}
+                                  className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                                />
+                              </div>
+                            </div>
+                            {editPlayerError && <p className="mb-2 text-sm text-red-600">{editPlayerError}</p>}
+                            <div className="flex gap-2">
+                              <button
+                                type="submit"
+                                disabled={updatePlayerMutation.isPending || !editPlayerName.trim()}
+                                className="rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                              >
+                                {updatePlayerMutation.isPending ? 'Saving…' : 'Save'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => { setEditPlayerId(null); setEditPlayerError(''); }}
+                                className="rounded-md border px-3 py-1.5 text-xs hover:bg-muted"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </form>
+                        </td>
+                      ) : (
+                        <>
+                          <td className="px-4 py-3 font-medium">{player.name}</td>
+                          <td className="px-4 py-3 text-center tabular-nums">{player.gamesPlayed}</td>
+                          <td className="px-4 py-3 text-center tabular-nums">{player.goalsScored}</td>
+                          <td className="px-4 py-3 text-right">
+                            <div className="flex justify-end gap-2">
+                              <button
+                                onClick={() => {
+                                  setEditPlayerId(player.id);
+                                  setEditPlayerName(player.name);
+                                  setEditPlayerGamesPlayed(String(player.gamesPlayed));
+                                  setEditPlayerGoalsScored(String(player.goalsScored));
+                                  setEditPlayerError('');
+                                }}
+                                className="rounded-md border px-2.5 py-1 text-xs hover:bg-muted"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => deletePlayerMutation.mutate(player.id)}
+                                disabled={deletePlayerMutation.isPending}
+                                className="rounded-md border px-2.5 py-1 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </td>
+                        </>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
       )}
 
       {activeTab === 'group' && <>

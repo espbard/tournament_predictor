@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { eq, and, inArray, or, ilike, desc } from 'drizzle-orm';
 import { generateId } from 'lucia';
 import { db } from '../db/client.js';
-import { competitions, competitionMembers, users, tournaments, predictions, matches, teams, groups, bracketPredictions, bonusQuestions, bonusAnswers } from '../db/schema.js';
+import { competitions, competitionMembers, users, tournaments, predictions, matches, teams, groups, bracketPredictions, bonusQuestions, bonusAnswers, players } from '../db/schema.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { CreateCompetitionSchema, CreatePredictionSchema, SaveBracketPredictionsSchema, DEFAULT_SCORING_CONFIG, SaveBonusAnswerSchema, resolveFirstRoundSlots } from '@tournament-predictor/shared';
 import type { UserStatCardData, ScoringConfig, KnockoutConfig, BracketPredictions } from '@tournament-predictor/shared';
@@ -1694,6 +1694,16 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     }
 
     // ── The Brautometer: average/highest/lowest predicted Haaland tournament goals ──
+    const [haalandPlayer] = await db
+      .select()
+      .from(players)
+      .where(
+        and(
+          eq(players.tournamentId, competition.tournamentId),
+          ilike(players.name, 'erling haaland')
+        )
+      );
+
     const [haalandQuestion] = await db
       .select()
       .from(bonusQuestions)
@@ -1749,6 +1759,13 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           linkType: 'userBonus',
           iconImageUrl: '/haaland.jpg',
         };
+
+        if (haalandPlayer && haalandPlayer.gamesPlayed >= 1) {
+          brautometerCard.statistic +=
+            lang === 'no'
+              ? ` Haaland har så langt scoret ${haalandPlayer.goalsScored} mål på ${haalandPlayer.gamesPlayed} kamper.`
+              : ` Haaland has so far scored ${haalandPlayer.goalsScored} goals in ${haalandPlayer.gamesPlayed} games.`;
+        }
       }
     }
 

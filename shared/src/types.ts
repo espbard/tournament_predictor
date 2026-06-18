@@ -160,6 +160,14 @@ export interface UserStatCardData {
   iconImageUrl?: string | null;
 }
 
+export interface Player {
+  id: string;
+  tournamentId: string;
+  name: string;
+  gamesPlayed: number;
+  goalsScored: number;
+}
+
 export interface BonusAnswer {
   id: string;
   questionId: string;
