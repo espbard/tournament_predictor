@@ -2,10 +2,11 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
-import { sql } from 'drizzle-orm';
+import { sql, eq, and } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
+import bcrypt from 'bcryptjs';
 import { db } from './db/client';
-import { tournaments, players } from './db/schema';
+import { tournaments, players, users, competitions, competitionMembers } from './db/schema';
 import { generateId } from 'lucia';
 import { authRouter } from './routes/auth';
 import { tournamentsRouter, matchesRouter, teamsRouter } from './routes/tournaments';
@@ -55,6 +56,8 @@ async function start() {
   await migrate(db, { migrationsFolder: path.join(__dirname, '../drizzle') });
   // Defensive: ensure is_leaderboard_user column exists regardless of migration state
   await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS "is_leaderboard_user" boolean NOT NULL DEFAULT false`);
+  // Defensive: ensure is_comparison_user column exists regardless of migration state
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS "is_comparison_user" boolean NOT NULL DEFAULT false`);
   // Defensive: ensure players table exists regardless of migration state
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS "players" (
@@ -86,6 +89,46 @@ async function start() {
   } catch (err) {
     console.warn('Player seed skipped:', err);
   }
+
+  // Seed comparison users for Fotball-VM 2026
+  try {
+    const comparisonUsernames = ['1-1 bot', 'ChatGPT', 'Claude'];
+    const hashedPassword = await bcrypt.hash('Test123', 10);
+
+    for (const username of comparisonUsernames) {
+      const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.username, username)).limit(1);
+      if (!existing) {
+        await db.insert(users).values({
+          id: crypto.randomUUID(),
+          username,
+          hashedPassword,
+          isAdmin: false,
+          isTestAccount: false,
+          isLeaderboardUser: false,
+          isComparisonUser: true,
+        });
+        console.log(`Seeded comparison user: ${username}`);
+      }
+    }
+
+    // Add comparison users to all existing Fotball-VM 2026 competitions
+    const [vm2026] = await db.select({ id: tournaments.id }).from(tournaments).where(eq(tournaments.name, 'Fotball-VM 2026')).limit(1);
+    if (vm2026) {
+      const vm2026Comps = await db.select({ id: competitions.id }).from(competitions).where(eq(competitions.tournamentId, vm2026.id));
+      const comparisonUsers = await db.select({ id: users.id }).from(users).where(eq(users.isComparisonUser, true));
+      for (const comp of vm2026Comps) {
+        for (const cu of comparisonUsers) {
+          const [existing] = await db.select().from(competitionMembers).where(and(eq(competitionMembers.competitionId, comp.id), eq(competitionMembers.userId, cu.id))).limit(1);
+          if (!existing) {
+            await db.insert(competitionMembers).values({ competitionId: comp.id, userId: cu.id });
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Comparison user seed skipped:', err);
+  }
+
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
   });

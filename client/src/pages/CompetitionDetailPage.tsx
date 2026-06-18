@@ -53,6 +53,7 @@ interface MatchPredictionEntry {
   userId: string;
   username: string;
   imageUrl: string | null;
+  isComparisonUser?: boolean;
   homeScore: number;
   awayScore: number;
   progressingTeamId: string | null;
@@ -93,6 +94,7 @@ export default function CompetitionDetailPage() {
   );
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [showComparisonUsers, setShowComparisonUsers] = useState(false);
 
   const [hasDeclined, setHasDeclined] = useState(false);
   const [showProceedPrompt, setShowProceedPrompt] = useState(false);
@@ -169,14 +171,14 @@ export default function CompetitionDetailPage() {
   });
 
   const { data: leaderboard = [] } = useQuery({
-    queryKey: ['competitions', id, 'leaderboard'],
-    queryFn: () => api.get<LeaderboardEntry[]>(`/competitions/${id}/leaderboard`),
+    queryKey: ['competitions', id, 'leaderboard', showComparisonUsers],
+    queryFn: () => api.get<LeaderboardEntry[]>(`/competitions/${id}/leaderboard${showComparisonUsers ? '?includeComparison=true' : ''}`),
     enabled: !!competition && (activeTab === 'leaderboard' || (!user?.isAdmin && !!user?.isLeaderboardUser)),
   });
 
   const { data: allMatchPredictions = [] } = useQuery({
-    queryKey: ['competitions', id, 'all-match-predictions'],
-    queryFn: () => api.get<MatchPredictionEntry[]>(`/competitions/${id}/all-match-predictions`),
+    queryKey: ['competitions', id, 'all-match-predictions', showComparisonUsers],
+    queryFn: () => api.get<MatchPredictionEntry[]>(`/competitions/${id}/all-match-predictions${showComparisonUsers ? '?includeComparison=true' : ''}`),
     enabled: !!competition && !user?.isAdmin && (activeTab === 'leaderboard' || !!user?.isLeaderboardUser),
   });
 
@@ -625,12 +627,14 @@ export default function CompetitionDetailPage() {
   }, [allGroupMatchesList]);
 
   const deadlinePassed =
-    (competition?.predictionDeadline ? new Date() > new Date(competition.predictionDeadline) : false)
-    || tournament?.status === 'active'
-    || tournament?.status === 'completed';
+    !user?.isComparisonUser && (
+      (competition?.predictionDeadline ? new Date() > new Date(competition.predictionDeadline) : false)
+      || tournament?.status === 'active'
+      || tournament?.status === 'completed'
+    );
 
   const hasKnockoutPredictions = Object.keys(bracketPreds ?? {}).length > 0;
-  const isLocked = deadlinePassed || (groupStageLocked && hasKnockoutPredictions);
+  const isLocked = deadlinePassed || (!user?.isComparisonUser && groupStageLocked && hasKnockoutPredictions);
 
   async function savePrediction(matchId: string) {
     const edit = localEditsRef.current[matchId];
@@ -1393,7 +1397,7 @@ export default function CompetitionDetailPage() {
                             <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
                           )}
                           <span className="flex-1 text-sm font-medium truncate">{match.homeTeamName ?? 'TBD'}</span>
-                          {match.status === 'completed' ? (
+                          {match.status === 'completed' && !user?.isComparisonUser ? (
                             <span className={`w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400 border border-amber-400 bg-amber-50/70 dark:bg-amber-900/30' : ''}`}>{pred ? pred.homeScore : '—'}</span>
                           ) : isLocked ? (
                             <span className="w-11 h-9 flex items-center justify-center text-xl text-muted-foreground flex-shrink-0">{pred ? pred.homeScore : '—'}</span>
@@ -1443,7 +1447,7 @@ export default function CompetitionDetailPage() {
                             <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
                           )}
                           <span className="flex-1 text-sm font-medium truncate">{match.awayTeamName ?? 'TBD'}</span>
-                          {match.status === 'completed' ? (
+                          {match.status === 'completed' && !user?.isComparisonUser ? (
                             <span className={`w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400 border border-amber-400 bg-amber-50/70 dark:bg-amber-900/30' : ''}`}>{pred ? pred.awayScore : '—'}</span>
                           ) : isLocked ? (
                             <span className="w-11 h-9 flex items-center justify-center text-xl text-muted-foreground flex-shrink-0">{pred ? pred.awayScore : '—'}</span>
@@ -1578,10 +1582,22 @@ export default function CompetitionDetailPage() {
 
       {activeTab === 'leaderboard' && (
         <>
+          {user?.isTestAccount && (
+            <label className="flex items-center gap-2 mb-3 text-sm text-muted-foreground cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={showComparisonUsers}
+                onChange={e => setShowComparisonUsers(e.target.checked)}
+                className="rounded"
+              />
+              {language === 'no' ? 'Vis AI brukere' : 'Show AI users'}
+            </label>
+          )}
           {leaderboard.length === 0 ? (
             <p className="text-sm text-muted-foreground py-4 text-center">{t('competitionDetail.leaderboard.noScores')}</p>
           ) : (() => {
-          const lastRank = leaderboard[leaderboard.length - 1].rank;
+          const rankEntries = showComparisonUsers ? leaderboard : leaderboard.filter(e => !e.isComparisonUser);
+          const lastRank = rankEntries.length > 0 ? rankEntries[rankEntries.length - 1].rank : leaderboard[leaderboard.length - 1].rank;
           const rankColor = (rank: number) => {
             if (rank === 1) return 'text-yellow-500';
             if (rank === 2) return 'text-slate-400';
@@ -1613,10 +1629,10 @@ export default function CompetitionDetailPage() {
                       {tournament && <p className="text-sm text-muted-foreground">{tournament.name}</p>}
                     </div>
                   </div>
-                  <PlayerPodium leaderboard={leaderboard} large={true} competitionId={id} />
+                  <PlayerPodium leaderboard={showComparisonUsers ? leaderboard : leaderboard.filter(e => !e.isComparisonUser)} large={true} competitionId={id} />
                 </div>
               ) : (
-                <PlayerPodium leaderboard={leaderboard} large={false} competitionId={id} />
+                <PlayerPodium leaderboard={showComparisonUsers ? leaderboard : leaderboard.filter(e => !e.isComparisonUser)} large={false} competitionId={id} />
               )
             )}
 
@@ -1642,11 +1658,12 @@ export default function CompetitionDetailPage() {
                 <tbody className="divide-y">
                   {leaderboard.map((entry) => {
                     const isMe = entry.userId === user?.id;
+                    const isComparison = entry.isComparisonUser;
                     const b = entry.breakdown;
                     return (
-                      <tr key={entry.userId} className={rowBg(entry.rank) || (isMe ? 'bg-primary/5' : '')}>
-                        <td className={`pl-3 pr-2 py-2.5 font-bold text-center ${rankColor(entry.rank)}`}>
-                          {entry.rank}
+                      <tr key={entry.userId} className={isComparison && !showComparisonUsers ? 'opacity-60 italic bg-muted/30' : `${rowBg(entry.rank) || (isMe ? 'bg-primary/5' : '')}${isComparison ? ' italic opacity-80' : ''}`}>
+                        <td className={`pl-3 pr-2 py-2.5 font-bold text-center ${isComparison && !showComparisonUsers ? 'text-muted-foreground' : rankColor(entry.rank)}`}>
+                          {isComparison && !showComparisonUsers ? '—' : entry.rank}
                         </td>
                         <td className="px-3 py-2.5">
                           <Link to={`/competitions/${id}/predictions/${entry.userId}`} className="flex items-center gap-2 min-w-0 hover:opacity-80 transition-opacity">
@@ -1654,6 +1671,7 @@ export default function CompetitionDetailPage() {
                             <span className={`font-medium truncate ${isMe ? 'text-primary' : ''}`}>
                               {entry.username}
                               {isMe && <span className="ml-1 font-normal text-muted-foreground">{t('competitionDetail.leaderboard.you')}</span>}
+                              {isComparison && <span className="ml-1 font-normal text-muted-foreground not-italic">(AI)</span>}
                             </span>
                             {entry.inactive && <span className="inline-block w-2 h-2 rounded-full bg-red-500 flex-shrink-0" title={t('competitionDetail.leaderboard.inactiveLegend')} />}
                           </Link>
@@ -1953,7 +1971,10 @@ export default function CompetitionDetailPage() {
                                   alt=""
                                   className="h-5 w-5 rounded-full object-cover flex-shrink-0"
                                 />
-                                <span className="flex-1 truncate font-medium text-xs">{pred.username}</span>
+                                <span className="flex-1 truncate font-medium text-xs">
+                                  {pred.username}
+                                  {pred.isComparisonUser && <span className="ml-1 font-normal text-muted-foreground not-italic">(AI)</span>}
+                                </span>
 
                                 <div className="flex items-center gap-1 flex-shrink-0">
                                   <div className="relative">

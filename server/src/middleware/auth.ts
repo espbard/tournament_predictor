@@ -19,6 +19,7 @@ export const lucia = new Lucia(adapter, {
       isAdmin: attributes.isAdmin,
       isTestAccount: attributes.isTestAccount,
       isLeaderboardUser: attributes.isLeaderboardUser,
+      isComparisonUser: attributes.isComparisonUser,
     };
   },
 });
@@ -31,6 +32,7 @@ declare module 'lucia' {
       isAdmin: boolean;
       isTestAccount: boolean;
       isLeaderboardUser: boolean;
+      isComparisonUser: boolean;
     };
   }
 }
