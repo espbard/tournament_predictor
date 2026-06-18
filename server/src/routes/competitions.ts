@@ -1761,10 +1761,12 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         };
 
         if (haalandPlayer && haalandPlayer.gamesPlayed >= 1) {
+          const goals = haalandPlayer.goalsScored;
+          const games = haalandPlayer.gamesPlayed;
           brautometerCard.statistic +=
             lang === 'no'
-              ? ` Haaland har så langt scoret ${haalandPlayer.goalsScored} mål på ${haalandPlayer.gamesPlayed} kamper.`
-              : ` Haaland has so far scored ${haalandPlayer.goalsScored} goals in ${haalandPlayer.gamesPlayed} games.`;
+              ? ` Haaland har så langt scoret ${goals} ${goals === 1 ? 'mål' : 'mål'} på ${games} ${games === 1 ? 'kamp' : 'kamper'}.`
+              : ` Haaland has so far scored ${goals} ${goals === 1 ? 'goal' : 'goals'} in ${games} ${games === 1 ? 'game' : 'games'}.`;
         }
       }
     }
