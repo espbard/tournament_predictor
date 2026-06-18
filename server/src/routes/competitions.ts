@@ -2372,7 +2372,7 @@ router.post('/:id/bonus-answers', requireAuth, async (req, res) => {
       if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
     }
 
-    if (competition.predictionDeadline && new Date() > new Date(competition.predictionDeadline)) {
+    if (!user.isComparisonUser && competition.predictionDeadline && new Date() > new Date(competition.predictionDeadline)) {
       return res.status(400).json({ error: 'Prediction deadline has passed' });
     }
 
