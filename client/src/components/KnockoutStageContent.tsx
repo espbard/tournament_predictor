@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
+import { useAuthStore } from '@/store/authStore';
 import { useT } from '@/lib/useT';
 import type {
   Competition,
@@ -275,6 +276,7 @@ function FocusedMatchCard({
   scoringConfig?: ScoringConfig;
   predictedFirstRoundTeams?: { predHomeId: string | null; predAwayId: string | null };
   readOnly?: boolean;
+  editOverride?: boolean;
 }) {
   const [homeStr, setHomeStr] = useState('');
   const [awayStr, setAwayStr] = useState('');
@@ -407,6 +409,7 @@ function FocusedMatchCard({
   }
 
   const isCompleted = actualMatch?.status === 'completed';
+  const forceEditable = !!editOverride && !readOnly;
 
   // Detect flip client-side (same rule as server): a team from the actual match
   // was predicted on the opposite side.
@@ -453,8 +456,8 @@ function FocusedMatchCard({
   const goldenBorderClass = 'ring-2 ring-inset ring-amber-400 bg-amber-50/40 dark:bg-amber-900/15';
 
   // The "who advances" section only renders when editing a draw, so the away row is the
-  // last item in the prediction card when completed or read-only (no section below it).
-  const predCardAwayIsLast = isCompleted || !!readOnly || !homeTeam || !awayTeam;
+  // last item in the prediction card when completed (and not force-editable) or read-only.
+  const predCardAwayIsLast = (isCompleted && !forceEditable) || !!readOnly || !homeTeam || !awayTeam;
 
   return (
     <div className="space-y-3 w-full">
@@ -490,7 +493,7 @@ function FocusedMatchCard({
             ) : (
               <span className="flex-1 text-sm text-muted-foreground italic">TBD</span>
             )}
-            {isCompleted ? (
+            {isCompleted && !forceEditable ? (
               <span className={`w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400 border border-amber-400 bg-amber-50/70 dark:bg-amber-900/30' : ''}`}>
                 {prediction != null ? displayHomeScore : '—'}
               </span>
@@ -551,7 +554,7 @@ function FocusedMatchCard({
             ) : (
               <span className="flex-1 text-sm text-muted-foreground italic">TBD</span>
             )}
-            {isCompleted ? (
+            {isCompleted && !forceEditable ? (
               <span className={`w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400 border border-amber-400 bg-amber-50/70 dark:bg-amber-900/30' : ''}`}>
                 {prediction != null ? displayAwayScore : '—'}
               </span>
@@ -586,8 +589,8 @@ function FocusedMatchCard({
             )}
           </div>
 
-          {/* Who advances — only while match is not yet played and editing is allowed */}
-          {isDraw && homeTeam && awayTeam && !isCompleted && !readOnly && (
+          {/* Who advances — only while editing is allowed */}
+          {isDraw && homeTeam && awayTeam && (!isCompleted || forceEditable) && !readOnly && (
             <>
               <div className="h-px bg-border" />
               <div className="p-3 space-y-2">
@@ -720,6 +723,7 @@ function FocusedBracketView({
   scoringConfig: ScoringConfig;
   predictedFirstRoundMap: Record<string, { predHomeId: string | null; predAwayId: string | null }>;
   readOnly?: boolean;
+  editOverride?: boolean;
 }) {
   const { firstRound, hasBronzeFinal } = knockoutConfig;
   const startIdx = ROUND_ORDER.indexOf(firstRound);
@@ -955,6 +959,7 @@ function FocusedBracketView({
               scoringConfig={scoringConfig}
               predictedFirstRoundTeams={current.round === firstRound && !current.isBronze ? predictedFirstRoundMap[current.predKey] : undefined}
               readOnly={readOnly}
+              editOverride={editOverride}
             />
             <div className="mt-3 flex sm:hidden items-center justify-between">
               <button
@@ -1007,6 +1012,7 @@ export default function KnockoutStageContent({
   onGoToGroupStage?: () => void;
 }) {
   const id = competitionId;
+  const { user } = useAuthStore();
   const { t } = useT();
 
   const { data: competition, isLoading, error } = useQuery({
@@ -1093,7 +1099,8 @@ export default function KnockoutStageContent({
     onError: () => setSaveStatus('error'),
   });
 
-  const isReadOnly = !!viewUserId || tournament?.status === 'active' || tournament?.status === 'completed';
+  const isComparisonUser = !viewUserId && !!user?.isComparisonUser;
+  const isReadOnly = !!viewUserId || (!isComparisonUser && (tournament?.status === 'active' || tournament?.status === 'completed'));
 
   function updatePrediction(key: string, pred: BracketMatchPrediction) {
     if (isReadOnly) return;
@@ -1377,6 +1384,7 @@ export default function KnockoutStageContent({
             scoringConfig={competition.scoringConfig}
             predictedFirstRoundMap={predictedFirstRoundMap}
             readOnly={isReadOnly}
+            editOverride={isComparisonUser}
           />
           {hasPendingTies && (
             <div className="absolute inset-0 bg-background/70 rounded-xl flex items-center justify-center backdrop-blur-[2px]">
