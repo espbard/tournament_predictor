@@ -30,7 +30,7 @@ authRouter.post('/register', async (req, res) => {
     const session = await lucia.createSession(userId, {});
     res.setHeader('Set-Cookie', lucia.createSessionCookie(session.id).serialize());
 
-    return res.status(201).json({ id: userId, username, isAdmin: false, isTestAccount: false, isLeaderboardUser: isLeaderboardUser ?? false, imageUrl: imageUrl ?? null });
+    return res.status(201).json({ id: userId, username, isAdmin: false, isTestAccount: false, isLeaderboardUser: isLeaderboardUser ?? false, isComparisonUser: false, imageUrl: imageUrl ?? null });
   } catch (err: any) {
     if (err?.name === 'ZodError') {
       return res.status(400).json({ error: 'Invalid input', details: err.errors });
@@ -62,7 +62,7 @@ authRouter.post('/login', async (req, res) => {
     const session = await lucia.createSession(user.id, {});
     res.setHeader('Set-Cookie', lucia.createSessionCookie(session.id).serialize());
 
-    return res.json({ id: user.id, username: user.username, isAdmin: user.isAdmin, isTestAccount: user.isTestAccount, isLeaderboardUser: user.isLeaderboardUser, imageUrl: user.imageUrl });
+    return res.json({ id: user.id, username: user.username, isAdmin: user.isAdmin, isTestAccount: user.isTestAccount, isLeaderboardUser: user.isLeaderboardUser, isComparisonUser: user.isComparisonUser, imageUrl: user.imageUrl });
   } catch (err: any) {
     if (err?.name === 'ZodError') {
       return res.status(400).json({ error: 'Invalid input', details: err.errors });
@@ -80,7 +80,7 @@ authRouter.post('/logout', requireAuth, async (_req, res) => {
 
 authRouter.get('/me', requireAuth, async (_req, res) => {
   const [user] = await db
-    .select({ id: users.id, username: users.username, isAdmin: users.isAdmin, isTestAccount: users.isTestAccount, isLeaderboardUser: users.isLeaderboardUser, imageUrl: users.imageUrl })
+    .select({ id: users.id, username: users.username, isAdmin: users.isAdmin, isTestAccount: users.isTestAccount, isLeaderboardUser: users.isLeaderboardUser, isComparisonUser: users.isComparisonUser, imageUrl: users.imageUrl })
     .from(users)
     .where(eq(users.id, res.locals.user.id))
     .limit(1);
@@ -94,7 +94,7 @@ authRouter.patch('/me', requireAuth, async (req, res) => {
       .update(users)
       .set(updates)
       .where(eq(users.id, res.locals.user.id))
-      .returning({ id: users.id, username: users.username, isAdmin: users.isAdmin, isTestAccount: users.isTestAccount, isLeaderboardUser: users.isLeaderboardUser, imageUrl: users.imageUrl });
+      .returning({ id: users.id, username: users.username, isAdmin: users.isAdmin, isTestAccount: users.isTestAccount, isLeaderboardUser: users.isLeaderboardUser, isComparisonUser: users.isComparisonUser, imageUrl: users.imageUrl });
     return res.json(updated);
   } catch (err: any) {
     if (err?.name === 'ZodError') return res.status(400).json({ error: 'Invalid input', details: err.errors });
@@ -105,17 +105,18 @@ authRouter.patch('/me', requireAuth, async (req, res) => {
 
 authRouter.get('/users', requireAdmin, async (_req, res) => {
   const allUsers = await db
-    .select({ id: users.id, username: users.username, isAdmin: users.isAdmin, isTestAccount: users.isTestAccount, isLeaderboardUser: users.isLeaderboardUser, imageUrl: users.imageUrl })
+    .select({ id: users.id, username: users.username, isAdmin: users.isAdmin, isTestAccount: users.isTestAccount, isLeaderboardUser: users.isLeaderboardUser, isComparisonUser: users.isComparisonUser, imageUrl: users.imageUrl })
     .from(users)
     .orderBy(users.username);
   return res.json(allUsers);
 });
 
 authRouter.patch('/users/:id', requireAdmin, async (req, res) => {
-  const { isTestAccount, isLeaderboardUser } = req.body;
+  const { isTestAccount, isLeaderboardUser, isComparisonUser } = req.body;
   const updates: Record<string, unknown> = {};
   if (typeof isTestAccount === 'boolean') updates.isTestAccount = isTestAccount;
   if (typeof isLeaderboardUser === 'boolean') updates.isLeaderboardUser = isLeaderboardUser;
+  if (typeof isComparisonUser === 'boolean') updates.isComparisonUser = isComparisonUser;
   if (Object.keys(updates).length === 0) {
     return res.status(400).json({ error: 'No valid fields to update' });
   }
@@ -123,7 +124,7 @@ authRouter.patch('/users/:id', requireAdmin, async (req, res) => {
     .update(users)
     .set(updates)
     .where(eq(users.id, req.params.id))
-    .returning({ id: users.id, username: users.username, isAdmin: users.isAdmin, isTestAccount: users.isTestAccount, isLeaderboardUser: users.isLeaderboardUser, imageUrl: users.imageUrl });
+    .returning({ id: users.id, username: users.username, isAdmin: users.isAdmin, isTestAccount: users.isTestAccount, isLeaderboardUser: users.isLeaderboardUser, isComparisonUser: users.isComparisonUser, imageUrl: users.imageUrl });
   if (!updated) return res.status(404).json({ error: 'User not found' });
   return res.json(updated);
 });

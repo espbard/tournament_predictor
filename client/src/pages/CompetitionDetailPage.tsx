@@ -93,6 +93,7 @@ export default function CompetitionDetailPage() {
   );
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [showComparisonUsers, setShowComparisonUsers] = useState(false);
 
   const [hasDeclined, setHasDeclined] = useState(false);
   const [showProceedPrompt, setShowProceedPrompt] = useState(false);
@@ -169,8 +170,8 @@ export default function CompetitionDetailPage() {
   });
 
   const { data: leaderboard = [] } = useQuery({
-    queryKey: ['competitions', id, 'leaderboard'],
-    queryFn: () => api.get<LeaderboardEntry[]>(`/competitions/${id}/leaderboard`),
+    queryKey: ['competitions', id, 'leaderboard', showComparisonUsers],
+    queryFn: () => api.get<LeaderboardEntry[]>(`/competitions/${id}/leaderboard${showComparisonUsers ? '?includeComparison=true' : ''}`),
     enabled: !!competition && (activeTab === 'leaderboard' || (!user?.isAdmin && !!user?.isLeaderboardUser)),
   });
 
@@ -1578,10 +1579,22 @@ export default function CompetitionDetailPage() {
 
       {activeTab === 'leaderboard' && (
         <>
+          {user?.isTestAccount && (
+            <label className="flex items-center gap-2 mb-3 text-sm text-muted-foreground cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={showComparisonUsers}
+                onChange={e => setShowComparisonUsers(e.target.checked)}
+                className="rounded"
+              />
+              Show comparison users (AI bots)
+            </label>
+          )}
           {leaderboard.length === 0 ? (
             <p className="text-sm text-muted-foreground py-4 text-center">{t('competitionDetail.leaderboard.noScores')}</p>
           ) : (() => {
-          const lastRank = leaderboard[leaderboard.length - 1].rank;
+          const nonComparisonEntries = leaderboard.filter(e => !e.isComparisonUser);
+          const lastRank = nonComparisonEntries.length > 0 ? nonComparisonEntries[nonComparisonEntries.length - 1].rank : leaderboard[leaderboard.length - 1].rank;
           const rankColor = (rank: number) => {
             if (rank === 1) return 'text-yellow-500';
             if (rank === 2) return 'text-slate-400';
@@ -1613,10 +1626,10 @@ export default function CompetitionDetailPage() {
                       {tournament && <p className="text-sm text-muted-foreground">{tournament.name}</p>}
                     </div>
                   </div>
-                  <PlayerPodium leaderboard={leaderboard} large={true} competitionId={id} />
+                  <PlayerPodium leaderboard={leaderboard.filter(e => !e.isComparisonUser)} large={true} competitionId={id} />
                 </div>
               ) : (
-                <PlayerPodium leaderboard={leaderboard} large={false} competitionId={id} />
+                <PlayerPodium leaderboard={leaderboard.filter(e => !e.isComparisonUser)} large={false} competitionId={id} />
               )
             )}
 
@@ -1642,11 +1655,12 @@ export default function CompetitionDetailPage() {
                 <tbody className="divide-y">
                   {leaderboard.map((entry) => {
                     const isMe = entry.userId === user?.id;
+                    const isComparison = entry.isComparisonUser;
                     const b = entry.breakdown;
                     return (
-                      <tr key={entry.userId} className={rowBg(entry.rank) || (isMe ? 'bg-primary/5' : '')}>
-                        <td className={`pl-3 pr-2 py-2.5 font-bold text-center ${rankColor(entry.rank)}`}>
-                          {entry.rank}
+                      <tr key={entry.userId} className={isComparison ? 'opacity-60 italic bg-muted/30' : (rowBg(entry.rank) || (isMe ? 'bg-primary/5' : ''))}>
+                        <td className={`pl-3 pr-2 py-2.5 font-bold text-center ${isComparison ? 'text-muted-foreground' : rankColor(entry.rank)}`}>
+                          {isComparison ? '—' : entry.rank}
                         </td>
                         <td className="px-3 py-2.5">
                           <Link to={`/competitions/${id}/predictions/${entry.userId}`} className="flex items-center gap-2 min-w-0 hover:opacity-80 transition-opacity">
@@ -1654,6 +1668,7 @@ export default function CompetitionDetailPage() {
                             <span className={`font-medium truncate ${isMe ? 'text-primary' : ''}`}>
                               {entry.username}
                               {isMe && <span className="ml-1 font-normal text-muted-foreground">{t('competitionDetail.leaderboard.you')}</span>}
+                              {isComparison && <span className="ml-1 font-normal text-muted-foreground not-italic">(AI)</span>}
                             </span>
                             {entry.inactive && <span className="inline-block w-2 h-2 rounded-full bg-red-500 flex-shrink-0" title={t('competitionDetail.leaderboard.inactiveLegend')} />}
                           </Link>

@@ -90,6 +90,17 @@ router.post('/', requireAdmin, async (req, res) => {
       predictionDeadline: predictionDeadline ? new Date(predictionDeadline) : null,
     });
 
+    // Auto-add comparison users to competitions for "Fotball-VM 2026"
+    if (tournament.name === 'Fotball-VM 2026') {
+      const comparisonUsers = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.isComparisonUser, true));
+      for (const cu of comparisonUsers) {
+        await db.insert(competitionMembers).values({ competitionId: id, userId: cu.id });
+      }
+    }
+
     const [created] = await db.select().from(competitions).where(eq(competitions.id, id));
     res.status(201).json(created);
   } catch (err) {
@@ -266,6 +277,7 @@ router.get('/:id/leaderboard', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const user = res.locals.user;
+    const includeComparison = req.query.includeComparison === 'true';
 
     const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
     if (!competition) return res.status(404).json({ error: 'Competition not found' });
@@ -278,11 +290,16 @@ router.get('/:id/leaderboard', requireAuth, async (req, res) => {
       if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
     }
 
+    const baseConditions = includeComparison
+      ? and(eq(competitionMembers.competitionId, id), eq(users.isLeaderboardUser, false))
+      : and(eq(competitionMembers.competitionId, id), eq(users.isLeaderboardUser, false), eq(users.isComparisonUser, false));
+
     const rows = await db
       .select({
         userId: users.id,
         username: users.username,
         imageUrl: users.imageUrl,
+        isComparisonUser: users.isComparisonUser,
         exactScorePoints: competitionMembers.exactScorePoints,
         correctResultPoints: competitionMembers.correctResultPoints,
         correctTeamProgressesPoints: competitionMembers.correctTeamProgressesPoints,
@@ -294,7 +311,7 @@ router.get('/:id/leaderboard', requireAuth, async (req, res) => {
       })
       .from(competitionMembers)
       .innerJoin(users, eq(competitionMembers.userId, users.id))
-      .where(and(eq(competitionMembers.competitionId, id), eq(users.isLeaderboardUser, false)));
+      .where(baseConditions);
 
     const rowsWithTotal = rows.map(row => ({
       ...row,
@@ -334,6 +351,7 @@ router.get('/:id/leaderboard', requireAuth, async (req, res) => {
         userId: row.userId,
         username: row.username,
         imageUrl: row.imageUrl,
+        isComparisonUser: row.isComparisonUser,
         totalPoints: row.totalPoints,
         rank,
         breakdown: {
@@ -404,7 +422,8 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
         and(
           eq(predictions.competitionId, id),
           eq(matches.status, 'completed'),
-          eq(users.isLeaderboardUser, false)
+          eq(users.isLeaderboardUser, false),
+          eq(users.isComparisonUser, false)
         )
       );
 
@@ -485,6 +504,7 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
           username: users.username,
           imageUrl: users.imageUrl,
           isLeaderboardUser: users.isLeaderboardUser,
+          isComparisonUser: users.isComparisonUser,
           groupDisciplinaryChoices: competitionMembers.groupDisciplinaryChoices,
           luckyLoserChoices: competitionMembers.luckyLoserChoices,
         }).from(competitionMembers).innerJoin(users, eq(users.id, competitionMembers.userId)).where(eq(competitionMembers.competitionId, id)),
@@ -496,7 +516,7 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
       ]);
 
       const userInfoMap = new Map(
-        memberUsersWithChoices.filter(u => !u.isLeaderboardUser).map(u => [u.userId, u])
+        memberUsersWithChoices.filter(u => !u.isLeaderboardUser && !u.isComparisonUser).map(u => [u.userId, u])
       );
 
       const koCfg = tournamentRow?.knockoutConfig as KnockoutConfig | null;
@@ -719,7 +739,8 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         and(
           eq(predictions.competitionId, id),
           eq(matches.status, 'completed'),
-          eq(users.isLeaderboardUser, false)
+          eq(users.isLeaderboardUser, false),
+          eq(users.isComparisonUser, false)
         )
       );
 
@@ -961,7 +982,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       })
       .from(competitionMembers)
       .innerJoin(users, eq(competitionMembers.userId, users.id))
-      .where(and(eq(competitionMembers.competitionId, id), eq(users.isLeaderboardUser, false)));
+      .where(and(eq(competitionMembers.competitionId, id), eq(users.isLeaderboardUser, false), eq(users.isComparisonUser, false)));
 
     const memberTotals = memberRows.map(row => ({
       userId: row.userId,
@@ -1066,7 +1087,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           })
           .from(competitionMembers)
           .innerJoin(users, eq(competitionMembers.userId, users.id))
-          .where(and(eq(competitionMembers.competitionId, id), eq(users.isLeaderboardUser, false)));
+          .where(and(eq(competitionMembers.competitionId, id), eq(users.isLeaderboardUser, false), eq(users.isComparisonUser, false)));
 
         const memberInfoByUserId = new Map(
           memberChoiceRows.map(m => [m.userId, { userId: m.userId, username: m.username, imageUrl: m.imageUrl }])
@@ -1729,7 +1750,8 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           and(
             eq(bonusAnswers.competitionId, id),
             eq(bonusAnswers.questionId, haalandQuestion.id),
-            eq(users.isLeaderboardUser, false)
+            eq(users.isLeaderboardUser, false),
+            eq(users.isComparisonUser, false)
           )
         );
 
@@ -1932,7 +1954,7 @@ router.post('/:id/predictions', requireAuth, async (req, res) => {
       if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
     }
 
-    if (competition.predictionDeadline && new Date() > new Date(competition.predictionDeadline)) {
+    if (!user.isComparisonUser && competition.predictionDeadline && new Date() > new Date(competition.predictionDeadline)) {
       return res.status(400).json({ error: 'Prediction deadline has passed' });
     }
 
@@ -1948,7 +1970,7 @@ router.post('/:id/predictions', requireAuth, async (req, res) => {
       return res.status(400).json({ error: "Match does not belong to this competition's tournament" });
     }
 
-    if (match.stage === 'group' && !user.isAdmin) {
+    if (match.stage === 'group' && !user.isAdmin && !user.isComparisonUser) {
       const [membership] = await db
         .select()
         .from(competitionMembers)
@@ -2074,7 +2096,7 @@ router.post('/:id/bracket-predictions', requireAuth, async (req, res) => {
     const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
     if (!competition) return res.status(404).json({ error: 'Competition not found' });
 
-    if (competition.predictionDeadline && new Date() > new Date(competition.predictionDeadline)) {
+    if (!user.isComparisonUser && competition.predictionDeadline && new Date() > new Date(competition.predictionDeadline)) {
       return res.status(400).json({ error: 'Prediction deadline has passed' });
     }
 

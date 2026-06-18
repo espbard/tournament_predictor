@@ -47,6 +47,7 @@ export const users = pgTable('users', {
   isAdmin: boolean('is_admin').notNull().default(false),
   isTestAccount: boolean('is_test_account').notNull().default(false),
   isLeaderboardUser: boolean('is_leaderboard_user').notNull().default(false),
+  isComparisonUser: boolean('is_comparison_user').notNull().default(false),
   imageUrl: text('image_url'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });

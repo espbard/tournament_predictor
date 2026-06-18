@@ -4,6 +4,7 @@ export interface User {
   isAdmin: boolean;
   isTestAccount: boolean;
   isLeaderboardUser: boolean;
+  isComparisonUser: boolean;
   imageUrl?: string | null;
 }
 
@@ -119,6 +120,7 @@ export interface LeaderboardEntry {
   rank: number;
   breakdown: ScoreBreakdown;
   inactive?: boolean;
+  isComparisonUser?: boolean;
 }
 
 export interface BracketMatchPrediction {
