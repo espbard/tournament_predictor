@@ -5,6 +5,7 @@ export const RegisterSchema = z.object({
   password: z.string().min(6),
   imageUrl: z.string().nullable().optional(),
   isLeaderboardUser: z.boolean().optional(),
+  isLateAddition: z.boolean().optional(),
 });
 
 export const LoginSchema = z.object({
