@@ -57,19 +57,21 @@ function renderWinnerFigure(
   competitionId: string | undefined,
 ) {
   const figureHeight = large ? 'h-[396px]' : 'h-[216px]';
-  const avatarSize = large ? 'h-[54px] w-[54px]' : 'h-[30px] w-[30px]';
+  const avatarSize = large ? 'h-[68px] w-[68px]' : 'h-[38px] w-[38px]';
   const nameClass = `font-medium text-center break-words w-full leading-tight ${large ? 'text-lg mb-3' : 'text-xs mb-2'}`;
   const wrapperClass = `flex flex-col items-center ${large ? 'mb-2 mt-4' : 'mb-1 mt-2'}`;
 
   const figure = (
-    <div className="relative inline-block overflow-hidden">
-      <img src="/trophy-winner.png" alt="winner" className={`${figureHeight} w-auto object-contain scale-[1.6]`} />
-      <img
-        src={entry.imageUrl ?? '/default-avatar.png'}
-        alt={entry.username}
-        className={`absolute z-10 rounded-full object-cover ${avatarSize}`}
-        style={{ top: 'calc(43% + 5px)', left: 'calc(50% + 5px)', transform: 'translate(-50%, -50%)' }}
-      />
+    <div style={{ filter: 'drop-shadow(0 0 12px rgba(234, 179, 8, 0.75))' }}>
+      <div className="relative inline-block overflow-hidden">
+        <img src="/trophy-winner.png" alt="winner" className={`${figureHeight} w-auto object-contain scale-[1.6]`} />
+        <img
+          src={entry.imageUrl ?? '/default-avatar.png'}
+          alt={entry.username}
+          className={`absolute z-10 rounded-full object-cover ${avatarSize}`}
+          style={{ top: 'calc(43% + 5px)', left: 'calc(50% + 7px)', transform: 'translate(-50%, -50%)' }}
+        />
+      </div>
     </div>
   );
 
