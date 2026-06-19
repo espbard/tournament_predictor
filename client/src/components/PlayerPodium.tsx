@@ -56,7 +56,7 @@ function renderWinnerFigure(
   large: boolean,
   competitionId: string | undefined,
 ) {
-  const figureHeight = large ? 'h-[264px]' : 'h-36';
+  const figureHeight = large ? 'h-[396px]' : 'h-[216px]';
   const avatarSize = large ? 'h-[54px] w-[54px]' : 'h-[30px] w-[30px]';
   const nameClass = `font-medium text-center break-words w-full leading-tight ${large ? 'text-lg mb-3' : 'text-xs mb-2'}`;
   const wrapperClass = `flex flex-col items-center ${large ? 'mb-2 mt-4' : 'mb-1 mt-2'}`;
