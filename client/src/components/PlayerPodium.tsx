@@ -62,8 +62,8 @@ function renderWinnerFigure(
   const wrapperClass = `flex flex-col items-center ${large ? 'mb-2 mt-4' : 'mb-1 mt-2'}`;
 
   const figure = (
-    <div className="relative inline-block">
-      <img src="/trophy-winner.png" alt="winner" className={`${figureHeight} w-auto object-contain`} />
+    <div className="relative inline-block overflow-hidden">
+      <img src="/trophy-winner.png" alt="winner" className={`${figureHeight} w-auto object-contain scale-[1.2]`} />
       <img
         src={entry.imageUrl ?? '/default-avatar.png'}
         alt={entry.username}
