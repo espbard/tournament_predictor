@@ -63,7 +63,7 @@ function renderWinnerFigure(
 
   const figure = (
     <div className="relative inline-block overflow-hidden">
-      <img src="/trophy-winner.png" alt="winner" className={`${figureHeight} w-auto object-contain scale-[1.2]`} />
+      <img src="/trophy-winner.png" alt="winner" className={`${figureHeight} w-auto object-contain scale-[1.6]`} />
       <img
         src={entry.imageUrl ?? '/default-avatar.png'}
         alt={entry.username}
