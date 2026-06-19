@@ -1603,14 +1603,14 @@ export default function CompetitionDetailPage() {
             if (rank === 1) return 'text-yellow-500';
             if (rank === 2) return 'text-slate-400';
             if (rank === 3) return 'text-amber-600';
-            if (rankEntries.length >= 5 && rank === lastNonInactiveRank && rank > 3) return 'text-red-500';
+            if (rankEntries.length >= 5 && lastNonInactiveRank > 3 && rank >= lastNonInactiveRank) return 'text-red-500';
             return 'text-muted-foreground';
           };
           const rowBg = (rank: number) => {
             if (rank === 1) return 'bg-yellow-50 dark:bg-yellow-500/10';
             if (rank === 2) return 'bg-slate-100 dark:bg-slate-400/10';
             if (rank === 3) return 'bg-amber-50 dark:bg-amber-600/10';
-            if (rankEntries.length >= 5 && rank === lastNonInactiveRank && rank > 3) return 'bg-red-50 dark:bg-red-500/10';
+            if (rankEntries.length >= 5 && lastNonInactiveRank > 3 && rank >= lastNonInactiveRank) return 'bg-red-50 dark:bg-red-500/10';
             return '';
           };
           return (<>
