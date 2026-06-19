@@ -6,6 +6,7 @@ interface Props {
   leaderboard: LeaderboardEntry[];
   large?: boolean;
   competitionId?: string;
+  tournamentStatus?: string;
 }
 
 function ordinal(rank: number): string {
@@ -50,11 +51,53 @@ function linkedAvatar(
   return avatarImg(entry, rank, sizeClass);
 }
 
+function renderWinnerFigure(
+  entry: LeaderboardEntry,
+  large: boolean,
+  competitionId: string | undefined,
+) {
+  const figureHeight = large ? 'h-44' : 'h-24';
+  const avatarSize = large ? 'h-9 w-9' : 'h-5 w-5';
+  const nameClass = `font-medium text-center break-words w-full leading-tight ${large ? 'text-lg mb-3' : 'text-xs mb-2'}`;
+  const wrapperClass = `flex flex-col items-center ${large ? 'mb-2 mt-4' : 'mb-1 mt-2'}`;
+
+  const figure = (
+    <div className="relative inline-block">
+      <img src="/trophy-winner.png" alt="winner" className={`${figureHeight} w-auto object-contain`} />
+      <img
+        src={entry.imageUrl ?? '/default-avatar.png'}
+        alt={entry.username}
+        className={`absolute z-10 rounded-full object-cover border-2 border-yellow-400 ${avatarSize}`}
+        style={{ top: '43%', left: '50%', transform: 'translate(-50%, -50%)' }}
+      />
+    </div>
+  );
+
+  if (competitionId) {
+    return (
+      <Link
+        to={`/competitions/${competitionId}/predictions/${entry.userId}`}
+        className={`${wrapperClass} hover:opacity-80 transition-opacity`}
+      >
+        {figure}
+        <p className={nameClass}>{entry.username}</p>
+      </Link>
+    );
+  }
+  return (
+    <div className={wrapperClass}>
+      {figure}
+      <p className={nameClass}>{entry.username}</p>
+    </div>
+  );
+}
+
 function renderSlotAboveBar(
   group: LeaderboardEntry[],
   rank: number,
   large: boolean,
   competitionId: string | undefined,
+  tournamentStatus?: string,
 ) {
   const count = group.length;
   const wrapperMargin = large ? 'mb-2 mt-14' : 'mb-1 mt-6';
@@ -62,6 +105,10 @@ function renderSlotAboveBar(
   const triSize = large ? 'h-[60px] w-[60px]' : 'h-[30px] w-[30px]';
   const nameClass = `font-medium text-center break-words w-full leading-tight ${large ? 'text-lg mb-3' : 'text-xs mb-2'}`;
   const smallNameClass = `font-medium text-center break-words w-full leading-tight ${large ? 'text-sm mb-3' : 'text-[0.6rem] mb-2'}`;
+
+  if (rank === 1 && count === 1 && tournamentStatus === 'completed') {
+    return renderWinnerFigure(group[0], large, competitionId);
+  }
 
   const crown = rank === 1 ? (
     <span
@@ -171,7 +218,7 @@ function renderSlotAboveBar(
   );
 }
 
-export default function PlayerPodium({ leaderboard, large = false, competitionId }: Props) {
+export default function PlayerPodium({ leaderboard, large = false, competitionId, tournamentStatus }: Props) {
   const { t } = useT();
 
   const byRank = new Map<number, LeaderboardEntry[]>();
@@ -225,7 +272,7 @@ export default function PlayerPodium({ leaderboard, large = false, competitionId
         if (!group) return <div key={idx} className={colWidth} style={{ height }} />;
         return (
           <div key={`${rank}-${group.map(e => e.userId).join('-')}`} className={`flex flex-col items-center ${colWidth}`}>
-            {renderSlotAboveBar(group, rank, large, competitionId)}
+            {renderSlotAboveBar(group, rank, large, competitionId, tournamentStatus)}
             <div className="w-full rounded-t-sm bg-blue-500 flex flex-col items-center justify-center gap-1" style={{ height }}>
               <span className={`text-white font-bold leading-none ${large ? 'text-2xl' : 'text-sm'}`}>{ordinal(rank)}</span>
               <span className={`text-white/80 leading-none ${large ? 'text-base' : 'text-xs'}`}>{group[0].totalPoints} {t('competitionDetail.leaderboard.points')}</span>
