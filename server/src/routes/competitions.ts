@@ -745,8 +745,28 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         )
       );
 
+    // Determine inactive users (no predictions in the 5 most recent completed matches)
+    const recentForStatCards = await db
+      .select({ id: matches.id })
+      .from(matches)
+      .where(and(eq(matches.tournamentId, competition.tournamentId), eq(matches.status, 'completed')))
+      .orderBy(desc(matches.scheduledAt))
+      .limit(5);
+
+    let activeStatUserIds: Set<string> | null = null;
+    if (recentForStatCards.length >= 5) {
+      const recentIdsForStatCards = recentForStatCards.map(m => m.id);
+      const recentStatPreds = await db
+        .select({ userId: predictions.userId })
+        .from(predictions)
+        .where(and(eq(predictions.competitionId, id), inArray(predictions.matchId, recentIdsForStatCards)));
+      activeStatUserIds = new Set(recentStatPreds.map(r => r.userId));
+    }
+
+    const activeRows = activeStatUserIds ? rows.filter(r => activeStatUserIds!.has(r.userId)) : rows;
+
     const oneGoalAwayCounts = new Map<string, { username: string; imageUrl: string | null; count: number }>();
-    for (const row of rows) {
+    for (const row of activeRows) {
       if (row.actualHomeScore === null || row.actualAwayScore === null) continue;
       const goalsAway =
         Math.abs(row.predHomeScore - row.actualHomeScore) + Math.abs(row.predAwayScore - row.actualAwayScore);
@@ -778,7 +798,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       string,
       { username: string; imageUrl: string | null; correctResults: number; exactScores: number }
     >();
-    for (const row of rows) {
+    for (const row of activeRows) {
       if (row.actualHomeScore === null || row.actualAwayScore === null) continue;
       const predictedResult = Math.sign(row.predHomeScore - row.predAwayScore);
       const actualResult = Math.sign(row.actualHomeScore - row.actualAwayScore);
@@ -847,13 +867,13 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     const userInfo = new Map<string, { username: string; imageUrl: string | null }>();
     const pointsByUserMatch = new Map<string, number>();
     const predCountByUser = new Map<string, number>();
-    for (const row of rows) {
+    for (const row of activeRows) {
       userInfo.set(row.userId, { username: row.username, imageUrl: row.imageUrl });
       pointsByUserMatch.set(`${row.userId}|${row.matchId}`, row.points ?? 0);
       predCountByUser.set(row.userId, (predCountByUser.get(row.userId) ?? 0) + 1);
     }
 
-    const completedMatchCountInCompetition = new Set(rows.map(r => r.matchId)).size;
+    const completedMatchCountInCompetition = new Set(activeRows.map(r => r.matchId)).size;
     const usersWithAllPredictions = new Set(
       [...predCountByUser.entries()]
         .filter(([, count]) => count === completedMatchCountInCompetition)
@@ -861,7 +881,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     );
 
     const recentPointsByUser = new Map<string, number>();
-    for (const row of rows) {
+    for (const row of activeRows) {
       if (!last5MatchIds.has(row.matchId)) continue;
       recentPointsByUser.set(row.userId, (recentPointsByUser.get(row.userId) ?? 0) + (row.points ?? 0));
     }
@@ -985,20 +1005,22 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       .innerJoin(users, eq(competitionMembers.userId, users.id))
       .where(and(eq(competitionMembers.competitionId, id), eq(users.isLeaderboardUser, false), eq(users.isComparisonUser, false)));
 
-    const memberTotals = memberRows.map(row => ({
-      userId: row.userId,
-      username: row.username,
-      imageUrl: row.imageUrl,
-      totalPoints:
-        row.exactScorePoints +
-        row.correctResultPoints +
-        row.correctTeamProgressesPoints +
-        row.correctGroupPositionPoints +
-        row.correctTeamInKnockoutTiePoints +
-        row.correctTeamInFinalPoints +
-        row.correctWinnerPoints +
-        row.bonusQuestionPoints,
-    }));
+    const memberTotals = memberRows
+      .filter(m => !activeStatUserIds || activeStatUserIds.has(m.userId))
+      .map(row => ({
+        userId: row.userId,
+        username: row.username,
+        imageUrl: row.imageUrl,
+        totalPoints:
+          row.exactScorePoints +
+          row.correctResultPoints +
+          row.correctTeamProgressesPoints +
+          row.correctGroupPositionPoints +
+          row.correctTeamInKnockoutTiePoints +
+          row.correctTeamInFinalPoints +
+          row.correctWinnerPoints +
+          row.bonusQuestionPoints,
+      }));
 
     if (memberTotals.length >= 3) {
       const minPoints = Math.min(...memberTotals.map(m => m.totalPoints));
@@ -1079,7 +1101,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           predsByUser.get(p.userId)!.push(p);
         }
 
-        const memberChoiceRows = await db
+        const allMemberChoiceRows = await db
           .select({
             userId: competitionMembers.userId,
             username: users.username,
@@ -1089,6 +1111,10 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           .from(competitionMembers)
           .innerJoin(users, eq(competitionMembers.userId, users.id))
           .where(and(eq(competitionMembers.competitionId, id), eq(users.isLeaderboardUser, false), eq(users.isComparisonUser, false)));
+
+        const memberChoiceRows = activeStatUserIds
+          ? allMemberChoiceRows.filter(m => activeStatUserIds!.has(m.userId))
+          : allMemberChoiceRows;
 
         const memberInfoByUserId = new Map(
           memberChoiceRows.map(m => [m.userId, { userId: m.userId, username: m.username, imageUrl: m.imageUrl }])
@@ -1178,7 +1204,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           string,
           { username: string; imageUrl: string | null; wins: number; gf: number; ga: number }
         >();
-        for (const row of rows) {
+        for (const row of activeRows) {
           if (!norwayMatchIds.has(row.matchId)) continue;
           const norwayIsHome = norwayHomeByMatch.get(row.matchId);
           const predNorwayGoals = norwayIsHome ? row.predHomeScore : row.predAwayScore;
@@ -1245,7 +1271,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       predictions: { userId: string; username: string; imageUrl: string | null; predHomeScore: number; predAwayScore: number }[];
     }
     const matchStats = new Map<string, MatchStat>();
-    for (const row of rows) {
+    for (const row of activeRows) {
       if (row.actualHomeScore === null || row.actualAwayScore === null) continue;
       let stat = matchStats.get(row.matchId);
       if (!stat) {
@@ -1293,7 +1319,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     // ── The Optimist: highest vs. lowest total predicted goals across played matches ──
     const actualTotalGoals = [...matchStats.values()].reduce((sum, m) => sum + m.homeScore + m.awayScore, 0);
     const predictedGoalsByUser = new Map<string, number>();
-    for (const row of rows) {
+    for (const row of activeRows) {
       if (row.actualHomeScore === null || row.actualAwayScore === null) continue;
       if (!usersWithAllPredictions.has(row.userId)) continue;
       predictedGoalsByUser.set(
@@ -1757,6 +1783,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         );
 
       const haalandPredictions = haalandAnswerRows
+        .filter(row => !activeStatUserIds || activeStatUserIds.has(row.userId))
         .map(row => ({ userId: row.userId, username: row.username, imageUrl: row.imageUrl, goals: Number(row.answer) }))
         .filter(row => Number.isFinite(row.goals));
 

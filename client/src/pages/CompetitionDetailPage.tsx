@@ -1597,19 +1597,20 @@ export default function CompetitionDetailPage() {
             <p className="text-sm text-muted-foreground py-4 text-center">{t('competitionDetail.leaderboard.noScores')}</p>
           ) : (() => {
           const rankEntries = showComparisonUsers ? leaderboard : leaderboard.filter(e => !e.isComparisonUser);
-          const lastRank = rankEntries.length > 0 ? rankEntries[rankEntries.length - 1].rank : leaderboard[leaderboard.length - 1].rank;
+          const activeRankEntries = rankEntries.filter(e => !e.inactive);
+          const lastNonInactiveRank = activeRankEntries.length > 0 ? activeRankEntries[activeRankEntries.length - 1].rank : 0;
           const rankColor = (rank: number) => {
             if (rank === 1) return 'text-yellow-500';
             if (rank === 2) return 'text-slate-400';
             if (rank === 3) return 'text-amber-600';
-            if (rank === lastRank && rank > 3) return 'text-red-500';
+            if (rankEntries.length >= 5 && lastNonInactiveRank > 3 && rank >= lastNonInactiveRank) return 'text-red-500';
             return 'text-muted-foreground';
           };
           const rowBg = (rank: number) => {
             if (rank === 1) return 'bg-yellow-50 dark:bg-yellow-500/10';
             if (rank === 2) return 'bg-slate-100 dark:bg-slate-400/10';
             if (rank === 3) return 'bg-amber-50 dark:bg-amber-600/10';
-            if (rank === lastRank && rank > 3) return 'bg-red-50 dark:bg-red-500/10';
+            if (rankEntries.length >= 5 && lastNonInactiveRank > 3 && rank >= lastNonInactiveRank) return 'bg-red-50 dark:bg-red-500/10';
             return '';
           };
           return (<>
@@ -1661,7 +1662,7 @@ export default function CompetitionDetailPage() {
                     const isComparison = entry.isComparisonUser;
                     const b = entry.breakdown;
                     return (
-                      <tr key={entry.userId} className={isComparison && !showComparisonUsers ? 'opacity-60 italic bg-muted/30' : `${rowBg(entry.rank) || (isMe ? 'bg-primary/5' : '')}${isComparison ? ' italic opacity-80' : ''}`}>
+                      <tr key={entry.userId} className={isComparison && !showComparisonUsers ? 'opacity-60 italic bg-muted/30' : `${rowBg(entry.rank) || (isMe ? 'bg-primary/5' : '')}${isComparison ? ' italic opacity-80' : ''}${entry.inactive ? ' opacity-60' : ''}`}>
                         <td className={`pl-3 pr-2 py-2.5 font-bold text-center ${isComparison && !showComparisonUsers ? 'text-muted-foreground' : rankColor(entry.rank)}`}>
                           {isComparison && !showComparisonUsers ? '—' : entry.rank}
                         </td>
@@ -1699,7 +1700,7 @@ export default function CompetitionDetailPage() {
               const renderRows = (entries: typeof leaderboard) => entries.map((entry) => {
                 const b = entry.breakdown;
                 return (
-                  <tr key={entry.userId} className={rowBg(entry.rank)}>
+                  <tr key={entry.userId} className={`${rowBg(entry.rank)}${entry.inactive ? ' opacity-60' : ''}`}>
                     <td className={`pl-4 pr-3 py-3 font-bold text-center text-base ${rankColor(entry.rank)}`}>
                       {entry.rank}
                     </td>
