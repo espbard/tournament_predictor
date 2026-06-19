@@ -3,6 +3,7 @@ import { Link, Navigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
+import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { useT } from '@/lib/useT';
 import type { Competition } from '@tournament-predictor/shared';
 
@@ -62,7 +63,7 @@ function CompetitionsHome() {
       </div>
       <h2 className="mb-4 font-semibold">{t('home.myCompetitions')}</h2>
       {isLoading ? (
-        <p className="text-sm text-muted-foreground">{t('common.loading')}</p>
+        <LoadingSpinner />
       ) : competitions.length === 0 ? (
         <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
           {t('home.noCompetitions')}
