@@ -7,12 +7,15 @@ import ImageUpload from '@/components/ImageUpload';
 import { useT } from '@/lib/useT';
 import type { User } from '@tournament-predictor/shared';
 
+type AccountType = 'predictor' | 'leaderboard' | 'lateAddition';
+
 export default function RegisterPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [isLeaderboardUser, setIsLeaderboardUser] = useState(false);
+  const [accountType, setAccountType] = useState<AccountType>('predictor');
   const [showLeaderboardConfirm, setShowLeaderboardConfirm] = useState(false);
+  const [showLateAdditionConfirm, setShowLateAdditionConfirm] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -21,12 +24,21 @@ export default function RegisterPage() {
   const navigate = useNavigate();
   const { t } = useT();
 
+  const isLeaderboardUser = accountType === 'leaderboard';
+  const isLateAddition = accountType === 'lateAddition';
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      const user = await api.post<User>('/auth/register', { username, password, imageUrl, isLeaderboardUser });
+      const user = await api.post<User>('/auth/register', {
+        username,
+        password,
+        imageUrl,
+        isLeaderboardUser,
+        isLateAddition,
+      });
       setUser(user);
       queryClient.setQueryData(['me'], user);
       navigate('/');
@@ -38,12 +50,21 @@ export default function RegisterPage() {
   }
 
   function handleLeaderboardConfirm() {
-    setIsLeaderboardUser(true);
+    setAccountType('leaderboard');
     setShowLeaderboardConfirm(false);
   }
 
   function handleLeaderboardCancel() {
     setShowLeaderboardConfirm(false);
+  }
+
+  function handleLateAdditionConfirm() {
+    setAccountType('lateAddition');
+    setShowLateAdditionConfirm(false);
+  }
+
+  function handleLateAdditionCancel() {
+    setShowLateAdditionConfirm(false);
   }
 
   return (
@@ -85,15 +106,53 @@ export default function RegisterPage() {
         </div>
       )}
 
+      {/* Late Addition type confirmation dialog */}
+      {showLateAdditionConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="w-full max-w-sm rounded-lg border bg-card p-6 shadow-lg space-y-4">
+            <h2 className="text-lg font-semibold">Late Addition account?</h2>
+            <p className="text-sm text-muted-foreground">
+              A <span className="font-medium text-foreground">Late Addition</span> account lets you join competitions that are already underway:
+            </p>
+            <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-4">
+              <li>Join active competitions even after the prediction deadline</li>
+              <li>Start with the same points as the current last-place player</li>
+              <li>Get 24 hours to register your predictions after joining</li>
+              <li>You can only predict on matches that haven't been played yet</li>
+              <li>Missing group match predictions use the lowest-scorer's picks for standings</li>
+            </ul>
+            <p className="text-sm text-muted-foreground">
+              If you want to join before the deadline, choose <span className="font-medium text-foreground">Predictor</span> instead.
+            </p>
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={handleLateAdditionConfirm}
+                className="flex-1 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              >
+                Yes, Late Addition
+              </button>
+              <button
+                type="button"
+                onClick={handleLateAdditionCancel}
+                className="flex-1 rounded-md border px-4 py-2 text-sm font-medium hover:bg-muted"
+              >
+                Back to Predictor
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="w-full max-w-sm space-y-6 rounded-lg border bg-card p-8 shadow-sm">
         <h1 className="text-2xl font-bold">{t('auth.createAccount')}</h1>
 
-        <div className="grid grid-cols-2 gap-2 rounded-md border p-1">
+        <div className="grid grid-cols-3 gap-2 rounded-md border p-1">
           <button
             type="button"
-            onClick={() => setIsLeaderboardUser(false)}
+            onClick={() => setAccountType('predictor')}
             className={`rounded-sm px-3 py-2 text-sm font-medium transition-colors ${
-              !isLeaderboardUser
+              accountType === 'predictor'
                 ? 'bg-primary text-primary-foreground'
                 : 'text-muted-foreground hover:text-foreground'
             }`}
@@ -102,9 +161,20 @@ export default function RegisterPage() {
           </button>
           <button
             type="button"
+            onClick={() => setShowLateAdditionConfirm(true)}
+            className={`rounded-sm px-3 py-2 text-sm font-medium transition-colors ${
+              accountType === 'lateAddition'
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Late Addition
+          </button>
+          <button
+            type="button"
             onClick={() => setShowLeaderboardConfirm(true)}
             className={`rounded-sm px-3 py-2 text-sm font-medium transition-colors ${
-              isLeaderboardUser
+              accountType === 'leaderboard'
                 ? 'bg-primary text-primary-foreground'
                 : 'text-muted-foreground hover:text-foreground'
             }`}
@@ -113,9 +183,11 @@ export default function RegisterPage() {
           </button>
         </div>
         <p className="text-xs text-muted-foreground -mt-3">
-          {isLeaderboardUser
+          {accountType === 'leaderboard'
             ? 'View leaderboards only — no predictions, not on the scoreboard.'
-            : 'Make predictions and compete on the leaderboard.'}
+            : accountType === 'lateAddition'
+              ? 'Join competitions already in progress — starts at last place, 24h to predict on remaining matches.'
+              : 'Make predictions and compete on the leaderboard.'}
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">

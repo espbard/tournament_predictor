@@ -12,6 +12,7 @@ import {
   teams,
   groups,
   tournaments,
+  users,
 } from '../db/schema.js';
 import {
   calculateMatchPoints,
@@ -117,32 +118,69 @@ async function recomputeAllMemberBreakdowns(
     return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
   });
 
+  // Fetch all members (including comparison users — they need scoring too)
   const memberRows = await db
     .select({
       userId: competitionMembers.userId,
       groupDisciplinaryChoices: competitionMembers.groupDisciplinaryChoices,
       luckyLoserChoices: competitionMembers.luckyLoserChoices,
+      lateAdditionWindowEndsAt: competitionMembers.lateAdditionWindowEndsAt,
+      lateAdditionPoints: competitionMembers.lateAdditionPoints,
+      exactScorePoints: competitionMembers.exactScorePoints,
+      correctResultPoints: competitionMembers.correctResultPoints,
+      correctTeamProgressesPoints: competitionMembers.correctTeamProgressesPoints,
+      correctGroupPositionPoints: competitionMembers.correctGroupPositionPoints,
+      correctTeamInKnockoutTiePoints: competitionMembers.correctTeamInKnockoutTiePoints,
+      correctTeamInFinalPoints: competitionMembers.correctTeamInFinalPoints,
+      correctWinnerPoints: competitionMembers.correctWinnerPoints,
+      bonusQuestionPoints: competitionMembers.bonusQuestionPoints,
+      isLeaderboardUser: users.isLeaderboardUser,
+      isComparisonUser: users.isComparisonUser,
     })
     .from(competitionMembers)
+    .innerJoin(users, eq(competitionMembers.userId, users.id))
     .where(eq(competitionMembers.competitionId, competitionId));
+
+  // Pre-fetch all group predictions for all members (needed for late addition fallback)
+  const allGroupPredRows = groupMatchIds.length > 0
+    ? await db
+        .select()
+        .from(predictions)
+        .where(and(eq(predictions.competitionId, competitionId), inArray(predictions.matchId, groupMatchIds)))
+    : [];
+  const groupPredsByUser = new Map<string, Map<string, typeof allGroupPredRows[number]>>();
+  for (const p of allGroupPredRows) {
+    if (!groupPredsByUser.has(p.userId)) groupPredsByUser.set(p.userId, new Map());
+    groupPredsByUser.get(p.userId)!.set(p.matchId, p);
+  }
+
+  // Identify the lowest-scoring regular member (non-late-addition, non-leaderboard, non-comparison)
+  // Used as fallback predictions for late addition users' missing group matches
+  const regularMembers = memberRows.filter(m => m.lateAdditionWindowEndsAt == null && !m.isLeaderboardUser && !m.isComparisonUser);
+  let lowestScorerUserId: string | null = null;
+  if (regularMembers.length > 0) {
+    let lowestScore = Infinity;
+    for (const m of regularMembers) {
+      const total = m.exactScorePoints + m.correctResultPoints + m.correctTeamProgressesPoints +
+        m.correctGroupPositionPoints + m.correctTeamInKnockoutTiePoints +
+        m.correctTeamInFinalPoints + m.correctWinnerPoints + m.bonusQuestionPoints;
+      if (total < lowestScore) {
+        lowestScore = total;
+        lowestScorerUserId = m.userId;
+      }
+    }
+  }
+  const lowestScorerPredMap = lowestScorerUserId ? (groupPredsByUser.get(lowestScorerUserId) ?? new Map()) : new Map();
 
   for (const {
     userId,
     groupDisciplinaryChoices: userGroupDisciplinaryChoices,
     luckyLoserChoices: userLuckyLoserChoices,
+    lateAdditionWindowEndsAt,
   } of memberRows) {
+    const isLateAdditionMember = lateAdditionWindowEndsAt != null;
     // --- Group match prediction breakdown ---
-    const userGroupPreds = groupMatchIds.length > 0
-      ? await db
-          .select()
-          .from(predictions)
-          .where(and(
-            eq(predictions.competitionId, competitionId),
-            eq(predictions.userId, userId),
-            inArray(predictions.matchId, groupMatchIds),
-          ))
-      : [];
-    const groupPredMap = new Map(userGroupPreds.map(p => [p.matchId, p]));
+    const groupPredMap = groupPredsByUser.get(userId) ?? new Map<string, typeof allGroupPredRows[number]>();
 
     let groupExactScore = 0;
     let groupCorrectResult = 0;
@@ -162,10 +200,14 @@ async function recomputeAllMemberBreakdowns(
     }
 
     // --- Predicted group standings (used for group position pts and first-round tie pts) ---
+    // For late addition users: fill in missing predictions with the lowest-scorer's predictions
     const simulatedMatches = completedGroupMatches
       .filter(m => m.homeTeamId && m.awayTeamId)
       .flatMap(m => {
-        const pred = groupPredMap.get(m.id);
+        let pred = groupPredMap.get(m.id);
+        if (!pred && isLateAdditionMember) {
+          pred = lowestScorerPredMap.get(m.id);
+        }
         if (!pred) return [];
         return [{ homeTeamId: m.homeTeamId!, awayTeamId: m.awayTeamId!, homeScore: pred.homeScore, awayScore: pred.awayScore }];
       });

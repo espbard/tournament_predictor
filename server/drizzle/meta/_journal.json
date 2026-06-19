@@ -113,6 +113,13 @@
       "when": 1750233600000,
       "tag": "0017_players",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1750320000000,
+      "tag": "0019_late_addition",
+      "breakpoints": true
     }
   ]
 }

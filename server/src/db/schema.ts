@@ -48,6 +48,7 @@ export const users = pgTable('users', {
   isTestAccount: boolean('is_test_account').notNull().default(false),
   isLeaderboardUser: boolean('is_leaderboard_user').notNull().default(false),
   isComparisonUser: boolean('is_comparison_user').notNull().default(false),
+  isLateAddition: boolean('is_late_addition').notNull().default(false),
   imageUrl: text('image_url'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
@@ -139,6 +140,8 @@ export const competitionMembers = pgTable('competition_members', {
   groupDisciplinaryChoices: json('group_disciplinary_choices').$type<Record<string, string[]>>(),
   luckyLoserChoices: json('lucky_loser_choices').$type<Record<string, string[]>>(),
   knockoutCompleteSeen: boolean('knockout_complete_seen').notNull().default(false),
+  lateAdditionPoints: integer('late_addition_points').notNull().default(0),
+  lateAdditionWindowEndsAt: timestamp('late_addition_window_ends_at'),
 });
 
 export const predictions = pgTable('predictions', {

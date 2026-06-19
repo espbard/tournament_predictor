@@ -128,25 +128,71 @@ router.post('/join', requireAuth, async (req, res) => {
       .from(tournaments)
       .where(eq(tournaments.id, competition.tournamentId));
 
-    if (tournament && tournament.status !== 'upcoming') {
+    const user = res.locals.user;
+    const isLateAdditionJoin = user.isLateAddition && tournament?.status === 'active';
+
+    if (tournament && tournament.status === 'completed') {
       return res.status(403).json({ error: 'This competition is no longer open for new members' });
     }
 
-    if (competition.predictionDeadline && new Date() > new Date(competition.predictionDeadline)) {
+    if (!isLateAdditionJoin && tournament && tournament.status !== 'upcoming') {
+      return res.status(403).json({ error: 'This competition is no longer open for new members' });
+    }
+
+    if (!isLateAdditionJoin && competition.predictionDeadline && new Date() > new Date(competition.predictionDeadline)) {
       return res.status(403).json({ error: 'The prediction deadline for this competition has passed' });
     }
 
-    const userId: string = res.locals.user.id;
+    const userId: string = user.id;
     const [existing] = await db
       .select()
       .from(competitionMembers)
       .where(and(eq(competitionMembers.competitionId, competition.id), eq(competitionMembers.userId, userId)));
     if (existing) return res.status(409).json({ error: 'Already a member of this competition' });
 
-    await db.insert(competitionMembers).values({
-      competitionId: competition.id,
-      userId,
-    });
+    if (isLateAdditionJoin) {
+      // Find last-place user's total score to use as starting points
+      const memberScores = await db
+        .select({
+          exactScorePoints: competitionMembers.exactScorePoints,
+          correctResultPoints: competitionMembers.correctResultPoints,
+          correctTeamProgressesPoints: competitionMembers.correctTeamProgressesPoints,
+          correctGroupPositionPoints: competitionMembers.correctGroupPositionPoints,
+          correctTeamInKnockoutTiePoints: competitionMembers.correctTeamInKnockoutTiePoints,
+          correctTeamInFinalPoints: competitionMembers.correctTeamInFinalPoints,
+          correctWinnerPoints: competitionMembers.correctWinnerPoints,
+          bonusQuestionPoints: competitionMembers.bonusQuestionPoints,
+          lateAdditionPoints: competitionMembers.lateAdditionPoints,
+          isLeaderboardUser: users.isLeaderboardUser,
+          isComparisonUser: users.isComparisonUser,
+        })
+        .from(competitionMembers)
+        .innerJoin(users, eq(competitionMembers.userId, users.id))
+        .where(eq(competitionMembers.competitionId, competition.id));
+
+      const totals = memberScores
+        .filter(m => !m.isLeaderboardUser && !m.isComparisonUser)
+        .map(m =>
+          m.exactScorePoints + m.correctResultPoints + m.correctTeamProgressesPoints +
+          m.correctGroupPositionPoints + m.correctTeamInKnockoutTiePoints +
+          m.correctTeamInFinalPoints + m.correctWinnerPoints + m.bonusQuestionPoints +
+          m.lateAdditionPoints,
+        );
+      const lastPlaceScore = totals.length > 0 ? Math.min(...totals) : 0;
+      const windowEndsAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+      await db.insert(competitionMembers).values({
+        competitionId: competition.id,
+        userId,
+        lateAdditionPoints: lastPlaceScore,
+        lateAdditionWindowEndsAt: windowEndsAt,
+      });
+    } else {
+      await db.insert(competitionMembers).values({
+        competitionId: competition.id,
+        userId,
+      });
+    }
 
     res.json(competition);
   } catch (err) {
@@ -300,6 +346,7 @@ router.get('/:id/leaderboard', requireAuth, async (req, res) => {
         username: users.username,
         imageUrl: users.imageUrl,
         isComparisonUser: users.isComparisonUser,
+        isLateAddition: users.isLateAddition,
         exactScorePoints: competitionMembers.exactScorePoints,
         correctResultPoints: competitionMembers.correctResultPoints,
         correctTeamProgressesPoints: competitionMembers.correctTeamProgressesPoints,
@@ -308,6 +355,8 @@ router.get('/:id/leaderboard', requireAuth, async (req, res) => {
         correctTeamInFinalPoints: competitionMembers.correctTeamInFinalPoints,
         correctWinnerPoints: competitionMembers.correctWinnerPoints,
         bonusQuestionPoints: competitionMembers.bonusQuestionPoints,
+        lateAdditionPoints: competitionMembers.lateAdditionPoints,
+        lateAdditionWindowEndsAt: competitionMembers.lateAdditionWindowEndsAt,
       })
       .from(competitionMembers)
       .innerJoin(users, eq(competitionMembers.userId, users.id))
@@ -323,7 +372,8 @@ router.get('/:id/leaderboard', requireAuth, async (req, res) => {
         row.correctTeamInKnockoutTiePoints +
         row.correctTeamInFinalPoints +
         row.correctWinnerPoints +
-        row.bonusQuestionPoints,
+        row.bonusQuestionPoints +
+        row.lateAdditionPoints,
     }));
     rowsWithTotal.sort((a, b) => b.totalPoints - a.totalPoints);
 
@@ -352,6 +402,8 @@ router.get('/:id/leaderboard', requireAuth, async (req, res) => {
         username: row.username,
         imageUrl: row.imageUrl,
         isComparisonUser: row.isComparisonUser,
+        isLateAddition: row.isLateAddition,
+        lateAdditionWindowEndsAt: row.lateAdditionWindowEndsAt ? row.lateAdditionWindowEndsAt.toISOString() : null,
         totalPoints: row.totalPoints,
         rank,
         breakdown: {
@@ -363,6 +415,7 @@ router.get('/:id/leaderboard', requireAuth, async (req, res) => {
           correctTeamInFinalPoints: row.correctTeamInFinalPoints,
           correctWinnerPoints: row.correctWinnerPoints,
           bonusQuestionPoints: row.bonusQuestionPoints,
+          lateAdditionPoints: row.lateAdditionPoints,
         },
         inactive: recentMatchIds.length >= 5 && !usersWithRecentPreds.has(row.userId),
       };
@@ -1974,15 +2027,24 @@ router.post('/:id/predictions', requireAuth, async (req, res) => {
     const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
     if (!competition) return res.status(404).json({ error: 'Competition not found' });
 
+    let membership: typeof competitionMembers.$inferSelect | undefined;
     if (!user.isAdmin) {
-      const [membership] = await db
+      const [mem] = await db
         .select()
         .from(competitionMembers)
         .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
-      if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+      if (!mem) return res.status(403).json({ error: 'Not a member of this competition' });
+      membership = mem;
     }
 
-    if (!user.isComparisonUser && competition.predictionDeadline && new Date() > new Date(competition.predictionDeadline)) {
+    const isLateAdditionMember = membership?.lateAdditionWindowEndsAt != null;
+
+    if (isLateAdditionMember) {
+      // Late addition users: check 24h window instead of competition deadline
+      if (membership!.lateAdditionWindowEndsAt && new Date() > new Date(membership!.lateAdditionWindowEndsAt)) {
+        return res.status(400).json({ error: 'Your 24-hour prediction window has expired' });
+      }
+    } else if (!user.isComparisonUser && competition.predictionDeadline && new Date() > new Date(competition.predictionDeadline)) {
       return res.status(400).json({ error: 'Prediction deadline has passed' });
     }
 
@@ -1998,12 +2060,18 @@ router.post('/:id/predictions', requireAuth, async (req, res) => {
       return res.status(400).json({ error: "Match does not belong to this competition's tournament" });
     }
 
+    // Late addition users cannot predict on matches that already have a result
+    if (isLateAdditionMember && match.status === 'completed') {
+      return res.status(400).json({ error: 'Late addition users cannot predict on matches that already have a result' });
+    }
+
     if (match.stage === 'group' && !user.isAdmin && !user.isComparisonUser) {
-      const [membership] = await db
+      const mem = membership ?? await db
         .select()
         .from(competitionMembers)
-        .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
-      if (membership?.groupStageLocked) {
+        .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)))
+        .then(r => r[0]);
+      if (mem?.groupStageLocked) {
         const [bracketPred] = await db
           .select()
           .from(bracketPredictions)
@@ -2124,16 +2192,24 @@ router.post('/:id/bracket-predictions', requireAuth, async (req, res) => {
     const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
     if (!competition) return res.status(404).json({ error: 'Competition not found' });
 
-    if (!user.isComparisonUser && competition.predictionDeadline && new Date() > new Date(competition.predictionDeadline)) {
-      return res.status(400).json({ error: 'Prediction deadline has passed' });
-    }
-
+    let bpMembership: typeof competitionMembers.$inferSelect | undefined;
     if (!user.isAdmin) {
-      const [membership] = await db
+      const [mem] = await db
         .select()
         .from(competitionMembers)
         .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
-      if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+      if (!mem) return res.status(403).json({ error: 'Not a member of this competition' });
+      bpMembership = mem;
+    }
+
+    const isBpLateAdditionMember = bpMembership?.lateAdditionWindowEndsAt != null;
+
+    if (isBpLateAdditionMember) {
+      if (bpMembership!.lateAdditionWindowEndsAt && new Date() > new Date(bpMembership!.lateAdditionWindowEndsAt)) {
+        return res.status(400).json({ error: 'Your 24-hour prediction window has expired' });
+      }
+    } else if (!user.isComparisonUser && competition.predictionDeadline && new Date() > new Date(competition.predictionDeadline)) {
+      return res.status(400).json({ error: 'Prediction deadline has passed' });
     }
 
     const result = SaveBracketPredictionsSchema.safeParse(req.body);
