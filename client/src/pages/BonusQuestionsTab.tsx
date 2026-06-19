@@ -4,6 +4,7 @@ import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import PlayerSearchInput from '@/components/PlayerSearchInput';
 import TeamSelectInput from '@/components/TeamSelectInput';
+import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { useT } from '@/lib/useT';
 import type { BonusAnswerType, BonusQuestion, BonusAnswer, Team } from '@tournament-predictor/shared';
 
@@ -194,7 +195,7 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
     saveAnswer(qid, val);
   }
 
-  if (isLoading) return <p className="text-sm text-muted-foreground">{t('common.loading')}</p>;
+  if (isLoading) return <LoadingSpinner />;
 
   return (
     <div className="space-y-6">

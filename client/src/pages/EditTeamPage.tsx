@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import ImageUpload from '@/components/ImageUpload';
+import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { useT } from '@/lib/useT';
 import type { Team, Group, Tournament } from '@tournament-predictor/shared';
 
@@ -63,7 +64,7 @@ export default function EditTeamPage() {
     saveMutation.mutate();
   }
 
-  if (isLoading) return <div className="p-8 text-sm text-muted-foreground">{t('common.loading')}</div>;
+  if (isLoading) return <LoadingSpinner />;
   if (!team) return <div className="p-8 text-sm">{t('editTeam.notFound')}</div>;
 
   const isLocked = tournament !== undefined && tournament.status !== 'upcoming';

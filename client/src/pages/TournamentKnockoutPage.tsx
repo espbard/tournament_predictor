@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
+
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   DndContext,
@@ -12,6 +13,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
+import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { useT } from '@/lib/useT';
 import type { Tournament, Group, KnockoutConfig, KnockoutFirstRound, Match } from '@tournament-predictor/shared';
 
@@ -891,7 +893,7 @@ export function TournamentKnockoutTabContent({ tournamentId }: { tournamentId: s
     saveConfigMutation.mutate({ bracketSlots: newSlots });
   }
 
-  if (isLoading) return <div className="py-8 text-sm text-muted-foreground">{t('common.loading')}</div>;
+  if (isLoading) return <LoadingSpinner />;
   if (!tournament) return null;
 
   const isSetupLocked = tournament.status !== 'upcoming';
@@ -1088,7 +1090,7 @@ export default function TournamentKnockoutPage() {
     enabled: !!id,
   });
 
-  if (isLoading) return <div className="p-8 text-sm text-muted-foreground">{t('common.loading')}</div>;
+  if (isLoading) return <LoadingSpinner />;
   if (!tournament) return <div className="p-8 text-sm">{t('knockout.notFound')}</div>;
 
   return (

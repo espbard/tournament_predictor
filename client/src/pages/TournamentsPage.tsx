@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import ImageUpload from '@/components/ImageUpload';
+import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { useT } from '@/lib/useT';
 import type { Tournament } from '@tournament-predictor/shared';
 
@@ -119,7 +120,7 @@ export default function TournamentsPage() {
       )}
 
       {isLoading ? (
-        <p className="text-sm text-muted-foreground">{t('common.loading')}</p>
+        <LoadingSpinner />
       ) : tournamentList.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t('tournaments.noTournaments')}</p>
       ) : (

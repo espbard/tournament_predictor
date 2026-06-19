@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
@@ -10,6 +10,7 @@ import UserStatCard from '@/components/UserStatCard';
 import { SoccerKickAnimation } from '@/components/SoccerKickAnimation';
 import { CryingPlayerAnimation } from '@/components/CryingPlayerAnimation';
 import BonusQuestionsTab from './BonusQuestionsTab';
+import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { useT } from '@/lib/useT';
 import type { Competition, Tournament, Prediction, MatchStage, LeaderboardEntry, BracketPredictions, UserStatCardData } from '@tournament-predictor/shared';
 import {
@@ -86,12 +87,16 @@ export default function CompetitionDetailPage() {
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [saveErrors, setSaveErrors] = useState<Record<string, string>>({});
 
-  const [activeTab, setActiveTab] = useState<'group' | 'tables' | 'knockout' | 'bonus' | 'leaderboard' | 'userStats'>(
-    () => {
-      const u = useAuthStore.getState().user;
-      return u?.isLeaderboardUser || u?.isAdmin ? 'leaderboard' : 'group';
-    }
-  );
+  const [searchParams, setSearchParams] = useSearchParams();
+  type TabId = 'group' | 'tables' | 'knockout' | 'bonus' | 'leaderboard' | 'userStats';
+  const VALID_TABS: TabId[] = ['group', 'tables', 'knockout', 'bonus', 'leaderboard', 'userStats'];
+  const tabParam = searchParams.get('tab') as TabId | null;
+  const activeTab: TabId = VALID_TABS.includes(tabParam!)
+    ? tabParam!
+    : (user?.isLeaderboardUser || user?.isAdmin ? 'leaderboard' : 'group');
+  const setActiveTab = (tab: TabId) => {
+    setSearchParams(prev => { const n = new URLSearchParams(prev); n.set('tab', tab); return n; }, { replace: true });
+  };
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [showComparisonUsers, setShowComparisonUsers] = useState(false);
@@ -806,7 +811,7 @@ export default function CompetitionDetailPage() {
     return map[stage];
   };
 
-  if (isLoading) return <p className="p-8 text-sm text-muted-foreground">{t('common.loading')}</p>;
+  if (isLoading) return <LoadingSpinner />;
   if (error) {
     const msg = error instanceof ApiError ? error.message : t('competitionDetail.failedToLoad');
     return <p className="p-8 text-sm text-destructive">{msg}</p>;

@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
+import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { useT } from '@/lib/useT';
 import type {
   Competition,
@@ -1287,7 +1288,7 @@ export default function KnockoutStageContent({
       }));
   }, [predictedGroupStandings, knockoutConfig, luckyLoserDisciplinaryChoices]);
 
-  if (isLoading) return <p className="py-4 text-sm text-muted-foreground">{t('common.loading')}</p>;
+  if (isLoading) return <LoadingSpinner />;
   if (error) {
     const msg = error instanceof ApiError ? error.message : t('knockoutContent.saveFailed');
     return <p className="py-4 text-sm text-destructive">{msg}</p>;

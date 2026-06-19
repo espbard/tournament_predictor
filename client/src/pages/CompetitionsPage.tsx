@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import ImageUpload from '@/components/ImageUpload';
+import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { useT } from '@/lib/useT';
 import type { Competition, Tournament } from '@tournament-predictor/shared';
 
@@ -152,7 +153,7 @@ export default function CompetitionsPage() {
       )}
 
       {isLoading ? (
-        <p className="text-sm text-muted-foreground">{t('common.loading')}</p>
+        <LoadingSpinner />
       ) : competitions.length === 0 ? (
         <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
           {t('competitions.noCompetitions')}

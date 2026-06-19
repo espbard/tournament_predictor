@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { Pencil, ChevronDown } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -16,6 +16,7 @@ import { useAuthStore } from '@/store/authStore';
 import ImageUpload from '@/components/ImageUpload';
 import { useT } from '@/lib/useT';
 import BonusQuestionsTab from './BonusQuestionsTab';
+import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { TournamentKnockoutTabContent } from './TournamentKnockoutPage';
 import type { Tournament, Team, Match, MatchStage, Group, Player } from '@tournament-predictor/shared';
 import {
@@ -217,7 +218,14 @@ export default function TournamentDetailPage() {
   const [scoreMatchId, setScoreMatchId] = useState<string | null>(null);
   const [activeTeamId, setActiveTeamId] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState<'group' | 'standings' | 'knockout' | 'bonus' | 'players'>('group');
+  const [searchParams, setSearchParams] = useSearchParams();
+  type TabId = 'group' | 'standings' | 'knockout' | 'bonus' | 'players';
+  const VALID_TABS: TabId[] = ['group', 'standings', 'knockout', 'bonus', 'players'];
+  const tabParam = searchParams.get('tab') as TabId | null;
+  const activeTab: TabId = VALID_TABS.includes(tabParam!) ? tabParam! : 'group';
+  const setActiveTab = (tab: TabId) => {
+    setSearchParams(prev => { const n = new URLSearchParams(prev); n.set('tab', tab); return n; }, { replace: true });
+  };
 
   const [showAddGroup, setShowAddGroup] = useState(false);
   const [groupName, setGroupName] = useState('');
@@ -595,7 +603,7 @@ export default function TournamentDetailPage() {
   }
 
   if (tournamentLoading) {
-    return <div className="p-8 text-sm text-muted-foreground">{t('common.loading')}</div>;
+    return <LoadingSpinner />;
   }
   if (!tournament) {
     return <div className="p-8 text-sm">{t('tournamentDetail.notFound')}</div>;

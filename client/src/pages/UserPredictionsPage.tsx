@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import KnockoutStageContent from '@/components/KnockoutStageContent';
 import BonusQuestionsTab from '@/pages/BonusQuestionsTab';
+import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { useT } from '@/lib/useT';
 import type { Competition, Prediction, MatchStage } from '@tournament-predictor/shared';
 
@@ -115,7 +116,7 @@ export default function UserPredictionsPage() {
   }, [allGroupMatches]);
 
   if (isLoading || predsLoading) {
-    return <p className="p-8 text-sm text-muted-foreground">{t('common.loading')}</p>;
+    return <LoadingSpinner />;
   }
   if (error) {
     const msg = error instanceof ApiError ? error.message : t('competitionDetail.failedToLoad');
