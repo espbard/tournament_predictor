@@ -58,6 +58,12 @@ async function start() {
   await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS "is_leaderboard_user" boolean NOT NULL DEFAULT false`);
   // Defensive: ensure is_comparison_user column exists regardless of migration state
   await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS "is_comparison_user" boolean NOT NULL DEFAULT false`);
+  // Defensive: ensure is_late_addition column exists regardless of migration state
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS "is_late_addition" boolean NOT NULL DEFAULT false`);
+  // Defensive: ensure late_addition_points column exists regardless of migration state
+  await db.execute(sql`ALTER TABLE competition_members ADD COLUMN IF NOT EXISTS "late_addition_points" integer NOT NULL DEFAULT 0`);
+  // Defensive: ensure late_addition_window_ends_at column exists regardless of migration state
+  await db.execute(sql`ALTER TABLE competition_members ADD COLUMN IF NOT EXISTS "late_addition_window_ends_at" timestamp`);
   // Defensive: ensure players table exists regardless of migration state
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS "players" (

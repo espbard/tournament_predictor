@@ -5,6 +5,7 @@ export interface User {
   isTestAccount: boolean;
   isLeaderboardUser: boolean;
   isComparisonUser: boolean;
+  isLateAddition: boolean;
   imageUrl?: string | null;
 }
 
@@ -110,6 +111,7 @@ export interface ScoreBreakdown {
   correctTeamInFinalPoints: number;
   correctWinnerPoints: number;
   bonusQuestionPoints: number;
+  lateAdditionPoints: number;
 }
 
 export interface LeaderboardEntry {
@@ -121,6 +123,8 @@ export interface LeaderboardEntry {
   breakdown: ScoreBreakdown;
   inactive?: boolean;
   isComparisonUser?: boolean;
+  isLateAddition?: boolean;
+  lateAdditionWindowEndsAt?: string | null;
 }
 
 export interface BracketMatchPrediction {
