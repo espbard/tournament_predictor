@@ -56,7 +56,7 @@ function renderWinnerFigure(
   large: boolean,
   competitionId: string | undefined,
 ) {
-  const figureHeight = large ? 'h-44' : 'h-24';
+  const figureHeight = large ? 'h-[264px]' : 'h-36';
   const avatarSize = large ? 'h-9 w-9' : 'h-5 w-5';
   const nameClass = `font-medium text-center break-words w-full leading-tight ${large ? 'text-lg mb-3' : 'text-xs mb-2'}`;
   const wrapperClass = `flex flex-col items-center ${large ? 'mb-2 mt-4' : 'mb-1 mt-2'}`;
@@ -68,7 +68,7 @@ function renderWinnerFigure(
         src={entry.imageUrl ?? '/default-avatar.png'}
         alt={entry.username}
         className={`absolute z-10 rounded-full object-cover border-2 border-yellow-400 ${avatarSize}`}
-        style={{ top: '43%', left: '50%', transform: 'translate(-50%, -50%)' }}
+        style={{ top: '43%', left: 'calc(50% + 5px)', transform: 'translate(-50%, -50%)' }}
       />
     </div>
   );
