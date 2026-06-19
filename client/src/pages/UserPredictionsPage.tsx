@@ -56,7 +56,7 @@ export default function UserPredictionsPage() {
     enabled: !!id,
   });
 
-  const { data: matchList = [] } = useQuery({
+  const { data: matchList = [], isFetching: matchListFetching } = useQuery({
     queryKey: ['tournaments', competition?.tournamentId, 'matches'],
     queryFn: () => api.get<MatchWithTeams[]>(`/tournaments/${competition!.tournamentId}/matches`),
     enabled: !!competition,
@@ -115,7 +115,7 @@ export default function UserPredictionsPage() {
     lastResultInitialized.current = true;
   }, [allGroupMatches]);
 
-  if (isLoading || predsLoading) {
+  if (isLoading || predsLoading || matchListFetching) {
     return <LoadingSpinner />;
   }
   if (error) {
