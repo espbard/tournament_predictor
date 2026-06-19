@@ -145,7 +145,7 @@ export default function CompetitionDetailPage() {
     enabled: !!competition && !user?.isAdmin,
   });
 
-  const { data: matchList = [] } = useQuery({
+  const { data: matchList = [], isLoading: matchListLoading } = useQuery({
     queryKey: ['tournaments', competition?.tournamentId, 'matches'],
     queryFn: () => api.get<MatchWithTeams[]>(`/tournaments/${competition!.tournamentId}/matches`),
     enabled: !!competition && !user?.isAdmin,
@@ -175,7 +175,7 @@ export default function CompetitionDetailPage() {
     enabled: !!competition && !user?.isAdmin && !user?.isLeaderboardUser && (myStatus?.groupStageLocked ?? false),
   });
 
-  const { data: leaderboard = [] } = useQuery({
+  const { data: leaderboard = [], isLoading: leaderboardLoading } = useQuery({
     queryKey: ['competitions', id, 'leaderboard', showComparisonUsers],
     queryFn: () => api.get<LeaderboardEntry[]>(`/competitions/${id}/leaderboard${showComparisonUsers ? '?includeComparison=true' : ''}`),
     enabled: !!competition && (activeTab === 'leaderboard' || (!user?.isAdmin && !!user?.isLeaderboardUser)),
@@ -1004,7 +1004,9 @@ export default function CompetitionDetailPage() {
 
       {activeTab === 'tables' && (
         <div>
-          {groupStandings.length === 0 ? (
+          {matchListLoading ? (
+            <LoadingSpinner />
+          ) : groupStandings.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t('competitionDetail.noGroupMatches')}</p>
           ) : (
             <div className="space-y-6">
@@ -1304,7 +1306,9 @@ export default function CompetitionDetailPage() {
           </div>
         </div>
 
-        {allGroupMatchesList.length === 0 ? (
+        {matchListLoading ? (
+          <LoadingSpinner />
+        ) : allGroupMatchesList.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t('competitionDetail.predictions.noMatches')}</p>
         ) : (
           <>
@@ -1598,7 +1602,9 @@ export default function CompetitionDetailPage() {
               {language === 'no' ? 'Vis AI brukere' : 'Show AI users'}
             </label>
           )}
-          {leaderboard.length === 0 ? (
+          {leaderboardLoading ? (
+            <LoadingSpinner />
+          ) : leaderboard.length === 0 ? (
             <p className="text-sm text-muted-foreground py-4 text-center">{t('competitionDetail.leaderboard.noScores')}</p>
           ) : (() => {
           const rankEntries = showComparisonUsers ? leaderboard : leaderboard.filter(e => !e.isComparisonUser);
