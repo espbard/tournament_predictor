@@ -1264,6 +1264,7 @@ export default function CompetitionDetailPage() {
       {activeTab === 'knockout' && id && (
         <KnockoutStageContent
           competitionId={id}
+          lateAdditionWindowActive={lateAdditionWindowActive}
           onAllComplete={() => {
             if (!hasDeclinedKnockout) setShowKnockoutCompletePrompt(true);
           }}

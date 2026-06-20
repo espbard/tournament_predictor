@@ -1006,11 +1006,13 @@ function FocusedBracketView({
 export default function KnockoutStageContent({
   competitionId,
   viewUserId,
+  lateAdditionWindowActive,
   onAllComplete,
   onGoToGroupStage,
 }: {
   competitionId: string;
   viewUserId?: string;
+  lateAdditionWindowActive?: boolean;
   onAllComplete?: () => void;
   onGoToGroupStage?: () => void;
 }) {
@@ -1103,7 +1105,7 @@ export default function KnockoutStageContent({
   });
 
   const isComparisonUser = !viewUserId && !!user?.isComparisonUser;
-  const isReadOnly = !!viewUserId || (!isComparisonUser && (tournament?.status === 'active' || tournament?.status === 'completed'));
+  const isReadOnly = !!viewUserId || (!isComparisonUser && !lateAdditionWindowActive && (tournament?.status === 'active' || tournament?.status === 'completed'));
 
   function updatePrediction(key: string, pred: BracketMatchPrediction) {
     if (isReadOnly) return;
