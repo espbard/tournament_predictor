@@ -633,9 +633,9 @@ export default function CompetitionDetailPage() {
   }, [allGroupMatchesList]);
 
   const lateAdditionWindowActive =
-    !!(user?.isLateAddition &&
-    myStatus?.lateAdditionWindowEndsAt != null &&
-    new Date() < new Date(myStatus.lateAdditionWindowEndsAt));
+    myStatus !== undefined &&
+    myStatus.lateAdditionWindowEndsAt != null &&
+    new Date() < new Date(myStatus.lateAdditionWindowEndsAt);
 
   const deadlinePassed =
     !user?.isComparisonUser && !lateAdditionWindowActive && (
@@ -1272,15 +1272,17 @@ export default function CompetitionDetailPage() {
       {activeTab === 'group' && <>
 
       {/* Deadline banner */}
-      {competition.predictionDeadline && (
+      {(competition.predictionDeadline || lateAdditionWindowActive) && (
         <div className={`mb-4 rounded-lg px-4 py-2.5 text-sm ${
           deadlinePassed
             ? 'bg-muted text-muted-foreground'
             : 'border border-amber-200 bg-amber-50 text-amber-800'
         }`}>
-          {deadlinePassed
-            ? `${t('competitionDetail.deadline.closed')} · ${new Date(competition.predictionDeadline).toLocaleString()}`
-            : `${t('competitionDetail.deadline.openUntil')} ${new Date(competition.predictionDeadline).toLocaleString()}`}
+          {lateAdditionWindowActive
+            ? `${t('competitionDetail.deadline.openUntil')} ${new Date(myStatus!.lateAdditionWindowEndsAt!).toLocaleString()}`
+            : deadlinePassed
+              ? `${t('competitionDetail.deadline.closed')} · ${new Date(competition.predictionDeadline!).toLocaleString()}`
+              : `${t('competitionDetail.deadline.openUntil')} ${new Date(competition.predictionDeadline!).toLocaleString()}`}
         </div>
       )}
 
