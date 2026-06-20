@@ -59,6 +59,7 @@ interface MatchPredictionEntry {
   awayScore: number;
   progressingTeamId: string | null;
   points: number | null;
+  isReplacement?: boolean;
   breakdown: PredBreakdown;
   flipped?: boolean;
   predHomeTeamId?: string | null;
@@ -215,6 +216,7 @@ export default function CompetitionDetailPage() {
       let changed = false;
       const updates: Record<string, { home: string; away: string }> = {};
       for (const p of savedPredictions) {
+        if (p.isReplacement) continue;
         if (!(p.matchId in prev)) {
           updates[p.matchId] = { home: String(p.homeScore), away: String(p.awayScore) };
           changed = true;
@@ -1519,6 +1521,18 @@ export default function CompetitionDetailPage() {
                           <p className="text-xs text-green-600">{t('competitionDetail.predictions.saved')}</p>
                         )}
                         {match.status === 'completed' && pred && (() => {
+                          if (pred.isReplacement) {
+                            return (
+                              <div className="space-y-0.5">
+                                <p className="text-xs text-muted-foreground">
+                                  {t('competitionDetail.predictions.actualResult')}: {match.homeScore}–{match.awayScore}
+                                </p>
+                                <p className="text-xs text-muted-foreground italic">
+                                  {language === 'no' ? 'Kopiert tips (gir ikke poeng)' : 'Copied prediction (no points)'}
+                                </p>
+                              </div>
+                            );
+                          }
                           const cfg = competition.scoringConfig;
                           const hasActual = match.homeScore !== null && match.awayScore !== null;
                           const exactScore = hasActual &&
@@ -1997,6 +2011,7 @@ export default function CompetitionDetailPage() {
                                 <span className="flex-1 truncate font-medium text-xs">
                                   {pred.username}
                                   {pred.isComparisonUser && <span className="ml-1 font-normal text-muted-foreground not-italic">(AI)</span>}
+                                  {pred.isReplacement && <span className="ml-1 font-normal text-muted-foreground not-italic">{language === 'no' ? '(kopiert)' : '(copied)'}</span>}
                                 </span>
 
                                 <div className="flex items-center gap-1 flex-shrink-0">

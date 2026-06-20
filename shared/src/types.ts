@@ -99,6 +99,7 @@ export interface Prediction {
   awayScore: number;
   progressingTeamId: string | null;
   points: number | null;
+  isReplacement: boolean;
   createdAt: string;
 }
 

@@ -208,6 +208,7 @@ router.post('/join', requireAuth, async (req, res) => {
       );
       const lastPlaceScore = totals.length > 0 ? Math.min(...totals) : 0;
       const windowEndsAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      const joinTime = new Date();
 
       await db.insert(competitionMembers).values({
         competitionId: competition.id,
@@ -215,6 +216,76 @@ router.post('/join', requireAuth, async (req, res) => {
         lateAdditionPoints: lastPlaceScore,
         lateAdditionWindowEndsAt: windowEndsAt,
       });
+
+      // Create replacement predictions for completed group matches before join time,
+      // copying from the lowest-ranked member who predicted each specific match.
+      const completedGroupMatches = await db
+        .select({ id: matches.id, scheduledAt: matches.scheduledAt })
+        .from(matches)
+        .where(and(eq(matches.tournamentId, competition.tournamentId), eq(matches.stage, 'group'), eq(matches.status, 'completed')));
+
+      const matchesBefore = completedGroupMatches.filter(m => m.scheduledAt != null && m.scheduledAt < joinTime);
+
+      if (matchesBefore.length > 0) {
+        const matchIdsBefore = matchesBefore.map(m => m.id);
+
+        const existingPreds = await db
+          .select({ userId: predictions.userId, matchId: predictions.matchId, homeScore: predictions.homeScore, awayScore: predictions.awayScore })
+          .from(predictions)
+          .where(and(eq(predictions.competitionId, competition.id), inArray(predictions.matchId, matchIdsBefore), eq(predictions.isReplacement, false)));
+
+        // Score map: userId → total score (regular non-leaderboard non-comparison members only)
+        const scoreByUser = new Map<string, number>();
+        for (const m of memberScores) {
+          if (!m.isLeaderboardUser && !m.isComparisonUser) {
+            scoreByUser.set(m.userId,
+              m.exactScorePoints + m.correctResultPoints + m.correctTeamProgressesPoints +
+              m.correctGroupPositionPoints + m.correctTeamInKnockoutTiePoints +
+              m.correctTeamInFinalPoints + m.correctWinnerPoints + m.bonusQuestionPoints +
+              m.lateAdditionPoints,
+            );
+          }
+        }
+
+        const predsByMatch = new Map<string, typeof existingPreds>();
+        for (const p of existingPreds) {
+          if (!predsByMatch.has(p.matchId)) predsByMatch.set(p.matchId, []);
+          predsByMatch.get(p.matchId)!.push(p);
+        }
+
+        const replacements: Array<typeof predictions.$inferInsert> = [];
+        for (const match of matchesBefore) {
+          const matchPreds = predsByMatch.get(match.id) ?? [];
+          if (matchPreds.length === 0) continue;
+
+          // Pick the predictor with the lowest competition score
+          let lowestScore = Infinity;
+          let lowestPred: typeof matchPreds[number] | null = null;
+          for (const p of matchPreds) {
+            const score = scoreByUser.get(p.userId) ?? Infinity;
+            if (score < lowestScore) {
+              lowestScore = score;
+              lowestPred = p;
+            }
+          }
+          if (!lowestPred) continue;
+
+          replacements.push({
+            id: generateId(15),
+            competitionId: competition.id,
+            userId,
+            matchId: match.id,
+            homeScore: lowestPred.homeScore,
+            awayScore: lowestPred.awayScore,
+            progressingTeamId: null,
+            isReplacement: true,
+          });
+        }
+
+        if (replacements.length > 0) {
+          await db.insert(predictions).values(replacements);
+        }
+      }
     } else {
       await db.insert(competitionMembers).values({
         competitionId: competition.id,
@@ -500,6 +571,7 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
         awayScore: predictions.awayScore,
         progressingTeamId: predictions.progressingTeamId,
         points: predictions.points,
+        isReplacement: predictions.isReplacement,
         actualHomeScore: matches.homeScore,
         actualAwayScore: matches.awayScore,
         matchStage: matches.stage,
@@ -536,6 +608,7 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
       awayScore: number;
       progressingTeamId: string | null;
       points: number | null;
+      isReplacement: boolean;
       breakdown: PredBreakdown;
       flipped?: boolean;
       predHomeTeamId?: string | null;
@@ -544,7 +617,7 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
       predAwayTeamImageUrl?: string | null;
     }> = groupRows.map(row => {
       const bd: PredBreakdown = { exactScore: 0, correctResult: 0, correctTeamProgresses: 0, correctTeamInKnockoutTie: 0, correctTeamInFinal: 0, correctWinner: 0 };
-      if (row.actualHomeScore !== null && row.actualAwayScore !== null) {
+      if (!row.isReplacement && row.actualHomeScore !== null && row.actualAwayScore !== null) {
         const r = calculateMatchPoints(
           { homeScore: row.homeScore, awayScore: row.awayScore, progressingTeamId: row.progressingTeamId },
           { homeScore: row.actualHomeScore, awayScore: row.actualAwayScore, stage: row.matchStage, actualProgressingTeamId: row.actualProgressingTeamId },
@@ -554,7 +627,7 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
         bd.correctResult = r.breakdown.correctResult;
         bd.correctTeamProgresses = r.breakdown.correctTeamProgresses;
       }
-      return { matchId: row.matchId, userId: row.userId, username: row.username, imageUrl: row.imageUrl, isComparisonUser: row.isComparisonUser, homeScore: row.homeScore, awayScore: row.awayScore, progressingTeamId: row.progressingTeamId, points: row.points, breakdown: bd };
+      return { matchId: row.matchId, userId: row.userId, username: row.username, imageUrl: row.imageUrl, isComparisonUser: row.isComparisonUser, homeScore: row.homeScore, awayScore: row.awayScore, progressingTeamId: row.progressingTeamId, points: row.points, isReplacement: row.isReplacement, breakdown: bd };
     });
 
     // Knockout predictions come from bracketPredictions (not the predictions table).

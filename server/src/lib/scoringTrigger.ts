@@ -58,6 +58,7 @@ async function scoreGroupMatchPredictions(
     .where(and(eq(predictions.matchId, matchId), eq(predictions.competitionId, competitionId)));
 
   for (const pred of preds) {
+    if (pred.isReplacement) continue;
     const result = calculateMatchPoints(
       { homeScore: pred.homeScore, awayScore: pred.awayScore, progressingTeamId: pred.progressingTeamId },
       { homeScore: match.homeScore, awayScore: match.awayScore, stage: match.stage, actualProgressingTeamId: match.progressingTeamId },
@@ -188,7 +189,7 @@ async function recomputeAllMemberBreakdowns(
 
     for (const m of completedGroupMatches) {
       const pred = groupPredMap.get(m.id);
-      if (!pred || m.homeScore === null || m.awayScore === null) continue;
+      if (!pred || pred.isReplacement || m.homeScore === null || m.awayScore === null) continue;
       const result = calculateMatchPoints(
         { homeScore: pred.homeScore, awayScore: pred.awayScore, progressingTeamId: pred.progressingTeamId },
         { homeScore: m.homeScore, awayScore: m.awayScore, stage: m.stage, actualProgressingTeamId: m.progressingTeamId },
