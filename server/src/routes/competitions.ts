@@ -2093,7 +2093,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       };
       const KNOCKOUT_STAGES_TRAITOR = ['round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'final'];
 
-      const [traitorKoMatches, traitorBpRows, [traitorTournamentRow], traitorTeamInfoRows, traitorGroupRowsData, traitorMemberChoiceRows, traitorGroupMatchRows] = await Promise.all([
+      const [traitorKoMatches, traitorBpRows, [traitorTournamentRow], traitorTeamInfoRows, traitorGroupRowsData, traitorMemberChoiceRows, traitorAllGroupMatchRows] = await Promise.all([
         db.select({ id: matches.id, stage: matches.stage, scheduledAt: matches.scheduledAt, homeTeamId: matches.homeTeamId, awayTeamId: matches.awayTeamId })
           .from(matches).where(and(eq(matches.tournamentId, competition.tournamentId), inArray(matches.stage, KNOCKOUT_STAGES_TRAITOR))),
         db.select({ userId: bracketPredictions.userId, predictions: bracketPredictions.predictions })
@@ -2106,8 +2106,10 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           .from(groups).where(eq(groups.tournamentId, competition.tournamentId)),
         db.select({ userId: competitionMembers.userId, groupDisciplinaryChoices: competitionMembers.groupDisciplinaryChoices, luckyLoserChoices: competitionMembers.luckyLoserChoices })
           .from(competitionMembers).where(eq(competitionMembers.competitionId, id)),
+        // Fetch ALL group matches (not just completed) so we can simulate each user's
+        // full predicted group standings, including matches not yet played.
         db.select({ id: matches.id, homeTeamId: matches.homeTeamId, awayTeamId: matches.awayTeamId })
-          .from(matches).where(and(eq(matches.tournamentId, competition.tournamentId), eq(matches.stage, 'group'), eq(matches.status, 'completed'))),
+          .from(matches).where(and(eq(matches.tournamentId, competition.tournamentId), eq(matches.stage, 'group'))),
       ]);
 
       const traitorKoCfg = traitorTournamentRow?.knockoutConfig as KnockoutConfig | null;
@@ -2131,12 +2133,18 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
         const traitorMemberChoiceMap = new Map(traitorMemberChoiceRows.map(m => [m.userId, m]));
 
-        const traitorGroupMatchIdSet = new Set(traitorGroupMatchRows.map(m => m.id));
+        // Fetch predictions for ALL group matches so the standings simulation reflects
+        // what each user predicted for every group game, not just completed ones.
+        const traitorAllGroupMatchIds = traitorAllGroupMatchRows.map(m => m.id);
+        const traitorAllGroupPredRows = traitorAllGroupMatchIds.length > 0
+          ? await db.select({ userId: predictions.userId, matchId: predictions.matchId, homeScore: predictions.homeScore, awayScore: predictions.awayScore })
+              .from(predictions).where(and(eq(predictions.competitionId, id), inArray(predictions.matchId, traitorAllGroupMatchIds), eq(predictions.isReplacement, false)))
+          : [];
+
         const traitorGroupPredsByUser = new Map<string, Array<{ matchId: string; homeScore: number; awayScore: number }>>();
-        for (const row of rows) {
-          if (!traitorGroupMatchIdSet.has(row.matchId)) continue;
-          if (!traitorGroupPredsByUser.has(row.userId)) traitorGroupPredsByUser.set(row.userId, []);
-          traitorGroupPredsByUser.get(row.userId)!.push({ matchId: row.matchId, homeScore: row.predHomeScore, awayScore: row.predAwayScore });
+        for (const pred of traitorAllGroupPredRows) {
+          if (!traitorGroupPredsByUser.has(pred.userId)) traitorGroupPredsByUser.set(pred.userId, []);
+          traitorGroupPredsByUser.get(pred.userId)!.push({ matchId: pred.matchId, homeScore: pred.homeScore, awayScore: pred.awayScore });
         }
 
         const { firstRound, bracketSlots, directQualifiers } = traitorKoCfg;
@@ -2162,7 +2170,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           const userGroupPredMap = new Map(
             (traitorGroupPredsByUser.get(bp.userId) ?? []).map(p => [p.matchId, p])
           );
-          const simulatedMatches = traitorGroupMatchRows
+          const simulatedMatches = traitorAllGroupMatchRows
             .filter(m => m.homeTeamId && m.awayTeamId)
             .flatMap(m => {
               const p = userGroupPredMap.get(m.id);
