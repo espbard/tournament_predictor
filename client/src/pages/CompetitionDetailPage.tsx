@@ -1364,9 +1364,9 @@ export default function CompetitionDetailPage() {
                     : !hasPred && !hasPendingEdit
                     ? 'w-2.5 h-2.5 bg-muted-foreground/30 hover:bg-muted-foreground/50'
                     : !hasActual
-                    ? 'w-2.5 h-2.5 bg-yellow-400'
+                    ? 'w-2.5 h-2.5 bg-yellow-300'
                     : isExactScore
-                    ? 'w-2.5 h-2.5 bg-green-500 ring-2 ring-amber-400'
+                    ? 'w-2.5 h-2.5 bg-green-500 ring-1 ring-offset-1 ring-offset-background ring-amber-400'
                     : isCorrectResult
                     ? 'w-2.5 h-2.5 bg-green-500'
                     : 'w-2.5 h-2.5 bg-red-500';
@@ -1375,7 +1375,7 @@ export default function CompetitionDetailPage() {
                       key={m.id}
                       type="button"
                       onClick={() => setCurrentGroupMatchIdx(idx)}
-                      className={`rounded-full transition-all duration-200 ${dotClass}`}
+                      className={`rounded-full transition-all duration-200 ${dotClass}${pred?.isReplacement ? ' opacity-40' : ''}`}
                       aria-label={`Match ${idx + 1}`}
                     />
                   );
