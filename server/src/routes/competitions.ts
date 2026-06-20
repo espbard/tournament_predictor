@@ -900,6 +900,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         userId: predictions.userId,
         username: users.username,
         imageUrl: users.imageUrl,
+        isLateAddition: users.isLateAddition,
         matchId: predictions.matchId,
         predHomeScore: predictions.homeScore,
         predAwayScore: predictions.awayScore,
@@ -918,7 +919,8 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           eq(predictions.competitionId, id),
           eq(matches.status, 'completed'),
           eq(users.isLeaderboardUser, false),
-          eq(users.isComparisonUser, false)
+          eq(users.isComparisonUser, false),
+          eq(predictions.isReplacement, false)
         )
       );
 
@@ -1042,10 +1044,12 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     const last5MatchIds = new Set(completedMatchesByRecency.slice(0, 5).map(m => m.id));
 
     const userInfo = new Map<string, { username: string; imageUrl: string | null }>();
+    const isLateAdditionByUser = new Map<string, boolean>();
     const pointsByUserMatch = new Map<string, number>();
     const predCountByUser = new Map<string, number>();
     for (const row of activeRows) {
       userInfo.set(row.userId, { username: row.username, imageUrl: row.imageUrl });
+      isLateAdditionByUser.set(row.userId, row.isLateAddition);
       pointsByUserMatch.set(`${row.userId}|${row.matchId}`, row.points ?? 0);
       predCountByUser.set(row.userId, (predCountByUser.get(row.userId) ?? 0) + 1);
     }
@@ -1057,9 +1061,19 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         .map(([userId]) => userId)
     );
 
+    // Late addition users must have at least 5 real (non-replacement) predictions with results
+    // before being eligible for best/worst form cards
+    const formEligibleUserIds = new Set<string>(
+      [...userInfo.keys()].filter(userId => {
+        if (!isLateAdditionByUser.get(userId)) return true;
+        return (predCountByUser.get(userId) ?? 0) >= 5;
+      })
+    );
+
     const recentPointsByUser = new Map<string, number>();
     for (const row of activeRows) {
       if (!last5MatchIds.has(row.matchId)) continue;
+      if (!formEligibleUserIds.has(row.userId)) continue;
       recentPointsByUser.set(row.userId, (recentPointsByUser.get(row.userId) ?? 0) + (row.points ?? 0));
     }
 
@@ -1077,6 +1091,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       const droughtByUser = new Map<string, number>();
       for (const userId of userInfo.keys()) {
         if (!usersWithAllPredictions.has(userId)) continue;
+        if (!formEligibleUserIds.has(userId)) continue;
         let drought = 0;
         for (const match of completedMatchesByRecency) {
           const points = pointsByUserMatch.get(`${userId}|${match.id}`) ?? 0;
@@ -1177,6 +1192,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         correctTeamInFinalPoints: competitionMembers.correctTeamInFinalPoints,
         correctWinnerPoints: competitionMembers.correctWinnerPoints,
         bonusQuestionPoints: competitionMembers.bonusQuestionPoints,
+        lateAdditionPoints: competitionMembers.lateAdditionPoints,
       })
       .from(competitionMembers)
       .innerJoin(users, eq(competitionMembers.userId, users.id))
@@ -1196,7 +1212,8 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           row.correctTeamInKnockoutTiePoints +
           row.correctTeamInFinalPoints +
           row.correctWinnerPoints +
-          row.bonusQuestionPoints,
+          row.bonusQuestionPoints +
+          row.lateAdditionPoints,
       }));
 
     if (memberTotals.length >= 3) {
