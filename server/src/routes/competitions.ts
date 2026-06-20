@@ -224,7 +224,11 @@ router.post('/join', requireAuth, async (req, res) => {
         .from(matches)
         .where(and(eq(matches.tournamentId, competition.tournamentId), eq(matches.stage, 'group'), eq(matches.status, 'completed')));
 
-      const matchesBefore = completedGroupMatches.filter(m => m.scheduledAt != null && m.scheduledAt < joinTime);
+      // All completed group matches happened before the user joined; include those
+      // without a scheduledAt too since they're provably already played.
+      const matchesBefore = completedGroupMatches.filter(
+        m => m.scheduledAt == null || m.scheduledAt < joinTime,
+      );
 
       if (matchesBefore.length > 0) {
         const matchIdsBefore = matchesBefore.map(m => m.id);
@@ -234,7 +238,9 @@ router.post('/join', requireAuth, async (req, res) => {
           .from(predictions)
           .where(and(eq(predictions.competitionId, competition.id), inArray(predictions.matchId, matchIdsBefore), eq(predictions.isReplacement, false)));
 
-        // Score map: userId → total score (regular non-leaderboard non-comparison members only)
+        // Score map: userId → total score (regular non-leaderboard non-comparison members only).
+        // Comparison/leaderboard users are not included here; if a match was only predicted by
+        // those users their predictions still serve as fallback (see lowestScore init below).
         const scoreByUser = new Map<string, number>();
         for (const m of memberScores) {
           if (!m.isLeaderboardUser && !m.isComparisonUser) {
@@ -258,12 +264,15 @@ router.post('/join', requireAuth, async (req, res) => {
           const matchPreds = predsByMatch.get(match.id) ?? [];
           if (matchPreds.length === 0) continue;
 
-          // Pick the predictor with the lowest competition score
-          let lowestScore = Infinity;
+          // Pick the predictor with the lowest competition score among regular members.
+          // Initialize lowestScore as null so the first prediction is always accepted as a
+          // baseline — this handles the case where all predictors are comparison/leaderboard
+          // users (scoreByUser returns Infinity for them, and Infinity < Infinity is false).
+          let lowestScore: number | null = null;
           let lowestPred: typeof matchPreds[number] | null = null;
           for (const p of matchPreds) {
             const score = scoreByUser.get(p.userId) ?? Infinity;
-            if (score < lowestScore) {
+            if (lowestScore === null || score < lowestScore) {
               lowestScore = score;
               lowestPred = p;
             }
