@@ -2086,206 +2086,85 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     }
 
     // ── The Traitor: user(s) who predicted Norway eliminated earliest ──
+    // Traces each user's bracket predictions by checking which stages Norway appears
+    // in as progressingTeamId. If Norway never appears as winner in any stage, the
+    // user is considered to have predicted group-stage elimination.
     if (norwayTeam) {
       const norwayId = norwayTeam.id;
+      const KNOCKOUT_STAGES_ORDERED = ['round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'final'];
       const STAGE_RANK_TRAITOR: Record<string, number> = {
-        group: 0, round_of_32: 1, round_of_16: 2, quarter_final: 3, semi_final: 4, final: 5, winner: 6,
+        group: 0, round_of_16: 2, quarter_final: 3, semi_final: 4, final: 5, winner: 6,
       };
-      const KNOCKOUT_STAGES_TRAITOR = ['round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'final'];
 
-      const [traitorKoMatches, traitorBpRows, [traitorTournamentRow], traitorTeamInfoRows, traitorGroupRowsData, traitorMemberChoiceRows, traitorAllGroupMatchRows] = await Promise.all([
-        db.select({ id: matches.id, stage: matches.stage, scheduledAt: matches.scheduledAt, homeTeamId: matches.homeTeamId, awayTeamId: matches.awayTeamId })
-          .from(matches).where(and(eq(matches.tournamentId, competition.tournamentId), inArray(matches.stage, KNOCKOUT_STAGES_TRAITOR))),
-        db.select({ userId: bracketPredictions.userId, predictions: bracketPredictions.predictions })
-          .from(bracketPredictions).where(eq(bracketPredictions.competitionId, id)),
-        db.select({ knockoutConfig: tournaments.knockoutConfig })
-          .from(tournaments).where(eq(tournaments.id, competition.tournamentId)),
-        db.select({ id: teams.id, groupId: teams.groupId })
-          .from(teams).where(eq(teams.tournamentId, competition.tournamentId)),
-        db.select({ id: groups.id, name: groups.name })
-          .from(groups).where(eq(groups.tournamentId, competition.tournamentId)),
-        db.select({ userId: competitionMembers.userId, groupDisciplinaryChoices: competitionMembers.groupDisciplinaryChoices, luckyLoserChoices: competitionMembers.luckyLoserChoices })
-          .from(competitionMembers).where(eq(competitionMembers.competitionId, id)),
-        // Fetch ALL group matches (not just completed) so we can simulate each user's
-        // full predicted group standings, including matches not yet played.
-        db.select({ id: matches.id, homeTeamId: matches.homeTeamId, awayTeamId: matches.awayTeamId })
-          .from(matches).where(and(eq(matches.tournamentId, competition.tournamentId), eq(matches.stage, 'group'))),
-      ]);
+      const traitorBpRows = await db
+        .select({ userId: bracketPredictions.userId, predictions: bracketPredictions.predictions })
+        .from(bracketPredictions)
+        .where(eq(bracketPredictions.competitionId, id));
 
-      const traitorKoCfg = traitorTournamentRow?.knockoutConfig as KnockoutConfig | null;
+      const userEliminations = new Map<string, { eliminatedAt: string; rank: number }>();
 
-      if (traitorKoCfg && traitorBpRows.length > 0) {
-        traitorKoMatches.sort((a, b) => {
-          if (!a.scheduledAt && !b.scheduledAt) return 0;
-          if (!a.scheduledAt) return 1;
-          if (!b.scheduledAt) return -1;
-          return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
-        });
+      for (const bp of traitorBpRows) {
+        if (activeStatUserIds && !activeStatUserIds.has(bp.userId)) continue;
+        if (!userInfo.has(bp.userId)) continue;
 
-        const traitorGroupNameMap = new Map(traitorGroupRowsData.map(g => [g.id, g.name]));
-        const traitorTeamGroupMap = new Map<string, string>();
-        for (const t of traitorTeamInfoRows) {
-          if (t.groupId) {
-            const gName = traitorGroupNameMap.get(t.groupId);
-            if (gName) traitorTeamGroupMap.set(t.id, gName);
-          }
+        const bpPreds = bp.predictions as BracketPredictions;
+
+        // Find the latest knockout stage where Norway appears as progressingTeamId
+        let lastSurvivedStageIdx = -1;
+        for (let si = 0; si < KNOCKOUT_STAGES_ORDERED.length; si++) {
+          const stage = KNOCKOUT_STAGES_ORDERED[si];
+          const norwayWon = Object.entries(bpPreds).some(
+            ([key, pred]) => key.startsWith(`${stage}_`) && pred.progressingTeamId === norwayId,
+          );
+          if (norwayWon) lastSurvivedStageIdx = si;
         }
 
-        const traitorMemberChoiceMap = new Map(traitorMemberChoiceRows.map(m => [m.userId, m]));
-
-        // Fetch predictions for ALL group matches so the standings simulation reflects
-        // what each user predicted for every group game, not just completed ones.
-        const traitorAllGroupMatchIds = traitorAllGroupMatchRows.map(m => m.id);
-        const traitorAllGroupPredRows = traitorAllGroupMatchIds.length > 0
-          ? await db.select({ userId: predictions.userId, matchId: predictions.matchId, homeScore: predictions.homeScore, awayScore: predictions.awayScore })
-              .from(predictions).where(and(eq(predictions.competitionId, id), inArray(predictions.matchId, traitorAllGroupMatchIds), eq(predictions.isReplacement, false)))
-          : [];
-
-        const traitorGroupPredsByUser = new Map<string, Array<{ matchId: string; homeScore: number; awayScore: number }>>();
-        for (const pred of traitorAllGroupPredRows) {
-          if (!traitorGroupPredsByUser.has(pred.userId)) traitorGroupPredsByUser.set(pred.userId, []);
-          traitorGroupPredsByUser.get(pred.userId)!.push({ matchId: pred.matchId, homeScore: pred.homeScore, awayScore: pred.awayScore });
+        let eliminatedAt: string;
+        if (lastSurvivedStageIdx === -1) {
+          eliminatedAt = 'group';
+        } else if (lastSurvivedStageIdx === KNOCKOUT_STAGES_ORDERED.length - 1) {
+          eliminatedAt = 'winner';
+        } else {
+          eliminatedAt = KNOCKOUT_STAGES_ORDERED[lastSurvivedStageIdx + 1];
         }
 
-        const { firstRound, bracketSlots, directQualifiers } = traitorKoCfg;
-        const allFirstRoundMatchesTraitor = traitorKoMatches.filter(m => m.stage === firstRound);
+        userEliminations.set(bp.userId, { eliminatedAt, rank: STAGE_RANK_TRAITOR[eliminatedAt] ?? 7 });
+      }
 
-        const traitorProgresses = (
-          pred: { homeScore: number; awayScore: number; progressingTeamId?: string | null },
-          norwayIsHome: boolean,
-        ): boolean => {
-          if (pred.progressingTeamId) return pred.progressingTeamId === norwayId;
-          return norwayIsHome ? pred.homeScore > pred.awayScore : pred.awayScore > pred.homeScore;
-        };
+      if (userEliminations.size > 0) {
+        const minRank = Math.min(...[...userEliminations.values()].map(e => e.rank));
 
-        const userEliminations = new Map<string, { eliminatedAt: string; rank: number }>();
+        if (minRank <= STAGE_RANK_TRAITOR['round_of_16']) {
+          const traitors = [...userEliminations.entries()]
+            .filter(([, e]) => e.rank === minRank)
+            .map(([userId]) => ({ userId, ...userInfo.get(userId)! }))
+            .sort((a, b) => a.username.localeCompare(b.username));
 
-        for (const bp of traitorBpRows) {
-          if (activeStatUserIds && !activeStatUserIds.has(bp.userId)) continue;
-          if (!userInfo.has(bp.userId)) continue;
+          const minStage = Object.keys(STAGE_RANK_TRAITOR).find(s => STAGE_RANK_TRAITOR[s] === minRank) ?? 'group';
+          const stageLabelMap: Record<string, { no: string; en: string }> = {
+            group: { no: 'gruppespillet', en: 'the group stage' },
+            round_of_16: { no: 'runde 16', en: 'the round of 16' },
+          };
+          const stageLabelNo = stageLabelMap[minStage]?.no ?? minStage;
+          const stageLabelEn = stageLabelMap[minStage]?.en ?? minStage;
+          const traitorNames = formatUserList(traitors.map(u => u.username), lang);
 
-          const bpPreds = bp.predictions as BracketPredictions;
-          const memberChoices = traitorMemberChoiceMap.get(bp.userId);
-
-          const userGroupPredMap = new Map(
-            (traitorGroupPredsByUser.get(bp.userId) ?? []).map(p => [p.matchId, p])
-          );
-          const simulatedMatches = traitorAllGroupMatchRows
-            .filter(m => m.homeTeamId && m.awayTeamId)
-            .flatMap(m => {
-              const p = userGroupPredMap.get(m.id);
-              return p ? [{ homeTeamId: m.homeTeamId!, awayTeamId: m.awayTeamId!, homeScore: p.homeScore, awayScore: p.awayScore }] : [];
-            });
-          const predictedStandings = computeGroupStandings(
-            simulatedMatches, traitorTeamGroupMap, (memberChoices?.groupDisciplinaryChoices ?? {}) as Record<string, string[]>
-          );
-          const resolvedSlots = resolveFirstRoundSlots(
-            bracketSlots, predictedStandings, directQualifiers, allFirstRoundMatchesTraitor.length,
-            (memberChoices?.luckyLoserChoices ?? {}) as Record<string, string[]>
-          );
-
-          const firstRoundPredTeamsTraitor: Record<string, { predHomeId: string | null; predAwayId: string | null }> = {};
-          allFirstRoundMatchesTraitor.forEach((m, i) => {
-            firstRoundPredTeamsTraitor[`${firstRound}_${i}`] = {
-              predHomeId: resolvedSlots[`m${i + 1}_home`] ?? null,
-              predAwayId: resolvedSlots[`m${i + 1}_away`] ?? null,
-            };
-          });
-
-          // Build modified matchesByStage with predicted first-round teams for trajectory tracing
-          const traitorModMatchesByStage = new Map<string, KnockoutMatchSlot[]>();
-          const modStageIdx = new Map<string, number>();
-          for (const m of traitorKoMatches) {
-            if (!traitorModMatchesByStage.has(m.stage)) traitorModMatchesByStage.set(m.stage, []);
-            const idx = modStageIdx.get(m.stage) ?? 0;
-            modStageIdx.set(m.stage, idx + 1);
-            const slot = m.stage === firstRound ? firstRoundPredTeamsTraitor[`${firstRound}_${idx}`] : null;
-            traitorModMatchesByStage.get(m.stage)!.push({
-              id: m.id, stage: m.stage,
-              homeTeamId: slot ? slot.predHomeId : (m.homeTeamId ?? null),
-              awayTeamId: slot ? slot.predAwayId : (m.awayTeamId ?? null),
-            });
-          }
-
-          // Determine Norway's predicted elimination stage
-          const norwayFirstRoundEntry = Object.entries(firstRoundPredTeamsTraitor).find(
-            ([, t]) => t.predHomeId === norwayId || t.predAwayId === norwayId
-          );
-
-          let eliminatedAt: string;
-
-          if (!norwayFirstRoundEntry) {
-            eliminatedAt = 'group';
-          } else {
-            const [norwayMatchKey, norwaySlots] = norwayFirstRoundEntry;
-            const norwayIsHome = norwaySlots.predHomeId === norwayId;
-            const firstRoundPred = bpPreds[norwayMatchKey];
-
-            if (!firstRoundPred || !traitorProgresses(firstRoundPred, norwayIsHome)) {
-              eliminatedAt = firstRound;
-            } else {
-              eliminatedAt = 'winner';
-
-              const firstRoundIdx = KNOCKOUT_STAGES_TRAITOR.indexOf(firstRound);
-              const subsequentStages = firstRoundIdx >= 0 ? KNOCKOUT_STAGES_TRAITOR.slice(firstRoundIdx + 1) : [];
-
-              for (const stage of subsequentStages) {
-                const stageMatchList = traitorModMatchesByStage.get(stage) ?? [];
-                let norwayMatchIdxInStage = -1;
-                let norwayIsHomeInStage = false;
-
-                for (let mi = 0; mi < stageMatchList.length; mi++) {
-                  const predHome = getUserPredictedTeamForKnockoutSlot(stage, mi, 'home', firstRound, traitorModMatchesByStage, bpPreds);
-                  const predAway = getUserPredictedTeamForKnockoutSlot(stage, mi, 'away', firstRound, traitorModMatchesByStage, bpPreds);
-                  if (predHome === norwayId) { norwayMatchIdxInStage = mi; norwayIsHomeInStage = true; break; }
-                  if (predAway === norwayId) { norwayMatchIdxInStage = mi; norwayIsHomeInStage = false; break; }
-                }
-
-                if (norwayMatchIdxInStage === -1) break;
-
-                const stagePred = bpPreds[`${stage}_${norwayMatchIdxInStage}`];
-                if (!stagePred || !traitorProgresses(stagePred, norwayIsHomeInStage)) {
-                  eliminatedAt = stage;
-                  break;
-                }
-              }
-            }
-          }
-
-          userEliminations.set(bp.userId, { eliminatedAt, rank: STAGE_RANK_TRAITOR[eliminatedAt] ?? 0 });
-        }
-
-        if (userEliminations.size > 0) {
-          const minRank = Math.min(...[...userEliminations.values()].map(e => e.rank));
-
-          if (minRank <= STAGE_RANK_TRAITOR['round_of_16']) {
-            const traitors = [...userEliminations.entries()]
-              .filter(([, e]) => e.rank === minRank)
-              .map(([userId]) => ({ userId, ...userInfo.get(userId)! }))
-              .sort((a, b) => a.username.localeCompare(b.username));
-
-            const minStage = Object.keys(STAGE_RANK_TRAITOR).find(s => STAGE_RANK_TRAITOR[s] === minRank) ?? 'group';
-            const stageLabelMap: Record<string, { no: string; en: string }> = {
-              group: { no: 'gruppespillet', en: 'the group stage' },
-              round_of_32: { no: 'runde 32', en: 'the round of 32' },
-              round_of_16: { no: 'runde 16', en: 'the round of 16' },
-            };
-            const stageLabelNo = stageLabelMap[minStage]?.no ?? minStage;
-            const stageLabelEn = stageLabelMap[minStage]?.en ?? minStage;
-            const traitorNames = formatUserList(traitors.map(u => u.username), lang);
-
-            traitorCard = {
-              id: 'traitor',
-              title: lang === 'no' ? 'Landssvikeren' : 'The Traitor',
-              statistic:
-                lang === 'no'
-                  ? `${traitorNames} trodde faktisk at Norge ville bli slått ut allerede i ${stageLabelNo}!`
-                  : `${traitorNames} actually thought that Norway would be knocked out as early as ${stageLabelEn}!`,
-              subjects: traitors.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
-              linkType: 'user',
-              overlayImageUrl: norwayTeam.imageUrl ?? null,
-            };
-          }
+          traitorCard = {
+            id: 'traitor',
+            title: lang === 'no' ? 'Landssvikeren' : 'The Traitor',
+            statistic:
+              lang === 'no'
+                ? `${traitorNames} trodde faktisk at Norge ville bli slått ut allerede i ${stageLabelNo}!`
+                : `${traitorNames} actually thought that Norway would be knocked out as early as ${stageLabelEn}!`,
+            subjects: traitors.map(u => ({
+              type: 'user' as const,
+              id: u.userId,
+              name: u.username,
+              imageUrl: u.imageUrl,
+            })),
+            linkType: 'user',
+            overlayImageUrl: norwayTeam.imageUrl ?? null,
+          };
         }
       }
     }
