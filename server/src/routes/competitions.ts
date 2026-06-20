@@ -142,6 +142,10 @@ router.post('/join', requireAuth, async (req, res) => {
       return res.status(403).json({ error: 'This competition is no longer open for new members' });
     }
 
+    if (isLateAdditionJoin && !competition.allowLateAdditions) {
+      return res.status(403).json({ error: 'This competition does not allow late additions' });
+    }
+
     if (!isLateAdditionJoin && tournament && tournament.status !== 'upcoming') {
       return res.status(403).json({ error: 'This competition is no longer open for new members' });
     }
@@ -337,13 +341,14 @@ router.patch('/:id', requireAdmin, async (req, res) => {
     const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
     if (!competition) return res.status(404).json({ error: 'Competition not found' });
 
-    const { name, imageUrl, predictionDeadline } = req.body;
+    const { name, imageUrl, predictionDeadline, allowLateAdditions } = req.body;
     const updates: Record<string, unknown> = {};
     if (name !== undefined) updates.name = name;
     if (imageUrl !== undefined) updates.imageUrl = imageUrl ?? null;
     if (predictionDeadline !== undefined) {
       updates.predictionDeadline = predictionDeadline ? new Date(predictionDeadline) : null;
     }
+    if (allowLateAdditions !== undefined) updates.allowLateAdditions = Boolean(allowLateAdditions);
 
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({ error: 'No updates provided' });

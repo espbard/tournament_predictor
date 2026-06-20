@@ -117,6 +117,7 @@ export const competitions = pgTable('competitions', {
   inviteCode: text('invite_code').notNull().unique(),
   scoringConfig: json('scoring_config').notNull().$type<ScoringConfig>(),
   predictionDeadline: timestamp('prediction_deadline'),
+  allowLateAdditions: boolean('allow_late_additions').notNull().default(true),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
