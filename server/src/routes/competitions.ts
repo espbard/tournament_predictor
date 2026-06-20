@@ -2604,15 +2604,22 @@ router.post('/:id/bonus-answers', requireAuth, async (req, res) => {
     const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
     if (!competition) return res.status(404).json({ error: 'Competition not found' });
 
+    let baMembership: typeof competitionMembers.$inferSelect | undefined;
     if (!user.isAdmin) {
-      const [membership] = await db
+      const [mem] = await db
         .select()
         .from(competitionMembers)
         .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
-      if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+      if (!mem) return res.status(403).json({ error: 'Not a member of this competition' });
+      baMembership = mem;
     }
 
-    if (!user.isComparisonUser && competition.predictionDeadline && new Date() > new Date(competition.predictionDeadline)) {
+    const isBaLateAdditionMember = baMembership?.lateAdditionWindowEndsAt != null;
+    if (isBaLateAdditionMember) {
+      if (new Date() > new Date(baMembership!.lateAdditionWindowEndsAt!)) {
+        return res.status(400).json({ error: 'Your 24-hour prediction window has expired' });
+      }
+    } else if (!user.isComparisonUser && competition.predictionDeadline && new Date() > new Date(competition.predictionDeadline)) {
       return res.status(400).json({ error: 'Prediction deadline has passed' });
     }
 
