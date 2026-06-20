@@ -128,8 +128,15 @@ router.post('/join', requireAuth, async (req, res) => {
       .from(tournaments)
       .where(eq(tournaments.id, competition.tournamentId));
 
-    const user = res.locals.user;
-    const isLateAdditionJoin = user.isLateAddition && tournament?.status === 'active';
+    const userId: string = res.locals.user.id;
+
+    // Read isLateAddition directly from DB to avoid stale session values
+    const [dbUser] = await db
+      .select({ isLateAddition: users.isLateAddition })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    const isLateAdditionJoin = (dbUser?.isLateAddition ?? false) && tournament?.status === 'active';
 
     if (tournament && tournament.status === 'completed') {
       return res.status(403).json({ error: 'This competition is no longer open for new members' });
@@ -143,7 +150,6 @@ router.post('/join', requireAuth, async (req, res) => {
       return res.status(403).json({ error: 'The prediction deadline for this competition has passed' });
     }
 
-    const userId: string = user.id;
     const [existing] = await db
       .select()
       .from(competitionMembers)
