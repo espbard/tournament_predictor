@@ -384,6 +384,7 @@ router.get('/:id/leaderboard', requireAuth, async (req, res) => {
         correctWinnerPoints: competitionMembers.correctWinnerPoints,
         bonusQuestionPoints: competitionMembers.bonusQuestionPoints,
         lateAdditionPoints: competitionMembers.lateAdditionPoints,
+        joinedAt: competitionMembers.joinedAt,
         lateAdditionWindowEndsAt: competitionMembers.lateAdditionWindowEndsAt,
       })
       .from(competitionMembers)
@@ -405,21 +406,24 @@ router.get('/:id/leaderboard', requireAuth, async (req, res) => {
     }));
     rowsWithTotal.sort((a, b) => b.totalPoints - a.totalPoints);
 
-    const recentCompletedMatches = await db
-      .select({ id: matches.id })
+    const allCompletedMatchesSorted = await db
+      .select({ id: matches.id, scheduledAt: matches.scheduledAt })
       .from(matches)
       .where(and(eq(matches.tournamentId, competition.tournamentId), eq(matches.status, 'completed')))
-      .orderBy(desc(matches.scheduledAt))
-      .limit(5);
+      .orderBy(desc(matches.scheduledAt));
 
-    const recentMatchIds = recentCompletedMatches.map(m => m.id);
-    const usersWithRecentPreds = new Set<string>();
-    if (recentMatchIds.length > 0) {
-      const recentPredRows = await db
-        .select({ userId: predictions.userId })
+    const globalRecentMatchIds = allCompletedMatchesSorted.slice(0, 5).map(m => m.id);
+    const allCompletedMatchIds = allCompletedMatchesSorted.map(m => m.id);
+    const userPredMatchIds = new Map<string, Set<string>>();
+    if (allCompletedMatchIds.length > 0) {
+      const allPredRows = await db
+        .select({ userId: predictions.userId, matchId: predictions.matchId })
         .from(predictions)
-        .where(and(eq(predictions.competitionId, id), inArray(predictions.matchId, recentMatchIds)));
-      for (const p of recentPredRows) usersWithRecentPreds.add(p.userId);
+        .where(and(eq(predictions.competitionId, id), inArray(predictions.matchId, allCompletedMatchIds)));
+      for (const p of allPredRows) {
+        if (!userPredMatchIds.has(p.userId)) userPredMatchIds.set(p.userId, new Set());
+        userPredMatchIds.get(p.userId)!.add(p.matchId);
+      }
     }
 
     let rank = 1;
@@ -445,7 +449,17 @@ router.get('/:id/leaderboard', requireAuth, async (req, res) => {
           bonusQuestionPoints: row.bonusQuestionPoints,
           lateAdditionPoints: row.lateAdditionPoints,
         },
-        inactive: recentMatchIds.length >= 5 && !usersWithRecentPreds.has(row.userId),
+        inactive: (() => {
+          const userPreds = userPredMatchIds.get(row.userId) ?? new Set<string>();
+          if (row.lateAdditionWindowEndsAt != null) {
+            // Late addition user: only count matches scheduled after they joined
+            const postJoinMatches = allCompletedMatchesSorted
+              .filter(m => m.scheduledAt != null && m.scheduledAt >= row.joinedAt)
+              .slice(0, 5);
+            return postJoinMatches.length >= 5 && postJoinMatches.every(m => !userPreds.has(m.id));
+          }
+          return globalRecentMatchIds.length >= 5 && globalRecentMatchIds.every(mid => !userPreds.has(mid));
+        })(),
       };
     });
 
