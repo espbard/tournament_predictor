@@ -1168,6 +1168,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     let mostUnexpectedResultCard: UserStatCardData | null = null;
     let mostPredictableResultCard: UserStatCardData | null = null;
     let brautometerCard: UserStatCardData | null = null;
+    let swingAndAMissCard: UserStatCardData | null = null;
 
     if (kingGroup.length > 0) {
       const gameCount = kingGroup[0].streak;
@@ -1643,8 +1644,54 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       }
     }
 
+    // ── Swing and a Miss: prediction furthest from actual goal difference ──
+    interface SwingAndAMissData {
+      matchId: string;
+      homeTeamId: string | null;
+      awayTeamId: string | null;
+      homeScore: number;
+      awayScore: number;
+      predHomeScore: number;
+      predAwayScore: number;
+      deviation: number;
+      users: { userId: string; username: string; imageUrl: string | null }[];
+    }
+
+    const swingPredictionGroups = new Map<string, SwingAndAMissData>();
+    for (const row of activeRows) {
+      if (row.actualHomeScore === null || row.actualAwayScore === null) continue;
+      const actualGD = row.actualHomeScore - row.actualAwayScore;
+      const predGD = row.predHomeScore - row.predAwayScore;
+      const deviation = Math.abs(actualGD - predGD);
+      const key = `${row.matchId}|${row.predHomeScore}|${row.predAwayScore}`;
+      if (!swingPredictionGroups.has(key)) {
+        swingPredictionGroups.set(key, {
+          matchId: row.matchId,
+          homeTeamId: row.homeTeamId,
+          awayTeamId: row.awayTeamId,
+          homeScore: row.actualHomeScore,
+          awayScore: row.actualAwayScore,
+          predHomeScore: row.predHomeScore,
+          predAwayScore: row.predAwayScore,
+          deviation,
+          users: [],
+        });
+      }
+      swingPredictionGroups.get(key)!.users.push({ userId: row.userId, username: row.username, imageUrl: row.imageUrl });
+    }
+
+    let swingAndAMissData: SwingAndAMissData | null = null;
+    if (swingPredictionGroups.size > 0) {
+      const maxSwingDeviation = Math.max(...[...swingPredictionGroups.values()].map(g => g.deviation));
+      if (maxSwingDeviation > 0) {
+        const topGroups = [...swingPredictionGroups.values()].filter(g => g.deviation === maxSwingDeviation);
+        swingAndAMissData = topGroups.reduce((best, g) => (g.users.length > best.users.length ? g : best));
+        swingAndAMissData.users.sort((a, b) => a.username.localeCompare(b.username));
+      }
+    }
+
     const neededTeamIds = new Set<string>();
-    for (const m of [bestPredictionMatch, worstPredictionMatch, unexpectedMatch, mostPredictableMatch, contrastMatch]) {
+    for (const m of [bestPredictionMatch, worstPredictionMatch, unexpectedMatch, mostPredictableMatch, contrastMatch, swingAndAMissData]) {
       if (m?.homeTeamId) neededTeamIds.add(m.homeTeamId);
       if (m?.awayTeamId) neededTeamIds.add(m.awayTeamId);
     }
@@ -1872,6 +1919,23 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       };
     }
 
+    if (swingAndAMissData) {
+      const homeTeamName = teamName(swingAndAMissData.homeTeamId);
+      const awayTeamName = teamName(swingAndAMissData.awayTeamId);
+      const userNames = formatUserList(swingAndAMissData.users.map(u => u.username), lang);
+      swingAndAMissCard = {
+        id: 'swingAndAMiss',
+        title: lang === 'no' ? 'Det var nesten da!' : 'Swing and a Miss',
+        statistic:
+          lang === 'no'
+            ? `Kampen mellom ${homeTeamName} og ${awayTeamName} endte ${swingAndAMissData.homeScore} - ${swingAndAMissData.awayScore}, bare litt annerledes enn hva ${userNames} tippet, som trodde kampen skulle ende ${swingAndAMissData.predHomeScore} - ${swingAndAMissData.predAwayScore}.`
+            : `The match between ${homeTeamName} and ${awayTeamName} ended ${swingAndAMissData.homeScore} - ${swingAndAMissData.awayScore}, just a little different from what ${userNames} predicted, who thought the match would end ${swingAndAMissData.predHomeScore} - ${swingAndAMissData.predAwayScore}.`,
+        subjects: swingAndAMissData.users.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
+        linkType: 'match',
+        matchId: swingAndAMissData.matchId,
+      };
+    }
+
     hitOrMissCard = {
       id: 'hitOrMiss',
       title: 'Hit or Miss',
@@ -2036,6 +2100,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       mostContrastingPredictionCard,
       mostUnexpectedResultCard,
       mostPredictableResultCard,
+      swingAndAMissCard,
       brautometerCard,
     ].filter((card): card is UserStatCardData => card !== null);
 
