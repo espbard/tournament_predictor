@@ -1642,10 +1642,10 @@ export default function CompetitionDetailPage() {
                       {tournament && <p className="text-sm text-muted-foreground">{tournament.name}</p>}
                     </div>
                   </div>
-                  <PlayerPodium leaderboard={showComparisonUsers ? leaderboard : leaderboard.filter(e => !e.isComparisonUser)} large={true} competitionId={id} />
+                  <PlayerPodium leaderboard={showComparisonUsers ? leaderboard : leaderboard.filter(e => !e.isComparisonUser)} large={true} competitionId={id} tournamentStatus={tournament?.status} />
                 </div>
               ) : (
-                <PlayerPodium leaderboard={showComparisonUsers ? leaderboard : leaderboard.filter(e => !e.isComparisonUser)} large={false} competitionId={id} />
+                <PlayerPodium leaderboard={showComparisonUsers ? leaderboard : leaderboard.filter(e => !e.isComparisonUser)} large={false} competitionId={id} tournamentStatus={tournament?.status} />
               )
             )}
 
