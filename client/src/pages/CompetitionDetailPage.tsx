@@ -1825,7 +1825,7 @@ export default function CompetitionDetailPage() {
             if (!match) return null;
 
             const matchPreds = [...allMatchPredictions]
-              .filter(p => p.matchId === match.id)
+              .filter(p => p.matchId === match.id && !p.isReplacement)
               .sort((a, b) => {
                 const pointsDiff = (b.points ?? 0) - (a.points ?? 0);
                 if (pointsDiff !== 0) return pointsDiff;
