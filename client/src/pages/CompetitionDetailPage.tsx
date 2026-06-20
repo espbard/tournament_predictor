@@ -1328,28 +1328,39 @@ export default function CompetitionDetailPage() {
               <div className="flex flex-wrap gap-1.5 mb-1.5">
                 {allGroupMatchesList.map((m, idx) => {
                   const isCurrent = idx === currentGroupMatchIdx;
-                  const isFilled = (() => {
-                    if (m.status === 'completed') return true;
-                    const edit = localEdits[m.id];
-                    if (edit) {
-                      const h = parseInt(edit.home, 10);
-                      const a = parseInt(edit.away, 10);
+                  const pred = predMap[m.id];
+                  const localEdit = localEdits[m.id];
+                  const hasActual = m.status === 'completed' && m.homeScore !== null && m.awayScore !== null;
+                  const hasPendingEdit = !hasActual && (() => {
+                    if (localEdit) {
+                      const h = parseInt(localEdit.home, 10);
+                      const a = parseInt(localEdit.away, 10);
                       if (!isNaN(h) && !isNaN(a) && h >= 0 && a >= 0) return true;
                     }
-                    return !!predMap[m.id];
+                    return false;
                   })();
+                  const hasPred = !!pred;
+                  const isCorrectResult = hasPred && hasActual &&
+                    Math.sign(pred.homeScore - pred.awayScore) === Math.sign(m.homeScore! - m.awayScore!);
+                  const isExactScore = hasPred && hasActual &&
+                    pred.homeScore === m.homeScore && pred.awayScore === m.awayScore;
+                  const dotClass = isCurrent
+                    ? 'w-5 h-2.5 bg-primary'
+                    : !hasPred && !hasPendingEdit
+                    ? 'w-2.5 h-2.5 bg-muted-foreground/30 hover:bg-muted-foreground/50'
+                    : !hasActual
+                    ? 'w-2.5 h-2.5 bg-yellow-400'
+                    : isExactScore
+                    ? 'w-2.5 h-2.5 bg-green-500 ring-2 ring-amber-400'
+                    : isCorrectResult
+                    ? 'w-2.5 h-2.5 bg-green-500'
+                    : 'w-2.5 h-2.5 bg-red-500';
                   return (
                     <button
                       key={m.id}
                       type="button"
                       onClick={() => setCurrentGroupMatchIdx(idx)}
-                      className={`rounded-full transition-all duration-200 ${
-                        isCurrent
-                          ? 'w-5 h-2.5 bg-primary'
-                          : isFilled
-                          ? 'w-2.5 h-2.5 bg-green-500'
-                          : 'w-2.5 h-2.5 bg-muted-foreground/30 hover:bg-muted-foreground/50'
-                      }`}
+                      className={`rounded-full transition-all duration-200 ${dotClass}`}
                       aria-label={`Match ${idx + 1}`}
                     />
                   );
