@@ -912,19 +912,46 @@ function FocusedBracketView({
             {roundMatchesForDots.map(m => {
               const flatIdx = allMatches.indexOf(m);
               const isCurrent = flatIdx === currentIdx;
-              const isDone = isPredComplete(bracketPreds[m.predKey], matchTeams[m.bracketKey]);
+              const pred = bracketPreds[m.predKey];
+              const teams = matchTeams[m.bracketKey];
+              const hasPred = isPredComplete(pred, teams);
+              const actualMatch = actualMatchMap[m.predKey];
+              const hasActual = !!actualMatch && actualMatch.status === 'completed' && actualMatch.homeScore !== null && actualMatch.awayScore !== null;
+              let isCorrectResult = false;
+              let isExactScore = false;
+              if (hasPred && hasActual && pred) {
+                const h = actualMatch.homeScore!;
+                const a = actualMatch.awayScore!;
+                let predH = pred.homeScore;
+                let predA = pred.awayScore;
+                const predHomeId = teams?.home?.teamId ?? null;
+                const predAwayId = teams?.away?.teamId ?? null;
+                const actHomeId = actualMatch.homeTeamId;
+                const actAwayId = actualMatch.awayTeamId;
+                if (actHomeId && actAwayId) {
+                  const flip = (predHomeId !== null && predHomeId === actAwayId) || (predAwayId !== null && predAwayId === actHomeId);
+                  if (flip) { predH = pred.awayScore; predA = pred.homeScore; }
+                }
+                isCorrectResult = Math.sign(predH - predA) === Math.sign(h - a);
+                isExactScore = predH === h && predA === a;
+              }
+              const dotClass = isCurrent
+                ? 'w-5 h-2.5 bg-primary'
+                : !hasPred
+                ? 'w-2.5 h-2.5 bg-muted-foreground/30 hover:bg-muted-foreground/50'
+                : !hasActual
+                ? 'w-2.5 h-2.5 bg-yellow-400'
+                : isExactScore
+                ? 'w-2.5 h-2.5 bg-green-500 ring-2 ring-amber-400'
+                : isCorrectResult
+                ? 'w-2.5 h-2.5 bg-green-500'
+                : 'w-2.5 h-2.5 bg-red-500';
               return (
                 <button
                   key={m.predKey}
                   type="button"
                   onClick={() => goTo(flatIdx)}
-                  className={`rounded-full transition-all duration-200 ${
-                    isCurrent
-                      ? 'w-5 h-2.5 bg-primary'
-                      : isDone
-                      ? 'w-2.5 h-2.5 bg-green-500'
-                      : 'w-2.5 h-2.5 bg-muted-foreground/30 hover:bg-muted-foreground/50'
-                  }`}
+                  className={`rounded-full transition-all duration-200 ${dotClass}`}
                   aria-label={`Match ${m.matchIdxInRound + 1}`}
                 />
               );
