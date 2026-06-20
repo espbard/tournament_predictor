@@ -184,18 +184,28 @@ export default function UserPredictionsPage() {
                     const isCurrent = idx === currentMatchIdx;
                     const pred = predMap[m.id];
                     const hasPred = !!pred;
+                    const hasActual = m.status === 'completed' && m.homeScore !== null && m.awayScore !== null;
+                    const isCorrectResult = hasPred && hasActual &&
+                      Math.sign(pred.homeScore - pred.awayScore) === Math.sign(m.homeScore! - m.awayScore!);
+                    const isExactScore = hasPred && hasActual &&
+                      pred.homeScore === m.homeScore && pred.awayScore === m.awayScore;
+                    const dotClass = isCurrent
+                      ? 'w-5 h-2.5 bg-primary'
+                      : !hasPred
+                      ? 'w-2.5 h-2.5 bg-muted-foreground/30 hover:bg-muted-foreground/50'
+                      : !hasActual
+                      ? 'w-2.5 h-2.5 bg-yellow-400'
+                      : isExactScore
+                      ? 'w-2.5 h-2.5 bg-green-500 ring-2 ring-amber-400'
+                      : isCorrectResult
+                      ? 'w-2.5 h-2.5 bg-green-500'
+                      : 'w-2.5 h-2.5 bg-red-500';
                     return (
                       <button
                         key={m.id}
                         type="button"
                         onClick={() => setCurrentMatchIdx(idx)}
-                        className={`rounded-full transition-all duration-200 ${
-                          isCurrent
-                            ? 'w-5 h-2.5 bg-primary'
-                            : hasPred
-                            ? 'w-2.5 h-2.5 bg-green-500'
-                            : 'w-2.5 h-2.5 bg-muted-foreground/30 hover:bg-muted-foreground/50'
-                        }`}
+                        className={`rounded-full transition-all duration-200 ${dotClass}`}
                         aria-label={`Match ${idx + 1}`}
                       />
                     );
