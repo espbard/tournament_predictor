@@ -160,6 +160,7 @@ export const predictions = pgTable('predictions', {
   // For knockout draws: which team the user thinks will progress from ET/pens
   progressingTeamId: text('progressing_team_id').references(() => teams.id),
   points: integer('points'),
+  isReplacement: boolean('is_replacement').notNull().default(false),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 

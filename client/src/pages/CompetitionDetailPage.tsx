@@ -59,6 +59,7 @@ interface MatchPredictionEntry {
   awayScore: number;
   progressingTeamId: string | null;
   points: number | null;
+  isReplacement?: boolean;
   breakdown: PredBreakdown;
   flipped?: boolean;
   predHomeTeamId?: string | null;
@@ -165,7 +166,7 @@ export default function CompetitionDetailPage() {
 
   const { data: myStatus } = useQuery({
     queryKey: ['competitions', id, 'my-status'],
-    queryFn: () => api.get<{ groupStageLocked: boolean; knockoutCompleteSeen: boolean }>(`/competitions/${id}/my-status`),
+    queryFn: () => api.get<{ groupStageLocked: boolean; knockoutCompleteSeen: boolean; lateAdditionWindowEndsAt: string | null }>(`/competitions/${id}/my-status`),
     enabled: !!competition && !user?.isAdmin && !user?.isLeaderboardUser,
   });
 
@@ -215,6 +216,7 @@ export default function CompetitionDetailPage() {
       let changed = false;
       const updates: Record<string, { home: string; away: string }> = {};
       for (const p of savedPredictions) {
+        if (p.isReplacement) continue;
         if (!(p.matchId in prev)) {
           updates[p.matchId] = { home: String(p.homeScore), away: String(p.awayScore) };
           changed = true;
@@ -632,15 +634,20 @@ export default function CompetitionDetailPage() {
     }
   }, [allGroupMatchesList]);
 
+  const lateAdditionWindowActive =
+    myStatus !== undefined &&
+    myStatus.lateAdditionWindowEndsAt != null &&
+    new Date() < new Date(myStatus.lateAdditionWindowEndsAt);
+
   const deadlinePassed =
-    !user?.isComparisonUser && (
+    !user?.isComparisonUser && !lateAdditionWindowActive && (
       (competition?.predictionDeadline ? new Date() > new Date(competition.predictionDeadline) : false)
       || tournament?.status === 'active'
       || tournament?.status === 'completed'
     );
 
   const hasKnockoutPredictions = Object.keys(bracketPreds ?? {}).length > 0;
-  const isLocked = deadlinePassed || (!user?.isComparisonUser && groupStageLocked && hasKnockoutPredictions);
+  const isLocked = deadlinePassed || (!user?.isComparisonUser && !lateAdditionWindowActive && groupStageLocked && hasKnockoutPredictions);
 
   async function savePrediction(matchId: string) {
     const edit = localEditsRef.current[matchId];
@@ -1257,6 +1264,7 @@ export default function CompetitionDetailPage() {
       {activeTab === 'knockout' && id && (
         <KnockoutStageContent
           competitionId={id}
+          lateAdditionWindowActive={lateAdditionWindowActive}
           onAllComplete={() => {
             if (!hasDeclinedKnockout) setShowKnockoutCompletePrompt(true);
           }}
@@ -1267,15 +1275,17 @@ export default function CompetitionDetailPage() {
       {activeTab === 'group' && <>
 
       {/* Deadline banner */}
-      {competition.predictionDeadline && (
+      {(competition.predictionDeadline || lateAdditionWindowActive) && (
         <div className={`mb-4 rounded-lg px-4 py-2.5 text-sm ${
           deadlinePassed
             ? 'bg-muted text-muted-foreground'
             : 'border border-amber-200 bg-amber-50 text-amber-800'
         }`}>
-          {deadlinePassed
-            ? `${t('competitionDetail.deadline.closed')} · ${new Date(competition.predictionDeadline).toLocaleString()}`
-            : `${t('competitionDetail.deadline.openUntil')} ${new Date(competition.predictionDeadline).toLocaleString()}`}
+          {lateAdditionWindowActive
+            ? `${t('competitionDetail.deadline.openUntil')} ${new Date(myStatus!.lateAdditionWindowEndsAt!).toLocaleString()}`
+            : deadlinePassed
+              ? `${t('competitionDetail.deadline.closed')} · ${new Date(competition.predictionDeadline!).toLocaleString()}`
+              : `${t('competitionDetail.deadline.openUntil')} ${new Date(competition.predictionDeadline!).toLocaleString()}`}
         </div>
       )}
 
@@ -1368,6 +1378,9 @@ export default function CompetitionDetailPage() {
               const isExactScore = hasActual && pred != null &&
                 pred.homeScore === match.homeScore && pred.awayScore === match.awayScore;
 
+              // For late addition users in their window: lock individual matches whose kickoff time has passed
+              const isMatchLocked = isLocked || (lateAdditionWindowActive && match.scheduledAt != null && new Date() > new Date(match.scheduledAt));
+
               return (
                 <div className="rounded-xl border bg-muted/20 p-5">
                   <div className="text-center mb-4">
@@ -1409,7 +1422,7 @@ export default function CompetitionDetailPage() {
                           <span className="flex-1 text-sm font-medium truncate">{match.homeTeamName ?? 'TBD'}</span>
                           {match.status === 'completed' && !user?.isComparisonUser ? (
                             <span className={`w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400 border border-amber-400 bg-amber-50/70 dark:bg-amber-900/30' : ''}`}>{pred ? pred.homeScore : '—'}</span>
-                          ) : isLocked ? (
+                          ) : isMatchLocked ? (
                             <span className="w-11 h-9 flex items-center justify-center text-xl text-muted-foreground flex-shrink-0">{pred ? pred.homeScore : '—'}</span>
                           ) : (
                             <div className="flex items-center gap-0.5 flex-shrink-0">
@@ -1459,7 +1472,7 @@ export default function CompetitionDetailPage() {
                           <span className="flex-1 text-sm font-medium truncate">{match.awayTeamName ?? 'TBD'}</span>
                           {match.status === 'completed' && !user?.isComparisonUser ? (
                             <span className={`w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400 border border-amber-400 bg-amber-50/70 dark:bg-amber-900/30' : ''}`}>{pred ? pred.awayScore : '—'}</span>
-                          ) : isLocked ? (
+                          ) : isMatchLocked ? (
                             <span className="w-11 h-9 flex items-center justify-center text-xl text-muted-foreground flex-shrink-0">{pred ? pred.awayScore : '—'}</span>
                           ) : (
                             <div className="flex items-center gap-0.5 flex-shrink-0">
@@ -1502,13 +1515,25 @@ export default function CompetitionDetailPage() {
 
                       {/* Status row */}
                       <div className="mt-2 text-center space-y-0.5">
-                        {match.status === 'scheduled' && !isLocked && saving && (
+                        {match.status === 'scheduled' && !isMatchLocked && saving && (
                           <p className="text-xs text-muted-foreground">…</p>
                         )}
-                        {match.status === 'scheduled' && !isLocked && justSaved && !saving && (
+                        {match.status === 'scheduled' && !isMatchLocked && justSaved && !saving && (
                           <p className="text-xs text-green-600">{t('competitionDetail.predictions.saved')}</p>
                         )}
                         {match.status === 'completed' && pred && (() => {
+                          if (pred.isReplacement) {
+                            return (
+                              <div className="space-y-0.5">
+                                <p className="text-xs text-muted-foreground">
+                                  {t('competitionDetail.predictions.actualResult')}: {match.homeScore}–{match.awayScore}
+                                </p>
+                                <p className="text-xs text-muted-foreground italic">
+                                  {language === 'no' ? 'Kopiert tips (gir ikke poeng)' : 'Copied prediction (no points)'}
+                                </p>
+                              </div>
+                            );
+                          }
                           const cfg = competition.scoringConfig;
                           const hasActual = match.homeScore !== null && match.awayScore !== null;
                           const exactScore = hasActual &&
@@ -1686,6 +1711,7 @@ export default function CompetitionDetailPage() {
                               {isMe && <span className="ml-1 font-normal text-muted-foreground">{t('competitionDetail.leaderboard.you')}</span>}
                               {isComparison && <span className="ml-1 font-normal text-muted-foreground not-italic">(AI)</span>}
                             </span>
+                            {entry.isLateAddition && <span className="inline-block w-2 h-2 rounded-full bg-yellow-400 flex-shrink-0" title={t('competitionDetail.leaderboard.lateAdditionLegend')} />}
                             {entry.inactive && <span className="inline-block w-2 h-2 rounded-full bg-red-500 flex-shrink-0" title={t('competitionDetail.leaderboard.inactiveLegend')} />}
                           </Link>
                         </td>
@@ -1720,6 +1746,7 @@ export default function CompetitionDetailPage() {
                       <Link to={`/competitions/${id}/predictions/${entry.userId}`} className="flex items-center gap-3 min-w-0 hover:opacity-80 transition-opacity">
                         <img src={entry.imageUrl ?? '/default-avatar.png'} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0" />
                         <span className="font-medium text-base truncate">{entry.username}</span>
+                        {entry.isLateAddition && <span className="inline-block w-2 h-2 rounded-full bg-yellow-400 flex-shrink-0" />}
                         {entry.inactive && <span className="inline-block w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />}
                       </Link>
                     </td>
@@ -1776,6 +1803,12 @@ export default function CompetitionDetailPage() {
               );
             })()}
 
+            {leaderboard.some(e => e.isLateAddition) && (
+              <p className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground mt-3">
+                <span className="inline-block w-2 h-2 rounded-full bg-yellow-400 flex-shrink-0" />
+                {t('competitionDetail.leaderboard.lateAdditionLegend')}
+              </p>
+            )}
             {leaderboard.some(e => e.inactive) && (
               <p className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground mt-3">
                 <span className="inline-block w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />
@@ -1792,7 +1825,7 @@ export default function CompetitionDetailPage() {
             if (!match) return null;
 
             const matchPreds = [...allMatchPredictions]
-              .filter(p => p.matchId === match.id)
+              .filter(p => p.matchId === match.id && !p.isReplacement)
               .sort((a, b) => {
                 const pointsDiff = (b.points ?? 0) - (a.points ?? 0);
                 if (pointsDiff !== 0) return pointsDiff;
@@ -1987,6 +2020,7 @@ export default function CompetitionDetailPage() {
                                 <span className="flex-1 truncate font-medium text-xs">
                                   {pred.username}
                                   {pred.isComparisonUser && <span className="ml-1 font-normal text-muted-foreground not-italic">(AI)</span>}
+                                  {pred.isReplacement && <span className="ml-1 font-normal text-muted-foreground not-italic">{language === 'no' ? '(kopiert)' : '(copied)'}</span>}
                                 </span>
 
                                 <div className="flex items-center gap-1 flex-shrink-0">

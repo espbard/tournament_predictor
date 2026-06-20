@@ -128,8 +128,15 @@ router.post('/join', requireAuth, async (req, res) => {
       .from(tournaments)
       .where(eq(tournaments.id, competition.tournamentId));
 
-    const user = res.locals.user;
-    const isLateAdditionJoin = user.isLateAddition && tournament?.status === 'active';
+    const userId: string = res.locals.user.id;
+
+    // Read isLateAddition directly from DB to avoid stale session values
+    const [dbUser] = await db
+      .select({ isLateAddition: users.isLateAddition })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    const isLateAdditionJoin = (dbUser?.isLateAddition ?? false) && tournament?.status === 'active';
 
     if (tournament && tournament.status === 'completed') {
       return res.status(403).json({ error: 'This competition is no longer open for new members' });
@@ -143,7 +150,6 @@ router.post('/join', requireAuth, async (req, res) => {
       return res.status(403).json({ error: 'The prediction deadline for this competition has passed' });
     }
 
-    const userId: string = user.id;
     const [existing] = await db
       .select()
       .from(competitionMembers)
@@ -151,9 +157,10 @@ router.post('/join', requireAuth, async (req, res) => {
     if (existing) return res.status(409).json({ error: 'Already a member of this competition' });
 
     if (isLateAdditionJoin) {
-      // Find last-place user's total score to use as starting points
+      // Find last-place score among active users (those with predictions in the 5 most recent completed matches)
       const memberScores = await db
         .select({
+          userId: competitionMembers.userId,
           exactScorePoints: competitionMembers.exactScorePoints,
           correctResultPoints: competitionMembers.correctResultPoints,
           correctTeamProgressesPoints: competitionMembers.correctTeamProgressesPoints,
@@ -170,16 +177,38 @@ router.post('/join', requireAuth, async (req, res) => {
         .innerJoin(users, eq(competitionMembers.userId, users.id))
         .where(eq(competitionMembers.competitionId, competition.id));
 
-      const totals = memberScores
-        .filter(m => !m.isLeaderboardUser && !m.isComparisonUser)
-        .map(m =>
-          m.exactScorePoints + m.correctResultPoints + m.correctTeamProgressesPoints +
-          m.correctGroupPositionPoints + m.correctTeamInKnockoutTiePoints +
-          m.correctTeamInFinalPoints + m.correctWinnerPoints + m.bonusQuestionPoints +
-          m.lateAdditionPoints,
-        );
+      const recentCompletedMatches = await db
+        .select({ id: matches.id })
+        .from(matches)
+        .where(and(eq(matches.tournamentId, competition.tournamentId), eq(matches.status, 'completed')))
+        .orderBy(desc(matches.scheduledAt))
+        .limit(5);
+
+      let activeUserIds: Set<string> | null = null;
+      if (recentCompletedMatches.length >= 5) {
+        const recentMatchIds = recentCompletedMatches.map(m => m.id);
+        const recentPredRows = await db
+          .select({ userId: predictions.userId })
+          .from(predictions)
+          .where(and(eq(predictions.competitionId, competition.id), inArray(predictions.matchId, recentMatchIds)));
+        activeUserIds = new Set(recentPredRows.map(p => p.userId));
+      }
+
+      const regularMembers = memberScores.filter(m => !m.isLeaderboardUser && !m.isComparisonUser);
+      const candidateMembers = activeUserIds != null
+        ? regularMembers.filter(m => activeUserIds!.has(m.userId))
+        : regularMembers;
+      const pool = candidateMembers.length > 0 ? candidateMembers : regularMembers;
+
+      const totals = pool.map(m =>
+        m.exactScorePoints + m.correctResultPoints + m.correctTeamProgressesPoints +
+        m.correctGroupPositionPoints + m.correctTeamInKnockoutTiePoints +
+        m.correctTeamInFinalPoints + m.correctWinnerPoints + m.bonusQuestionPoints +
+        m.lateAdditionPoints,
+      );
       const lastPlaceScore = totals.length > 0 ? Math.min(...totals) : 0;
       const windowEndsAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      const joinTime = new Date();
 
       await db.insert(competitionMembers).values({
         competitionId: competition.id,
@@ -187,6 +216,85 @@ router.post('/join', requireAuth, async (req, res) => {
         lateAdditionPoints: lastPlaceScore,
         lateAdditionWindowEndsAt: windowEndsAt,
       });
+
+      // Create replacement predictions for completed group matches before join time,
+      // copying from the lowest-ranked member who predicted each specific match.
+      const completedGroupMatches = await db
+        .select({ id: matches.id, scheduledAt: matches.scheduledAt })
+        .from(matches)
+        .where(and(eq(matches.tournamentId, competition.tournamentId), eq(matches.stage, 'group'), eq(matches.status, 'completed')));
+
+      // All completed group matches happened before the user joined; include those
+      // without a scheduledAt too since they're provably already played.
+      const matchesBefore = completedGroupMatches.filter(
+        m => m.scheduledAt == null || m.scheduledAt < joinTime,
+      );
+
+      if (matchesBefore.length > 0) {
+        const matchIdsBefore = matchesBefore.map(m => m.id);
+
+        const existingPreds = await db
+          .select({ userId: predictions.userId, matchId: predictions.matchId, homeScore: predictions.homeScore, awayScore: predictions.awayScore })
+          .from(predictions)
+          .where(and(eq(predictions.competitionId, competition.id), inArray(predictions.matchId, matchIdsBefore), eq(predictions.isReplacement, false)));
+
+        // Score map: userId → total score (regular non-leaderboard non-comparison members only).
+        // Comparison/leaderboard users are not included here; if a match was only predicted by
+        // those users their predictions still serve as fallback (see lowestScore init below).
+        const scoreByUser = new Map<string, number>();
+        for (const m of memberScores) {
+          if (!m.isLeaderboardUser && !m.isComparisonUser) {
+            scoreByUser.set(m.userId,
+              m.exactScorePoints + m.correctResultPoints + m.correctTeamProgressesPoints +
+              m.correctGroupPositionPoints + m.correctTeamInKnockoutTiePoints +
+              m.correctTeamInFinalPoints + m.correctWinnerPoints + m.bonusQuestionPoints +
+              m.lateAdditionPoints,
+            );
+          }
+        }
+
+        const predsByMatch = new Map<string, typeof existingPreds>();
+        for (const p of existingPreds) {
+          if (!predsByMatch.has(p.matchId)) predsByMatch.set(p.matchId, []);
+          predsByMatch.get(p.matchId)!.push(p);
+        }
+
+        const replacements: Array<typeof predictions.$inferInsert> = [];
+        for (const match of matchesBefore) {
+          const matchPreds = predsByMatch.get(match.id) ?? [];
+          if (matchPreds.length === 0) continue;
+
+          // Pick the predictor with the lowest competition score among regular members.
+          // Initialize lowestScore as null so the first prediction is always accepted as a
+          // baseline — this handles the case where all predictors are comparison/leaderboard
+          // users (scoreByUser returns Infinity for them, and Infinity < Infinity is false).
+          let lowestScore: number | null = null;
+          let lowestPred: typeof matchPreds[number] | null = null;
+          for (const p of matchPreds) {
+            const score = scoreByUser.get(p.userId) ?? Infinity;
+            if (lowestScore === null || score < lowestScore) {
+              lowestScore = score;
+              lowestPred = p;
+            }
+          }
+          if (!lowestPred) continue;
+
+          replacements.push({
+            id: generateId(15),
+            competitionId: competition.id,
+            userId,
+            matchId: match.id,
+            homeScore: lowestPred.homeScore,
+            awayScore: lowestPred.awayScore,
+            progressingTeamId: null,
+            isReplacement: true,
+          });
+        }
+
+        if (replacements.length > 0) {
+          await db.insert(predictions).values(replacements);
+        }
+      }
     } else {
       await db.insert(competitionMembers).values({
         competitionId: competition.id,
@@ -356,6 +464,7 @@ router.get('/:id/leaderboard', requireAuth, async (req, res) => {
         correctWinnerPoints: competitionMembers.correctWinnerPoints,
         bonusQuestionPoints: competitionMembers.bonusQuestionPoints,
         lateAdditionPoints: competitionMembers.lateAdditionPoints,
+        joinedAt: competitionMembers.joinedAt,
         lateAdditionWindowEndsAt: competitionMembers.lateAdditionWindowEndsAt,
       })
       .from(competitionMembers)
@@ -377,21 +486,24 @@ router.get('/:id/leaderboard', requireAuth, async (req, res) => {
     }));
     rowsWithTotal.sort((a, b) => b.totalPoints - a.totalPoints);
 
-    const recentCompletedMatches = await db
-      .select({ id: matches.id })
+    const allCompletedMatchesSorted = await db
+      .select({ id: matches.id, scheduledAt: matches.scheduledAt })
       .from(matches)
       .where(and(eq(matches.tournamentId, competition.tournamentId), eq(matches.status, 'completed')))
-      .orderBy(desc(matches.scheduledAt))
-      .limit(5);
+      .orderBy(desc(matches.scheduledAt));
 
-    const recentMatchIds = recentCompletedMatches.map(m => m.id);
-    const usersWithRecentPreds = new Set<string>();
-    if (recentMatchIds.length > 0) {
-      const recentPredRows = await db
-        .select({ userId: predictions.userId })
+    const globalRecentMatchIds = allCompletedMatchesSorted.slice(0, 5).map(m => m.id);
+    const allCompletedMatchIds = allCompletedMatchesSorted.map(m => m.id);
+    const userPredMatchIds = new Map<string, Set<string>>();
+    if (allCompletedMatchIds.length > 0) {
+      const allPredRows = await db
+        .select({ userId: predictions.userId, matchId: predictions.matchId })
         .from(predictions)
-        .where(and(eq(predictions.competitionId, id), inArray(predictions.matchId, recentMatchIds)));
-      for (const p of recentPredRows) usersWithRecentPreds.add(p.userId);
+        .where(and(eq(predictions.competitionId, id), inArray(predictions.matchId, allCompletedMatchIds)));
+      for (const p of allPredRows) {
+        if (!userPredMatchIds.has(p.userId)) userPredMatchIds.set(p.userId, new Set());
+        userPredMatchIds.get(p.userId)!.add(p.matchId);
+      }
     }
 
     let rank = 1;
@@ -417,7 +529,17 @@ router.get('/:id/leaderboard', requireAuth, async (req, res) => {
           bonusQuestionPoints: row.bonusQuestionPoints,
           lateAdditionPoints: row.lateAdditionPoints,
         },
-        inactive: recentMatchIds.length >= 5 && !usersWithRecentPreds.has(row.userId),
+        inactive: (() => {
+          const userPreds = userPredMatchIds.get(row.userId) ?? new Set<string>();
+          if (row.lateAdditionWindowEndsAt != null) {
+            // Late addition user: only count matches scheduled after they joined
+            const postJoinMatches = allCompletedMatchesSorted
+              .filter(m => m.scheduledAt != null && m.scheduledAt >= row.joinedAt)
+              .slice(0, 5);
+            return postJoinMatches.length >= 5 && postJoinMatches.every(m => !userPreds.has(m.id));
+          }
+          return globalRecentMatchIds.length >= 5 && globalRecentMatchIds.every(mid => !userPreds.has(mid));
+        })(),
       };
     });
 
@@ -458,6 +580,7 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
         awayScore: predictions.awayScore,
         progressingTeamId: predictions.progressingTeamId,
         points: predictions.points,
+        isReplacement: predictions.isReplacement,
         actualHomeScore: matches.homeScore,
         actualAwayScore: matches.awayScore,
         matchStage: matches.stage,
@@ -494,6 +617,7 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
       awayScore: number;
       progressingTeamId: string | null;
       points: number | null;
+      isReplacement: boolean;
       breakdown: PredBreakdown;
       flipped?: boolean;
       predHomeTeamId?: string | null;
@@ -502,7 +626,7 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
       predAwayTeamImageUrl?: string | null;
     }> = groupRows.map(row => {
       const bd: PredBreakdown = { exactScore: 0, correctResult: 0, correctTeamProgresses: 0, correctTeamInKnockoutTie: 0, correctTeamInFinal: 0, correctWinner: 0 };
-      if (row.actualHomeScore !== null && row.actualAwayScore !== null) {
+      if (!row.isReplacement && row.actualHomeScore !== null && row.actualAwayScore !== null) {
         const r = calculateMatchPoints(
           { homeScore: row.homeScore, awayScore: row.awayScore, progressingTeamId: row.progressingTeamId },
           { homeScore: row.actualHomeScore, awayScore: row.actualAwayScore, stage: row.matchStage, actualProgressingTeamId: row.actualProgressingTeamId },
@@ -512,7 +636,7 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
         bd.correctResult = r.breakdown.correctResult;
         bd.correctTeamProgresses = r.breakdown.correctTeamProgresses;
       }
-      return { matchId: row.matchId, userId: row.userId, username: row.username, imageUrl: row.imageUrl, isComparisonUser: row.isComparisonUser, homeScore: row.homeScore, awayScore: row.awayScore, progressingTeamId: row.progressingTeamId, points: row.points, breakdown: bd };
+      return { matchId: row.matchId, userId: row.userId, username: row.username, imageUrl: row.imageUrl, isComparisonUser: row.isComparisonUser, homeScore: row.homeScore, awayScore: row.awayScore, progressingTeamId: row.progressingTeamId, points: row.points, isReplacement: row.isReplacement, breakdown: bd };
     });
 
     // Knockout predictions come from bracketPredictions (not the predictions table).
@@ -1935,13 +2059,18 @@ router.get('/:id/my-status', requireAuth, async (req, res) => {
     const user = res.locals.user;
 
     const [membership] = await db
-      .select()
+      .select({
+        groupStageLocked: competitionMembers.groupStageLocked,
+        knockoutCompleteSeen: competitionMembers.knockoutCompleteSeen,
+        lateAdditionWindowEndsAt: competitionMembers.lateAdditionWindowEndsAt,
+      })
       .from(competitionMembers)
       .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
 
     res.json({
       groupStageLocked: membership?.groupStageLocked ?? false,
       knockoutCompleteSeen: membership?.knockoutCompleteSeen ?? false,
+      lateAdditionWindowEndsAt: membership?.lateAdditionWindowEndsAt?.toISOString() ?? null,
     });
   } catch (err) {
     console.error('Get my-status error:', err);
@@ -2063,6 +2192,11 @@ router.post('/:id/predictions', requireAuth, async (req, res) => {
     // Late addition users cannot predict on matches that already have a result
     if (isLateAdditionMember && match.status === 'completed') {
       return res.status(400).json({ error: 'Late addition users cannot predict on matches that already have a result' });
+    }
+
+    // Late addition users cannot predict on matches where kickoff time has already passed
+    if (isLateAdditionMember && match.scheduledAt && new Date() > new Date(match.scheduledAt)) {
+      return res.status(400).json({ error: 'Cannot predict on a match after kickoff time' });
     }
 
     if (match.stage === 'group' && !user.isAdmin && !user.isComparisonUser) {
@@ -2470,15 +2604,22 @@ router.post('/:id/bonus-answers', requireAuth, async (req, res) => {
     const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
     if (!competition) return res.status(404).json({ error: 'Competition not found' });
 
+    let baMembership: typeof competitionMembers.$inferSelect | undefined;
     if (!user.isAdmin) {
-      const [membership] = await db
+      const [mem] = await db
         .select()
         .from(competitionMembers)
         .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
-      if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+      if (!mem) return res.status(403).json({ error: 'Not a member of this competition' });
+      baMembership = mem;
     }
 
-    if (!user.isComparisonUser && competition.predictionDeadline && new Date() > new Date(competition.predictionDeadline)) {
+    const isBaLateAdditionMember = baMembership?.lateAdditionWindowEndsAt != null;
+    if (isBaLateAdditionMember) {
+      if (new Date() > new Date(baMembership!.lateAdditionWindowEndsAt!)) {
+        return res.status(400).json({ error: 'Your 24-hour prediction window has expired' });
+      }
+    } else if (!user.isComparisonUser && competition.predictionDeadline && new Date() > new Date(competition.predictionDeadline)) {
       return res.status(400).json({ error: 'Prediction deadline has passed' });
     }
 
