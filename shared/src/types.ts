@@ -87,6 +87,7 @@ export interface Competition {
   inviteCode: string;
   scoringConfig: ScoringConfig;
   predictionDeadline: string | null;
+  allowLateAdditions: boolean;
   createdAt: string;
 }
 

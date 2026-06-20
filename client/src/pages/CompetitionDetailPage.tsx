@@ -78,6 +78,7 @@ export default function CompetitionDetailPage() {
   const [editName, setEditName] = useState('');
   const [editImageUrl, setEditImageUrl] = useState<string | null>(null);
   const [editDeadline, setEditDeadline] = useState('');
+  const [editAllowLateAdditions, setEditAllowLateAdditions] = useState(true);
   const [showEdit, setShowEdit] = useState(false);
   const [editError, setEditError] = useState('');
 
@@ -739,7 +740,7 @@ export default function CompetitionDetailPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: (body: { name?: string; imageUrl?: string | null; predictionDeadline?: string | null }) =>
+    mutationFn: (body: { name?: string; imageUrl?: string | null; predictionDeadline?: string | null; allowLateAdditions?: boolean }) =>
       api.patch<Competition>(`/competitions/${id}`, body),
     onSuccess: () => {
       setShowEdit(false);
@@ -761,6 +762,7 @@ export default function CompetitionDetailPage() {
         ? new Date(competition.predictionDeadline).toISOString().slice(0, 16)
         : ''
     );
+    setEditAllowLateAdditions(competition.allowLateAdditions);
     setShowEdit(true);
   }
 
@@ -770,6 +772,7 @@ export default function CompetitionDetailPage() {
       name: editName.trim() || undefined,
       imageUrl: editImageUrl,
       predictionDeadline: editDeadline ? new Date(editDeadline).toISOString() : null,
+      allowLateAdditions: editAllowLateAdditions,
     });
   }
 
@@ -944,6 +947,18 @@ export default function CompetitionDetailPage() {
               onChange={e => setEditDeadline(e.target.value)}
               className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             />
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              id="allow-late-additions"
+              type="checkbox"
+              checked={editAllowLateAdditions}
+              onChange={e => setEditAllowLateAdditions(e.target.checked)}
+              className="h-4 w-4 rounded border"
+            />
+            <label htmlFor="allow-late-additions" className="text-sm font-medium">
+              Allow Late Additions
+            </label>
           </div>
           {editError && <p className="text-sm text-destructive">{editError}</p>}
           <div className="flex gap-2">
