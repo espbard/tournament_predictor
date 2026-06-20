@@ -2086,20 +2086,102 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     }
 
     // ── The Traitor: user(s) who predicted Norway eliminated earliest ──
-    // Traces each user's bracket predictions by checking which stages Norway appears
-    // in as progressingTeamId. If Norway never appears as winner in any stage, the
-    // user is considered to have predicted group-stage elimination.
+    // Uses Norway's group stage predictions to determine whether they qualified
+    // (any of 1st/2nd/3rd place), then checks bracket predictions for later stages.
+    // This correctly distinguishes "4th in group = eliminated" from "3rd as lucky loser
+    // but then lost in R32", which pure bracket-scan cannot.
     if (norwayTeam) {
       const norwayId = norwayTeam.id;
       const KNOCKOUT_STAGES_ORDERED = ['round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'final'];
       const STAGE_RANK_TRAITOR: Record<string, number> = {
-        group: 0, round_of_16: 2, quarter_final: 3, semi_final: 4, final: 5, winner: 6,
+        group: 0, round_of_32: 1, round_of_16: 2, quarter_final: 3, semi_final: 4, final: 5, winner: 6,
       };
 
-      const traitorBpRows = await db
-        .select({ userId: bracketPredictions.userId, predictions: bracketPredictions.predictions })
-        .from(bracketPredictions)
-        .where(eq(bracketPredictions.competitionId, id));
+      // Step 1: find Norway's group and all matches within it
+      const [traitorBpRows, [norwayTeamRow]] = await Promise.all([
+        db.select({ userId: bracketPredictions.userId, predictions: bracketPredictions.predictions })
+          .from(bracketPredictions).where(eq(bracketPredictions.competitionId, id)),
+        db.select({ groupId: teams.groupId })
+          .from(teams).where(and(eq(teams.tournamentId, competition.tournamentId), eq(teams.id, norwayId))),
+      ]);
+
+      const norwayGroupId = norwayTeamRow?.groupId ?? null;
+      let norwayGroupTeamIds: string[] = [];
+      type NorwayGroupMatch = { id: string; homeTeamId: string; awayTeamId: string };
+      let norwayGroupMatchData: NorwayGroupMatch[] = [];
+      const norwayGroupPredsByUser = new Map<
+        string,
+        Map<string, { homeScore: number; awayScore: number; homeTeamId: string; awayTeamId: string }>
+      >();
+
+      if (norwayGroupId) {
+        const [groupTeamRows, allGroupMatchRows] = await Promise.all([
+          db.select({ id: teams.id })
+            .from(teams).where(and(eq(teams.tournamentId, competition.tournamentId), eq(teams.groupId, norwayGroupId))),
+          db.select({ id: matches.id, homeTeamId: matches.homeTeamId, awayTeamId: matches.awayTeamId })
+            .from(matches).where(and(eq(matches.tournamentId, competition.tournamentId), eq(matches.stage, 'group'))),
+        ]);
+
+        norwayGroupTeamIds = groupTeamRows.map(t => t.id);
+        const norwayGroupTeamSet = new Set(norwayGroupTeamIds);
+        norwayGroupMatchData = allGroupMatchRows.filter(
+          m => m.homeTeamId && m.awayTeamId
+            && norwayGroupTeamSet.has(m.homeTeamId)
+            && norwayGroupTeamSet.has(m.awayTeamId),
+        ) as NorwayGroupMatch[];
+
+        const norwayGroupMatchIds = norwayGroupMatchData.map(m => m.id);
+        if (norwayGroupMatchIds.length > 0) {
+          const groupPredRows = await db
+            .select({ userId: predictions.userId, matchId: predictions.matchId, homeScore: predictions.homeScore, awayScore: predictions.awayScore })
+            .from(predictions)
+            .where(and(
+              eq(predictions.competitionId, id),
+              inArray(predictions.matchId, norwayGroupMatchIds),
+              eq(predictions.isReplacement, false),
+            ));
+
+          const matchDataMap = new Map(norwayGroupMatchData.map(m => [m.id, m]));
+          for (const pred of groupPredRows) {
+            if (!norwayGroupPredsByUser.has(pred.userId)) norwayGroupPredsByUser.set(pred.userId, new Map());
+            const md = matchDataMap.get(pred.matchId);
+            if (md) {
+              norwayGroupPredsByUser.get(pred.userId)!.set(pred.matchId, {
+                homeScore: pred.homeScore, awayScore: pred.awayScore,
+                homeTeamId: md.homeTeamId, awayTeamId: md.awayTeamId,
+              });
+            }
+          }
+        }
+      }
+
+      // Returns 0-indexed position of Norway in their group based on user predictions.
+      // Returns null if the user made no group predictions for Norway's group.
+      const getNorwayGroupPos = (userId: string): number | null => {
+        if (!norwayGroupId || norwayGroupTeamIds.length === 0) return null;
+        const userPreds = norwayGroupPredsByUser.get(userId);
+        if (!userPreds || userPreds.size === 0) return null;
+
+        const stats = new Map(norwayGroupTeamIds.map(tid => [tid, { pts: 0, gd: 0, gf: 0 }]));
+        for (const { homeTeamId, awayTeamId, homeScore, awayScore } of userPreds.values()) {
+          const home = stats.get(homeTeamId);
+          const away = stats.get(awayTeamId);
+          if (!home || !away) continue;
+          if (homeScore > awayScore) home.pts += 3;
+          else if (homeScore === awayScore) { home.pts += 1; away.pts += 1; }
+          else away.pts += 3;
+          home.gd += homeScore - awayScore; home.gf += homeScore;
+          away.gd += awayScore - homeScore; away.gf += awayScore;
+        }
+
+        const sorted = [...stats.entries()].sort((a, b) =>
+          b[1].pts !== a[1].pts ? b[1].pts - a[1].pts :
+          b[1].gd  !== a[1].gd  ? b[1].gd  - a[1].gd  :
+          b[1].gf  - a[1].gf,
+        );
+        const pos = sorted.findIndex(([tid]) => tid === norwayId);
+        return pos >= 0 ? pos : null;
+      };
 
       const userEliminations = new Map<string, { eliminatedAt: string; rank: number }>();
 
@@ -2108,24 +2190,38 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         if (!userInfo.has(bp.userId)) continue;
 
         const bpPreds = bp.predictions as BracketPredictions;
-
-        // Find the latest knockout stage where Norway appears as progressingTeamId
-        let lastSurvivedStageIdx = -1;
-        for (let si = 0; si < KNOCKOUT_STAGES_ORDERED.length; si++) {
-          const stage = KNOCKOUT_STAGES_ORDERED[si];
-          const norwayWon = Object.entries(bpPreds).some(
-            ([key, pred]) => key.startsWith(`${stage}_`) && pred.progressingTeamId === norwayId,
-          );
-          if (norwayWon) lastSurvivedStageIdx = si;
-        }
+        const norwayGroupPos = getNorwayGroupPos(bp.userId);
 
         let eliminatedAt: string;
-        if (lastSurvivedStageIdx === -1) {
+
+        if (norwayGroupPos !== null && norwayGroupPos >= norwayGroupTeamIds.length - 1) {
+          // Norway predicted last in their group → definitely eliminated in group stage
           eliminatedAt = 'group';
-        } else if (lastSurvivedStageIdx === KNOCKOUT_STAGES_ORDERED.length - 1) {
-          eliminatedAt = 'winner';
         } else {
-          eliminatedAt = KNOCKOUT_STAGES_ORDERED[lastSurvivedStageIdx + 1];
+          // Norway is 1st/2nd/3rd (or no group data) → check bracket predictions for wins
+          let lastSurvivedStageIdx = -1;
+          for (let si = 0; si < KNOCKOUT_STAGES_ORDERED.length; si++) {
+            const stage = KNOCKOUT_STAGES_ORDERED[si];
+            const norwayWon = Object.entries(bpPreds).some(
+              ([key, pred]) => key.startsWith(`${stage}_`) && pred.progressingTeamId === norwayId,
+            );
+            if (norwayWon) lastSurvivedStageIdx = si;
+          }
+
+          if (lastSurvivedStageIdx === -1) {
+            // Norway didn't win any bracket match
+            if (norwayGroupPos !== null) {
+              // Group data says Norway was 1st–3rd → they were in R32 but lost there
+              eliminatedAt = 'round_of_32';
+            } else {
+              // No group data and no bracket win → can't tell; treat as group elimination
+              eliminatedAt = 'group';
+            }
+          } else if (lastSurvivedStageIdx === KNOCKOUT_STAGES_ORDERED.length - 1) {
+            eliminatedAt = 'winner';
+          } else {
+            eliminatedAt = KNOCKOUT_STAGES_ORDERED[lastSurvivedStageIdx + 1];
+          }
         }
 
         userEliminations.set(bp.userId, { eliminatedAt, rank: STAGE_RANK_TRAITOR[eliminatedAt] ?? 7 });
@@ -2143,6 +2239,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           const minStage = Object.keys(STAGE_RANK_TRAITOR).find(s => STAGE_RANK_TRAITOR[s] === minRank) ?? 'group';
           const stageLabelMap: Record<string, { no: string; en: string }> = {
             group: { no: 'gruppespillet', en: 'the group stage' },
+            round_of_32: { no: 'runde 32', en: 'the round of 32' },
             round_of_16: { no: 'runde 16', en: 'the round of 16' },
           };
           const stageLabelNo = stageLabelMap[minStage]?.no ?? minStage;
