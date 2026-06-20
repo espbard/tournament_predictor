@@ -602,13 +602,14 @@ export default function CompetitionDetailPage() {
       return;
     }
 
-    if (!groupStageLocked && !hasDeclined && !showProceedPrompt) {
+    const tournamentUnderway = tournament?.status === 'active' || tournament?.status === 'completed';
+    if (!groupStageLocked && !hasDeclined && !showProceedPrompt && !tournamentUnderway) {
       const timer = setTimeout(() => {
         setShowProceedPrompt(true);
       }, 3000);
       return () => clearTimeout(timer);
     }
-  }, [allGroupMatchesList, allGroupFilled, localEdits, groupStageLocked, hasDeclined, showProceedPrompt, predictionsFetched]);
+  }, [allGroupMatchesList, allGroupFilled, localEdits, groupStageLocked, hasDeclined, showProceedPrompt, predictionsFetched, tournament?.status]);
 
   useEffect(() => {
     if (firstGroupUnfilledRef.current || !savedPredictions.length) return;

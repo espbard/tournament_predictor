@@ -1302,7 +1302,7 @@ export default function KnockoutStageContent({
   const savedPredMatchIds = new Set(savedGroupPredictions.map(p => p.matchId));
   const missingPredictions = groupMatchesWithTeams.some(m => !savedPredMatchIds.has(m.id));
 
-  if (missingPredictions && !viewUserId) {
+  if (missingPredictions && !viewUserId && !isReadOnly) {
     return (
       <div className="rounded-xl border bg-muted/20 p-6 text-center space-y-3">
         <p className="font-semibold">{t('knockoutContent.missingGroupPreds')}</p>
@@ -1366,7 +1366,7 @@ export default function KnockoutStageContent({
         )}
       </div>
 
-      {hasPendingTies && (
+      {hasPendingTies && !isReadOnly && (
         <div className="mb-4 rounded-lg border border-amber-400/40 bg-amber-50/10 px-4 py-3 text-sm">
           <p className="font-medium text-amber-700 dark:text-amber-400">{t('knockoutContent.tiebreakerWarning')}</p>
           <p className="text-xs text-muted-foreground mt-0.5">
@@ -1376,7 +1376,7 @@ export default function KnockoutStageContent({
       )}
 
       {knockoutConfig ? (
-        <div className={hasPendingTies ? 'relative' : ''}>
+        <div className={hasPendingTies && !isReadOnly ? 'relative' : ''}>
           <FocusedBracketView
             knockoutConfig={knockoutConfig}
             resolvedSlots={resolvedSlots}
@@ -1389,7 +1389,7 @@ export default function KnockoutStageContent({
             readOnly={isReadOnly}
             editOverride={isComparisonUser}
           />
-          {hasPendingTies && (
+          {hasPendingTies && !isReadOnly && (
             <div className="absolute inset-0 bg-background/70 rounded-xl flex items-center justify-center backdrop-blur-[2px]">
               <p className="text-sm font-medium text-muted-foreground text-center px-6">
                 {t('knockoutContent.tiebreakerBlur')}
