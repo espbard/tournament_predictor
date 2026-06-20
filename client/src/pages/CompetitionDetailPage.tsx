@@ -165,7 +165,7 @@ export default function CompetitionDetailPage() {
 
   const { data: myStatus } = useQuery({
     queryKey: ['competitions', id, 'my-status'],
-    queryFn: () => api.get<{ groupStageLocked: boolean; knockoutCompleteSeen: boolean }>(`/competitions/${id}/my-status`),
+    queryFn: () => api.get<{ groupStageLocked: boolean; knockoutCompleteSeen: boolean; lateAdditionWindowEndsAt: string | null }>(`/competitions/${id}/my-status`),
     enabled: !!competition && !user?.isAdmin && !user?.isLeaderboardUser,
   });
 
@@ -632,15 +632,20 @@ export default function CompetitionDetailPage() {
     }
   }, [allGroupMatchesList]);
 
+  const lateAdditionWindowActive =
+    !!(user?.isLateAddition &&
+    myStatus?.lateAdditionWindowEndsAt != null &&
+    new Date() < new Date(myStatus.lateAdditionWindowEndsAt));
+
   const deadlinePassed =
-    !user?.isComparisonUser && (
+    !user?.isComparisonUser && !lateAdditionWindowActive && (
       (competition?.predictionDeadline ? new Date() > new Date(competition.predictionDeadline) : false)
       || tournament?.status === 'active'
       || tournament?.status === 'completed'
     );
 
   const hasKnockoutPredictions = Object.keys(bracketPreds ?? {}).length > 0;
-  const isLocked = deadlinePassed || (!user?.isComparisonUser && groupStageLocked && hasKnockoutPredictions);
+  const isLocked = deadlinePassed || (!user?.isComparisonUser && !lateAdditionWindowActive && groupStageLocked && hasKnockoutPredictions);
 
   async function savePrediction(matchId: string) {
     const edit = localEditsRef.current[matchId];
@@ -1368,6 +1373,9 @@ export default function CompetitionDetailPage() {
               const isExactScore = hasActual && pred != null &&
                 pred.homeScore === match.homeScore && pred.awayScore === match.awayScore;
 
+              // For late addition users in their window: lock individual matches whose kickoff time has passed
+              const isMatchLocked = isLocked || (lateAdditionWindowActive && match.scheduledAt != null && new Date() > new Date(match.scheduledAt));
+
               return (
                 <div className="rounded-xl border bg-muted/20 p-5">
                   <div className="text-center mb-4">
@@ -1409,7 +1417,7 @@ export default function CompetitionDetailPage() {
                           <span className="flex-1 text-sm font-medium truncate">{match.homeTeamName ?? 'TBD'}</span>
                           {match.status === 'completed' && !user?.isComparisonUser ? (
                             <span className={`w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400 border border-amber-400 bg-amber-50/70 dark:bg-amber-900/30' : ''}`}>{pred ? pred.homeScore : '—'}</span>
-                          ) : isLocked ? (
+                          ) : isMatchLocked ? (
                             <span className="w-11 h-9 flex items-center justify-center text-xl text-muted-foreground flex-shrink-0">{pred ? pred.homeScore : '—'}</span>
                           ) : (
                             <div className="flex items-center gap-0.5 flex-shrink-0">
@@ -1459,7 +1467,7 @@ export default function CompetitionDetailPage() {
                           <span className="flex-1 text-sm font-medium truncate">{match.awayTeamName ?? 'TBD'}</span>
                           {match.status === 'completed' && !user?.isComparisonUser ? (
                             <span className={`w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400 border border-amber-400 bg-amber-50/70 dark:bg-amber-900/30' : ''}`}>{pred ? pred.awayScore : '—'}</span>
-                          ) : isLocked ? (
+                          ) : isMatchLocked ? (
                             <span className="w-11 h-9 flex items-center justify-center text-xl text-muted-foreground flex-shrink-0">{pred ? pred.awayScore : '—'}</span>
                           ) : (
                             <div className="flex items-center gap-0.5 flex-shrink-0">
@@ -1502,10 +1510,10 @@ export default function CompetitionDetailPage() {
 
                       {/* Status row */}
                       <div className="mt-2 text-center space-y-0.5">
-                        {match.status === 'scheduled' && !isLocked && saving && (
+                        {match.status === 'scheduled' && !isMatchLocked && saving && (
                           <p className="text-xs text-muted-foreground">…</p>
                         )}
-                        {match.status === 'scheduled' && !isLocked && justSaved && !saving && (
+                        {match.status === 'scheduled' && !isMatchLocked && justSaved && !saving && (
                           <p className="text-xs text-green-600">{t('competitionDetail.predictions.saved')}</p>
                         )}
                         {match.status === 'completed' && pred && (() => {

@@ -157,9 +157,10 @@ router.post('/join', requireAuth, async (req, res) => {
     if (existing) return res.status(409).json({ error: 'Already a member of this competition' });
 
     if (isLateAdditionJoin) {
-      // Find last-place user's total score to use as starting points
+      // Find last-place score among active users (those with predictions in the 5 most recent completed matches)
       const memberScores = await db
         .select({
+          userId: competitionMembers.userId,
           exactScorePoints: competitionMembers.exactScorePoints,
           correctResultPoints: competitionMembers.correctResultPoints,
           correctTeamProgressesPoints: competitionMembers.correctTeamProgressesPoints,
@@ -176,14 +177,35 @@ router.post('/join', requireAuth, async (req, res) => {
         .innerJoin(users, eq(competitionMembers.userId, users.id))
         .where(eq(competitionMembers.competitionId, competition.id));
 
-      const totals = memberScores
-        .filter(m => !m.isLeaderboardUser && !m.isComparisonUser)
-        .map(m =>
-          m.exactScorePoints + m.correctResultPoints + m.correctTeamProgressesPoints +
-          m.correctGroupPositionPoints + m.correctTeamInKnockoutTiePoints +
-          m.correctTeamInFinalPoints + m.correctWinnerPoints + m.bonusQuestionPoints +
-          m.lateAdditionPoints,
-        );
+      const recentCompletedMatches = await db
+        .select({ id: matches.id })
+        .from(matches)
+        .where(and(eq(matches.tournamentId, competition.tournamentId), eq(matches.status, 'completed')))
+        .orderBy(desc(matches.scheduledAt))
+        .limit(5);
+
+      let activeUserIds: Set<string> | null = null;
+      if (recentCompletedMatches.length >= 5) {
+        const recentMatchIds = recentCompletedMatches.map(m => m.id);
+        const recentPredRows = await db
+          .select({ userId: predictions.userId })
+          .from(predictions)
+          .where(and(eq(predictions.competitionId, competition.id), inArray(predictions.matchId, recentMatchIds)));
+        activeUserIds = new Set(recentPredRows.map(p => p.userId));
+      }
+
+      const regularMembers = memberScores.filter(m => !m.isLeaderboardUser && !m.isComparisonUser);
+      const candidateMembers = activeUserIds != null
+        ? regularMembers.filter(m => activeUserIds!.has(m.userId))
+        : regularMembers;
+      const pool = candidateMembers.length > 0 ? candidateMembers : regularMembers;
+
+      const totals = pool.map(m =>
+        m.exactScorePoints + m.correctResultPoints + m.correctTeamProgressesPoints +
+        m.correctGroupPositionPoints + m.correctTeamInKnockoutTiePoints +
+        m.correctTeamInFinalPoints + m.correctWinnerPoints + m.bonusQuestionPoints +
+        m.lateAdditionPoints,
+      );
       const lastPlaceScore = totals.length > 0 ? Math.min(...totals) : 0;
       const windowEndsAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
@@ -1941,13 +1963,18 @@ router.get('/:id/my-status', requireAuth, async (req, res) => {
     const user = res.locals.user;
 
     const [membership] = await db
-      .select()
+      .select({
+        groupStageLocked: competitionMembers.groupStageLocked,
+        knockoutCompleteSeen: competitionMembers.knockoutCompleteSeen,
+        lateAdditionWindowEndsAt: competitionMembers.lateAdditionWindowEndsAt,
+      })
       .from(competitionMembers)
       .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
 
     res.json({
       groupStageLocked: membership?.groupStageLocked ?? false,
       knockoutCompleteSeen: membership?.knockoutCompleteSeen ?? false,
+      lateAdditionWindowEndsAt: membership?.lateAdditionWindowEndsAt?.toISOString() ?? null,
     });
   } catch (err) {
     console.error('Get my-status error:', err);
@@ -2069,6 +2096,11 @@ router.post('/:id/predictions', requireAuth, async (req, res) => {
     // Late addition users cannot predict on matches that already have a result
     if (isLateAdditionMember && match.status === 'completed') {
       return res.status(400).json({ error: 'Late addition users cannot predict on matches that already have a result' });
+    }
+
+    // Late addition users cannot predict on matches where kickoff time has already passed
+    if (isLateAdditionMember && match.scheduledAt && new Date() > new Date(match.scheduledAt)) {
+      return res.status(400).json({ error: 'Cannot predict on a match after kickoff time' });
     }
 
     if (match.stage === 'group' && !user.isAdmin && !user.isComparisonUser) {
