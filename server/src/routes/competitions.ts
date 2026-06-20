@@ -1169,6 +1169,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     let mostPredictableResultCard: UserStatCardData | null = null;
     let brautometerCard: UserStatCardData | null = null;
     let swingAndAMissCard: UserStatCardData | null = null;
+    let jaViElskerCard: UserStatCardData | null = null;
     let traitorCard: UserStatCardData | null = null;
 
     if (kingGroup.length > 0) {
@@ -2085,6 +2086,47 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       }
     }
 
+    // ── Ja vi elsker: user(s) who predicted Norway to win the tournament ──
+    if (norwayTeam) {
+      const norwayId = norwayTeam.id;
+      const bpRows = await db
+        .select({ userId: bracketPredictions.userId, predictions: bracketPredictions.predictions })
+        .from(bracketPredictions)
+        .where(eq(bracketPredictions.competitionId, id));
+
+      const believers = bpRows
+        .filter(bp => {
+          if (activeStatUserIds && !activeStatUserIds.has(bp.userId)) return false;
+          if (!userInfo.has(bp.userId)) return false;
+          const preds = bp.predictions as BracketPredictions;
+          return Object.entries(preds).some(
+            ([key, pred]) => key.startsWith('final_') && pred.progressingTeamId === norwayId,
+          );
+        })
+        .map(bp => ({ userId: bp.userId, ...userInfo.get(bp.userId)! }))
+        .sort((a, b) => a.username.localeCompare(b.username));
+
+      if (believers.length > 0) {
+        const names = formatUserList(believers.map(u => u.username), lang);
+        jaViElskerCard = {
+          id: 'ja-vi-elsker',
+          title: 'Ja vi elsker 🇳🇴',
+          statistic:
+            lang === 'no'
+              ? `${names} tror faktisk at Norge kommer til å vinne hele turneringen!`
+              : `${names} actually ${believers.length === 1 ? 'believes' : 'believe'} that Norway will win the entire tournament!`,
+          subjects: believers.map(u => ({
+            type: 'user' as const,
+            id: u.userId,
+            name: u.username,
+            imageUrl: u.imageUrl,
+          })),
+          linkType: 'user',
+          overlayImageUrl: norwayTeam.imageUrl ?? null,
+        };
+      }
+    }
+
     // ── The Traitor: user(s) who predicted Norway eliminated earliest ──
     // Uses Norway's group stage predictions to determine whether they qualified
     // (any of 1st/2nd/3rd place), then checks bracket predictions for later stages.
@@ -2283,6 +2325,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       mostUnexpectedResultCard,
       mostPredictableResultCard,
       swingAndAMissCard,
+      jaViElskerCard,
       traitorCard,
       brautometerCard,
     ].filter((card): card is UserStatCardData => card !== null);
