@@ -528,7 +528,7 @@ const translations = {
         you: '(deg)',
         points: 'poeng',
         inactiveLegend: '= Inaktiv — mangler tips på de siste kampene',
-        lateAdditionLegend: '= Sen tillegg — ble med etter at turneringen startet',
+        lateAdditionLegend: '= Sen påmelding — ble med etter at turneringen startet',
       },
       predictions: {
         title: 'Tips',
