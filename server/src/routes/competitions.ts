@@ -2239,7 +2239,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           const minStage = Object.keys(STAGE_RANK_TRAITOR).find(s => STAGE_RANK_TRAITOR[s] === minRank) ?? 'group';
           const stageLabelMap: Record<string, { no: string; en: string }> = {
             group: { no: 'gruppespillet', en: 'the group stage' },
-            round_of_32: { no: 'runde 32', en: 'the round of 32' },
+            round_of_32: { no: 'sekstendelsfinalen', en: 'the round of 32' },
             round_of_16: { no: 'runde 16', en: 'the round of 16' },
           };
           const stageLabelNo = stageLabelMap[minStage]?.no ?? minStage;
