@@ -1711,6 +1711,7 @@ export default function CompetitionDetailPage() {
                               {isMe && <span className="ml-1 font-normal text-muted-foreground">{t('competitionDetail.leaderboard.you')}</span>}
                               {isComparison && <span className="ml-1 font-normal text-muted-foreground not-italic">(AI)</span>}
                             </span>
+                            {entry.isLateAddition && <span className="inline-block w-2 h-2 rounded-full bg-yellow-400 flex-shrink-0" title={t('competitionDetail.leaderboard.lateAdditionLegend')} />}
                             {entry.inactive && <span className="inline-block w-2 h-2 rounded-full bg-red-500 flex-shrink-0" title={t('competitionDetail.leaderboard.inactiveLegend')} />}
                           </Link>
                         </td>
@@ -1745,6 +1746,7 @@ export default function CompetitionDetailPage() {
                       <Link to={`/competitions/${id}/predictions/${entry.userId}`} className="flex items-center gap-3 min-w-0 hover:opacity-80 transition-opacity">
                         <img src={entry.imageUrl ?? '/default-avatar.png'} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0" />
                         <span className="font-medium text-base truncate">{entry.username}</span>
+                        {entry.isLateAddition && <span className="inline-block w-2 h-2 rounded-full bg-yellow-400 flex-shrink-0" />}
                         {entry.inactive && <span className="inline-block w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />}
                       </Link>
                     </td>
@@ -1801,6 +1803,12 @@ export default function CompetitionDetailPage() {
               );
             })()}
 
+            {leaderboard.some(e => e.isLateAddition) && (
+              <p className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground mt-3">
+                <span className="inline-block w-2 h-2 rounded-full bg-yellow-400 flex-shrink-0" />
+                {t('competitionDetail.leaderboard.lateAdditionLegend')}
+              </p>
+            )}
             {leaderboard.some(e => e.inactive) && (
               <p className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground mt-3">
                 <span className="inline-block w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />

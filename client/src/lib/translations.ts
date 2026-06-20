@@ -111,6 +111,7 @@ const translations = {
         you: '(you)',
         points: 'points',
         inactiveLegend: '= Inactive — missing predictions for recent matches',
+        lateAdditionLegend: '= Late addition — joined after the tournament started',
       },
       predictions: {
         title: 'Predictions',
@@ -527,6 +528,7 @@ const translations = {
         you: '(deg)',
         points: 'poeng',
         inactiveLegend: '= Inaktiv — mangler tips på de siste kampene',
+        lateAdditionLegend: '= Sen tillegg — ble med etter at turneringen startet',
       },
       predictions: {
         title: 'Tips',
