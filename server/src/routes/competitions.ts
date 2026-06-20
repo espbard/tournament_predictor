@@ -1168,6 +1168,9 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     let mostUnexpectedResultCard: UserStatCardData | null = null;
     let mostPredictableResultCard: UserStatCardData | null = null;
     let brautometerCard: UserStatCardData | null = null;
+    let swingAndAMissCard: UserStatCardData | null = null;
+    let jaViElskerCard: UserStatCardData | null = null;
+    let traitorCard: UserStatCardData | null = null;
 
     if (kingGroup.length > 0) {
       const gameCount = kingGroup[0].streak;
@@ -1643,8 +1646,54 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       }
     }
 
+    // ── Swing and a Miss: prediction furthest from actual goal difference ──
+    interface SwingAndAMissData {
+      matchId: string;
+      homeTeamId: string | null;
+      awayTeamId: string | null;
+      homeScore: number;
+      awayScore: number;
+      predHomeScore: number;
+      predAwayScore: number;
+      deviation: number;
+      users: { userId: string; username: string; imageUrl: string | null }[];
+    }
+
+    const swingPredictionGroups = new Map<string, SwingAndAMissData>();
+    for (const row of activeRows) {
+      if (row.actualHomeScore === null || row.actualAwayScore === null) continue;
+      const actualGD = row.actualHomeScore - row.actualAwayScore;
+      const predGD = row.predHomeScore - row.predAwayScore;
+      const deviation = Math.abs(actualGD - predGD);
+      const key = `${row.matchId}|${row.predHomeScore}|${row.predAwayScore}`;
+      if (!swingPredictionGroups.has(key)) {
+        swingPredictionGroups.set(key, {
+          matchId: row.matchId,
+          homeTeamId: row.homeTeamId,
+          awayTeamId: row.awayTeamId,
+          homeScore: row.actualHomeScore,
+          awayScore: row.actualAwayScore,
+          predHomeScore: row.predHomeScore,
+          predAwayScore: row.predAwayScore,
+          deviation,
+          users: [],
+        });
+      }
+      swingPredictionGroups.get(key)!.users.push({ userId: row.userId, username: row.username, imageUrl: row.imageUrl });
+    }
+
+    let swingAndAMissData: SwingAndAMissData | null = null;
+    if (swingPredictionGroups.size > 0) {
+      const maxSwingDeviation = Math.max(...[...swingPredictionGroups.values()].map(g => g.deviation));
+      if (maxSwingDeviation > 0) {
+        const topGroups = [...swingPredictionGroups.values()].filter(g => g.deviation === maxSwingDeviation);
+        swingAndAMissData = topGroups.reduce((best, g) => (g.users.length > best.users.length ? g : best));
+        swingAndAMissData.users.sort((a, b) => a.username.localeCompare(b.username));
+      }
+    }
+
     const neededTeamIds = new Set<string>();
-    for (const m of [bestPredictionMatch, worstPredictionMatch, unexpectedMatch, mostPredictableMatch, contrastMatch]) {
+    for (const m of [bestPredictionMatch, worstPredictionMatch, unexpectedMatch, mostPredictableMatch, contrastMatch, swingAndAMissData]) {
       if (m?.homeTeamId) neededTeamIds.add(m.homeTeamId);
       if (m?.awayTeamId) neededTeamIds.add(m.awayTeamId);
     }
@@ -1872,6 +1921,23 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       };
     }
 
+    if (swingAndAMissData) {
+      const homeTeamName = teamName(swingAndAMissData.homeTeamId);
+      const awayTeamName = teamName(swingAndAMissData.awayTeamId);
+      const userNames = formatUserList(swingAndAMissData.users.map(u => u.username), lang);
+      swingAndAMissCard = {
+        id: 'swingAndAMiss',
+        title: lang === 'no' ? 'Det var nesten da!' : 'Swing and a Miss',
+        statistic:
+          lang === 'no'
+            ? `Kampen mellom ${homeTeamName} og ${awayTeamName} endte ${swingAndAMissData.homeScore} - ${swingAndAMissData.awayScore}, bare litt annerledes enn hva ${userNames} tippet, som trodde kampen skulle ende ${swingAndAMissData.predHomeScore} - ${swingAndAMissData.predAwayScore}.`
+            : `The match between ${homeTeamName} and ${awayTeamName} ended ${swingAndAMissData.homeScore} - ${swingAndAMissData.awayScore}, just a little different from what ${userNames} predicted, who thought the match would end ${swingAndAMissData.predHomeScore} - ${swingAndAMissData.predAwayScore}.`,
+        subjects: swingAndAMissData.users.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
+        linkType: 'match',
+        matchId: swingAndAMissData.matchId,
+      };
+    }
+
     hitOrMissCard = {
       id: 'hitOrMiss',
       title: 'Hit or Miss',
@@ -2020,6 +2086,228 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       }
     }
 
+    // ── Ja vi elsker: user(s) who predicted Norway to win the tournament ──
+    if (norwayTeam) {
+      const norwayId = norwayTeam.id;
+      const bpRows = await db
+        .select({ userId: bracketPredictions.userId, predictions: bracketPredictions.predictions })
+        .from(bracketPredictions)
+        .where(eq(bracketPredictions.competitionId, id));
+
+      const believers = bpRows
+        .filter(bp => {
+          if (activeStatUserIds && !activeStatUserIds.has(bp.userId)) return false;
+          if (!userInfo.has(bp.userId)) return false;
+          const preds = bp.predictions as BracketPredictions;
+          return Object.entries(preds).some(
+            ([key, pred]) => key.startsWith('final_') && pred.progressingTeamId === norwayId,
+          );
+        })
+        .map(bp => ({ userId: bp.userId, ...userInfo.get(bp.userId)! }))
+        .sort((a, b) => a.username.localeCompare(b.username));
+
+      if (believers.length > 0) {
+        const names = formatUserList(believers.map(u => u.username), lang);
+        jaViElskerCard = {
+          id: 'ja-vi-elsker',
+          title: 'Ja vi elsker 🇳🇴',
+          statistic:
+            lang === 'no'
+              ? `${names} tror faktisk at Norge kommer til å vinne hele turneringen!`
+              : `${names} actually ${believers.length === 1 ? 'believes' : 'believe'} that Norway will win the entire tournament!`,
+          subjects: believers.map(u => ({
+            type: 'user' as const,
+            id: u.userId,
+            name: u.username,
+            imageUrl: u.imageUrl,
+          })),
+          linkType: 'user',
+          overlayImageUrl: norwayTeam.imageUrl ?? null,
+        };
+      }
+    }
+
+    // ── The Traitor: user(s) who predicted Norway eliminated earliest ──
+    // Uses Norway's group stage predictions to determine whether they qualified
+    // (any of 1st/2nd/3rd place), then checks bracket predictions for later stages.
+    // This correctly distinguishes "4th in group = eliminated" from "3rd as lucky loser
+    // but then lost in R32", which pure bracket-scan cannot.
+    if (norwayTeam) {
+      const norwayId = norwayTeam.id;
+      const KNOCKOUT_STAGES_ORDERED = ['round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'final'];
+      const STAGE_RANK_TRAITOR: Record<string, number> = {
+        group: 0, round_of_32: 1, round_of_16: 2, quarter_final: 3, semi_final: 4, final: 5, winner: 6,
+      };
+
+      // Step 1: find Norway's group and all matches within it
+      const [traitorBpRows, [norwayTeamRow]] = await Promise.all([
+        db.select({ userId: bracketPredictions.userId, predictions: bracketPredictions.predictions })
+          .from(bracketPredictions).where(eq(bracketPredictions.competitionId, id)),
+        db.select({ groupId: teams.groupId })
+          .from(teams).where(and(eq(teams.tournamentId, competition.tournamentId), eq(teams.id, norwayId))),
+      ]);
+
+      const norwayGroupId = norwayTeamRow?.groupId ?? null;
+      let norwayGroupTeamIds: string[] = [];
+      type NorwayGroupMatch = { id: string; homeTeamId: string; awayTeamId: string };
+      let norwayGroupMatchData: NorwayGroupMatch[] = [];
+      const norwayGroupPredsByUser = new Map<
+        string,
+        Map<string, { homeScore: number; awayScore: number; homeTeamId: string; awayTeamId: string }>
+      >();
+
+      if (norwayGroupId) {
+        const [groupTeamRows, allGroupMatchRows] = await Promise.all([
+          db.select({ id: teams.id })
+            .from(teams).where(and(eq(teams.tournamentId, competition.tournamentId), eq(teams.groupId, norwayGroupId))),
+          db.select({ id: matches.id, homeTeamId: matches.homeTeamId, awayTeamId: matches.awayTeamId })
+            .from(matches).where(and(eq(matches.tournamentId, competition.tournamentId), eq(matches.stage, 'group'))),
+        ]);
+
+        norwayGroupTeamIds = groupTeamRows.map(t => t.id);
+        const norwayGroupTeamSet = new Set(norwayGroupTeamIds);
+        norwayGroupMatchData = allGroupMatchRows.filter(
+          m => m.homeTeamId && m.awayTeamId
+            && norwayGroupTeamSet.has(m.homeTeamId)
+            && norwayGroupTeamSet.has(m.awayTeamId),
+        ) as NorwayGroupMatch[];
+
+        const norwayGroupMatchIds = norwayGroupMatchData.map(m => m.id);
+        if (norwayGroupMatchIds.length > 0) {
+          const groupPredRows = await db
+            .select({ userId: predictions.userId, matchId: predictions.matchId, homeScore: predictions.homeScore, awayScore: predictions.awayScore })
+            .from(predictions)
+            .where(and(
+              eq(predictions.competitionId, id),
+              inArray(predictions.matchId, norwayGroupMatchIds),
+              eq(predictions.isReplacement, false),
+            ));
+
+          const matchDataMap = new Map(norwayGroupMatchData.map(m => [m.id, m]));
+          for (const pred of groupPredRows) {
+            if (!norwayGroupPredsByUser.has(pred.userId)) norwayGroupPredsByUser.set(pred.userId, new Map());
+            const md = matchDataMap.get(pred.matchId);
+            if (md) {
+              norwayGroupPredsByUser.get(pred.userId)!.set(pred.matchId, {
+                homeScore: pred.homeScore, awayScore: pred.awayScore,
+                homeTeamId: md.homeTeamId, awayTeamId: md.awayTeamId,
+              });
+            }
+          }
+        }
+      }
+
+      // Returns 0-indexed position of Norway in their group based on user predictions.
+      // Returns null if the user made no group predictions for Norway's group.
+      const getNorwayGroupPos = (userId: string): number | null => {
+        if (!norwayGroupId || norwayGroupTeamIds.length === 0) return null;
+        const userPreds = norwayGroupPredsByUser.get(userId);
+        if (!userPreds || userPreds.size === 0) return null;
+
+        const stats = new Map(norwayGroupTeamIds.map(tid => [tid, { pts: 0, gd: 0, gf: 0 }]));
+        for (const { homeTeamId, awayTeamId, homeScore, awayScore } of userPreds.values()) {
+          const home = stats.get(homeTeamId);
+          const away = stats.get(awayTeamId);
+          if (!home || !away) continue;
+          if (homeScore > awayScore) home.pts += 3;
+          else if (homeScore === awayScore) { home.pts += 1; away.pts += 1; }
+          else away.pts += 3;
+          home.gd += homeScore - awayScore; home.gf += homeScore;
+          away.gd += awayScore - homeScore; away.gf += awayScore;
+        }
+
+        const sorted = [...stats.entries()].sort((a, b) =>
+          b[1].pts !== a[1].pts ? b[1].pts - a[1].pts :
+          b[1].gd  !== a[1].gd  ? b[1].gd  - a[1].gd  :
+          b[1].gf  - a[1].gf,
+        );
+        const pos = sorted.findIndex(([tid]) => tid === norwayId);
+        return pos >= 0 ? pos : null;
+      };
+
+      const userEliminations = new Map<string, { eliminatedAt: string; rank: number }>();
+
+      for (const bp of traitorBpRows) {
+        if (activeStatUserIds && !activeStatUserIds.has(bp.userId)) continue;
+        if (!userInfo.has(bp.userId)) continue;
+
+        const bpPreds = bp.predictions as BracketPredictions;
+        const norwayGroupPos = getNorwayGroupPos(bp.userId);
+
+        let eliminatedAt: string;
+
+        if (norwayGroupPos !== null && norwayGroupPos >= norwayGroupTeamIds.length - 1) {
+          // Norway predicted last in their group → definitely eliminated in group stage
+          eliminatedAt = 'group';
+        } else {
+          // Norway is 1st/2nd/3rd (or no group data) → check bracket predictions for wins
+          let lastSurvivedStageIdx = -1;
+          for (let si = 0; si < KNOCKOUT_STAGES_ORDERED.length; si++) {
+            const stage = KNOCKOUT_STAGES_ORDERED[si];
+            const norwayWon = Object.entries(bpPreds).some(
+              ([key, pred]) => key.startsWith(`${stage}_`) && pred.progressingTeamId === norwayId,
+            );
+            if (norwayWon) lastSurvivedStageIdx = si;
+          }
+
+          if (lastSurvivedStageIdx === -1) {
+            // Norway didn't win any bracket match
+            if (norwayGroupPos !== null) {
+              // Group data says Norway was 1st–3rd → they were in R32 but lost there
+              eliminatedAt = 'round_of_32';
+            } else {
+              // No group data and no bracket win → can't tell; treat as group elimination
+              eliminatedAt = 'group';
+            }
+          } else if (lastSurvivedStageIdx === KNOCKOUT_STAGES_ORDERED.length - 1) {
+            eliminatedAt = 'winner';
+          } else {
+            eliminatedAt = KNOCKOUT_STAGES_ORDERED[lastSurvivedStageIdx + 1];
+          }
+        }
+
+        userEliminations.set(bp.userId, { eliminatedAt, rank: STAGE_RANK_TRAITOR[eliminatedAt] ?? 7 });
+      }
+
+      if (userEliminations.size > 0) {
+        const minRank = Math.min(...[...userEliminations.values()].map(e => e.rank));
+
+        if (minRank <= STAGE_RANK_TRAITOR['round_of_16']) {
+          const traitors = [...userEliminations.entries()]
+            .filter(([, e]) => e.rank === minRank)
+            .map(([userId]) => ({ userId, ...userInfo.get(userId)! }))
+            .sort((a, b) => a.username.localeCompare(b.username));
+
+          const minStage = Object.keys(STAGE_RANK_TRAITOR).find(s => STAGE_RANK_TRAITOR[s] === minRank) ?? 'group';
+          const stageLabelMap: Record<string, { no: string; en: string }> = {
+            group: { no: 'gruppespillet', en: 'the group stage' },
+            round_of_32: { no: 'sekstendelsfinalen', en: 'the round of 32' },
+            round_of_16: { no: 'runde 16', en: 'the round of 16' },
+          };
+          const stageLabelNo = stageLabelMap[minStage]?.no ?? minStage;
+          const stageLabelEn = stageLabelMap[minStage]?.en ?? minStage;
+          const traitorNames = formatUserList(traitors.map(u => u.username), lang);
+
+          traitorCard = {
+            id: 'traitor',
+            title: lang === 'no' ? 'Landssvikeren' : 'The Traitor',
+            statistic:
+              lang === 'no'
+                ? `${traitorNames} trodde faktisk at Norge ville bli slått ut allerede i ${stageLabelNo}!`
+                : `${traitorNames} actually thought that Norway would be knocked out as early as ${stageLabelEn}!`,
+            subjects: traitors.map(u => ({
+              type: 'user' as const,
+              id: u.userId,
+              name: u.username,
+              imageUrl: u.imageUrl,
+            })),
+            linkType: 'user',
+            overlayImageUrl: norwayTeam.imageUrl ?? null,
+          };
+        }
+      }
+    }
+
     const cards = [
       theLeaderCard,
       bottomOfTheLeagueCard,
@@ -2036,6 +2324,9 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       mostContrastingPredictionCard,
       mostUnexpectedResultCard,
       mostPredictableResultCard,
+      swingAndAMissCard,
+      jaViElskerCard,
+      traitorCard,
       brautometerCard,
     ].filter((card): card is UserStatCardData => card !== null);
 
