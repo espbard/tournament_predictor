@@ -602,13 +602,14 @@ export default function CompetitionDetailPage() {
       return;
     }
 
-    if (!groupStageLocked && !hasDeclined && !showProceedPrompt) {
+    const tournamentUnderway = tournament?.status === 'active' || tournament?.status === 'completed';
+    if (!groupStageLocked && !hasDeclined && !showProceedPrompt && !tournamentUnderway) {
       const timer = setTimeout(() => {
         setShowProceedPrompt(true);
       }, 3000);
       return () => clearTimeout(timer);
     }
-  }, [allGroupMatchesList, allGroupFilled, localEdits, groupStageLocked, hasDeclined, showProceedPrompt, predictionsFetched]);
+  }, [allGroupMatchesList, allGroupFilled, localEdits, groupStageLocked, hasDeclined, showProceedPrompt, predictionsFetched, tournament?.status]);
 
   useEffect(() => {
     if (firstGroupUnfilledRef.current || !savedPredictions.length) return;
@@ -1641,10 +1642,10 @@ export default function CompetitionDetailPage() {
                       {tournament && <p className="text-sm text-muted-foreground">{tournament.name}</p>}
                     </div>
                   </div>
-                  <PlayerPodium leaderboard={showComparisonUsers ? leaderboard : leaderboard.filter(e => !e.isComparisonUser)} large={true} competitionId={id} />
+                  <PlayerPodium leaderboard={showComparisonUsers ? leaderboard : leaderboard.filter(e => !e.isComparisonUser)} large={true} competitionId={id} tournamentStatus={tournament?.status} />
                 </div>
               ) : (
-                <PlayerPodium leaderboard={showComparisonUsers ? leaderboard : leaderboard.filter(e => !e.isComparisonUser)} large={false} competitionId={id} />
+                <PlayerPodium leaderboard={showComparisonUsers ? leaderboard : leaderboard.filter(e => !e.isComparisonUser)} large={false} competitionId={id} tournamentStatus={tournament?.status} />
               )
             )}
 
