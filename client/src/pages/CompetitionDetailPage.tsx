@@ -1872,19 +1872,27 @@ export default function CompetitionDetailPage() {
             const match = allMatchesSorted[safePredMatchIdx];
             if (!match) return null;
 
+            const hasResult = match.homeScore !== null && match.awayScore !== null;
             const matchPreds = [...allMatchPredictions]
               .filter(p => p.matchId === match.id && !p.isReplacement)
               .sort((a, b) => {
-                const pointsDiff = (b.points ?? 0) - (a.points ?? 0);
-                if (pointsDiff !== 0) return pointsDiff;
-                const actualGD = (match.homeScore ?? 0) - (match.awayScore ?? 0);
-                const aGDDist = Math.abs((a.homeScore - a.awayScore) - actualGD);
-                const bGDDist = Math.abs((b.homeScore - b.awayScore) - actualGD);
-                const gdDiff = aGDDist - bGDDist;
-                if (gdDiff !== 0) return gdDiff;
-                const aHomeDist = Math.abs(a.homeScore - (match.homeScore ?? 0));
-                const bHomeDist = Math.abs(b.homeScore - (match.homeScore ?? 0));
-                return aHomeDist - bHomeDist;
+                if (hasResult) {
+                  const pointsDiff = (b.points ?? 0) - (a.points ?? 0);
+                  if (pointsDiff !== 0) return pointsDiff;
+                  const actualGD = (match.homeScore ?? 0) - (match.awayScore ?? 0);
+                  const aGDDist = Math.abs((a.homeScore - a.awayScore) - actualGD);
+                  const bGDDist = Math.abs((b.homeScore - b.awayScore) - actualGD);
+                  const gdDiff = aGDDist - bGDDist;
+                  if (gdDiff !== 0) return gdDiff;
+                  const aHomeDist = Math.abs(a.homeScore - (match.homeScore ?? 0));
+                  const bHomeDist = Math.abs(b.homeScore - (match.homeScore ?? 0));
+                  return aHomeDist - bHomeDist;
+                } else {
+                  const aGD = a.homeScore - a.awayScore;
+                  const bGD = b.homeScore - b.awayScore;
+                  if (bGD !== aGD) return bGD - aGD;
+                  return b.homeScore - a.homeScore;
+                }
               });
 
             const isKnockout = match.stage !== 'group';
