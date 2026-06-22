@@ -5,6 +5,7 @@ import { api, ApiError } from '@/lib/api';
 import KnockoutStageContent from '@/components/KnockoutStageContent';
 import BonusQuestionsTab from '@/pages/BonusQuestionsTab';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
+import { UserAvatar } from '@/components/UserAvatar';
 import { useT } from '@/lib/useT';
 import { sortGroupTeams, makeDisciplinaryKey, type MatchResult, type DisciplinaryChoices } from '@/lib/tiebreakers';
 import type { Competition, Tournament, Prediction, MatchStage } from '@tournament-predictor/shared';
@@ -67,12 +68,13 @@ export default function UserPredictionsPage() {
 
   const { data: userPreds, isLoading: predsLoading, error: predsError } = useQuery({
     queryKey: ['competitions', id, 'predictions', userId],
-    queryFn: () => api.get<{ predictions: Prediction[]; username: string; imageUrl: string | null }>(`/competitions/${id}/predictions/${userId}`),
+    queryFn: () => api.get<{ predictions: Prediction[]; username: string; imageUrl: string | null; iconColor: string | null }>(`/competitions/${id}/predictions/${userId}`),
     enabled: !!id && !!userId,
   });
 
   const username = userPreds?.username ?? '';
   const imageUrl = userPreds?.imageUrl ?? null;
+  const iconColor = userPreds?.iconColor ?? null;
   const predictions = userPreds?.predictions ?? [];
 
   const predMap = useMemo(
@@ -256,11 +258,7 @@ export default function UserPredictionsPage() {
       </div>
 
       <div className="flex items-center gap-3 mb-6">
-        <img
-          src={imageUrl ?? '/default-avatar.png'}
-          alt={username}
-          className="h-10 w-10 rounded-full object-cover border"
-        />
+        <UserAvatar username={username} imageUrl={imageUrl} iconColor={iconColor} className="h-10 w-10" />
         <div>
           <h1 className="text-xl font-bold">{username}</h1>
           <p className="text-xs text-muted-foreground">{t('competitionDetail.leaderboard.player')}</p>

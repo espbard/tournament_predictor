@@ -4,6 +4,7 @@ export const RegisterSchema = z.object({
   username: z.string().min(3).max(30).regex(/^[a-zA-Z0-9_]+$/, 'Only letters, numbers, and underscores'),
   password: z.string().min(6),
   imageUrl: z.string().nullable().optional(),
+  iconColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
   isLeaderboardUser: z.boolean().optional(),
   isLateAddition: z.boolean().optional(),
 });
@@ -42,6 +43,7 @@ export const CreateGroupSchema = z.object({
 
 export const UpdateUserSchema = z.object({
   imageUrl: z.string().nullable().optional(),
+  iconColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
 });
 
 export const CreateMatchSchema = z.object({

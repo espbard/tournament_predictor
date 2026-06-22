@@ -419,6 +419,7 @@ router.get('/:id/members', requireAuth, async (req, res) => {
         id: users.id,
         username: users.username,
         imageUrl: users.imageUrl,
+        iconColor: users.iconColor,
         joinedAt: competitionMembers.joinedAt,
       })
       .from(competitionMembers)
@@ -458,6 +459,7 @@ router.get('/:id/leaderboard', requireAuth, async (req, res) => {
         userId: users.id,
         username: users.username,
         imageUrl: users.imageUrl,
+        iconColor: users.iconColor,
         isComparisonUser: users.isComparisonUser,
         isLateAddition: users.isLateAddition,
         exactScorePoints: competitionMembers.exactScorePoints,
@@ -518,6 +520,7 @@ router.get('/:id/leaderboard', requireAuth, async (req, res) => {
         userId: row.userId,
         username: row.username,
         imageUrl: row.imageUrl,
+        iconColor: row.iconColor ?? null,
         isComparisonUser: row.isComparisonUser,
         isLateAddition: row.isLateAddition,
         lateAdditionWindowEndsAt: row.lateAdditionWindowEndsAt ? row.lateAdditionWindowEndsAt.toISOString() : null,
@@ -587,6 +590,7 @@ router.get('/:id/leaderboard-progression', requireAuth, async (req, res) => {
         userId: users.id,
         username: users.username,
         imageUrl: users.imageUrl,
+        iconColor: users.iconColor,
         groupDisciplinaryChoices: competitionMembers.groupDisciplinaryChoices,
         luckyLoserChoices: competitionMembers.luckyLoserChoices,
         bonusQuestionPoints: competitionMembers.bonusQuestionPoints,
@@ -822,7 +826,7 @@ router.get('/:id/leaderboard-progression', requireAuth, async (req, res) => {
 
     const response: LeaderboardProgressionResponse = {
       matches: milestones,
-      users: memberRows.map(m => ({ userId: m.userId, username: m.username, imageUrl: m.imageUrl })),
+      users: memberRows.map(m => ({ userId: m.userId, username: m.username, imageUrl: m.imageUrl, iconColor: m.iconColor ?? null })),
     };
     res.json(response);
   } catch (err) {
@@ -856,6 +860,7 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
         userId: predictions.userId,
         username: users.username,
         imageUrl: users.imageUrl,
+        iconColor: users.iconColor,
         isComparisonUser: users.isComparisonUser,
         homeScore: predictions.homeScore,
         awayScore: predictions.awayScore,
@@ -893,6 +898,7 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
       userId: string;
       username: string;
       imageUrl: string | null;
+      iconColor: string | null;
       isComparisonUser: boolean;
       homeScore: number;
       awayScore: number;
@@ -917,7 +923,7 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
         bd.correctResult = r.breakdown.correctResult;
         bd.correctTeamProgresses = r.breakdown.correctTeamProgresses;
       }
-      return { matchId: row.matchId, userId: row.userId, username: row.username, imageUrl: row.imageUrl, isComparisonUser: row.isComparisonUser, homeScore: row.homeScore, awayScore: row.awayScore, progressingTeamId: row.progressingTeamId, points: row.points, isReplacement: row.isReplacement, breakdown: bd };
+      return { matchId: row.matchId, userId: row.userId, username: row.username, imageUrl: row.imageUrl, iconColor: row.iconColor ?? null, isComparisonUser: row.isComparisonUser, homeScore: row.homeScore, awayScore: row.awayScore, progressingTeamId: row.progressingTeamId, points: row.points, isReplacement: row.isReplacement, breakdown: bd };
     });
 
     // Knockout predictions come from bracketPredictions (not the predictions table).
@@ -961,6 +967,7 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
           userId: competitionMembers.userId,
           username: users.username,
           imageUrl: users.imageUrl,
+          iconColor: users.iconColor,
           isLeaderboardUser: users.isLeaderboardUser,
           isComparisonUser: users.isComparisonUser,
           groupDisciplinaryChoices: competitionMembers.groupDisciplinaryChoices,
@@ -1135,6 +1142,7 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
             userId: bp.userId,
             username: userInfo.username,
             imageUrl: userInfo.imageUrl,
+            iconColor: userInfo.iconColor ?? null,
             isComparisonUser: userInfo.isComparisonUser,
             homeScore: pred.homeScore,
             awayScore: pred.awayScore,
@@ -1181,6 +1189,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         userId: predictions.userId,
         username: users.username,
         imageUrl: users.imageUrl,
+        iconColor: users.iconColor,
         isLateAddition: users.isLateAddition,
         matchId: predictions.matchId,
         predHomeScore: predictions.homeScore,
@@ -1225,13 +1234,13 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
     const activeRows = activeStatUserIds ? rows.filter(r => activeStatUserIds!.has(r.userId)) : rows;
 
-    const oneGoalAwayCounts = new Map<string, { username: string; imageUrl: string | null; count: number }>();
+    const oneGoalAwayCounts = new Map<string, { username: string; imageUrl: string | null; iconColor: string | null; count: number }>();
     for (const row of activeRows) {
       if (row.actualHomeScore === null || row.actualAwayScore === null) continue;
       const goalsAway =
         Math.abs(row.predHomeScore - row.actualHomeScore) + Math.abs(row.predAwayScore - row.actualAwayScore);
       if (goalsAway !== 1) continue;
-      const entry = oneGoalAwayCounts.get(row.userId) ?? { username: row.username, imageUrl: row.imageUrl, count: 0 };
+      const entry = oneGoalAwayCounts.get(row.userId) ?? { username: row.username, imageUrl: row.imageUrl, iconColor: row.iconColor ?? null, count: 0 };
       entry.count += 1;
       oneGoalAwayCounts.set(row.userId, entry);
     }
@@ -1256,7 +1265,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     // ── Hit or Miss: highest exact-score-to-correct-result ratio ──
     const userResultStats = new Map<
       string,
-      { username: string; imageUrl: string | null; correctResults: number; exactScores: number }
+      { username: string; imageUrl: string | null; iconColor: string | null; correctResults: number; exactScores: number }
     >();
     for (const row of activeRows) {
       if (row.actualHomeScore === null || row.actualAwayScore === null) continue;
@@ -1265,7 +1274,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       if (predictedResult !== actualResult) continue;
       const entry =
         userResultStats.get(row.userId) ??
-        { username: row.username, imageUrl: row.imageUrl, correctResults: 0, exactScores: 0 };
+        { username: row.username, imageUrl: row.imageUrl, iconColor: row.iconColor ?? null, correctResults: 0, exactScores: 0 };
       entry.correctResults += 1;
       if (row.predHomeScore === row.actualHomeScore && row.predAwayScore === row.actualAwayScore) {
         entry.exactScores += 1;
@@ -1324,12 +1333,12 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     );
     const last5MatchIds = new Set(completedMatchesByRecency.slice(0, 5).map(m => m.id));
 
-    const userInfo = new Map<string, { username: string; imageUrl: string | null }>();
+    const userInfo = new Map<string, { username: string; imageUrl: string | null; iconColor: string | null }>();
     const isLateAdditionByUser = new Map<string, boolean>();
     const pointsByUserMatch = new Map<string, number>();
     const predCountByUser = new Map<string, number>();
     for (const row of activeRows) {
-      userInfo.set(row.userId, { username: row.username, imageUrl: row.imageUrl });
+      userInfo.set(row.userId, { username: row.username, imageUrl: row.imageUrl, iconColor: row.iconColor ?? null });
       isLateAdditionByUser.set(row.userId, row.isLateAddition);
       pointsByUserMatch.set(`${row.userId}|${row.matchId}`, row.points ?? 0);
       predCountByUser.set(row.userId, (predCountByUser.get(row.userId) ?? 0) + 1);
@@ -1358,7 +1367,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       recentPointsByUser.set(row.userId, (recentPointsByUser.get(row.userId) ?? 0) + (row.points ?? 0));
     }
 
-    let bestFormGroup: { userId: string; username: string; imageUrl: string | null; points: number }[] = [];
+    let bestFormGroup: { userId: string; username: string; imageUrl: string | null; iconColor: string | null; points: number }[] = [];
     if (recentPointsByUser.size > 0) {
       const maxRecentPoints = Math.max(...recentPointsByUser.values());
       bestFormGroup = [...recentPointsByUser.entries()]
@@ -1367,7 +1376,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         .sort((a, b) => a.username.localeCompare(b.username));
     }
 
-    let worstFormGroup: { userId: string; username: string; imageUrl: string | null; drought: number }[] = [];
+    let worstFormGroup: { userId: string; username: string; imageUrl: string | null; iconColor: string | null; drought: number }[] = [];
     if (completedMatchesByRecency.length > 0) {
       const droughtByUser = new Map<string, number>();
       for (const userId of userInfo.keys()) {
@@ -1407,7 +1416,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       );
     }
 
-    let kingGroup: { userId: string; username: string; imageUrl: string | null; streak: number }[] = [];
+    let kingGroup: { userId: string; username: string; imageUrl: string | null; iconColor: string | null; streak: number }[] = [];
     if (leadingSetsByMatch.length > 0) {
       const streakFor = (userId: string) => {
         let streak = 0;
@@ -1457,7 +1466,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           lang === 'no'
             ? `${formatUserList(kingGroup.map(u => u.username), lang)} har regjert på toppen i ${gameCount} kamp${gameCount === 1 ? '' : 'er'}!`
             : `${formatUserList(kingGroup.map(u => u.username), lang)} ${kingGroup.length === 1 ? 'has' : 'have'} reigned supreme for the last ${gameCount} game${gameCount === 1 ? '' : 's'}!`,
-        subjects: kingGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
+        subjects: kingGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
         linkType: 'leaderboard',
       };
     }
@@ -1468,6 +1477,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         userId: users.id,
         username: users.username,
         imageUrl: users.imageUrl,
+        iconColor: users.iconColor,
         exactScorePoints: competitionMembers.exactScorePoints,
         correctResultPoints: competitionMembers.correctResultPoints,
         correctTeamProgressesPoints: competitionMembers.correctTeamProgressesPoints,
@@ -1488,6 +1498,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         userId: row.userId,
         username: row.username,
         imageUrl: row.imageUrl,
+        iconColor: row.iconColor ?? null,
         totalPoints:
           row.exactScorePoints +
           row.correctResultPoints +
@@ -1518,7 +1529,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           lang === 'no'
             ? `${formatUserList(bottomGroup.map(u => u.username), lang)} er sist på tabellen med bare ${minPoints} poeng! ${gap} poeng bak ${formatUserList(topGroup.map(u => u.username), lang)} på topp!`
             : `${formatUserList(bottomGroup.map(u => u.username), lang)} ${bottomGroup.length === 1 ? 'is' : 'are'} bottom of the table with only ${minPoints} point${minPoints === 1 ? '' : 's'}! ${gap} point${gap === 1 ? '' : 's'} behind ${formatUserList(topGroup.map(u => u.username), lang)} in first place!`,
-        subjects: bottomGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
+        subjects: bottomGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
         linkType: 'leaderboard',
       };
     }
@@ -1584,6 +1595,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
             userId: competitionMembers.userId,
             username: users.username,
             imageUrl: users.imageUrl,
+            iconColor: users.iconColor,
             groupDisciplinaryChoices: competitionMembers.groupDisciplinaryChoices,
           })
           .from(competitionMembers)
@@ -1595,7 +1607,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           : allMemberChoiceRows;
 
         const memberInfoByUserId = new Map(
-          memberChoiceRows.map(m => [m.userId, { userId: m.userId, username: m.username, imageUrl: m.imageUrl }])
+          memberChoiceRows.map(m => [m.userId, { userId: m.userId, username: m.username, imageUrl: m.imageUrl, iconColor: m.iconColor ?? null }])
         );
 
         const correctCountByUser = new Map<string, number>();
@@ -1648,7 +1660,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
                 ? `${formatUserList(bestGroup.map(u => u.username), lang)} tippet ${maxCorrect} av ${totalTeamCount} lag i riktig posisjon i gruppespillet!`
                 : `${formatUserList(bestGroup.map(u => u.username), lang)} predicted ${maxCorrect} out of ${totalTeamCount} teams in their correct final group position!`) +
               worstSentence,
-            subjects: bestGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
+            subjects: bestGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor ?? null })),
             linkType: 'user',
           };
         }
@@ -1680,7 +1692,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
         const patriotStatsByUser = new Map<
           string,
-          { username: string; imageUrl: string | null; wins: number; gf: number; ga: number }
+          { username: string; imageUrl: string | null; iconColor: string | null; wins: number; gf: number; ga: number }
         >();
         for (const row of activeRows) {
           if (!norwayMatchIds.has(row.matchId)) continue;
@@ -1688,7 +1700,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           const predNorwayGoals = norwayIsHome ? row.predHomeScore : row.predAwayScore;
           const predOpponentGoals = norwayIsHome ? row.predAwayScore : row.predHomeScore;
           const entry =
-            patriotStatsByUser.get(row.userId) ?? { username: row.username, imageUrl: row.imageUrl, wins: 0, gf: 0, ga: 0 };
+            patriotStatsByUser.get(row.userId) ?? { username: row.username, imageUrl: row.imageUrl, iconColor: row.iconColor ?? null, wins: 0, gf: 0, ga: 0 };
           if (predNorwayGoals > predOpponentGoals) entry.wins += 1;
           entry.gf += predNorwayGoals;
           entry.ga += predOpponentGoals;
@@ -1726,7 +1738,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
               lang === 'no'
                 ? `${formatUserList(patriotGroup.map(u => u.username), lang)} er den største patrioten! De har tippet at Norge har vunnet ${winner.wins} av sine ${norwayMatches.length} kamper så langt! Og at de har scoret hele ${winner.gf} mål og ${concededClause}`
                 : `${formatUserList(patriotGroup.map(u => u.username), lang)} ${patriotGroup.length === 1 ? 'is the biggest patriot' : 'are the biggest patriots'}! They've predicted that Norway has won ${winner.wins} of their ${norwayMatches.length} games so far! And that they've scored a whopping ${winner.gf} goals and ${concededClause}`,
-            subjects: patriotGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
+            subjects: patriotGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
             linkType: 'user',
             overlayImageUrl: norwayTeam.imageUrl ?? null,
           };
@@ -1742,11 +1754,11 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       homeScore: number;
       awayScore: number;
       scheduledAt: Date | null;
-      perfectScorers: { userId: string; username: string; imageUrl: string | null }[];
+      perfectScorers: { userId: string; username: string; imageUrl: string | null; iconColor: string | null }[];
       resultCount: number;
-      wrongPredictors: { userId: string; username: string; imageUrl: string | null; predHomeScore: number; predAwayScore: number }[];
-      predictorPoints: { userId: string; username: string; imageUrl: string | null; points: number | null }[];
-      predictions: { userId: string; username: string; imageUrl: string | null; predHomeScore: number; predAwayScore: number }[];
+      wrongPredictors: { userId: string; username: string; imageUrl: string | null; iconColor: string | null; predHomeScore: number; predAwayScore: number }[];
+      predictorPoints: { userId: string; username: string; imageUrl: string | null; iconColor: string | null; points: number | null }[];
+      predictions: { userId: string; username: string; imageUrl: string | null; iconColor: string | null; predHomeScore: number; predAwayScore: number }[];
     }
     const matchStats = new Map<string, MatchStat>();
     for (const row of activeRows) {
@@ -1768,16 +1780,17 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         };
         matchStats.set(row.matchId, stat);
       }
-      stat.predictorPoints.push({ userId: row.userId, username: row.username, imageUrl: row.imageUrl, points: row.points });
+      stat.predictorPoints.push({ userId: row.userId, username: row.username, imageUrl: row.imageUrl, iconColor: row.iconColor ?? null, points: row.points });
       stat.predictions.push({
         userId: row.userId,
         username: row.username,
         imageUrl: row.imageUrl,
+        iconColor: row.iconColor ?? null,
         predHomeScore: row.predHomeScore,
         predAwayScore: row.predAwayScore,
       });
       if (row.predHomeScore === row.actualHomeScore && row.predAwayScore === row.actualAwayScore) {
-        stat.perfectScorers.push({ userId: row.userId, username: row.username, imageUrl: row.imageUrl });
+        stat.perfectScorers.push({ userId: row.userId, username: row.username, imageUrl: row.imageUrl, iconColor: row.iconColor ?? null });
       }
       const predictedResult = Math.sign(row.predHomeScore - row.predAwayScore);
       const actualResult = Math.sign(row.actualHomeScore - row.actualAwayScore);
@@ -1788,6 +1801,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           userId: row.userId,
           username: row.username,
           imageUrl: row.imageUrl,
+          iconColor: row.iconColor ?? null,
           predHomeScore: row.predHomeScore,
           predAwayScore: row.predAwayScore,
         });
@@ -1834,7 +1848,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
               ? `${formatUserList(highestPredictorGroup.map(u => u.username), lang)} har tippet at det totalt skulle vært scoret ${maxPredicted} mål på dette tidspunktet! Bare ${actualTotalGoals} mål har faktisk blitt scoret.`
               : `${formatUserList(highestPredictorGroup.map(u => u.username), lang)} ${highestPredictorGroup.length === 1 ? 'has' : 'have'} predicted that a total of ${maxPredicted} ${maxPredicted === 1 ? 'goal' : 'goals'} should have been scored by this point! Only ${actualTotalGoals} ${actualTotalGoals === 1 ? 'goal' : 'goals'} ${actualTotalGoals === 1 ? 'has' : 'have'} actually been scored.`) +
             lowestSentence,
-          subjects: highestPredictorGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
+          subjects: highestPredictorGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
           linkType: 'user',
         };
       }
@@ -1932,7 +1946,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       predHomeScore: number;
       predAwayScore: number;
       deviation: number;
-      users: { userId: string; username: string; imageUrl: string | null }[];
+      users: { userId: string; username: string; imageUrl: string | null; iconColor: string | null }[];
     }
 
     const swingPredictionGroups = new Map<string, SwingAndAMissData>();
@@ -1955,7 +1969,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           users: [],
         });
       }
-      swingPredictionGroups.get(key)!.users.push({ userId: row.userId, username: row.username, imageUrl: row.imageUrl });
+      swingPredictionGroups.get(key)!.users.push({ userId: row.userId, username: row.username, imageUrl: row.imageUrl, iconColor: row.iconColor ?? null });
     }
 
     let swingAndAMissData: SwingAndAMissData | null = null;
@@ -1999,7 +2013,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           lang === 'no'
             ? `**${winner.username}** tippet eksakt resultat på ${homeTeamName} mot ${awayTeamName} (${bestPredictionMatch.homeScore}-${bestPredictionMatch.awayScore})! ${resultText}`
             : `**${winner.username}** got a perfect score on ${homeTeamName} vs ${awayTeamName} (${bestPredictionMatch.homeScore} - ${bestPredictionMatch.awayScore})! ${resultText}`,
-        subjects: [{ type: 'user', id: winner.userId, name: winner.username, imageUrl: winner.imageUrl }],
+        subjects: [{ type: 'user', id: winner.userId, name: winner.username, imageUrl: winner.imageUrl, iconColor: winner.iconColor }],
         linkType: 'match',
         matchId: bestPredictionMatch.matchId,
       };
@@ -2022,7 +2036,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           : lang === 'no'
             ? 'Ingen har vært ett mål fra et eksakt resultat ennå!'
             : 'No one has been one goal away from a perfect score yet!',
-      subjects: unluckyGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
+      subjects: unluckyGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
       linkType: 'user',
     };
 
@@ -2067,7 +2081,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         statistic,
         subjects: sortedWrongGroups
           .flat()
-          .map(p => ({ type: 'user' as const, id: p.userId, name: p.username, imageUrl: p.imageUrl })),
+          .map(p => ({ type: 'user' as const, id: p.userId, name: p.username, imageUrl: p.imageUrl, iconColor: p.iconColor })),
         linkType: 'match',
         matchId: worstPredictionMatch.matchId,
       };
@@ -2191,7 +2205,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           lang === 'no'
             ? `Det største spriket i tippingen så langt kom i kampen mellom ${homeTeamName} og ${awayTeamName}, hvor ${formatUserList(highGroup.map(u => u.username), lang)} tippet ${highGroup[0].predHomeScore}-${highGroup[0].predAwayScore} og ${formatUserList(lowGroup.map(u => u.username), lang)} tippet ${lowGroup[0].predHomeScore}-${lowGroup[0].predAwayScore}! Kampen endte til slutt med ${contrastMatch.homeScore}-${contrastMatch.awayScore}.`
             : `${homeTeamName} vs ${awayTeamName} (${contrastMatch.homeScore} - ${contrastMatch.awayScore}) caused the most contrasting predictions! ${formatUserList(highGroup.map(u => u.username), lang)} predicted ${describeGoalDiff(maxDiff)}, while ${formatUserList(lowGroup.map(u => u.username), lang)} predicted ${describeGoalDiff(minDiff)} — a ${contrastGap}-goal swing!`,
-        subjects: [...highGroup, ...lowGroup].map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
+        subjects: [...highGroup, ...lowGroup].map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
         linkType: 'match',
         matchId: contrastMatch.matchId,
       };
@@ -2208,7 +2222,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           lang === 'no'
             ? `Kampen mellom ${homeTeamName} og ${awayTeamName} endte ${swingAndAMissData.homeScore} - ${swingAndAMissData.awayScore}, bare litt annerledes enn hva ${userNames} tippet, som trodde kampen skulle ende ${swingAndAMissData.predHomeScore} - ${swingAndAMissData.predAwayScore}.`
             : `The match between ${homeTeamName} and ${awayTeamName} ended ${swingAndAMissData.homeScore} - ${swingAndAMissData.awayScore}, just a little different from what ${userNames} predicted, who thought the match would end ${swingAndAMissData.predHomeScore} - ${swingAndAMissData.predAwayScore}.`,
-        subjects: swingAndAMissData.users.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
+        subjects: swingAndAMissData.users.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
         linkType: 'match',
         matchId: swingAndAMissData.matchId,
       };
@@ -2225,7 +2239,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           : lang === 'no'
             ? 'Ingen har tippet minst to perfekte resultater ennå!'
             : 'No one has predicted at least two perfect scores yet!',
-      subjects: hitOrMissGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
+      subjects: hitOrMissGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
       linkType: 'user',
     };
 
@@ -2250,7 +2264,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           : lang === 'no'
             ? 'Ingen har tippet riktig resultat ennå!'
             : 'No one has predicted a correct result yet!',
-      subjects: closeButNoCigarGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
+      subjects: closeButNoCigarGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
       linkType: 'user',
     };
 
@@ -2265,7 +2279,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           : lang === 'no'
             ? 'Ingen kamper er fullført ennå!'
             : 'No matches have been completed yet!',
-      subjects: bestFormGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
+      subjects: bestFormGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
       linkType: 'user',
     };
 
@@ -2277,7 +2291,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           lang === 'no'
             ? `${formatUserList(worstFormGroup.map(u => u.username), lang)} har gått ${worstFormGroup[0].drought} kamper på rad uten å sanke et eneste poeng!`
             : `${formatUserList(worstFormGroup.map(u => u.username), lang)} ${worstFormGroup.length === 1 ? 'has' : 'have'} gone ${worstFormGroup[0].drought} matches without gaining a single point!`,
-        subjects: worstFormGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
+        subjects: worstFormGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
         linkType: 'user',
       };
     }
@@ -2310,6 +2324,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           userId: bonusAnswers.userId,
           username: users.username,
           imageUrl: users.imageUrl,
+          iconColor: users.iconColor,
           answer: bonusAnswers.answer,
         })
         .from(bonusAnswers)
@@ -2325,7 +2340,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
       const haalandPredictions = haalandAnswerRows
         .filter(row => !activeStatUserIds || activeStatUserIds.has(row.userId))
-        .map(row => ({ userId: row.userId, username: row.username, imageUrl: row.imageUrl, goals: Number(row.answer) }))
+        .map(row => ({ userId: row.userId, username: row.username, imageUrl: row.imageUrl, iconColor: row.iconColor, goals: Number(row.answer) }))
         .filter(row => Number.isFinite(row.goals));
 
       if (haalandPredictions.length > 0) {
@@ -2346,7 +2361,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
             lang === 'no'
               ? `Deltakerne har i gjennomsnitt tippet at Haaland kommer til å score ${average.toFixed(2)} mål i turneringen. ${formatUserList(mostFaithGroup.map(u => u.username), lang)} har mest tro og tror han kommer til å score utrolige ${maxGoals} mål! Mens ${formatUserList(leastFaithGroup.map(u => u.username), lang)} tror han bare kommer til å score ${minGoals} mål.`
               : `The participants have on average predicted that Haaland will score ${average.toFixed(2)} goals in the tournament. ${formatUserList(mostFaithGroup.map(u => u.username), lang)} ${mostFaithGroup.length === 1 ? 'has' : 'have'} the most faith and ${mostFaithGroup.length === 1 ? 'believes' : 'believe'} he will score an incredible ${maxGoals} goals! While ${formatUserList(leastFaithGroup.map(u => u.username), lang)} only ${leastFaithGroup.length === 1 ? 'believes' : 'believe'} he will score ${minGoals} goals.`,
-          subjects: mostFaithGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl })),
+          subjects: mostFaithGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor ?? null })),
           linkType: 'userBonus',
           iconImageUrl: '/haaland.jpg',
         };
@@ -2980,7 +2995,7 @@ router.get('/:id/predictions/:userId', requireAuth, async (req, res) => {
       if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
     }
 
-    const [targetUser] = await db.select({ username: users.username, imageUrl: users.imageUrl }).from(users).where(eq(users.id, userId));
+    const [targetUser] = await db.select({ username: users.username, imageUrl: users.imageUrl, iconColor: users.iconColor }).from(users).where(eq(users.id, userId));
     if (!targetUser) return res.status(404).json({ error: 'User not found' });
 
     const preds = await db
@@ -2988,7 +3003,7 @@ router.get('/:id/predictions/:userId', requireAuth, async (req, res) => {
       .from(predictions)
       .where(and(eq(predictions.competitionId, id), eq(predictions.userId, userId)));
 
-    res.json({ predictions: preds, username: targetUser.username, imageUrl: targetUser.imageUrl ?? null });
+    res.json({ predictions: preds, username: targetUser.username, imageUrl: targetUser.imageUrl ?? null, iconColor: targetUser.iconColor ?? null });
   } catch (err) {
     console.error('Get user predictions error:', err);
     res.status(500).json({ error: 'Failed to fetch predictions' });

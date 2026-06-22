@@ -6,6 +6,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useLanguageStore } from '@/store/languageStore';
 import { useThemeStore } from '@/store/themeStore';
 import { useT } from '@/lib/useT';
+import { UserAvatar } from '@/components/UserAvatar';
 
 export default function Navbar() {
   const { user, setUser } = useAuthStore();
@@ -47,11 +48,14 @@ export default function Navbar() {
             to="/settings"
             className="flex items-center gap-2 text-sm text-primary-foreground/70 hover:text-primary-foreground"
           >
-            <img
-              src={user?.imageUrl ?? '/default-avatar.png'}
-              alt={user?.username}
-              className="h-7 w-7 rounded-full object-cover"
-            />
+            {user && (
+              <UserAvatar
+                username={user.username}
+                imageUrl={user.imageUrl}
+                iconColor={user.iconColor}
+                className="h-7 w-7"
+              />
+            )}
           </Link>
           <button
             onClick={handleLogout}

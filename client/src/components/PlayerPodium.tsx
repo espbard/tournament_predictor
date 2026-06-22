@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import type { LeaderboardEntry } from '@tournament-predictor/shared';
 import { useT } from '@/lib/useT';
+import { UserAvatar } from '@/components/UserAvatar';
 
 interface Props {
   leaderboard: LeaderboardEntry[];
@@ -24,10 +25,11 @@ function glowClass(rank: number): string {
 
 function avatarImg(entry: LeaderboardEntry, rank: number, sizeClass: string) {
   return (
-    <img
-      src={entry.imageUrl ?? '/default-avatar.png'}
-      alt={entry.username}
-      className={`rounded-full object-cover border-2 border-blue-500 ${glowClass(rank)} ${sizeClass}`}
+    <UserAvatar
+      username={entry.username}
+      imageUrl={entry.imageUrl}
+      iconColor={entry.iconColor}
+      className={`rounded-full border-2 border-blue-500 ${glowClass(rank)} ${sizeClass}`}
     />
   );
 }
@@ -65,10 +67,11 @@ function renderWinnerFigure(
     <div style={{ filter: 'drop-shadow(0 0 12px rgba(234, 179, 8, 0.75))' }}>
       <div className="relative inline-block overflow-hidden">
         <img src="/trophy-winner.png" alt="winner" className={`${figureHeight} w-auto object-contain scale-[1.6]`} />
-        <img
-          src={entry.imageUrl ?? '/default-avatar.png'}
-          alt={entry.username}
-          className={`absolute z-10 rounded-full object-cover ${avatarSize}`}
+        <UserAvatar
+          username={entry.username}
+          imageUrl={entry.imageUrl}
+          iconColor={entry.iconColor}
+          className={`absolute z-10 rounded-full ${avatarSize}`}
           style={{ top: 'calc(43% + 5px)', left: 'calc(50% + 7px)', transform: 'translate(-50%, -50%)' }}
         />
       </div>

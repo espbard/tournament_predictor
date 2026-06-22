@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import type { UserStatCardData } from '@tournament-predictor/shared';
+import { UserAvatar } from '@/components/UserAvatar';
 
 interface UserStatCardProps {
   competitionId: string;
@@ -145,6 +146,25 @@ export default function UserStatCard({ competitionId, data, iconOnRight, onMatch
         <div className="relative h-full w-full">
           {subjects.map((subject, i) => {
             const layout = collageSliceLayout(i, subjects.length);
+            if (subject.type === 'user' && !subject.imageUrl) {
+              return (
+                <UserAvatar
+                  key={subject.id}
+                  username={subject.name}
+                  imageUrl={subject.imageUrl}
+                  iconColor={subject.iconColor}
+                  className="absolute"
+                  style={{
+                    left: `${layout.left}%`,
+                    top: `${layout.top}%`,
+                    width: `${layout.width}%`,
+                    height: `${layout.height}%`,
+                    clipPath: layout.clipPath,
+                    borderRadius: 0,
+                  }}
+                />
+              );
+            }
             return (
               <img
                 key={subject.id}
@@ -162,6 +182,14 @@ export default function UserStatCard({ competitionId, data, iconOnRight, onMatch
             );
           })}
         </div>
+      ) : subjects[0]?.type === 'user' && !subjects[0]?.imageUrl ? (
+        <UserAvatar
+          username={subjects[0].name}
+          imageUrl={subjects[0].imageUrl}
+          iconColor={subjects[0].iconColor}
+          className="h-full w-full"
+          style={{ borderRadius: 0 }}
+        />
       ) : (
         <img
           src={subjects[0]?.imageUrl ?? '/default-avatar.png'}

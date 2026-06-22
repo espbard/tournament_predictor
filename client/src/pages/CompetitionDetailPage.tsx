@@ -8,6 +8,7 @@ import KnockoutStageContent from '@/components/KnockoutStageContent';
 import PlayerPodium from '@/components/PlayerPodium';
 import LeaderboardLineGraph from '@/components/LeaderboardLineGraph';
 import UserStatCard from '@/components/UserStatCard';
+import { UserAvatar } from '@/components/UserAvatar';
 import { SoccerKickAnimation } from '@/components/SoccerKickAnimation';
 import { CryingPlayerAnimation } from '@/components/CryingPlayerAnimation';
 import BonusQuestionsTab from './BonusQuestionsTab';
@@ -55,6 +56,7 @@ interface MatchPredictionEntry {
   userId: string;
   username: string;
   imageUrl: string | null;
+  iconColor?: string | null;
   isComparisonUser?: boolean;
   homeScore: number;
   awayScore: number;
@@ -1739,7 +1741,7 @@ export default function CompetitionDetailPage() {
                         </td>
                         <td className="px-3 py-2.5">
                           <Link to={`/competitions/${id}/predictions/${entry.userId}`} className="flex items-center gap-2 min-w-0 hover:opacity-80 transition-opacity">
-                            <img src={entry.imageUrl ?? '/default-avatar.png'} alt="" className="h-5 w-5 rounded-full object-cover flex-shrink-0" />
+                            <UserAvatar username={entry.username} imageUrl={entry.imageUrl} iconColor={entry.iconColor} className="h-5 w-5 flex-shrink-0" />
                             <span className={`font-medium truncate ${isMe ? 'text-primary' : ''}`}>
                               {entry.username}
                               {isMe && <span className="ml-1 font-normal text-muted-foreground">{t('competitionDetail.leaderboard.you')}</span>}
@@ -1778,7 +1780,7 @@ export default function CompetitionDetailPage() {
                     </td>
                     <td className="px-3 py-3">
                       <Link to={`/competitions/${id}/predictions/${entry.userId}`} className="flex items-center gap-3 min-w-0 hover:opacity-80 transition-opacity">
-                        <img src={entry.imageUrl ?? '/default-avatar.png'} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0" />
+                        <UserAvatar username={entry.username} imageUrl={entry.imageUrl} iconColor={entry.iconColor} className="h-7 w-7 flex-shrink-0" />
                         <span className="font-medium text-base truncate">{entry.username}</span>
                         {entry.isLateAddition && <span className="inline-block w-2 h-2 rounded-full bg-yellow-400 flex-shrink-0" />}
                         {entry.inactive && <span className="inline-block w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />}
@@ -2046,11 +2048,7 @@ export default function CompetitionDetailPage() {
                                   isCorrectResult ? 'bg-green-50 dark:bg-green-950/25' : 'bg-muted/20'
                                 }`}
                               >
-                                <img
-                                  src={pred.imageUrl ?? '/default-avatar.png'}
-                                  alt=""
-                                  className="h-5 w-5 rounded-full object-cover flex-shrink-0"
-                                />
+                                <UserAvatar username={pred.username} imageUrl={pred.imageUrl} iconColor={pred.iconColor} className="h-5 w-5 flex-shrink-0" />
                                 <span className="flex-1 truncate font-medium text-xs">
                                   {pred.username}
                                   {pred.isComparisonUser && <span className="ml-1 font-normal text-muted-foreground not-italic">(AI)</span>}
