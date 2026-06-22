@@ -15,6 +15,7 @@ import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import ImageUpload from '@/components/ImageUpload';
 import { useT } from '@/lib/useT';
+import { useTeamName } from '@/lib/teamTranslations';
 import BonusQuestionsTab from './BonusQuestionsTab';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { TournamentKnockoutTabContent } from './TournamentKnockoutPage';
@@ -203,6 +204,7 @@ export default function TournamentDetailPage() {
   const queryClient = useQueryClient();
   const isAdmin = user?.isAdmin ?? false;
   const { t } = useT();
+  const { tn } = useTeamName();
 
   const STAGE_LABELS: Record<MatchStage, string> = {
     group: t('stages.group'),
@@ -1634,7 +1636,7 @@ export default function TournamentDetailPage() {
                               </div>
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
-                                  <TeamBadge name={match.homeTeamName} imageUrl={match.homeTeamImageUrl} />
+                                  <TeamBadge name={tn(match.homeTeamName)} imageUrl={match.homeTeamImageUrl} />
                                   {pendingResults[match.id] ? (
                                     <span className="rounded bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 text-sm font-bold tabular-nums text-amber-800 dark:text-amber-200">
                                       {pendingResults[match.id].home} – {pendingResults[match.id].away}
@@ -1646,7 +1648,7 @@ export default function TournamentDetailPage() {
                                   ) : (
                                     <span className="text-sm text-muted-foreground">vs</span>
                                   )}
-                                  <TeamBadge name={match.awayTeamName} imageUrl={match.awayTeamImageUrl} />
+                                  <TeamBadge name={tn(match.awayTeamName)} imageUrl={match.awayTeamImageUrl} />
                                 </div>
                                 {isAdmin && scoreMatchId !== match.id && (
                                   <div className="flex items-center gap-1.5">
@@ -1889,7 +1891,7 @@ export default function TournamentDetailPage() {
                               </div>
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
-                                  <TeamBadge name={match.homeTeamName} imageUrl={match.homeTeamImageUrl} />
+                                  <TeamBadge name={tn(match.homeTeamName)} imageUrl={match.homeTeamImageUrl} />
                                   {pendingResults[match.id] ? (
                                     <span className="rounded bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 text-sm font-bold tabular-nums text-amber-800 dark:text-amber-200">
                                       {pendingResults[match.id].home} – {pendingResults[match.id].away}
@@ -1901,7 +1903,7 @@ export default function TournamentDetailPage() {
                                   ) : (
                                     <span className="text-sm text-muted-foreground">vs</span>
                                   )}
-                                  <TeamBadge name={match.awayTeamName} imageUrl={match.awayTeamImageUrl} />
+                                  <TeamBadge name={tn(match.awayTeamName)} imageUrl={match.awayTeamImageUrl} />
                                 </div>
                                 {isAdmin && scoreMatchId !== match.id && (
                                   <div className="flex items-center gap-1.5">

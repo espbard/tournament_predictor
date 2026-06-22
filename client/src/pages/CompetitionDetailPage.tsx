@@ -14,6 +14,7 @@ import { CryingPlayerAnimation } from '@/components/CryingPlayerAnimation';
 import BonusQuestionsTab from './BonusQuestionsTab';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { useT } from '@/lib/useT';
+import { useTeamName } from '@/lib/teamTranslations';
 import type { Competition, Tournament, Prediction, MatchStage, LeaderboardEntry, BracketPredictions, UserStatCardData, LeaderboardProgressionResponse } from '@tournament-predictor/shared';
 import {
   sortGroupTeams,
@@ -77,6 +78,7 @@ export default function CompetitionDetailPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { t, language } = useT();
+  const { tn } = useTeamName();
 
   const [editName, setEditName] = useState('');
   const [editImageUrl, setEditImageUrl] = useState<string | null>(null);
@@ -1116,7 +1118,7 @@ export default function CompetitionDetailPage() {
                                     ) : (
                                       <div className="h-4 w-4 rounded-full bg-muted flex-shrink-0" />
                                     )}
-                                    <span className="truncate">{tm.teamName}</span>
+                                    <span className="truncate">{tn(tm.teamName)}</span>
                                     {tiebreakerChosenTeams.has(tm.teamId) && (
                                       <span className="text-amber-600 dark:text-amber-400 font-bold flex-shrink-0">✓</span>
                                     )}
@@ -1153,7 +1155,7 @@ export default function CompetitionDetailPage() {
                             </p>
                             <p className="text-muted-foreground mb-2">
                               {enoughRanked
-                                ? `${t('competitionDetail.tables.selected')}: ${ranked.slice(0, tie.requiredRankings).map(tid => tie.teams.find(tm => tm.teamId === tid)?.teamName).join(' › ')}`
+                                ? `${t('competitionDetail.tables.selected')}: ${ranked.slice(0, tie.requiredRankings).map(tid => tn(tie.teams.find(tm => tm.teamId === tid)?.teamName)).join(' › ')}`
                                 : t('competitionDetail.tables.selectTeams', { n: tie.requiredRankings, s: tie.requiredRankings > 1 ? 's' : '' })}
                             </p>
                             <div className="flex flex-wrap gap-1.5">
@@ -1170,7 +1172,7 @@ export default function CompetitionDetailPage() {
                                   >
                                     {isRanked && <span className="font-bold text-amber-600 dark:text-amber-400">{rank + 1}.</span>}
                                     {tm.imageUrl && <img src={tm.imageUrl} alt="" className="h-3.5 w-3.5 rounded-sm" />}
-                                    {tm.teamName}
+                                    {tn(tm.teamName)}
                                   </button>
                                 );
                               })}
@@ -1228,7 +1230,7 @@ export default function CompetitionDetailPage() {
                         </p>
                         <p className="text-muted-foreground mb-2">
                           {enoughRanked
-                            ? `${t('competitionDetail.tables.selected')}: ${ranked.slice(0, requiredRankings).map(tid => tie.teams.find(tm => tm.teamId === tid)?.teamName).join(' › ')}`
+                            ? `${t('competitionDetail.tables.selected')}: ${ranked.slice(0, requiredRankings).map(tid => tn(tie.teams.find(tm => tm.teamId === tid)?.teamName)).join(' › ')}`
                             : t('competitionDetail.tables.selectTeams', { n: requiredRankings, s: requiredRankings > 1 ? 's' : '' })}
                         </p>
                         <div className="flex flex-wrap gap-1.5">
@@ -1245,7 +1247,7 @@ export default function CompetitionDetailPage() {
                               >
                                 {isRanked && <span className="font-bold text-amber-600 dark:text-amber-400">{rank + 1}.</span>}
                                 {tm.imageUrl && <img src={tm.imageUrl} alt="" className="h-3.5 w-3.5 rounded-sm" />}
-                                {tm.teamName}
+                                {tn(tm.teamName)}
                               </button>
                             );
                           })}
@@ -1474,7 +1476,7 @@ export default function CompetitionDetailPage() {
                           ) : (
                             <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
                           )}
-                          <span className="flex-1 text-sm font-medium truncate">{match.homeTeamName ?? 'TBD'}</span>
+                          <span className="flex-1 text-sm font-medium truncate">{tn(match.homeTeamName) || 'TBD'}</span>
                           {match.status === 'completed' && !user?.isComparisonUser ? (
                             <span className={`w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400 border border-amber-400 bg-amber-50/70 dark:bg-amber-900/30' : ''}`}>{pred ? pred.homeScore : '—'}</span>
                           ) : isMatchLocked ? (
@@ -1524,7 +1526,7 @@ export default function CompetitionDetailPage() {
                           ) : (
                             <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
                           )}
-                          <span className="flex-1 text-sm font-medium truncate">{match.awayTeamName ?? 'TBD'}</span>
+                          <span className="flex-1 text-sm font-medium truncate">{tn(match.awayTeamName) || 'TBD'}</span>
                           {match.status === 'completed' && !user?.isComparisonUser ? (
                             <span className={`w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400 border border-amber-400 bg-amber-50/70 dark:bg-amber-900/30' : ''}`}>{pred ? pred.awayScore : '—'}</span>
                           ) : isMatchLocked ? (
@@ -2000,7 +2002,7 @@ export default function CompetitionDetailPage() {
                                 <div className="h-7 w-7 rounded-full bg-muted" />
                               )}
                             </div>
-                            <span className="flex-1 text-sm font-medium truncate">{match.homeTeamName ?? 'TBD'}</span>
+                            <span className="flex-1 text-sm font-medium truncate">{tn(match.homeTeamName) || 'TBD'}</span>
                             <span className="w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0">{match.homeScore ?? '—'}</span>
                           </div>
                           <div className="h-px bg-border" />
@@ -2012,7 +2014,7 @@ export default function CompetitionDetailPage() {
                                 <div className="h-7 w-7 rounded-full bg-muted" />
                               )}
                             </div>
-                            <span className="flex-1 text-sm font-medium truncate">{match.awayTeamName ?? 'TBD'}</span>
+                            <span className="flex-1 text-sm font-medium truncate">{tn(match.awayTeamName) || 'TBD'}</span>
                             <span className="w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0">{match.awayScore ?? '—'}</span>
                           </div>
                         </div>

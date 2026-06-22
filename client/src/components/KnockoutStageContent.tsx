@@ -4,6 +4,7 @@ import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { useT } from '@/lib/useT';
+import { useTeamName } from '@/lib/teamTranslations';
 import type {
   Competition,
   Tournament,
@@ -356,6 +357,7 @@ function FocusedMatchCard({
     return { exactScore, correctResult, correctTeamProgresses, correctTeamInKnockoutTie, correctTeamInFinal, correctWinner, total, isActualHomeTeamCorrect, isActualAwayTeamCorrect };
   }, [actualMatch, prediction, scoringConfig, homeTeam, awayTeam, isFinal, isFirstRound]);
   const { t } = useT();
+  const { tn } = useTeamName();
 
   // Visual flags — computed directly from score comparison so they don't depend on
   // scoringConfig values being non-zero.
@@ -484,7 +486,7 @@ function FocusedMatchCard({
                   <div className={`h-7 w-7 rounded-full bg-muted flex-shrink-0${isDisplayHomeTeamCorrect ? ' ring-2 ring-green-400' : ''}`} />
                 )}
                 <span className={`flex-1 text-sm truncate ${displayHomeWins ? 'font-semibold' : 'font-medium'}`}>
-                  {displayHomeTeam.teamName}
+                  {tn(displayHomeTeam.teamName)}
                 </span>
                 {isDisplayHomeChampion && (
                   <span style={{ animation: 'ko_trophy_pop 0.45s cubic-bezier(0.34,1.56,0.64,1) forwards' }}>
@@ -545,7 +547,7 @@ function FocusedMatchCard({
                   <div className={`h-7 w-7 rounded-full bg-muted flex-shrink-0${isDisplayAwayTeamCorrect ? ' ring-2 ring-green-400' : ''}`} />
                 )}
                 <span className={`flex-1 text-sm truncate ${displayAwayWins ? 'font-semibold' : 'font-medium'}`}>
-                  {displayAwayTeam.teamName}
+                  {tn(displayAwayTeam.teamName)}
                 </span>
                 {isDisplayAwayChampion && (
                   <span style={{ animation: 'ko_trophy_pop 0.45s cubic-bezier(0.34,1.56,0.64,1) forwards' }}>
@@ -609,7 +611,7 @@ function FocusedMatchCard({
                         : 'hover:bg-muted text-muted-foreground'
                     }`}
                   >
-                    {isFlipped ? awayTeam.teamName : homeTeam.teamName}
+                    {isFlipped ? tn(awayTeam.teamName) : tn(homeTeam.teamName)}
                   </button>
                   <button
                     type="button"
@@ -620,7 +622,7 @@ function FocusedMatchCard({
                         : 'hover:bg-muted text-muted-foreground'
                     }`}
                   >
-                    {isFlipped ? homeTeam.teamName : awayTeam.teamName}
+                    {isFlipped ? tn(homeTeam.teamName) : tn(awayTeam.teamName)}
                   </button>
                 </div>
               </div>
@@ -650,7 +652,7 @@ function FocusedMatchCard({
                 <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
               )}
               <span className={`flex-1 text-sm truncate ${(actualMatch.homeScore ?? 0) > (actualMatch.awayScore ?? 0) ? 'font-semibold' : 'font-medium'}`}>
-                {actualMatch.homeTeamName}
+                {tn(actualMatch.homeTeamName)}
               </span>
               <span className="w-11 h-9 flex items-center justify-center text-xl font-bold flex-shrink-0 tabular-nums">
                 {actualMatch.homeScore}
@@ -665,7 +667,7 @@ function FocusedMatchCard({
                 <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
               )}
               <span className={`flex-1 text-sm truncate ${(actualMatch.awayScore ?? 0) > (actualMatch.homeScore ?? 0) ? 'font-semibold' : 'font-medium'}`}>
-                {actualMatch.awayTeamName}
+                {tn(actualMatch.awayTeamName)}
               </span>
               <span className="w-11 h-9 flex items-center justify-center text-xl font-bold flex-shrink-0 tabular-nums">
                 {actualMatch.awayScore}
@@ -677,8 +679,8 @@ function FocusedMatchCard({
                 <div className="h-px bg-border" />
                 <p className="px-4 py-2 text-xs text-muted-foreground text-center">
                   {actualMatch.progressingTeamId === actualMatch.homeTeamId
-                    ? actualMatch.homeTeamName
-                    : actualMatch.awayTeamName} {t('knockoutContent.advances')}
+                    ? tn(actualMatch.homeTeamName)
+                    : tn(actualMatch.awayTeamName)} {t('knockoutContent.advances')}
                 </p>
               </>
             )}
