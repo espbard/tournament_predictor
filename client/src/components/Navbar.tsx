@@ -12,6 +12,7 @@ import { UserAvatar } from '@/components/UserAvatar';
 const LANGUAGES = [
   { code: 'no', label: 'Norsk', flag: '/flag-no.png' },
   { code: 'en', label: 'English', flag: '/flag-en.png' },
+  { code: 'de', label: 'Deutsch', flag: '/flag-de.png' },
 ] as const;
 
 export default function Navbar() {
@@ -60,21 +61,21 @@ export default function Navbar() {
           <div ref={langRef} className="relative">
             <button
               onClick={() => setLangOpen((o) => !o)}
-              className="rounded-md border border-primary-foreground/30 p-1 hover:bg-primary-foreground/10"
+              className="overflow-hidden rounded-sm hover:opacity-80"
               title={currentLang.label}
             >
-              <img src={currentLang.flag} alt={currentLang.label} className="h-5 w-8 rounded-sm object-cover" />
+              <img src={currentLang.flag} alt={currentLang.label} className="block h-6 w-9 object-cover" />
             </button>
             {langOpen && (
-              <div className="absolute right-0 top-full mt-1 z-50 min-w-[120px] overflow-hidden rounded-md border border-border bg-popover shadow-md">
+              <div className="absolute right-0 top-full mt-2 z-50 flex flex-row gap-4 px-4 py-3 rounded-md border border-border bg-popover shadow-md">
                 {LANGUAGES.map((lang) => (
                   <button
                     key={lang.code}
                     onClick={() => { setLanguage(lang.code); setLangOpen(false); }}
-                    className={`flex w-full items-center gap-2 px-3 py-2 text-sm text-popover-foreground hover:bg-accent ${lang.code === language ? 'bg-accent/50 font-semibold' : ''}`}
+                    className={`overflow-hidden rounded-sm hover:opacity-80 transition-opacity ${lang.code === language ? 'ring-2 ring-primary' : ''}`}
+                    title={lang.label}
                   >
-                    <img src={lang.flag} alt={lang.label} className="h-4 w-6 rounded-sm object-cover" />
-                    {lang.label}
+                    <img src={lang.flag} alt={lang.label} className="block h-8 w-12 object-cover" />
                   </button>
                 ))}
               </div>
