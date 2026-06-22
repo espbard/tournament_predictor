@@ -915,7 +915,7 @@ export default function CompetitionDetailPage() {
               {!user?.isAdmin && (
                 <button
                   onClick={() => setShowLeaveConfirm(true)}
-                  className="rounded-md border px-3 py-1.5 text-sm flex-shrink-0 text-destructive border-destructive/30 hover:bg-destructive/5"
+                  className="rounded-md border px-3 py-1.5 text-sm flex-shrink-0 text-red-500 border-red-400/60 hover:bg-red-500/10 dark:text-red-400 dark:border-red-400 dark:hover:bg-red-400/15"
                 >
                   {t('competitionDetail.leave')}
                 </button>
@@ -1681,21 +1681,20 @@ export default function CompetitionDetailPage() {
           ) : leaderboard.length === 0 ? (
             <p className="text-sm text-muted-foreground py-4 text-center">{t('competitionDetail.leaderboard.noScores')}</p>
           ) : (() => {
-          const rankEntries = showComparisonUsers ? leaderboard : leaderboard.filter(e => !e.isComparisonUser);
-          const activeRankEntries = rankEntries.filter(e => !e.inactive);
-          const lastNonInactiveRank = activeRankEntries.length > 0 ? activeRankEntries[activeRankEntries.length - 1].rank : 0;
+          const rankEntries = (showComparisonUsers ? leaderboard : leaderboard.filter(e => !e.isComparisonUser)).filter(e => !e.inactive);
+          const lastActiveRank = rankEntries.length > 0 ? rankEntries[rankEntries.length - 1].rank : 0;
           const rankColor = (rank: number) => {
             if (rank === 1) return 'text-yellow-500';
             if (rank === 2) return 'text-slate-400';
             if (rank === 3) return 'text-amber-600';
-            if (rankEntries.length >= 5 && lastNonInactiveRank > 3 && rank >= lastNonInactiveRank) return 'text-red-500';
+            if (rankEntries.length >= 5 && lastActiveRank > 3 && rank >= lastActiveRank) return 'text-red-500';
             return 'text-muted-foreground';
           };
           const rowBg = (rank: number) => {
             if (rank === 1) return 'bg-yellow-50 dark:bg-yellow-500/10';
             if (rank === 2) return 'bg-slate-100 dark:bg-slate-400/10';
             if (rank === 3) return 'bg-amber-50 dark:bg-amber-600/10';
-            if (rankEntries.length >= 5 && lastNonInactiveRank > 3 && rank >= lastNonInactiveRank) return 'bg-red-50 dark:bg-red-500/10';
+            if (rankEntries.length >= 5 && lastActiveRank > 3 && rank >= lastActiveRank) return 'bg-red-50 dark:bg-red-500/10';
             return '';
           };
           return (<>
@@ -1715,10 +1714,10 @@ export default function CompetitionDetailPage() {
                       {tournament && <p className="text-sm text-muted-foreground">{tournament.name}</p>}
                     </div>
                   </div>
-                  <PlayerPodium leaderboard={showComparisonUsers ? leaderboard : leaderboard.filter(e => !e.isComparisonUser)} large={true} competitionId={id} tournamentStatus={tournament?.status} />
+                  <PlayerPodium leaderboard={rankEntries} large={true} competitionId={id} tournamentStatus={tournament?.status} />
                 </div>
               ) : (
-                <PlayerPodium leaderboard={showComparisonUsers ? leaderboard : leaderboard.filter(e => !e.isComparisonUser)} large={false} competitionId={id} tournamentStatus={tournament?.status} />
+                <PlayerPodium leaderboard={rankEntries} large={false} competitionId={id} tournamentStatus={tournament?.status} />
               )
             )}
 
@@ -1742,12 +1741,12 @@ export default function CompetitionDetailPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {leaderboard.map((entry) => {
+                  {rankEntries.map((entry) => {
                     const isMe = entry.userId === user?.id;
                     const isComparison = entry.isComparisonUser;
                     const b = entry.breakdown;
                     return (
-                      <tr key={entry.userId} className={isComparison && !showComparisonUsers ? 'opacity-60 italic bg-muted/30' : `${rowBg(entry.rank) || (isMe ? 'bg-primary/5' : '')}${isComparison ? ' italic opacity-80' : ''}${entry.inactive ? ' opacity-60' : ''}`}>
+                      <tr key={entry.userId} className={isComparison && !showComparisonUsers ? 'opacity-60 italic bg-muted/30' : `${rowBg(entry.rank) || (isMe ? 'bg-primary/5' : '')}${isComparison ? ' italic opacity-80' : ''}`}>
                         <td className={`pl-3 pr-2 py-2.5 font-bold text-center ${isComparison && !showComparisonUsers ? 'text-muted-foreground' : rankColor(entry.rank)}`}>
                           {isComparison && !showComparisonUsers ? '—' : entry.rank}
                         </td>
@@ -1760,7 +1759,6 @@ export default function CompetitionDetailPage() {
                               {isComparison && <span className="ml-1 font-normal text-muted-foreground not-italic">(AI)</span>}
                             </span>
                             {entry.isLateAddition && <span className="inline-block w-2 h-2 rounded-full bg-yellow-400 flex-shrink-0" title={t('competitionDetail.leaderboard.lateAdditionLegend')} />}
-                            {entry.inactive && <span className="inline-block w-2 h-2 rounded-full bg-red-500 flex-shrink-0" title={t('competitionDetail.leaderboard.inactiveLegend')} />}
                           </Link>
                         </td>
                         <td className="px-2 py-2.5 text-center font-bold text-sm border-r">{entry.totalPoints}</td>
@@ -1782,11 +1780,11 @@ export default function CompetitionDetailPage() {
 
             {/* TV split view: two columns, no headers */}
             {user?.isLeaderboardUser && (() => {
-              const mid = Math.ceil(leaderboard.length / 2);
+              const mid = Math.ceil(rankEntries.length / 2);
               const renderRows = (entries: typeof leaderboard) => entries.map((entry) => {
                 const b = entry.breakdown;
                 return (
-                  <tr key={entry.userId} className={`${rowBg(entry.rank)}${entry.inactive ? ' opacity-60' : ''}`}>
+                  <tr key={entry.userId} className={rowBg(entry.rank)}>
                     <td className={`pl-4 pr-3 py-3 font-bold text-center text-base ${rankColor(entry.rank)}`}>
                       {entry.rank}
                     </td>
@@ -1795,7 +1793,6 @@ export default function CompetitionDetailPage() {
                         <UserAvatar username={entry.username} imageUrl={entry.imageUrl} iconColor={entry.iconColor} className="h-7 w-7 flex-shrink-0" />
                         <span className="font-medium text-base truncate">{entry.username}</span>
                         {entry.isLateAddition && <span className="inline-block w-2 h-2 rounded-full bg-yellow-400 flex-shrink-0" />}
-                        {entry.inactive && <span className="inline-block w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />}
                       </Link>
                     </td>
                     <td className="px-3 py-3 text-center font-bold text-base border-r">{entry.totalPoints}</td>
@@ -1834,7 +1831,7 @@ export default function CompetitionDetailPage() {
                       <SoccerKickAnimation />
                       <table className="w-full text-sm">
                         {tableHead}
-                        <tbody className="divide-y">{renderRows(leaderboard.slice(0, mid))}</tbody>
+                        <tbody className="divide-y">{renderRows(rankEntries.slice(0, mid))}</tbody>
                       </table>
                     </div>
                   </div>
@@ -1843,7 +1840,7 @@ export default function CompetitionDetailPage() {
                       <CryingPlayerAnimation />
                       <table className="w-full text-sm">
                         {tableHead}
-                        <tbody className="divide-y">{renderRows(leaderboard.slice(mid))}</tbody>
+                        <tbody className="divide-y">{renderRows(rankEntries.slice(mid))}</tbody>
                       </table>
                     </div>
                   </div>
@@ -1855,12 +1852,6 @@ export default function CompetitionDetailPage() {
               <p className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground mt-3">
                 <span className="inline-block w-2 h-2 rounded-full bg-yellow-400 flex-shrink-0" />
                 {t('competitionDetail.leaderboard.lateAdditionLegend')}
-              </p>
-            )}
-            {leaderboard.some(e => e.inactive) && (
-              <p className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground mt-3">
-                <span className="inline-block w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />
-                {t('competitionDetail.leaderboard.inactiveLegend')}
               </p>
             )}
           </>);

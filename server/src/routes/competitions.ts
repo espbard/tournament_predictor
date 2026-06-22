@@ -585,7 +585,7 @@ router.get('/:id/leaderboard-progression', requireAuth, async (req, res) => {
     const tournamentGroupDisciplinaryChoices = knockoutCfg?.groupDisciplinaryChoices ?? {};
 
     // Fetch members (exclude leaderboard/comparison/test accounts)
-    const memberRows = await db
+    let memberRows = await db
       .select({
         userId: users.id,
         username: users.username,
@@ -606,6 +606,28 @@ router.get('/:id/leaderboard-progression', requireAuth, async (req, res) => {
           eq(users.isComparisonUser, false),
         ),
       );
+
+    // Filter out inactive users (no predictions in the 5 most recent completed matches)
+    const recentCompletedForProgression = await db
+      .select({ id: matches.id })
+      .from(matches)
+      .where(and(eq(matches.tournamentId, competition.tournamentId), eq(matches.status, 'completed')))
+      .orderBy(desc(matches.scheduledAt))
+      .limit(5);
+    if (recentCompletedForProgression.length >= 5) {
+      const recentIds = recentCompletedForProgression.map(m => m.id);
+      const allMemberIds = memberRows.map(m => m.userId);
+      const activePredRows = await db
+        .select({ userId: predictions.userId })
+        .from(predictions)
+        .where(and(
+          eq(predictions.competitionId, id),
+          inArray(predictions.matchId, recentIds),
+          inArray(predictions.userId, allMemberIds),
+        ));
+      const activeUserIds = new Set(activePredRows.map(p => p.userId));
+      memberRows = memberRows.filter(m => activeUserIds.has(m.userId));
+    }
 
     const memberIds = memberRows.map(m => m.userId);
     if (memberIds.length === 0) {
