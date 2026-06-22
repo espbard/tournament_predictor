@@ -880,11 +880,11 @@ const translations = {
       submitSuccess: 'Tilbakemelding sendt!',
       submitFailed: 'Kunne ikke sende tilbakemelding',
       types: {
-        feature_request: 'Funksjonsønske',
+        feature_request: 'Ny funksjonalitet',
         improvement: 'Forbedring',
-        bug: 'Feil',
+        bug: 'Bug',
       },
-      myFeedback: 'Min tilbakemelding',
+      myFeedback: 'Mine tilbakemeldinger',
       noFeedback: 'Du har ikke sendt inn noen tilbakemelding ennå.',
       statuses: {
         pending: 'Venter',
