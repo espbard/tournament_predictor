@@ -6,13 +6,14 @@ import { useAuthStore } from '@/store/authStore';
 import ImageUpload from '@/components/ImageUpload';
 import KnockoutStageContent from '@/components/KnockoutStageContent';
 import PlayerPodium from '@/components/PlayerPodium';
+import LeaderboardLineGraph from '@/components/LeaderboardLineGraph';
 import UserStatCard from '@/components/UserStatCard';
 import { SoccerKickAnimation } from '@/components/SoccerKickAnimation';
 import { CryingPlayerAnimation } from '@/components/CryingPlayerAnimation';
 import BonusQuestionsTab from './BonusQuestionsTab';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { useT } from '@/lib/useT';
-import type { Competition, Tournament, Prediction, MatchStage, LeaderboardEntry, BracketPredictions, UserStatCardData } from '@tournament-predictor/shared';
+import type { Competition, Tournament, Prediction, MatchStage, LeaderboardEntry, BracketPredictions, UserStatCardData, LeaderboardProgressionResponse } from '@tournament-predictor/shared';
 import {
   sortGroupTeams,
   findGroupDisciplinaryTies,
@@ -90,8 +91,8 @@ export default function CompetitionDetailPage() {
   const [saveErrors, setSaveErrors] = useState<Record<string, string>>({});
 
   const [searchParams, setSearchParams] = useSearchParams();
-  type TabId = 'group' | 'tables' | 'knockout' | 'bonus' | 'leaderboard' | 'userStats';
-  const VALID_TABS: TabId[] = ['group', 'tables', 'knockout', 'bonus', 'leaderboard', 'userStats'];
+  type TabId = 'group' | 'tables' | 'knockout' | 'bonus' | 'leaderboard' | 'pointProgression' | 'userStats';
+  const VALID_TABS: TabId[] = ['group', 'tables', 'knockout', 'bonus', 'leaderboard', 'pointProgression', 'userStats'];
   const tabParam = searchParams.get('tab') as TabId | null;
   const activeTab: TabId = VALID_TABS.includes(tabParam!)
     ? tabParam!
@@ -187,6 +188,12 @@ export default function CompetitionDetailPage() {
     queryKey: ['competitions', id, 'all-match-predictions', showComparisonUsers],
     queryFn: () => api.get<MatchPredictionEntry[]>(`/competitions/${id}/all-match-predictions${showComparisonUsers ? '?includeComparison=true' : ''}`),
     enabled: !!competition && !user?.isAdmin && (activeTab === 'leaderboard' || !!user?.isLeaderboardUser),
+  });
+
+  const { data: leaderboardProgression } = useQuery({
+    queryKey: ['competitions', id, 'leaderboard-progression'],
+    queryFn: () => api.get<LeaderboardProgressionResponse>(`/competitions/${id}/leaderboard-progression`),
+    enabled: !!competition && activeTab === 'pointProgression',
   });
 
   const { data: userStats = [] } = useQuery({
@@ -1002,6 +1009,7 @@ export default function CompetitionDetailPage() {
           ['knockout', t('competitionDetail.tabs.knockoutStage')],
           ['bonus', t('competitionDetail.tabs.bonusQuestions')],
           ['leaderboard', t('competitionDetail.tabs.leaderboard')],
+          ['pointProgression', t('competitionDetail.tabs.pointProgression')],
           ['userStats', t('competitionDetail.tabs.userStats')],
         ] as const).map(([tab, label]) => (
           <button
@@ -2122,10 +2130,23 @@ export default function CompetitionDetailPage() {
               </div>
             );
           })()}
+
         </>
       )}
 
       </div>
+
+      {activeTab === 'pointProgression' && (
+        <div>
+          {leaderboardProgression && leaderboardProgression.matches.length > 0 ? (
+            <LeaderboardLineGraph data={leaderboardProgression} />
+          ) : (
+            <p className="text-sm text-muted-foreground py-4 text-center">
+              {language === 'no' ? 'Ingen kamper er fullført ennå.' : 'No matches completed yet.'}
+            </p>
+          )}
+        </div>
+      )}
 
       {activeTab === 'userStats' && (
         <div className="space-y-6">

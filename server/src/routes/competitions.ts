@@ -5,9 +5,9 @@ import { db } from '../db/client.js';
 import { competitions, competitionMembers, users, tournaments, predictions, matches, teams, groups, bracketPredictions, bonusQuestions, bonusAnswers, players } from '../db/schema.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { CreateCompetitionSchema, CreatePredictionSchema, SaveBracketPredictionsSchema, DEFAULT_SCORING_CONFIG, SaveBonusAnswerSchema, resolveFirstRoundSlots } from '@tournament-predictor/shared';
-import type { UserStatCardData, ScoringConfig, KnockoutConfig, BracketPredictions } from '@tournament-predictor/shared';
+import type { UserStatCardData, ScoringConfig, KnockoutConfig, BracketPredictions, LeaderboardProgressionMatch, LeaderboardProgressionResponse } from '@tournament-predictor/shared';
 import { recalculateAllScoresForTournament } from '../lib/scoringTrigger.js';
-import { computeGroupStandings, calculateMatchPoints, getUserPredictedTeamForKnockoutSlot, type KnockoutMatchSlot } from '../lib/scoring.js';
+import { computeGroupStandings, calculateMatchPoints, getUserPredictedTeamForKnockoutSlot, calculateGroupPositionPoints, calculateKnockoutPoints, type KnockoutMatchSlot, type FirstRoundPredTeams, type CompletedKnockoutMatch } from '../lib/scoring.js';
 import { subscribeLeaderboard, unsubscribeLeaderboard } from '../lib/leaderboardEvents.js';
 
 const router = Router();
@@ -552,6 +552,282 @@ router.get('/:id/leaderboard', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Leaderboard error:', err);
     res.status(500).json({ error: 'Failed to fetch leaderboard' });
+  }
+});
+
+router.get('/:id/leaderboard-progression', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = res.locals.user;
+
+    const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
+    if (!competition) return res.status(404).json({ error: 'Competition not found' });
+
+    if (!user.isAdmin) {
+      const [membership] = await db
+        .select()
+        .from(competitionMembers)
+        .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
+      if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+    }
+
+    const [tournament] = await db.select().from(tournaments).where(eq(tournaments.id, competition.tournamentId));
+    if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
+
+    const config = competition.scoringConfig as ScoringConfig;
+    const knockoutCfg = tournament.knockoutConfig as KnockoutConfig | null;
+    const firstRound = knockoutCfg?.firstRound ?? 'round_of_16';
+    const bracketSlots = knockoutCfg?.bracketSlots ?? {};
+    const directQualifiers = knockoutCfg?.directQualifiers ?? 2;
+    const tournamentGroupDisciplinaryChoices = knockoutCfg?.groupDisciplinaryChoices ?? {};
+
+    // Fetch members (exclude leaderboard/comparison/test accounts)
+    const memberRows = await db
+      .select({
+        userId: users.id,
+        username: users.username,
+        imageUrl: users.imageUrl,
+        groupDisciplinaryChoices: competitionMembers.groupDisciplinaryChoices,
+        luckyLoserChoices: competitionMembers.luckyLoserChoices,
+        bonusQuestionPoints: competitionMembers.bonusQuestionPoints,
+        lateAdditionPoints: competitionMembers.lateAdditionPoints,
+        lateAdditionWindowEndsAt: competitionMembers.lateAdditionWindowEndsAt,
+      })
+      .from(competitionMembers)
+      .innerJoin(users, eq(competitionMembers.userId, users.id))
+      .where(
+        and(
+          eq(competitionMembers.competitionId, id),
+          eq(users.isLeaderboardUser, false),
+          eq(users.isComparisonUser, false),
+        ),
+      );
+
+    const memberIds = memberRows.map(m => m.userId);
+    if (memberIds.length === 0) {
+      return res.json({ matches: [], users: [] } satisfies LeaderboardProgressionResponse);
+    }
+
+    // Fetch all tournament matches
+    const allMatches = await db
+      .select()
+      .from(matches)
+      .where(eq(matches.tournamentId, competition.tournamentId))
+      .orderBy(matches.scheduledAt);
+
+    const completedGroupMatches = allMatches.filter(m => m.stage === 'group' && m.status === 'completed');
+    const allGroupMatches = allMatches.filter(m => m.stage === 'group');
+    const allGroupDone = allGroupMatches.length > 0 && allGroupMatches.every(m => m.status === 'completed');
+
+    const allKoMatchesRaw = allMatches.filter(m => m.stage !== 'group');
+    allKoMatchesRaw.sort((a, b) => {
+      if (!a.scheduledAt && !b.scheduledAt) return 0;
+      if (!a.scheduledAt) return 1;
+      if (!b.scheduledAt) return -1;
+      return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
+    });
+    const completedKoMatches = allKoMatchesRaw.filter(m => m.status === 'completed');
+
+    // Fetch teams and groups for labels and standings
+    const teamRows = await db.select().from(teams).where(eq(teams.tournamentId, competition.tournamentId));
+    const groupRows = await db.select().from(groups).where(eq(groups.tournamentId, competition.tournamentId));
+    const teamMap = new Map(teamRows.map(t => [t.id, t]));
+    const groupNameMap = new Map(groupRows.map(g => [g.id, g.name]));
+    const teamGroupMap = new Map<string, string>();
+    for (const t of teamRows) {
+      if (t.groupId) {
+        const gName = groupNameMap.get(t.groupId);
+        if (gName) teamGroupMap.set(t.id, gName);
+      }
+    }
+
+    // Fetch group predictions with points for all members
+    const groupMatchIds = completedGroupMatches.map(m => m.id);
+    const allGroupPreds = groupMatchIds.length > 0
+      ? await db
+          .select()
+          .from(predictions)
+          .where(
+            and(
+              eq(predictions.competitionId, id),
+              inArray(predictions.matchId, groupMatchIds),
+              inArray(predictions.userId, memberIds),
+            ),
+          )
+      : [];
+
+    // predLookup: matchId -> userId -> points
+    const predLookup = new Map<string, Map<string, number>>();
+    for (const p of allGroupPreds) {
+      if (p.isReplacement) continue;
+      if (!predLookup.has(p.matchId)) predLookup.set(p.matchId, new Map());
+      predLookup.get(p.matchId)!.set(p.userId, p.points ?? 0);
+    }
+
+    // Group predictions by user for standings computation
+    const groupPredsByUser = new Map<string, Map<string, typeof allGroupPreds[number]>>();
+    for (const p of allGroupPreds) {
+      if (p.isReplacement) continue;
+      if (!groupPredsByUser.has(p.userId)) groupPredsByUser.set(p.userId, new Map());
+      groupPredsByUser.get(p.userId)!.set(p.matchId, p);
+    }
+
+    // Fetch bracket predictions for all members
+    const bracketPredRows = await db
+      .select()
+      .from(bracketPredictions)
+      .where(and(eq(bracketPredictions.competitionId, id), inArray(bracketPredictions.userId, memberIds)));
+    const bracketPredMap = new Map(bracketPredRows.map(r => [r.userId, r.predictions as BracketPredictions]));
+
+    // Compute actual group standings
+    const actualStandings = computeGroupStandings(completedGroupMatches, teamGroupMap, tournamentGroupDisciplinaryChoices);
+
+    // Per-user: compute predicted standings and first-round predicted teams
+    const allFirstRoundMatches = allKoMatchesRaw.filter(m => m.stage === firstRound);
+    const userFirstRoundPredTeams = new Map<string, FirstRoundPredTeams>();
+    const userBracketPredsMap = new Map<string, BracketPredictions>();
+    const userPredictedStandings = new Map<string, ReturnType<typeof computeGroupStandings>>();
+
+    for (const member of memberRows) {
+      const groupPredMap = groupPredsByUser.get(member.userId) ?? new Map();
+      const simulatedMatches = completedGroupMatches
+        .filter(m => m.homeTeamId && m.awayTeamId)
+        .flatMap(m => {
+          const pred = groupPredMap.get(m.id);
+          if (!pred) return [];
+          return [{ homeTeamId: m.homeTeamId!, awayTeamId: m.awayTeamId!, homeScore: pred.homeScore, awayScore: pred.awayScore }];
+        });
+      const predictedStandings = computeGroupStandings(simulatedMatches, teamGroupMap, member.groupDisciplinaryChoices ?? {});
+      userPredictedStandings.set(member.userId, predictedStandings);
+
+      const resolvedSlots = resolveFirstRoundSlots(
+        bracketSlots,
+        predictedStandings,
+        directQualifiers,
+        allFirstRoundMatches.length,
+        member.luckyLoserChoices ?? {},
+      );
+      const firstRoundPredTeams: FirstRoundPredTeams = {};
+      allFirstRoundMatches.forEach((match, i) => {
+        firstRoundPredTeams[`${firstRound}_${i}`] = {
+          predHomeId: resolvedSlots[`m${i + 1}_home`] ?? null,
+          predAwayId: resolvedSlots[`m${i + 1}_away`] ?? null,
+        };
+      });
+      userFirstRoundPredTeams.set(member.userId, firstRoundPredTeams);
+      userBracketPredsMap.set(member.userId, bracketPredMap.get(member.userId) ?? {});
+    }
+
+    // Match label helper
+    const stageAbbr: Record<string, string> = {
+      round_of_32: 'R32', round_of_16: 'R16', quarter_final: 'QF',
+      semi_final: 'SF', bronze_final: '3rd', final: 'Final',
+    };
+    function formatMatchLabel(match: typeof allMatches[number]): string {
+      const homeTeam = match.homeTeamId ? teamMap.get(match.homeTeamId) : null;
+      const awayTeam = match.awayTeamId ? teamMap.get(match.awayTeamId) : null;
+      if (homeTeam && awayTeam) {
+        return `${homeTeam.name.slice(0, 3).toUpperCase()} vs ${awayTeam.name.slice(0, 3).toUpperCase()}`;
+      }
+      const abbr = stageAbbr[match.stage] ?? match.stage;
+      const stageMatches = allKoMatchesRaw.filter(m => m.stage === match.stage);
+      const idx = stageMatches.findIndex(m => m.id === match.id) + 1;
+      return `${abbr} ${idx}`;
+    }
+
+    // Build progression milestones
+    const milestones: LeaderboardProgressionMatch[] = [];
+    const cumulativeTotals: Record<string, number> = {};
+    for (const m of memberRows) cumulativeTotals[m.userId] = 0;
+
+    // Group stage milestones
+    for (const match of completedGroupMatches) {
+      for (const userId of memberIds) {
+        cumulativeTotals[userId] += predLookup.get(match.id)?.get(userId) ?? 0;
+      }
+      milestones.push({ matchId: match.id, label: formatMatchLabel(match), stage: match.stage, cumulativePoints: { ...cumulativeTotals } });
+    }
+
+    // Group position points (vests after all group matches done)
+    if (allGroupDone) {
+      let anyGroupPositionPts = false;
+      for (const member of memberRows) {
+        const predictedStandings = userPredictedStandings.get(member.userId) ?? new Map();
+        const pts = calculateGroupPositionPoints(actualStandings, predictedStandings, config);
+        if (pts > 0) anyGroupPositionPts = true;
+        cumulativeTotals[member.userId] += pts;
+      }
+      if (anyGroupPositionPts) {
+        milestones.push({ matchId: 'group-complete', label: 'Group Stage', stage: 'group', cumulativePoints: { ...cumulativeTotals } });
+      }
+    }
+
+    // Knockout milestones — compute calculateKnockoutPoints incrementally
+    const prevKoTotals: Record<string, number> = {};
+    for (const userId of memberIds) prevKoTotals[userId] = 0;
+
+    for (const match of completedKoMatches) {
+      const matchTime = match.scheduledAt ? new Date(match.scheduledAt).getTime() : Infinity;
+
+      // Build filtered KO match list: completed only up to and including this match's scheduledAt
+      const filteredKoMatches: CompletedKnockoutMatch[] = allKoMatchesRaw.map(m => ({
+        id: m.id,
+        stage: m.stage,
+        homeTeamId: m.homeTeamId,
+        awayTeamId: m.awayTeamId,
+        homeScore: m.homeScore ?? 0,
+        awayScore: m.awayScore ?? 0,
+        progressingTeamId: m.progressingTeamId,
+        status: m.status === 'completed' && m.scheduledAt && new Date(m.scheduledAt).getTime() <= matchTime
+          ? 'completed'
+          : 'scheduled',
+      }));
+
+      for (const member of memberRows) {
+        const userBracket = userBracketPredsMap.get(member.userId) ?? {};
+        const firstRoundPredTeams = userFirstRoundPredTeams.get(member.userId) ?? {};
+
+        const koResult = calculateKnockoutPoints(filteredKoMatches, firstRound, userBracket, config, firstRoundPredTeams);
+
+        // First-round tie points (not covered by calculateKnockoutPoints)
+        let curFirstRoundTiePts = 0;
+        allFirstRoundMatches.forEach((frMatch, i) => {
+          const isCompleted = filteredKoMatches.find(m => m.id === frMatch.id)?.status === 'completed';
+          if (!isCompleted) return;
+          const { predHomeId, predAwayId } = firstRoundPredTeams[`${firstRound}_${i}`] ?? {};
+          for (const actualTeamId of [frMatch.homeTeamId, frMatch.awayTeamId]) {
+            if (!actualTeamId) continue;
+            if (predHomeId !== actualTeamId && predAwayId !== actualTeamId) continue;
+            curFirstRoundTiePts += config.correct_team_in_knockout_tie;
+          }
+        });
+
+        const newKoTotal = koResult.total + curFirstRoundTiePts;
+        const delta = newKoTotal - (prevKoTotals[member.userId] ?? 0);
+        if (delta > 0) cumulativeTotals[member.userId] += delta;
+        prevKoTotals[member.userId] = newKoTotal;
+      }
+
+      milestones.push({ matchId: match.id, label: formatMatchLabel(match), stage: match.stage, cumulativePoints: { ...cumulativeTotals } });
+    }
+
+    // Bonus + late-addition points at the end
+    const hasExtraPoints = memberRows.some(m => (m.bonusQuestionPoints ?? 0) > 0 || (m.lateAdditionPoints ?? 0) > 0);
+    if (hasExtraPoints) {
+      for (const member of memberRows) {
+        cumulativeTotals[member.userId] += (member.bonusQuestionPoints ?? 0) + (member.lateAdditionPoints ?? 0);
+      }
+      milestones.push({ matchId: 'bonus', label: 'Bonus', stage: 'bonus', cumulativePoints: { ...cumulativeTotals } });
+    }
+
+    const response: LeaderboardProgressionResponse = {
+      matches: milestones,
+      users: memberRows.map(m => ({ userId: m.userId, username: m.username, imageUrl: m.imageUrl })),
+    };
+    res.json(response);
+  } catch (err) {
+    console.error('Leaderboard progression error:', err);
+    res.status(500).json({ error: 'Failed to fetch leaderboard progression' });
   }
 });
 
