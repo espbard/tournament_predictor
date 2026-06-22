@@ -6,11 +6,24 @@ import { users } from '../db/schema';
 import { lucia, requireAuth, requireAdmin } from '../middleware/auth';
 import { LoginSchema, RegisterSchema, UpdateUserSchema } from '@tournament-predictor/shared';
 
+function generateIconColor(): string {
+  const h = Math.floor(Math.random() * 360);
+  const s = (55 + Math.floor(Math.random() * 30)) / 100;
+  const l = (30 + Math.floor(Math.random() * 15)) / 100;
+  const k = (n: number) => (n + h / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) => {
+    const c = l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+    return Math.round(255 * c).toString(16).padStart(2, '0');
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
+}
+
 export const authRouter = Router();
 
 authRouter.post('/register', async (req, res) => {
   try {
-    const { username, password, imageUrl, isLeaderboardUser, isLateAddition } = RegisterSchema.parse(req.body);
+    const { username, password, imageUrl, iconColor, isLeaderboardUser, isLateAddition } = RegisterSchema.parse(req.body);
 
     const existing = await db
       .select({ id: users.id })
@@ -24,6 +37,7 @@ authRouter.post('/register', async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const userId = crypto.randomUUID();
+    const color = iconColor ?? generateIconColor();
 
     await db.insert(users).values({
       id: userId,
@@ -32,6 +46,7 @@ authRouter.post('/register', async (req, res) => {
       isLeaderboardUser: isLeaderboardUser ?? false,
       isLateAddition: isLateAddition ?? false,
       imageUrl: imageUrl ?? null,
+      iconColor: color,
     });
 
     const session = await lucia.createSession(userId, {});
@@ -46,6 +61,7 @@ authRouter.post('/register', async (req, res) => {
       isComparisonUser: false,
       isLateAddition: isLateAddition ?? false,
       imageUrl: imageUrl ?? null,
+      iconColor: color,
     });
   } catch (err: any) {
     if (err?.name === 'ZodError') {
@@ -78,7 +94,7 @@ authRouter.post('/login', async (req, res) => {
     const session = await lucia.createSession(user.id, {});
     res.setHeader('Set-Cookie', lucia.createSessionCookie(session.id).serialize());
 
-    return res.json({ id: user.id, username: user.username, isAdmin: user.isAdmin, isTestAccount: user.isTestAccount, isLeaderboardUser: user.isLeaderboardUser, isComparisonUser: user.isComparisonUser, isLateAddition: user.isLateAddition, imageUrl: user.imageUrl });
+    return res.json({ id: user.id, username: user.username, isAdmin: user.isAdmin, isTestAccount: user.isTestAccount, isLeaderboardUser: user.isLeaderboardUser, isComparisonUser: user.isComparisonUser, isLateAddition: user.isLateAddition, imageUrl: user.imageUrl, iconColor: user.iconColor });
   } catch (err: any) {
     if (err?.name === 'ZodError') {
       return res.status(400).json({ error: 'Invalid input', details: err.errors });
@@ -96,7 +112,7 @@ authRouter.post('/logout', requireAuth, async (_req, res) => {
 
 authRouter.get('/me', requireAuth, async (_req, res) => {
   const [user] = await db
-    .select({ id: users.id, username: users.username, isAdmin: users.isAdmin, isTestAccount: users.isTestAccount, isLeaderboardUser: users.isLeaderboardUser, isComparisonUser: users.isComparisonUser, isLateAddition: users.isLateAddition, imageUrl: users.imageUrl })
+    .select({ id: users.id, username: users.username, isAdmin: users.isAdmin, isTestAccount: users.isTestAccount, isLeaderboardUser: users.isLeaderboardUser, isComparisonUser: users.isComparisonUser, isLateAddition: users.isLateAddition, imageUrl: users.imageUrl, iconColor: users.iconColor })
     .from(users)
     .where(eq(users.id, res.locals.user.id))
     .limit(1);
@@ -110,7 +126,7 @@ authRouter.patch('/me', requireAuth, async (req, res) => {
       .update(users)
       .set(updates)
       .where(eq(users.id, res.locals.user.id))
-      .returning({ id: users.id, username: users.username, isAdmin: users.isAdmin, isTestAccount: users.isTestAccount, isLeaderboardUser: users.isLeaderboardUser, isComparisonUser: users.isComparisonUser, isLateAddition: users.isLateAddition, imageUrl: users.imageUrl });
+      .returning({ id: users.id, username: users.username, isAdmin: users.isAdmin, isTestAccount: users.isTestAccount, isLeaderboardUser: users.isLeaderboardUser, isComparisonUser: users.isComparisonUser, isLateAddition: users.isLateAddition, imageUrl: users.imageUrl, iconColor: users.iconColor });
     return res.json(updated);
   } catch (err: any) {
     if (err?.name === 'ZodError') return res.status(400).json({ error: 'Invalid input', details: err.errors });
@@ -121,7 +137,7 @@ authRouter.patch('/me', requireAuth, async (req, res) => {
 
 authRouter.get('/users', requireAdmin, async (_req, res) => {
   const allUsers = await db
-    .select({ id: users.id, username: users.username, isAdmin: users.isAdmin, isTestAccount: users.isTestAccount, isLeaderboardUser: users.isLeaderboardUser, isComparisonUser: users.isComparisonUser, isLateAddition: users.isLateAddition, imageUrl: users.imageUrl })
+    .select({ id: users.id, username: users.username, isAdmin: users.isAdmin, isTestAccount: users.isTestAccount, isLeaderboardUser: users.isLeaderboardUser, isComparisonUser: users.isComparisonUser, isLateAddition: users.isLateAddition, imageUrl: users.imageUrl, iconColor: users.iconColor })
     .from(users)
     .orderBy(users.username);
   return res.json(allUsers);
@@ -141,7 +157,7 @@ authRouter.patch('/users/:id', requireAdmin, async (req, res) => {
     .update(users)
     .set(updates)
     .where(eq(users.id, req.params.id))
-    .returning({ id: users.id, username: users.username, isAdmin: users.isAdmin, isTestAccount: users.isTestAccount, isLeaderboardUser: users.isLeaderboardUser, isComparisonUser: users.isComparisonUser, isLateAddition: users.isLateAddition, imageUrl: users.imageUrl });
+    .returning({ id: users.id, username: users.username, isAdmin: users.isAdmin, isTestAccount: users.isTestAccount, isLeaderboardUser: users.isLeaderboardUser, isComparisonUser: users.isComparisonUser, isLateAddition: users.isLateAddition, imageUrl: users.imageUrl, iconColor: users.iconColor });
   if (!updated) return res.status(404).json({ error: 'User not found' });
   return res.json(updated);
 });

@@ -2,7 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
-import { sql, eq, and } from 'drizzle-orm';
+import { sql, eq, and, isNull } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import bcrypt from 'bcryptjs';
 import { db } from './db/client';
@@ -68,6 +68,8 @@ async function start() {
   await db.execute(sql`ALTER TABLE predictions ADD COLUMN IF NOT EXISTS "is_replacement" boolean NOT NULL DEFAULT false`);
   // Defensive: ensure allow_late_additions column exists regardless of migration state
   await db.execute(sql`ALTER TABLE competitions ADD COLUMN IF NOT EXISTS "allow_late_additions" boolean NOT NULL DEFAULT true`);
+  // Defensive: ensure icon_color column exists regardless of migration state
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS "icon_color" text`);
   // Defensive: ensure players table exists regardless of migration state
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS "players" (
@@ -79,6 +81,29 @@ async function start() {
     )
   `);
   console.log('Migrations complete.');
+
+  // Seed icon colors for any users that don't have one yet
+  try {
+    const usersWithoutColor = await db.select({ id: users.id }).from(users).where(isNull(users.iconColor));
+    for (const u of usersWithoutColor) {
+      const h = Math.floor(Math.random() * 360);
+      const s = (55 + Math.floor(Math.random() * 30)) / 100;
+      const l = (30 + Math.floor(Math.random() * 15)) / 100;
+      const k = (n: number) => (n + h / 30) % 12;
+      const a = s * Math.min(l, 1 - l);
+      const f = (n: number) => {
+        const c = l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+        return Math.round(255 * c).toString(16).padStart(2, '0');
+      };
+      const color = `#${f(0)}${f(8)}${f(4)}`;
+      await db.update(users).set({ iconColor: color }).where(eq(users.id, u.id));
+    }
+    if (usersWithoutColor.length > 0) {
+      console.log(`Seeded icon colors for ${usersWithoutColor.length} user(s).`);
+    }
+  } catch (err) {
+    console.warn('Icon color seeding skipped:', err);
+  }
 
   // Seed initial Haaland player if no players exist
   try {

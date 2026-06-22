@@ -50,6 +50,7 @@ export const users = pgTable('users', {
   isComparisonUser: boolean('is_comparison_user').notNull().default(false),
   isLateAddition: boolean('is_late_addition').notNull().default(false),
   imageUrl: text('image_url'),
+  iconColor: text('icon_color'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 

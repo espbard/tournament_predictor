@@ -120,6 +120,13 @@
       "when": 1750320000000,
       "tag": "0019_late_addition",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1750406400000,
+      "tag": "0020_user_icon_color",
+      "breakpoints": true
     }
   ]
 }

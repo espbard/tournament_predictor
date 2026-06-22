@@ -399,6 +399,7 @@ const translations = {
       title: 'Edit profile',
       profilePicture: 'Profile picture',
       changePhoto: 'Change photo',
+      iconColor: 'Icon color',
       saveChanges: 'Save changes',
     },
     maintenance: {
@@ -816,6 +817,7 @@ const translations = {
       title: 'Rediger profil',
       profilePicture: 'Profilbilde',
       changePhoto: 'Endre bilde',
+      iconColor: 'Ikonfarve',
       saveChanges: 'Lagre endringer',
     },
     maintenance: {

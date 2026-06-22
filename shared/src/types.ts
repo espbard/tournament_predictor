@@ -7,6 +7,7 @@ export interface User {
   isComparisonUser: boolean;
   isLateAddition: boolean;
   imageUrl?: string | null;
+  iconColor?: string | null;
 }
 
 export type KnockoutFirstRound = 'round_of_32' | 'round_of_16' | 'quarter_final' | 'semi_final' | 'final';
@@ -120,6 +121,7 @@ export interface LeaderboardEntry {
   userId: string;
   username: string;
   imageUrl?: string | null;
+  iconColor?: string | null;
   totalPoints: number;
   rank: number;
   breakdown: ScoreBreakdown;
@@ -155,6 +157,7 @@ export interface UserStatSubject {
   id: string;
   name: string;
   imageUrl?: string | null;
+  iconColor?: string | null;
 }
 
 export interface LeaderboardProgressionMatch {
@@ -166,7 +169,7 @@ export interface LeaderboardProgressionMatch {
 
 export interface LeaderboardProgressionResponse {
   matches: LeaderboardProgressionMatch[];
-  users: Array<{ userId: string; username: string; imageUrl?: string | null }>;
+  users: Array<{ userId: string; username: string; imageUrl?: string | null; iconColor?: string | null }>;
 }
 
 export interface UserStatCardData {
