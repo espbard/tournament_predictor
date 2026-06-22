@@ -884,8 +884,8 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
       )
       .where(
         includeComparison
-          ? and(eq(predictions.competitionId, id), eq(matches.status, 'completed'), eq(users.isLeaderboardUser, false))
-          : and(eq(predictions.competitionId, id), eq(matches.status, 'completed'), eq(users.isLeaderboardUser, false), eq(users.isComparisonUser, false))
+          ? and(eq(predictions.competitionId, id), eq(users.isLeaderboardUser, false))
+          : and(eq(predictions.competitionId, id), eq(users.isLeaderboardUser, false), eq(users.isComparisonUser, false))
       );
 
     type PredBreakdown = {
