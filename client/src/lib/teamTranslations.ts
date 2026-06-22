@@ -17,7 +17,7 @@ const teamTranslations: Record<string, { en: string; de: string }> = {
   'Elfenbenskysten':    { en: 'Ivory Coast',            de: 'Kein Elfenbein' },
   'England':            { en: 'England',                de: 'Elfmeterphobie' },
   'Frankrike':          { en: 'France',                 de: 'Froschesser' },
-  'Ghana':              { en: 'Ghana',                  de: 'Ghana' },
+  'Ghana':              { en: 'Ghana',                  de: 'Freiwilligen-Land' },
   'Haiti':              { en: 'Haiti',                  de: 'Karibik-Traum' },
   'Irak':               { en: 'Iraq',                   de: 'Mesopotamien FC' },
   'Iran':               { en: 'Iran',                   de: 'Ehemals Persien' },
