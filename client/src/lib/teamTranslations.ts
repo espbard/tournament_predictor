@@ -26,7 +26,7 @@ const teamTranslations: Record<string, { en: string; de: string }> = {
   'Kapp Verde':         { en: 'Cape Verde',             de: 'Welche Inseln?' },
   'Kroatia':            { en: 'Croatia',                de: 'Krawattenerfinder' },
   'Marokko':            { en: 'Morocco',                de: 'Marokko' },
-  'Mexico':             { en: 'Mexico',                 de: 'Mexiko' },
+  'Mexico':             { en: 'Mexico',                 de: 'Los Tacos' },
   'Nederland':          { en: 'Netherlands',            de: 'Wenn Deutschland netter wäre' },
   'New Zealand':        { en: 'New Zealand',            de: 'Hobbitland' },
   'Norge':              { en: 'Norway',                 de: 'Haalandia' },
