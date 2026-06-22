@@ -3,11 +3,11 @@ import type { Language } from '@/store/languageStore';
 
 const teamTranslations: Record<string, { en: string; de: string }> = {
   'Algerie':            { en: 'Algeria',               de: 'Algerien' },
-  'Argentina':          { en: 'Argentina',              de: 'Argentinien' },
+  'Argentina':          { en: 'Argentina',              de: 'Hand-Gottes-FC' },
   'Australia':          { en: 'Australia',              de: 'Australien' },
   'Belgia':             { en: 'Belgium',                de: 'Belgien' },
   'Bosnia-Hercegovina': { en: 'Bosnia and Herzegovina', de: 'Bosnien-Herzegowina' },
-  'Brasil':             { en: 'Brazil',                 de: '7-1' },
+  'Brasil':             { en: 'Brazil',                 de: '1-7' },
   'Canada':             { en: 'Canada',                 de: 'Kanada' },
   'Colombia':           { en: 'Colombia',               de: 'Kolumbien' },
   'Curaçao':            { en: 'Curaçao',                de: 'Curaçao' },
@@ -15,7 +15,7 @@ const teamTranslations: Record<string, { en: string; de: string }> = {
   'Ecuador':            { en: 'Ecuador',                de: 'Ecuador' },
   'Egypt':              { en: 'Egypt',                  de: 'Ägypten' },
   'Elfenbenskysten':    { en: 'Ivory Coast',            de: 'Elfenbeinküste' },
-  'England':            { en: 'England',                de: 'England' },
+  'England':            { en: 'England',                de: 'Elfmeterphobie' },
   'Frankrike':          { en: 'France',                 de: 'Frankreich' },
   'Ghana':              { en: 'Ghana',                  de: 'Ghana' },
   'Haiti':              { en: 'Haiti',                  de: 'Haiti' },
@@ -37,9 +37,9 @@ const teamTranslations: Record<string, { en: string; de: string }> = {
   'Saudi-Arabia':       { en: 'Saudi Arabia',           de: 'Saudi-Arabien' },
   'Senegal':            { en: 'Senegal',                de: 'Senegal' },
   'Skottland':          { en: 'Scotland',               de: 'Schottland' },
-  'Spania':             { en: 'Spain',                  de: 'Spanien' },
+  'Spania':             { en: 'Spain',                  de: 'Schläfrige Pässe' },
   'Sveits':             { en: 'Switzerland',            de: 'Schweiz' },
-  'Sverige':            { en: 'Sweden',                 de: 'Schweden' },
+  'Sverige':            { en: 'Sweden',                 de: 'Flaches Regal' },
   'Sør-Afrika':         { en: 'South Africa',           de: 'Südafrika' },
   'Sør-Korea':          { en: 'South Korea',            de: 'Südkorea' },
   'Tsjekkia':           { en: 'Czech Republic',         de: 'Besseres Bier' },
@@ -47,9 +47,9 @@ const teamTranslations: Record<string, { en: string; de: string }> = {
   'Tyskland':           { en: 'Germany',                de: 'Ostfrankreich' },
   'Tyrkia':             { en: 'Turkey',                 de: 'Türkei' },
   'Uruguay':            { en: 'Uruguay',                de: 'Uruguay' },
-  'USA':                { en: 'USA',                    de: 'Amerika' },
+  'USA':                { en: 'USA',                    de: 'Handegg-Weltmeister' },
   'Usbekistan':         { en: 'Uzbekistan',             de: 'Usbekistan' },
-  'Østerrike':          { en: 'Austria',                de: 'Österreich' },
+  'Østerrike':          { en: 'Austria',                de: 'Nicht Deutschland' },
 };
 
 export function translateTeam(name: string | null | undefined, language: Language | string): string {
