@@ -29,7 +29,7 @@ const teamTranslations: Record<string, { en: string; de: string }> = {
   'Mexico':             { en: 'Mexico',                 de: 'Mexiko' },
   'Nederland':          { en: 'Netherlands',            de: 'Wenn Deutschland netter wäre' },
   'New Zealand':        { en: 'New Zealand',            de: 'Neuseeland' },
-  'Norge':              { en: 'Norway',                 de: 'Norwegen' },
+  'Norge':              { en: 'Norway',                 de: 'Haalandia' },
   'Panama':             { en: 'Panama',                 de: 'Panama' },
   'Paraguay':           { en: 'Paraguay',               de: 'Paraguay' },
   'Portugal':           { en: 'Portugal',               de: 'Portugal' },
