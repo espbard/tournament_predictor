@@ -451,12 +451,24 @@ export default function CompetitionDetailPage() {
     [matchList]
   );
 
+  const allMatchesSorted = useMemo(
+    () => [...matchList].sort((a, b) => {
+      if (!a.scheduledAt && !b.scheduledAt) return 0;
+      if (!a.scheduledAt) return 1;
+      if (!b.scheduledAt) return -1;
+      return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
+    }),
+    [matchList]
+  );
+
   useEffect(() => {
-    if (!predMatchInitializedRef.current && completedMatchesWithResults.length > 0) {
+    if (!predMatchInitializedRef.current && completedMatchesWithResults.length > 0 && allMatchesSorted.length > 0) {
       predMatchInitializedRef.current = true;
-      setCurrentPredMatchIdx(completedMatchesWithResults.length - 1);
+      const lastCompletedId = completedMatchesWithResults[completedMatchesWithResults.length - 1].id;
+      const idx = allMatchesSorted.findIndex(m => m.id === lastCompletedId);
+      setCurrentPredMatchIdx(idx >= 0 ? idx : 0);
     }
-  }, [completedMatchesWithResults]);
+  }, [completedMatchesWithResults, allMatchesSorted]);
 
   useEffect(() => {
     if (pendingScrollMatchId && activeTab === 'leaderboard') {
@@ -466,7 +478,7 @@ export default function CompetitionDetailPage() {
   }, [pendingScrollMatchId, activeTab]);
 
   const handleStatCardMatchClick = (matchId: string) => {
-    const idx = completedMatchesWithResults.findIndex(m => m.id === matchId);
+    const idx = allMatchesSorted.findIndex(m => m.id === matchId);
     if (idx === -1) return;
     setActiveTab('leaderboard');
     setCurrentPredMatchIdx(idx);
@@ -1856,8 +1868,8 @@ export default function CompetitionDetailPage() {
 
           {/* Match Predictions */}
           {!user?.isAdmin && completedMatchesWithResults.length > 0 && (() => {
-            const safePredMatchIdx = Math.min(currentPredMatchIdx, completedMatchesWithResults.length - 1);
-            const match = completedMatchesWithResults[safePredMatchIdx];
+            const safePredMatchIdx = Math.min(currentPredMatchIdx, allMatchesSorted.length - 1);
+            const match = allMatchesSorted[safePredMatchIdx];
             if (!match) return null;
 
             const matchPreds = [...allMatchPredictions]
@@ -1896,19 +1908,36 @@ export default function CompetitionDetailPage() {
                     {/* Navigation dots */}
                     <div className="mb-4">
                       <div className="flex flex-wrap gap-1.5">
-                        {completedMatchesWithResults.map((m, idx) => (
-                          <button
-                            key={m.id}
-                            type="button"
-                            onClick={() => setCurrentPredMatchIdx(idx)}
-                            className={`rounded-full transition-all duration-200 ${
-                              idx === safePredMatchIdx
-                                ? 'w-5 h-2.5 bg-primary'
-                                : 'w-2.5 h-2.5 bg-muted-foreground/30 hover:bg-muted-foreground/50'
-                            }`}
-                            aria-label={`Match ${idx + 1}`}
-                          />
-                        ))}
+                        {allMatchesSorted.map((m, idx) => {
+                          const isCurrent = idx === safePredMatchIdx;
+                          const pred = predMap[m.id];
+                          const hasActual = m.status === 'completed' && m.homeScore !== null && m.awayScore !== null;
+                          const hasPred = !!pred;
+                          const isCorrectResult = hasPred && hasActual &&
+                            Math.sign(pred.homeScore - pred.awayScore) === Math.sign(m.homeScore! - m.awayScore!);
+                          const isExactScore = hasPred && hasActual &&
+                            pred.homeScore === m.homeScore && pred.awayScore === m.awayScore;
+                          const dotClass = isCurrent
+                            ? 'w-5 h-2.5 bg-primary'
+                            : !hasPred
+                            ? 'w-2.5 h-2.5 bg-muted-foreground/30 hover:bg-muted-foreground/50'
+                            : !hasActual
+                            ? 'w-2.5 h-2.5 bg-yellow-300'
+                            : isExactScore
+                            ? 'w-2.5 h-2.5 bg-green-500 ring-1 ring-offset-1 ring-offset-background ring-amber-400'
+                            : isCorrectResult
+                            ? 'w-2.5 h-2.5 bg-green-500'
+                            : 'w-2.5 h-2.5 bg-red-500';
+                          return (
+                            <button
+                              key={m.id}
+                              type="button"
+                              onClick={() => setCurrentPredMatchIdx(idx)}
+                              className={`rounded-full transition-all duration-200 ${dotClass}`}
+                              aria-label={`Match ${idx + 1}`}
+                            />
+                          );
+                        })}
                       </div>
                     </div>
 
@@ -1933,7 +1962,7 @@ export default function CompetitionDetailPage() {
                             </p>
                           )}
                           <p className="text-xs text-muted-foreground mt-0.5">
-                            {safePredMatchIdx + 1} / {completedMatchesWithResults.length}
+                            {safePredMatchIdx + 1} / {allMatchesSorted.length}
                           </p>
                         </div>
 
@@ -1947,7 +1976,7 @@ export default function CompetitionDetailPage() {
                               )}
                             </div>
                             <span className="flex-1 text-sm font-medium truncate">{match.homeTeamName ?? 'TBD'}</span>
-                            <span className="w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0">{match.homeScore}</span>
+                            <span className="w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0">{match.homeScore ?? '—'}</span>
                           </div>
                           <div className="h-px bg-border" />
                           <div className="flex items-center gap-3 px-4 py-3.5">
@@ -1959,7 +1988,7 @@ export default function CompetitionDetailPage() {
                               )}
                             </div>
                             <span className="flex-1 text-sm font-medium truncate">{match.awayTeamName ?? 'TBD'}</span>
-                            <span className="w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0">{match.awayScore}</span>
+                            <span className="w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0">{match.awayScore ?? '—'}</span>
                           </div>
                         </div>
 
@@ -1972,8 +2001,8 @@ export default function CompetitionDetailPage() {
                           >←</button>
                           <button
                             type="button"
-                            onClick={() => setCurrentPredMatchIdx(i => Math.min(completedMatchesWithResults.length - 1, i + 1))}
-                            disabled={safePredMatchIdx === completedMatchesWithResults.length - 1}
+                            onClick={() => setCurrentPredMatchIdx(i => Math.min(allMatchesSorted.length - 1, i + 1))}
+                            disabled={safePredMatchIdx === allMatchesSorted.length - 1}
                             className="h-11 w-11 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20"
                           >→</button>
                         </div>
