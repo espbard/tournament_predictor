@@ -922,7 +922,7 @@ export default function CompetitionDetailPage() {
               {!user?.isAdmin && (
                 <button
                   onClick={() => setShowLeaveConfirm(true)}
-                  className="rounded-md border px-3 py-1.5 text-sm flex-shrink-0 text-red-500 border-red-400/60 hover:bg-red-500/10 dark:text-red-400 dark:border-red-400 dark:hover:bg-red-400/15"
+                  className="rounded-md border border-red-600 bg-red-600 px-3 py-1.5 text-sm flex-shrink-0 text-white hover:bg-red-700 hover:border-red-700 transition-colors"
                 >
                   {t('competitionDetail.leave')}
                 </button>
