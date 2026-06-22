@@ -68,8 +68,8 @@ export default function Navbar() {
             </button>
             {langOpen && (
               <div
-                className="absolute right-0 top-full mt-2 z-50 flex w-fit flex-row gap-4 px-4 py-3 rounded-md border border-border bg-popover shadow-md"
-                style={{ maxWidth: 'max(350px, 80vw)' }}
+                className="absolute right-0 top-full mt-2 z-50 flex flex-row gap-4 px-4 py-3 rounded-md border border-border bg-popover shadow-md"
+                style={{ width: 'max-content', maxWidth: 'max(350px, 80vw)' }}
               >
                 {LANGUAGES.map((lang) => (
                   <img
