@@ -7,6 +7,8 @@ const COLORS = [
   '#ec4899', '#14b8a6', '#f97316', '#8b5cf6', '#84cc16',
 ];
 
+const ICON_R = 8;
+
 interface FrozenEntry {
   userId: string;
   value: number;
@@ -27,13 +29,26 @@ export default function LeaderboardLineGraph({ data }: Props) {
   const [frozenTooltip, setFrozenTooltip] = useState<FrozenTooltip | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const chartData = data.matches.map((m, i) => {
-    const point: Record<string, string | number> = { matchIndex: i + 1, matchLabel: m.label };
-    for (const u of data.users) {
-      point[u.userId] = m.cumulativePoints[u.userId] ?? 0;
-    }
-    return point;
-  });
+  // Real match data points, plus a sentinel at the end that extends lines to an open tick
+  const matchCount = data.matches.length;
+  const sentinelIndex = matchCount; // 0-based index in chartData
+
+  const chartData = [
+    ...data.matches.map((m, i) => {
+      const point: Record<string, string | number> = { matchIndex: i + 1, matchLabel: m.label };
+      for (const u of data.users) point[u.userId] = m.cumulativePoints[u.userId] ?? 0;
+      return point;
+    }),
+    (() => {
+      const last = data.matches[matchCount - 1];
+      const point: Record<string, string | number> = {
+        matchIndex: matchCount + 1,
+        matchLabel: '',
+      };
+      for (const u of data.users) point[u.userId] = last?.cumulativePoints[u.userId] ?? 0;
+      return point;
+    })(),
+  ];
 
   const toggleUser = (userId: string) => {
     setHiddenUsers(prev => {
@@ -49,12 +64,13 @@ export default function LeaderboardLineGraph({ data }: Props) {
     );
   };
 
-  const handleChartClick = useCallback((state: { activePayload?: Array<{ dataKey?: unknown; value?: unknown; stroke?: unknown }>; activeLabel?: unknown } | null) => {
-    if (!state?.activePayload?.length) {
-      setFrozenTooltip(null);
-      return;
-    }
+  const handleChartClick = useCallback((state: {
+    activePayload?: Array<{ dataKey?: unknown; value?: unknown; stroke?: unknown }>;
+    activeLabel?: unknown;
+  } | null) => {
+    if (!state?.activePayload?.length) { setFrozenTooltip(null); return; }
     const matchIndex = state.activeLabel as number;
+    if (matchIndex > matchCount) return; // ignore sentinel tick
     const matchLabel = (chartData[matchIndex - 1]?.matchLabel as string) ?? String(matchIndex);
     const entries: FrozenEntry[] = state.activePayload
       .filter(p => !hiddenUsers.has(p.dataKey as string))
@@ -65,23 +81,31 @@ export default function LeaderboardLineGraph({ data }: Props) {
       }))
       .sort((a, b) => b.value - a.value);
     setFrozenTooltip({ matchLabel, entries });
-  }, [chartData, hiddenUsers]);
+  }, [chartData, hiddenUsers, matchCount]);
 
   useEffect(() => {
-    const handleOutsideClick = (e: MouseEvent | TouchEvent) => {
+    const dismiss = (e: MouseEvent | TouchEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setFrozenTooltip(null);
       }
     };
-    document.addEventListener('mousedown', handleOutsideClick);
-    document.addEventListener('touchstart', handleOutsideClick);
+    document.addEventListener('mousedown', dismiss);
+    document.addEventListener('touchstart', dismiss);
     return () => {
-      document.removeEventListener('mousedown', handleOutsideClick);
-      document.removeEventListener('touchstart', handleOutsideClick);
+      document.removeEventListener('mousedown', dismiss);
+      document.removeEventListener('touchstart', dismiss);
     };
   }, []);
 
-  const renderTooltip = ({ active, payload, label }: { active?: boolean; payload?: ReadonlyArray<{ dataKey?: unknown; value?: unknown; stroke?: unknown }>; label?: unknown }) => {
+  const renderTooltip = ({
+    active,
+    payload,
+    label,
+  }: {
+    active?: boolean;
+    payload?: ReadonlyArray<{ dataKey?: unknown; value?: unknown; stroke?: unknown }>;
+    label?: unknown;
+  }) => {
     if (frozenTooltip) {
       return (
         <div className="rounded-lg border bg-background p-2 text-xs shadow-md min-w-[120px]">
@@ -99,8 +123,9 @@ export default function LeaderboardLineGraph({ data }: Props) {
         </div>
       );
     }
-    if (!active || !payload?.length) return null;
-    const matchLabel = (chartData[(label as number) - 1]?.matchLabel as string) ?? String(label);
+    const matchIndex = label as number;
+    if (!active || !payload?.length || matchIndex > matchCount) return null;
+    const matchLabel = (chartData[matchIndex - 1]?.matchLabel as string) ?? String(matchIndex);
     const sorted = [...payload]
       .filter(p => !hiddenUsers.has(p.dataKey as string))
       .sort((a, b) => (b.value as number) - (a.value as number));
@@ -128,7 +153,7 @@ export default function LeaderboardLineGraph({ data }: Props) {
       <ResponsiveContainer width="100%" height={280}>
         <LineChart
           data={chartData}
-          margin={{ top: 5, right: 10, bottom: 5, left: -10 }}
+          margin={{ top: 5, right: ICON_R + 12, bottom: 5, left: -10 }}
           onClick={handleChartClick}
         >
           <CartesianGrid strokeDasharray="3 3" stroke="currentColor" strokeOpacity={0.1} />
@@ -137,24 +162,74 @@ export default function LeaderboardLineGraph({ data }: Props) {
             tick={{ fontSize: 10 }}
             tickLine={false}
             allowDecimals={false}
+            tickFormatter={(v) => v === matchCount + 1 ? '' : String(v)}
           />
           <YAxis tick={{ fontSize: 10 }} tickLine={false} axisLine={false} width={32} />
           <Tooltip
             content={renderTooltip}
             wrapperStyle={frozenTooltip ? { visibility: 'visible', pointerEvents: 'none' } : undefined}
           />
-          {data.users.map((u, i) => (
-            <Line
-              key={u.userId}
-              type="monotone"
-              dataKey={u.userId}
-              stroke={COLORS[i % COLORS.length]}
-              strokeWidth={2}
-              dot={false}
-              activeDot={{ r: 4 }}
-              hide={hiddenUsers.has(u.userId)}
-            />
-          ))}
+          {data.users.map((u, i) => {
+            const color = COLORS[i % COLORS.length];
+            return (
+              <Line
+                key={u.userId}
+                type="monotone"
+                dataKey={u.userId}
+                stroke={color}
+                strokeWidth={2}
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                dot={(props: any) => {
+                  const { cx, cy, index } = props as { cx?: number; cy?: number; index?: number };
+                  if (index !== sentinelIndex || cx == null || cy == null) return <g />;
+                  if (u.imageUrl) {
+                    const clipId = `uclip-${u.userId}`;
+                    return (
+                      <g key={`icon-${u.userId}`}>
+                        <defs>
+                          <clipPath id={clipId}>
+                            <circle cx={cx} cy={cy} r={ICON_R} />
+                          </clipPath>
+                        </defs>
+                        <circle cx={cx} cy={cy} r={ICON_R + 1} fill={color} />
+                        <image
+                          href={u.imageUrl}
+                          x={cx - ICON_R}
+                          y={cy - ICON_R}
+                          width={ICON_R * 2}
+                          height={ICON_R * 2}
+                          clipPath={`url(#${clipId})`}
+                        />
+                      </g>
+                    );
+                  }
+                  return (
+                    <g key={`icon-${u.userId}`}>
+                      <circle cx={cx} cy={cy} r={ICON_R} fill={color} />
+                      <text
+                        x={cx}
+                        y={cy}
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        fontSize={8}
+                        fill="white"
+                        fontWeight="bold"
+                      >
+                        {u.username.charAt(0).toUpperCase()}
+                      </text>
+                    </g>
+                  );
+                }}
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                activeDot={(props: any) => {
+                  const { cx, cy, index, fill } = props as { cx?: number; cy?: number; index?: number; fill?: string };
+                  if (index === sentinelIndex || cx == null || cy == null) return <g />;
+                  return <circle key={`active-${u.userId}-${index}`} cx={cx} cy={cy} r={4} fill={fill ?? color} stroke="none" />;
+                }}
+                hide={hiddenUsers.has(u.userId)}
+              />
+            );
+          })}
         </LineChart>
       </ResponsiveContainer>
 
