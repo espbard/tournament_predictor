@@ -157,6 +157,18 @@ export interface UserStatSubject {
   imageUrl?: string | null;
 }
 
+export interface LeaderboardProgressionMatch {
+  matchId: string;
+  label: string;
+  stage: string;
+  cumulativePoints: Record<string, number>;
+}
+
+export interface LeaderboardProgressionResponse {
+  matches: LeaderboardProgressionMatch[];
+  users: Array<{ userId: string; username: string; imageUrl?: string | null }>;
+}
+
 export interface UserStatCardData {
   id: string;
   title: string;

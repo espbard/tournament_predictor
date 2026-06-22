@@ -6,13 +6,14 @@ import { useAuthStore } from '@/store/authStore';
 import ImageUpload from '@/components/ImageUpload';
 import KnockoutStageContent from '@/components/KnockoutStageContent';
 import PlayerPodium from '@/components/PlayerPodium';
+import LeaderboardLineGraph from '@/components/LeaderboardLineGraph';
 import UserStatCard from '@/components/UserStatCard';
 import { SoccerKickAnimation } from '@/components/SoccerKickAnimation';
 import { CryingPlayerAnimation } from '@/components/CryingPlayerAnimation';
 import BonusQuestionsTab from './BonusQuestionsTab';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { useT } from '@/lib/useT';
-import type { Competition, Tournament, Prediction, MatchStage, LeaderboardEntry, BracketPredictions, UserStatCardData } from '@tournament-predictor/shared';
+import type { Competition, Tournament, Prediction, MatchStage, LeaderboardEntry, BracketPredictions, UserStatCardData, LeaderboardProgressionResponse } from '@tournament-predictor/shared';
 import {
   sortGroupTeams,
   findGroupDisciplinaryTies,
@@ -110,6 +111,7 @@ export default function CompetitionDetailPage() {
 
   const [currentPredMatchIdx, setCurrentPredMatchIdx] = useState(0);
   const [matchPredictionsCollapsed, setMatchPredictionsCollapsed] = useState(false);
+  const [pointProgressionCollapsed, setPointProgressionCollapsed] = useState(true);
   const [expandedPredKey, setExpandedPredKey] = useState<string | null>(null);
   const [pendingScrollMatchId, setPendingScrollMatchId] = useState<string | null>(null);
   const matchPredictionsRef = useRef<HTMLDivElement>(null);
@@ -187,6 +189,12 @@ export default function CompetitionDetailPage() {
     queryKey: ['competitions', id, 'all-match-predictions', showComparisonUsers],
     queryFn: () => api.get<MatchPredictionEntry[]>(`/competitions/${id}/all-match-predictions${showComparisonUsers ? '?includeComparison=true' : ''}`),
     enabled: !!competition && !user?.isAdmin && (activeTab === 'leaderboard' || !!user?.isLeaderboardUser),
+  });
+
+  const { data: leaderboardProgression } = useQuery({
+    queryKey: ['competitions', id, 'leaderboard-progression'],
+    queryFn: () => api.get<LeaderboardProgressionResponse>(`/competitions/${id}/leaderboard-progression`),
+    enabled: !!competition && activeTab === 'leaderboard',
   });
 
   const { data: userStats = [] } = useQuery({
@@ -2122,6 +2130,23 @@ export default function CompetitionDetailPage() {
               </div>
             );
           })()}
+
+          {/* Point Progression */}
+          {leaderboardProgression && leaderboardProgression.matches.length > 0 && (
+            <div className={`mt-6 ${user?.isLeaderboardUser ? 'tv:hidden' : ''}`}>
+              <button
+                type="button"
+                onClick={() => setPointProgressionCollapsed(c => !c)}
+                className="flex items-center justify-between w-full text-left mb-3"
+              >
+                <h2 className="font-semibold">Point Progression</h2>
+                <span className="text-xs text-muted-foreground">{pointProgressionCollapsed ? '▼' : '▲'}</span>
+              </button>
+              {!pointProgressionCollapsed && (
+                <LeaderboardLineGraph data={leaderboardProgression} />
+              )}
+            </div>
+          )}
         </>
       )}
 
