@@ -67,16 +67,19 @@ export default function Navbar() {
               <img src={currentLang.flag} alt={currentLang.label} className="h-5 w-8 rounded-sm object-cover" />
             </button>
             {langOpen && (
-              <div className="absolute right-0 top-full mt-2 z-50 flex flex-row gap-4 px-4 py-3 rounded-md border border-border bg-popover shadow-md">
+              <div
+                className="absolute right-0 top-full mt-2 z-50 flex flex-row gap-4 px-4 py-3 rounded-md border border-border bg-popover shadow-md"
+                style={{ maxWidth: 'max(350px, 80vw)' }}
+              >
                 {LANGUAGES.map((lang) => (
-                  <button
+                  <img
                     key={lang.code}
-                    onClick={() => { setLanguage(lang.code); setLangOpen(false); }}
-                    className={`flex items-center rounded-sm hover:opacity-80 transition-opacity ${lang.code === language ? 'ring-2 ring-primary' : ''}`}
+                    src={lang.flag}
+                    alt={lang.label}
                     title={lang.label}
-                  >
-                    <img src={lang.flag} alt={lang.label} className="h-8 w-12 rounded-sm object-cover" />
-                  </button>
+                    onClick={() => { setLanguage(lang.code); setLangOpen(false); }}
+                    className={`h-8 w-12 rounded-sm object-cover cursor-pointer hover:opacity-80 transition-opacity ${lang.code === language ? 'ring-2 ring-primary' : ''}`}
+                  />
                 ))}
               </div>
             )}
