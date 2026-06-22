@@ -27,11 +27,13 @@ interface Props {
 export default function LeaderboardLineGraph({ data }: Props) {
   const [hiddenUsers, setHiddenUsers] = useState<Set<string>>(new Set());
   const [frozenTooltip, setFrozenTooltip] = useState<FrozenTooltip | null>(null);
+  // After a dismiss, suppress Recharts' own hover tooltip until the next chart interaction.
+  // On mobile, Recharts never fires mouseleave on tap-away so active stays true internally.
+  const [suppressTooltip, setSuppressTooltip] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Real match data points, plus a sentinel at the end that extends lines to an open tick
   const matchCount = data.matches.length;
-  const sentinelIndex = matchCount; // 0-based index in chartData
+  const sentinelIndex = matchCount;
 
   const chartData = [
     ...data.matches.map((m, i) => {
@@ -68,9 +70,13 @@ export default function LeaderboardLineGraph({ data }: Props) {
     activePayload?: Array<{ dataKey?: unknown; value?: unknown; stroke?: unknown }>;
     activeLabel?: unknown;
   } | null) => {
+    // Any tap/click on the chart lifts the suppress so hover works again
+    setSuppressTooltip(false);
+
     if (!state?.activePayload?.length) { setFrozenTooltip(null); return; }
     const matchIndex = state.activeLabel as number;
-    if (matchIndex > matchCount) return; // ignore sentinel tick
+    if (matchIndex > matchCount) return;
+
     const matchLabel = (chartData[matchIndex - 1]?.matchLabel as string) ?? String(matchIndex);
     const entries: FrozenEntry[] = state.activePayload
       .filter(p => !hiddenUsers.has(p.dataKey as string))
@@ -84,17 +90,19 @@ export default function LeaderboardLineGraph({ data }: Props) {
   }, [chartData, hiddenUsers, matchCount]);
 
   useEffect(() => {
-    const dismiss = (e: MouseEvent | TouchEvent) => {
+    // Use pointerdown in capture phase so:
+    //  (a) it fires for both mouse and touch with a single listener
+    //  (b) capture phase runs before any stopPropagation in the DOM tree
+    const dismiss = (e: PointerEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setFrozenTooltip(null);
+        // Also suppress Recharts' own hover tooltip — on mobile, active never goes
+        // false via mouseleave, so we must explicitly block the content render.
+        setSuppressTooltip(true);
       }
     };
-    document.addEventListener('mousedown', dismiss);
-    document.addEventListener('touchstart', dismiss);
-    return () => {
-      document.removeEventListener('mousedown', dismiss);
-      document.removeEventListener('touchstart', dismiss);
-    };
+    document.addEventListener('pointerdown', dismiss, true);
+    return () => document.removeEventListener('pointerdown', dismiss, true);
   }, []);
 
   const renderTooltip = ({
@@ -123,6 +131,10 @@ export default function LeaderboardLineGraph({ data }: Props) {
         </div>
       );
     }
+
+    // Suppressed after an outside tap — return nothing even if Recharts says active
+    if (suppressTooltip) return null;
+
     const matchIndex = label as number;
     if (!active || !payload?.length || matchIndex > matchCount) return null;
     const matchLabel = (chartData[matchIndex - 1]?.matchLabel as string) ?? String(matchIndex);
@@ -155,6 +167,7 @@ export default function LeaderboardLineGraph({ data }: Props) {
           data={chartData}
           margin={{ top: 5, right: ICON_R + 12, bottom: 5, left: -10 }}
           onClick={handleChartClick}
+          onMouseMove={() => setSuppressTooltip(false)}
         >
           <CartesianGrid strokeDasharray="3 3" stroke="currentColor" strokeOpacity={0.1} />
           <XAxis
