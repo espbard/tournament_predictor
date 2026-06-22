@@ -837,13 +837,61 @@ router.get('/:id/leaderboard-progression', requireAuth, async (req, res) => {
       milestones.push({ matchId: match.id, label: formatMatchLabel(match), stage: match.stage, cumulativePoints: { ...cumulativeTotals } });
     }
 
-    // Bonus + late-addition points at the end
-    const hasExtraPoints = memberRows.some(m => (m.bonusQuestionPoints ?? 0) > 0 || (m.lateAdditionPoints ?? 0) > 0);
-    if (hasExtraPoints) {
+    // Bonus question points at the end
+    const hasBonusPoints = memberRows.some(m => (m.bonusQuestionPoints ?? 0) > 0);
+    if (hasBonusPoints) {
       for (const member of memberRows) {
-        cumulativeTotals[member.userId] += (member.bonusQuestionPoints ?? 0) + (member.lateAdditionPoints ?? 0);
+        cumulativeTotals[member.userId] += (member.bonusQuestionPoints ?? 0);
       }
       milestones.push({ matchId: 'bonus', label: 'Bonus', stage: 'bonus', cumulativePoints: { ...cumulativeTotals } });
+    }
+
+    // Late-addition points: visualise on the milestone just before the user's first real prediction.
+    // We post-process the already-built milestone snapshots so we don't have to restructure the loop above.
+    const lateAdditionUsers = memberRows.filter(m => (m.lateAdditionPoints ?? 0) > 0);
+    if (lateAdditionUsers.length > 0) {
+      // Index the match scheduledAt so we can sort group predictions chronologically
+      const matchScheduledAt = new Map<string, string | null>();
+      for (const m of allMatches) matchScheduledAt.set(m.id, m.scheduledAt);
+
+      for (const member of lateAdditionUsers) {
+        const userId = member.userId;
+        const pts = member.lateAdditionPoints!;
+
+        // Find the earliest completed match for which this user has a non-replacement prediction.
+        // Group stage: rows are in allGroupPreds.
+        let firstPredMatchId: string | null = null;
+        let firstPredTime: number = Infinity;
+
+        for (const pred of allGroupPreds) {
+          if (pred.userId !== userId || pred.isReplacement) continue;
+          const t = matchScheduledAt.get(pred.matchId);
+          const ms = t ? new Date(t).getTime() : Infinity;
+          if (ms < firstPredTime) { firstPredTime = ms; firstPredMatchId = pred.matchId; }
+        }
+
+        // KO stage: bracket prediction covers all KO matches; treat the first completed KO match as the start.
+        const bracketPred = userBracketPredsMap.get(userId);
+        if (bracketPred && Object.keys(bracketPred).length > 0 && completedKoMatches.length > 0) {
+          const firstKo = completedKoMatches[0]; // already sorted by scheduledAt
+          const t = firstKo.scheduledAt ? new Date(firstKo.scheduledAt).getTime() : Infinity;
+          if (t < firstPredTime) { firstPredTime = t; firstPredMatchId = firstKo.id; }
+        }
+
+        // Find where in milestones that first-prediction match sits.
+        const firstMilestoneIdx = firstPredMatchId
+          ? milestones.findIndex(ms => ms.matchId === firstPredMatchId)
+          : -1;
+
+        // Inject from the milestone BEFORE their first prediction (fall back to 0 if it's the very first).
+        const injectionIdx = firstMilestoneIdx > 0 ? firstMilestoneIdx - 1
+                           : firstMilestoneIdx === 0 ? 0
+                           : 0; // no predictions found — show from the start
+
+        for (let i = injectionIdx; i < milestones.length; i++) {
+          milestones[i].cumulativePoints[userId] = (milestones[i].cumulativePoints[userId] ?? 0) + pts;
+        }
+      }
     }
 
     const response: LeaderboardProgressionResponse = {
