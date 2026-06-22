@@ -943,7 +943,7 @@ export default function TournamentDetailPage() {
                 return (
                   <div key={group.id} className="rounded-lg border overflow-hidden">
                     <div className="flex items-center justify-between border-b px-4 py-2.5 bg-muted/30">
-                      <h3 className="font-semibold text-sm">Group {group.name}</h3>
+                      <h3 className="font-semibold text-sm">{t('common.group')} {group.name}</h3>
                       {hasPending && (
                         <span className="text-xs text-amber-600 dark:text-amber-400">{t('tournamentDetail.standings.provisional')}</span>
                       )}
@@ -953,13 +953,13 @@ export default function TournamentDetailPage() {
                         <tr className="border-b text-xs text-muted-foreground">
                           <th className="w-1 py-1.5" />
                           <th className="px-3 py-1.5 text-left w-6">#</th>
-                          <th className="px-3 py-1.5 text-left">Team</th>
-                          <th className="px-2 py-1.5 text-center w-8" title="Played">MP</th>
-                          <th className="px-2 py-1.5 text-center w-8" title="Won">W</th>
-                          <th className="px-2 py-1.5 text-center w-8" title="Drawn">D</th>
-                          <th className="px-2 py-1.5 text-center w-8" title="Lost">L</th>
-                          <th className="px-2 py-1.5 text-center w-8" title="Goal Difference">GD</th>
-                          <th className="px-2 py-1.5 text-center w-10 font-bold" title="Points">Pts</th>
+                          <th className="px-3 py-1.5 text-left">{t('groupTable.team')}</th>
+                          <th className="px-2 py-1.5 text-center w-8">{t('groupTable.played')}</th>
+                          <th className="px-2 py-1.5 text-center w-8">{t('groupTable.won')}</th>
+                          <th className="px-2 py-1.5 text-center w-8">{t('groupTable.drawn')}</th>
+                          <th className="px-2 py-1.5 text-center w-8">{t('groupTable.lost')}</th>
+                          <th className="px-2 py-1.5 text-center w-8">{t('groupTable.gd')}</th>
+                          <th className="px-2 py-1.5 text-center w-10 font-bold">{t('groupTable.pts')}</th>
                         </tr>
                       </thead>
                       <tbody>

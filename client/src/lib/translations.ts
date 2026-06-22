@@ -21,9 +21,22 @@ const translations = {
       saveChanges: 'Save changes',
       failedToSave: 'Failed to save',
       noDate: 'No date',
+      group: 'Group',
+    },
+    groupTable: {
+      team: 'Team',
+      played: 'P',
+      won: 'W',
+      drawn: 'D',
+      lost: 'L',
+      gf: 'GF',
+      ga: 'GA',
+      gd: 'GD',
+      pts: 'Pts',
     },
     nav: {
       logOut: 'Log out',
+      appName: 'Tournament Predictor',
     },
     auth: {
       signIn: 'Sign in',
@@ -113,6 +126,9 @@ const translations = {
         points: 'points',
         inactiveLegend: '= Inactive — missing predictions for recent matches',
         lateAdditionLegend: '= Late addition — joined after the tournament started',
+        showAiUsers: 'Show AI users',
+        showInactiveUsers: 'Show inactive users',
+        matchPredictions: 'Match Predictions',
       },
       predictions: {
         title: 'Predictions',
@@ -180,6 +196,9 @@ const translations = {
         title: 'Tiebreakers need to be resolved.',
         goToGroupTablesLink: 'Group Tables',
         tabNote: 'tab to rank the tied teams before proceeding to the knockout stage.',
+      },
+      pointProgression: {
+        toggleAll: 'Toggle all',
       },
     },
     bonusQuestions: {
@@ -475,9 +494,22 @@ const translations = {
       saveChanges: 'Lagre endringer',
       failedToSave: 'Kunne ikke lagre',
       noDate: 'Ingen dato',
+      group: 'Gruppe',
+    },
+    groupTable: {
+      team: 'Lag',
+      played: 'S',
+      won: 'V',
+      drawn: 'U',
+      lost: 'T',
+      gf: 'MF',
+      ga: 'MM',
+      gd: 'MD',
+      pts: 'P',
     },
     nav: {
       logOut: 'Logg ut',
+      appName: 'Tournament Predictor',
     },
     auth: {
       signIn: 'Logg inn',
@@ -567,6 +599,9 @@ const translations = {
         points: 'poeng',
         inactiveLegend: '= Inaktiv — mangler tips på de siste kampene',
         lateAdditionLegend: '= Sen påmelding — ble med etter at turneringen startet',
+        showAiUsers: 'Vis AI brukere',
+        showInactiveUsers: 'Vis inaktive brukere',
+        matchPredictions: 'Kamptips',
       },
       predictions: {
         title: 'Tips',
@@ -633,6 +668,9 @@ const translations = {
         title: 'Avgjørere må løses.',
         goToGroupTablesLink: 'Gruppetabeller',
         tabNote: 'for å rangere de like lagene før du går til sluttspillet.',
+      },
+      pointProgression: {
+        toggleAll: 'Slå av/på alle',
       },
     },
     bonusQuestions: {
@@ -927,9 +965,22 @@ const translations = {
       saveChanges: 'Änderungen abspeichern',
       failedToSave: 'Speicherung hat komplett versagt',
       noDate: 'Kein Datum vorhanden, leider',
+      group: 'Gruppe',
+    },
+    groupTable: {
+      team: 'Truppe',
+      played: 'Sp',
+      won: 'S',
+      drawn: 'U',
+      lost: 'N',
+      gf: 'T',
+      ga: 'GT',
+      gd: 'TD',
+      pts: 'Pkt',
     },
     nav: {
       logOut: 'Auf Wiedersehen (Ausloggen)',
+      appName: 'Turnier-Wahrsager',
     },
     auth: {
       signIn: 'Einloggen in das System',
@@ -1019,6 +1070,9 @@ const translations = {
         points: 'Punkte',
         inactiveLegend: '= Inaktiv — fehlt Tipps für letzte Spiele',
         lateAdditionLegend: '= Späte Anmeldung — ist nach Turnierstart beigetreten',
+        showAiUsers: 'KI-Phantome einblenden',
+        showInactiveUsers: 'Faulpelze anzeigen',
+        matchPredictions: 'Glaskugel-Weissagungen',
       },
       predictions: {
         title: 'Deine Tipps',
@@ -1085,6 +1139,9 @@ const translations = {
         title: 'Entscheider müssen gelöst werden.',
         goToGroupTablesLink: 'Gruppentabellen',
         tabNote: 'Tab um die gleichplatzierten Teams zu ranken bevor du zur K.o.-Phase gehst.',
+      },
+      pointProgression: {
+        toggleAll: 'Alle auf einmal',
       },
     },
     bonusQuestions: {

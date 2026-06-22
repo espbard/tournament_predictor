@@ -28,25 +28,26 @@ interface MatchWithTeams {
   groupName: string | null;
 }
 
-function stageLabel(stage: MatchStage, groupName?: string | null): string {
-  if (stage === 'group' && groupName) return `Group ${groupName}`;
-  const map: Record<MatchStage, string> = {
-    group: 'Group Stage',
-    round_of_32: 'Round of 32',
-    round_of_16: 'Round of 16',
-    quarter_final: 'Quarter-final',
-    semi_final: 'Semi-final',
-    bronze_final: 'Bronze Final',
-    final: 'Final',
-  };
-  return map[stage] ?? stage;
-}
-
 export default function UserPredictionsPage() {
   const { id, userId } = useParams<{ id: string; userId: string }>();
   const [searchParams] = useSearchParams();
-  const { t } = useT();
+  const { t, language } = useT();
   const { tn } = useTeamName();
+  const dateLocale = { no: 'nb-NO', en: 'en-GB', de: 'de-DE' }[language];
+
+  function stageLabel(stage: MatchStage, groupName?: string | null): string {
+    if (stage === 'group' && groupName) return `${t('common.group')} ${groupName}`;
+    const map: Record<MatchStage, string> = {
+      group: t('stages.group'),
+      round_of_32: t('stages.round_of_32'),
+      round_of_16: t('stages.round_of_16'),
+      quarter_final: t('stages.quarter_final'),
+      semi_final: t('stages.semi_final'),
+      bronze_final: t('stages.bronze_final'),
+      final: t('stages.final'),
+    };
+    return map[stage] ?? stage;
+  }
 
   const [activeTab, setActiveTab] = useState<'group' | 'tables' | 'knockout' | 'bonus'>(
     searchParams.get('tab') === 'bonus' ? 'bonus' :
@@ -345,7 +346,7 @@ export default function UserPredictionsPage() {
                       </p>
                       {match.scheduledAt && (
                         <p className="text-xs text-muted-foreground mt-0.5">
-                          {new Date(match.scheduledAt).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}
+                          {new Date(match.scheduledAt).toLocaleDateString(dateLocale, { weekday: 'short', day: 'numeric', month: 'short' })}
                           {' · '}
                           {new Date(match.scheduledAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
                         </p>

@@ -48,7 +48,7 @@ export default function Navbar() {
     <nav className="bg-primary px-4 py-3">
       <div className="mx-auto flex max-w-5xl items-center justify-between">
         <Link to="/" className="text-base font-semibold text-primary-foreground hover:opacity-80">
-          Tournament Predictor
+          {t('nav.appName')}
         </Link>
         <div className="flex items-center gap-3">
           <button

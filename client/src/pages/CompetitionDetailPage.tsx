@@ -79,6 +79,7 @@ export default function CompetitionDetailPage() {
   const navigate = useNavigate();
   const { t, language } = useT();
   const { tn } = useTeamName();
+  const dateLocale = { no: 'nb-NO', en: 'en-GB', de: 'de-DE' }[language];
 
   const [editName, setEditName] = useState('');
   const [editImageUrl, setEditImageUrl] = useState<string | null>(null);
@@ -839,7 +840,7 @@ export default function CompetitionDetailPage() {
   }
 
   const stageLabel = (stage: MatchStage, groupName?: string | null) => {
-    if (stage === 'group' && groupName) return `Group ${groupName}`;
+    if (stage === 'group' && groupName) return `${t('common.group')} ${groupName}`;
     const map: Record<MatchStage, string> = {
       group: t('stages.group'),
       round_of_32: t('stages.round_of_32'),
@@ -1079,20 +1080,20 @@ export default function CompetitionDetailPage() {
                     <div key={groupName} className="space-y-3">
                       <div className="rounded-lg border dark:bg-white/5 p-2">
                         <div className="bg-muted/50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                          Group {groupName}
+                          {t('common.group')} {groupName}
                         </div>
                         <table className="w-full text-xs">
                           <thead>
                             <tr className="border-b text-muted-foreground">
                               <th className="pl-3 py-1.5 text-left w-6">#</th>
-                              <th className="py-1.5 text-left">Team</th>
-                              <th className="py-1.5 text-center w-6">P</th>
-                              <th className="py-1.5 text-center w-6">W</th>
-                              <th className="py-1.5 text-center w-6">D</th>
-                              <th className="py-1.5 text-center w-6">L</th>
-                              <th className="py-1.5 text-center w-8">GF</th>
-                              <th className="py-1.5 text-center w-8">GA</th>
-                              <th className="py-1.5 text-center w-8 font-bold text-foreground">Pts</th>
+                              <th className="py-1.5 text-left">{t('groupTable.team')}</th>
+                              <th className="py-1.5 text-center w-6">{t('groupTable.played')}</th>
+                              <th className="py-1.5 text-center w-6">{t('groupTable.won')}</th>
+                              <th className="py-1.5 text-center w-6">{t('groupTable.drawn')}</th>
+                              <th className="py-1.5 text-center w-6">{t('groupTable.lost')}</th>
+                              <th className="py-1.5 text-center w-8">{t('groupTable.gf')}</th>
+                              <th className="py-1.5 text-center w-8">{t('groupTable.ga')}</th>
+                              <th className="py-1.5 text-center w-8 font-bold text-foreground">{t('groupTable.pts')}</th>
                               <th className="pr-3 py-1.5 w-12" />
                             </tr>
                           </thead>
@@ -1446,7 +1447,7 @@ export default function CompetitionDetailPage() {
                     </p>
                     {match.scheduledAt && (
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        {new Date(match.scheduledAt).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}
+                        {new Date(match.scheduledAt).toLocaleDateString(dateLocale, { weekday: 'short', day: 'numeric', month: 'short' })}
                         {' · '}
                         {new Date(match.scheduledAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
                       </p>
@@ -1682,7 +1683,7 @@ export default function CompetitionDetailPage() {
                 onChange={e => setShowComparisonUsers(e.target.checked)}
                 className="rounded"
               />
-              {language === 'no' ? 'Vis AI brukere' : 'Show AI users'}
+              {t('competitionDetail.leaderboard.showAiUsers')}
             </label>
             <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
               <input
@@ -1691,7 +1692,7 @@ export default function CompetitionDetailPage() {
                 onChange={e => setShowInactiveUsers(e.target.checked)}
                 className="rounded"
               />
-              {language === 'no' ? 'Vis inaktive brukere' : 'Show inactive users'}
+              {t('competitionDetail.leaderboard.showInactiveUsers')}
             </label>
           </div>
           {leaderboardLoading ? (
@@ -1926,7 +1927,7 @@ export default function CompetitionDetailPage() {
                   onClick={() => setMatchPredictionsCollapsed(c => !c)}
                   className="flex items-center justify-between w-full text-left mb-3"
                 >
-                  <h2 className="font-semibold">Match Predictions</h2>
+                  <h2 className="font-semibold">{t('competitionDetail.leaderboard.matchPredictions')}</h2>
                   <span className="text-xs text-muted-foreground">{matchPredictionsCollapsed ? '▼' : '▲'}</span>
                 </button>
 
@@ -1985,7 +1986,7 @@ export default function CompetitionDetailPage() {
                           </p>
                           {match.scheduledAt && (
                             <p className="text-xs text-muted-foreground mt-0.5">
-                              {new Date(match.scheduledAt).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}
+                              {new Date(match.scheduledAt).toLocaleDateString(dateLocale, { weekday: 'short', day: 'numeric', month: 'short' })}
                             </p>
                           )}
                           <p className="text-xs text-muted-foreground mt-0.5">
@@ -2200,7 +2201,7 @@ export default function CompetitionDetailPage() {
                 onChange={e => setShowComparisonUsers(e.target.checked)}
                 className="rounded"
               />
-              {language === 'no' ? 'Vis AI brukere' : 'Show AI users'}
+              {t('competitionDetail.leaderboard.showAiUsers')}
             </label>
             <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
               <input
@@ -2209,7 +2210,7 @@ export default function CompetitionDetailPage() {
                 onChange={e => setShowInactiveUsers(e.target.checked)}
                 className="rounded"
               />
-              {language === 'no' ? 'Vis inaktive brukere' : 'Show inactive users'}
+              {t('competitionDetail.leaderboard.showInactiveUsers')}
             </label>
           </div>
           {leaderboardProgression && leaderboardProgression.matches.length > 0 ? (
