@@ -58,13 +58,13 @@ export default function Navbar() {
           >
             {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
           </button>
-          <div ref={langRef} className="relative">
+          <div ref={langRef} className="relative flex items-center">
             <button
               onClick={() => setLangOpen((o) => !o)}
-              className="overflow-hidden rounded-sm hover:opacity-80"
+              className="flex items-center hover:opacity-80"
               title={currentLang.label}
             >
-              <img src={currentLang.flag} alt={currentLang.label} className="block h-6 w-9 object-cover" />
+              <img src={currentLang.flag} alt={currentLang.label} className="h-5 w-8 rounded-sm object-cover" />
             </button>
             {langOpen && (
               <div className="absolute right-0 top-full mt-2 z-50 flex flex-row gap-4 px-4 py-3 rounded-md border border-border bg-popover shadow-md">
@@ -72,10 +72,10 @@ export default function Navbar() {
                   <button
                     key={lang.code}
                     onClick={() => { setLanguage(lang.code); setLangOpen(false); }}
-                    className={`overflow-hidden rounded-sm hover:opacity-80 transition-opacity ${lang.code === language ? 'ring-2 ring-primary' : ''}`}
+                    className={`flex items-center rounded-sm hover:opacity-80 transition-opacity ${lang.code === language ? 'ring-2 ring-primary' : ''}`}
                     title={lang.label}
                   >
-                    <img src={lang.flag} alt={lang.label} className="block h-8 w-12 object-cover" />
+                    <img src={lang.flag} alt={lang.label} className="h-8 w-12 rounded-sm object-cover" />
                   </button>
                 ))}
               </div>
