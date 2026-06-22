@@ -91,8 +91,8 @@ export default function CompetitionDetailPage() {
   const [saveErrors, setSaveErrors] = useState<Record<string, string>>({});
 
   const [searchParams, setSearchParams] = useSearchParams();
-  type TabId = 'group' | 'tables' | 'knockout' | 'bonus' | 'leaderboard' | 'userStats';
-  const VALID_TABS: TabId[] = ['group', 'tables', 'knockout', 'bonus', 'leaderboard', 'userStats'];
+  type TabId = 'group' | 'tables' | 'knockout' | 'bonus' | 'leaderboard' | 'pointProgression' | 'userStats';
+  const VALID_TABS: TabId[] = ['group', 'tables', 'knockout', 'bonus', 'leaderboard', 'pointProgression', 'userStats'];
   const tabParam = searchParams.get('tab') as TabId | null;
   const activeTab: TabId = VALID_TABS.includes(tabParam!)
     ? tabParam!
@@ -111,7 +111,6 @@ export default function CompetitionDetailPage() {
 
   const [currentPredMatchIdx, setCurrentPredMatchIdx] = useState(0);
   const [matchPredictionsCollapsed, setMatchPredictionsCollapsed] = useState(false);
-  const [pointProgressionCollapsed, setPointProgressionCollapsed] = useState(true);
   const [expandedPredKey, setExpandedPredKey] = useState<string | null>(null);
   const [pendingScrollMatchId, setPendingScrollMatchId] = useState<string | null>(null);
   const matchPredictionsRef = useRef<HTMLDivElement>(null);
@@ -194,7 +193,7 @@ export default function CompetitionDetailPage() {
   const { data: leaderboardProgression } = useQuery({
     queryKey: ['competitions', id, 'leaderboard-progression'],
     queryFn: () => api.get<LeaderboardProgressionResponse>(`/competitions/${id}/leaderboard-progression`),
-    enabled: !!competition && activeTab === 'leaderboard',
+    enabled: !!competition && activeTab === 'pointProgression',
   });
 
   const { data: userStats = [] } = useQuery({
@@ -1010,6 +1009,7 @@ export default function CompetitionDetailPage() {
           ['knockout', t('competitionDetail.tabs.knockoutStage')],
           ['bonus', t('competitionDetail.tabs.bonusQuestions')],
           ['leaderboard', t('competitionDetail.tabs.leaderboard')],
+          ['pointProgression', t('competitionDetail.tabs.pointProgression')],
           ['userStats', t('competitionDetail.tabs.userStats')],
         ] as const).map(([tab, label]) => (
           <button
@@ -2131,26 +2131,22 @@ export default function CompetitionDetailPage() {
             );
           })()}
 
-          {/* Point Progression */}
-          {leaderboardProgression && leaderboardProgression.matches.length > 0 && (
-            <div className={`mt-6 ${user?.isLeaderboardUser ? 'tv:hidden' : ''}`}>
-              <button
-                type="button"
-                onClick={() => setPointProgressionCollapsed(c => !c)}
-                className="flex items-center justify-between w-full text-left mb-3"
-              >
-                <h2 className="font-semibold">Point Progression</h2>
-                <span className="text-xs text-muted-foreground">{pointProgressionCollapsed ? '▼' : '▲'}</span>
-              </button>
-              {!pointProgressionCollapsed && (
-                <LeaderboardLineGraph data={leaderboardProgression} />
-              )}
-            </div>
-          )}
         </>
       )}
 
       </div>
+
+      {activeTab === 'pointProgression' && (
+        <div>
+          {leaderboardProgression && leaderboardProgression.matches.length > 0 ? (
+            <LeaderboardLineGraph data={leaderboardProgression} />
+          ) : (
+            <p className="text-sm text-muted-foreground py-4 text-center">
+              {language === 'no' ? 'Ingen kamper er fullført ennå.' : 'No matches completed yet.'}
+            </p>
+          )}
+        </div>
+      )}
 
       {activeTab === 'userStats' && (
         <div className="space-y-6">
