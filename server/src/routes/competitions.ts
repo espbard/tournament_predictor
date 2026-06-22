@@ -562,6 +562,8 @@ router.get('/:id/leaderboard-progression', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const user = res.locals.user;
+    const includeComparison = req.query.includeComparison === 'true';
+    const includeInactive = req.query.includeInactive === 'true';
 
     const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
     if (!competition) return res.status(404).json({ error: 'Competition not found' });
@@ -600,11 +602,9 @@ router.get('/:id/leaderboard-progression', requireAuth, async (req, res) => {
       .from(competitionMembers)
       .innerJoin(users, eq(competitionMembers.userId, users.id))
       .where(
-        and(
-          eq(competitionMembers.competitionId, id),
-          eq(users.isLeaderboardUser, false),
-          eq(users.isComparisonUser, false),
-        ),
+        includeComparison
+          ? and(eq(competitionMembers.competitionId, id), eq(users.isLeaderboardUser, false))
+          : and(eq(competitionMembers.competitionId, id), eq(users.isLeaderboardUser, false), eq(users.isComparisonUser, false)),
       );
 
     // Filter out inactive users (no predictions in the 5 most recent completed matches)
@@ -614,7 +614,7 @@ router.get('/:id/leaderboard-progression', requireAuth, async (req, res) => {
       .where(and(eq(matches.tournamentId, competition.tournamentId), eq(matches.status, 'completed')))
       .orderBy(desc(matches.scheduledAt))
       .limit(5);
-    if (recentCompletedForProgression.length >= 5) {
+    if (!includeInactive && recentCompletedForProgression.length >= 5) {
       const recentIds = recentCompletedForProgression.map(m => m.id);
       const allMemberIds = memberRows.map(m => m.userId);
       const activePredRows = await db

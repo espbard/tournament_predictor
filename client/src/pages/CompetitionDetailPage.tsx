@@ -105,6 +105,7 @@ export default function CompetitionDetailPage() {
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [showComparisonUsers, setShowComparisonUsers] = useState(false);
+  const [showInactiveUsers, setShowInactiveUsers] = useState(false);
 
   const [hasDeclined, setHasDeclined] = useState(false);
   const [showProceedPrompt, setShowProceedPrompt] = useState(false);
@@ -193,8 +194,14 @@ export default function CompetitionDetailPage() {
   });
 
   const { data: leaderboardProgression } = useQuery({
-    queryKey: ['competitions', id, 'leaderboard-progression'],
-    queryFn: () => api.get<LeaderboardProgressionResponse>(`/competitions/${id}/leaderboard-progression`),
+    queryKey: ['competitions', id, 'leaderboard-progression', showComparisonUsers, showInactiveUsers],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (showComparisonUsers) params.set('includeComparison', 'true');
+      if (showInactiveUsers) params.set('includeInactive', 'true');
+      const qs = params.toString();
+      return api.get<LeaderboardProgressionResponse>(`/competitions/${id}/leaderboard-progression${qs ? `?${qs}` : ''}`);
+    },
     enabled: !!competition && activeTab === 'pointProgression',
   });
 
@@ -1665,8 +1672,8 @@ export default function CompetitionDetailPage() {
 
       {activeTab === 'leaderboard' && (
         <>
-          {user?.isTestAccount && (
-            <label className="flex items-center gap-2 mb-3 text-sm text-muted-foreground cursor-pointer select-none">
+          <div className="flex flex-wrap gap-4 mb-3">
+            <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={showComparisonUsers}
@@ -1675,13 +1682,24 @@ export default function CompetitionDetailPage() {
               />
               {language === 'no' ? 'Vis AI brukere' : 'Show AI users'}
             </label>
-          )}
+            <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={showInactiveUsers}
+                onChange={e => setShowInactiveUsers(e.target.checked)}
+                className="rounded"
+              />
+              {language === 'no' ? 'Vis inaktive brukere' : 'Show inactive users'}
+            </label>
+          </div>
           {leaderboardLoading ? (
             <LoadingSpinner />
           ) : leaderboard.length === 0 ? (
             <p className="text-sm text-muted-foreground py-4 text-center">{t('competitionDetail.leaderboard.noScores')}</p>
           ) : (() => {
-          const rankEntries = (showComparisonUsers ? leaderboard : leaderboard.filter(e => !e.isComparisonUser)).filter(e => !e.inactive);
+          const rankEntries = leaderboard
+            .filter(e => showComparisonUsers || !e.isComparisonUser)
+            .filter(e => showInactiveUsers || !e.inactive);
           const lastActiveRank = rankEntries.length > 0 ? rankEntries[rankEntries.length - 1].rank : 0;
           const rankColor = (rank: number) => {
             if (rank === 1) return 'text-yellow-500';
@@ -1746,9 +1764,9 @@ export default function CompetitionDetailPage() {
                     const isComparison = entry.isComparisonUser;
                     const b = entry.breakdown;
                     return (
-                      <tr key={entry.userId} className={isComparison && !showComparisonUsers ? 'opacity-60 italic bg-muted/30' : `${rowBg(entry.rank) || (isMe ? 'bg-primary/5' : '')}${isComparison ? ' italic opacity-80' : ''}`}>
-                        <td className={`pl-3 pr-2 py-2.5 font-bold text-center ${isComparison && !showComparisonUsers ? 'text-muted-foreground' : rankColor(entry.rank)}`}>
-                          {isComparison && !showComparisonUsers ? '—' : entry.rank}
+                      <tr key={entry.userId} className={`${rowBg(entry.rank) || (isMe ? 'bg-primary/5' : '')}${isComparison ? ' italic opacity-80' : ''}${entry.inactive ? ' opacity-60' : ''}`}>
+                        <td className={`pl-3 pr-2 py-2.5 font-bold text-center ${rankColor(entry.rank)}`}>
+                          {entry.rank}
                         </td>
                         <td className="px-3 py-2.5">
                           <Link to={`/competitions/${id}/predictions/${entry.userId}`} className="flex items-center gap-2 min-w-0 hover:opacity-80 transition-opacity">
@@ -1759,6 +1777,7 @@ export default function CompetitionDetailPage() {
                               {isComparison && <span className="ml-1 font-normal text-muted-foreground not-italic">(AI)</span>}
                             </span>
                             {entry.isLateAddition && <span className="inline-block w-2 h-2 rounded-full bg-yellow-400 flex-shrink-0" title={t('competitionDetail.leaderboard.lateAdditionLegend')} />}
+                            {entry.inactive && <span className="inline-block w-2 h-2 rounded-full bg-red-500 flex-shrink-0" title={t('competitionDetail.leaderboard.inactiveLegend')} />}
                           </Link>
                         </td>
                         <td className="px-2 py-2.5 text-center font-bold text-sm border-r">{entry.totalPoints}</td>
@@ -1784,7 +1803,7 @@ export default function CompetitionDetailPage() {
               const renderRows = (entries: typeof leaderboard) => entries.map((entry) => {
                 const b = entry.breakdown;
                 return (
-                  <tr key={entry.userId} className={rowBg(entry.rank)}>
+                  <tr key={entry.userId} className={`${rowBg(entry.rank)}${entry.inactive ? ' opacity-60' : ''}`}>
                     <td className={`pl-4 pr-3 py-3 font-bold text-center text-base ${rankColor(entry.rank)}`}>
                       {entry.rank}
                     </td>
@@ -1793,6 +1812,7 @@ export default function CompetitionDetailPage() {
                         <UserAvatar username={entry.username} imageUrl={entry.imageUrl} iconColor={entry.iconColor} className="h-7 w-7 flex-shrink-0" />
                         <span className="font-medium text-base truncate">{entry.username}</span>
                         {entry.isLateAddition && <span className="inline-block w-2 h-2 rounded-full bg-yellow-400 flex-shrink-0" />}
+                        {entry.inactive && <span className="inline-block w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />}
                       </Link>
                     </td>
                     <td className="px-3 py-3 text-center font-bold text-base border-r">{entry.totalPoints}</td>
@@ -1852,6 +1872,12 @@ export default function CompetitionDetailPage() {
               <p className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground mt-3">
                 <span className="inline-block w-2 h-2 rounded-full bg-yellow-400 flex-shrink-0" />
                 {t('competitionDetail.leaderboard.lateAdditionLegend')}
+              </p>
+            )}
+            {showInactiveUsers && leaderboard.some(e => e.inactive) && (
+              <p className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground mt-3">
+                <span className="inline-block w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />
+                {t('competitionDetail.leaderboard.inactiveLegend')}
               </p>
             )}
           </>);
@@ -2164,6 +2190,26 @@ export default function CompetitionDetailPage() {
 
       {activeTab === 'pointProgression' && (
         <div>
+          <div className="flex flex-wrap gap-4 mb-3">
+            <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={showComparisonUsers}
+                onChange={e => setShowComparisonUsers(e.target.checked)}
+                className="rounded"
+              />
+              {language === 'no' ? 'Vis AI brukere' : 'Show AI users'}
+            </label>
+            <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={showInactiveUsers}
+                onChange={e => setShowInactiveUsers(e.target.checked)}
+                className="rounded"
+              />
+              {language === 'no' ? 'Vis inaktive brukere' : 'Show inactive users'}
+            </label>
+          </div>
           {leaderboardProgression && leaderboardProgression.matches.length > 0 ? (
             <LeaderboardLineGraph data={leaderboardProgression} />
           ) : (
