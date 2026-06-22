@@ -19,13 +19,15 @@ import EditTournamentPage from '@/pages/EditTournamentPage';
 import EditTeamPage from '@/pages/EditTeamPage';
 import TournamentKnockoutPage from '@/pages/TournamentKnockoutPage';
 import MaintenancePage from '@/pages/MaintenancePage';
+import AdminFeedbackPage from '@/pages/AdminFeedbackPage';
+import FeedbackButton from '@/components/FeedbackButton';
 
 function PrivateRoute({ children, maintenanceMode }: { children: React.ReactNode; maintenanceMode: boolean }) {
   const { user, isLoading } = useAuthStore();
   if (isLoading) return null;
   if (!user) return <Navigate to="/login" replace />;
   if (maintenanceMode && !user.isAdmin && !user.isTestAccount) return <MaintenancePage />;
-  return <AppLayout>{children}</AppLayout>;
+  return <AppLayout>{children}<FeedbackButton /></AppLayout>;
 }
 
 function AdminRoute({ children }: { children: React.ReactNode }) {
@@ -148,6 +150,14 @@ export default function App() {
         element={
           <AdminRoute>
             <EditTeamPage />
+          </AdminRoute>
+        }
+      />
+      <Route
+        path="/admin/feedback"
+        element={
+          <AdminRoute>
+            <AdminFeedbackPage />
           </AdminRoute>
         }
       />

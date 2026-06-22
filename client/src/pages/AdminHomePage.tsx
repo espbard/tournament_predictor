@@ -75,6 +75,13 @@ export default function AdminHomePage({ maintenanceMode }: Props) {
           <h2 className="mb-1 font-semibold">{t('admin.competitions')}</h2>
           <p className="text-sm text-muted-foreground">{t('admin.competitionsDesc')}</p>
         </Link>
+        <Link
+          to="/admin/feedback"
+          className="rounded-lg border p-5 transition-colors hover:bg-muted"
+        >
+          <h2 className="mb-1 font-semibold">{t('feedback.adminTitle')}</h2>
+          <p className="text-sm text-muted-foreground">{t('feedback.adminDesc')}</p>
+        </Link>
       </div>
 
       <div className="mt-8 rounded-lg border p-5">

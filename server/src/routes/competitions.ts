@@ -562,6 +562,8 @@ router.get('/:id/leaderboard-progression', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const user = res.locals.user;
+    const includeComparison = req.query.includeComparison === 'true';
+    const includeInactive = req.query.includeInactive === 'true';
 
     const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
     if (!competition) return res.status(404).json({ error: 'Competition not found' });
@@ -585,7 +587,7 @@ router.get('/:id/leaderboard-progression', requireAuth, async (req, res) => {
     const tournamentGroupDisciplinaryChoices = knockoutCfg?.groupDisciplinaryChoices ?? {};
 
     // Fetch members (exclude leaderboard/comparison/test accounts)
-    const memberRows = await db
+    let memberRows = await db
       .select({
         userId: users.id,
         username: users.username,
@@ -600,12 +602,32 @@ router.get('/:id/leaderboard-progression', requireAuth, async (req, res) => {
       .from(competitionMembers)
       .innerJoin(users, eq(competitionMembers.userId, users.id))
       .where(
-        and(
-          eq(competitionMembers.competitionId, id),
-          eq(users.isLeaderboardUser, false),
-          eq(users.isComparisonUser, false),
-        ),
+        includeComparison
+          ? and(eq(competitionMembers.competitionId, id), eq(users.isLeaderboardUser, false))
+          : and(eq(competitionMembers.competitionId, id), eq(users.isLeaderboardUser, false), eq(users.isComparisonUser, false)),
       );
+
+    // Filter out inactive users (no predictions in the 5 most recent completed matches)
+    const recentCompletedForProgression = await db
+      .select({ id: matches.id })
+      .from(matches)
+      .where(and(eq(matches.tournamentId, competition.tournamentId), eq(matches.status, 'completed')))
+      .orderBy(desc(matches.scheduledAt))
+      .limit(5);
+    if (!includeInactive && recentCompletedForProgression.length >= 5) {
+      const recentIds = recentCompletedForProgression.map(m => m.id);
+      const allMemberIds = memberRows.map(m => m.userId);
+      const activePredRows = await db
+        .select({ userId: predictions.userId })
+        .from(predictions)
+        .where(and(
+          eq(predictions.competitionId, id),
+          inArray(predictions.matchId, recentIds),
+          inArray(predictions.userId, allMemberIds),
+        ));
+      const activeUserIds = new Set(activePredRows.map(p => p.userId));
+      memberRows = memberRows.filter(m => activeUserIds.has(m.userId));
+    }
 
     const memberIds = memberRows.map(m => m.userId);
     if (memberIds.length === 0) {
@@ -815,13 +837,61 @@ router.get('/:id/leaderboard-progression', requireAuth, async (req, res) => {
       milestones.push({ matchId: match.id, label: formatMatchLabel(match), stage: match.stage, cumulativePoints: { ...cumulativeTotals } });
     }
 
-    // Bonus + late-addition points at the end
-    const hasExtraPoints = memberRows.some(m => (m.bonusQuestionPoints ?? 0) > 0 || (m.lateAdditionPoints ?? 0) > 0);
-    if (hasExtraPoints) {
+    // Bonus question points at the end
+    const hasBonusPoints = memberRows.some(m => (m.bonusQuestionPoints ?? 0) > 0);
+    if (hasBonusPoints) {
       for (const member of memberRows) {
-        cumulativeTotals[member.userId] += (member.bonusQuestionPoints ?? 0) + (member.lateAdditionPoints ?? 0);
+        cumulativeTotals[member.userId] += (member.bonusQuestionPoints ?? 0);
       }
       milestones.push({ matchId: 'bonus', label: 'Bonus', stage: 'bonus', cumulativePoints: { ...cumulativeTotals } });
+    }
+
+    // Late-addition points: visualise on the milestone just before the user's first real prediction.
+    // We post-process the already-built milestone snapshots so we don't have to restructure the loop above.
+    const lateAdditionUsers = memberRows.filter(m => (m.lateAdditionPoints ?? 0) > 0);
+    if (lateAdditionUsers.length > 0) {
+      // Index the match scheduledAt so we can sort group predictions chronologically
+      const matchScheduledAt = new Map<string, string | null>();
+      for (const m of allMatches) matchScheduledAt.set(m.id, m.scheduledAt);
+
+      for (const member of lateAdditionUsers) {
+        const userId = member.userId;
+        const pts = member.lateAdditionPoints!;
+
+        // Find the earliest completed match for which this user has a non-replacement prediction.
+        // Group stage: rows are in allGroupPreds.
+        let firstPredMatchId: string | null = null;
+        let firstPredTime: number = Infinity;
+
+        for (const pred of allGroupPreds) {
+          if (pred.userId !== userId || pred.isReplacement) continue;
+          const t = matchScheduledAt.get(pred.matchId);
+          const ms = t ? new Date(t).getTime() : Infinity;
+          if (ms < firstPredTime) { firstPredTime = ms; firstPredMatchId = pred.matchId; }
+        }
+
+        // KO stage: bracket prediction covers all KO matches; treat the first completed KO match as the start.
+        const bracketPred = userBracketPredsMap.get(userId);
+        if (bracketPred && Object.keys(bracketPred).length > 0 && completedKoMatches.length > 0) {
+          const firstKo = completedKoMatches[0]; // already sorted by scheduledAt
+          const t = firstKo.scheduledAt ? new Date(firstKo.scheduledAt).getTime() : Infinity;
+          if (t < firstPredTime) { firstPredTime = t; firstPredMatchId = firstKo.id; }
+        }
+
+        // Find where in milestones that first-prediction match sits.
+        const firstMilestoneIdx = firstPredMatchId
+          ? milestones.findIndex(ms => ms.matchId === firstPredMatchId)
+          : -1;
+
+        // Inject from the milestone BEFORE their first prediction (fall back to 0 if it's the very first).
+        const injectionIdx = firstMilestoneIdx > 0 ? firstMilestoneIdx - 1
+                           : firstMilestoneIdx === 0 ? 0
+                           : 0; // no predictions found — show from the start
+
+        for (let i = injectionIdx; i < milestones.length; i++) {
+          milestones[i].cumulativePoints[userId] = (milestones[i].cumulativePoints[userId] ?? 0) + pts;
+        }
+      }
     }
 
     const response: LeaderboardProgressionResponse = {
@@ -884,8 +954,8 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
       )
       .where(
         includeComparison
-          ? and(eq(predictions.competitionId, id), eq(matches.status, 'completed'), eq(users.isLeaderboardUser, false))
-          : and(eq(predictions.competitionId, id), eq(matches.status, 'completed'), eq(users.isLeaderboardUser, false), eq(users.isComparisonUser, false))
+          ? and(eq(predictions.competitionId, id), eq(users.isLeaderboardUser, false))
+          : and(eq(predictions.competitionId, id), eq(users.isLeaderboardUser, false), eq(users.isComparisonUser, false))
       );
 
     type PredBreakdown = {

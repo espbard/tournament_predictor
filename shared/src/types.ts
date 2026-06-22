@@ -191,6 +191,20 @@ export interface Player {
   goalsScored: number;
 }
 
+export type FeedbackType = 'feature_request' | 'improvement' | 'bug';
+export type FeedbackStatus = 'pending' | 'will_do' | 'implemented' | 'fixed' | 'wont_do';
+
+export interface Feedback {
+  id: string;
+  userId: string;
+  username?: string;
+  type: FeedbackType;
+  message: string;
+  status: FeedbackStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface BonusAnswer {
   id: string;
   questionId: string;

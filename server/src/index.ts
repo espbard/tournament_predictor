@@ -14,6 +14,7 @@ import { uploadRouter } from './routes/upload';
 import { imagesRouter } from './routes/images';
 import { competitionsRouter } from './routes/competitions';
 import { settingsRouter } from './routes/settings';
+import { feedbackRouter } from './routes/feedback';
 
 const app = express();
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
@@ -39,6 +40,7 @@ app.use('/api/upload', uploadRouter);
 app.use('/api/images', imagesRouter);
 app.use('/api/competitions', competitionsRouter);
 app.use('/api/settings', settingsRouter);
+app.use('/api/feedback', feedbackRouter);
 
 // Serve built React app in production
 if (process.env.NODE_ENV === 'production') {
@@ -70,6 +72,20 @@ async function start() {
   await db.execute(sql`ALTER TABLE competitions ADD COLUMN IF NOT EXISTS "allow_late_additions" boolean NOT NULL DEFAULT true`);
   // Defensive: ensure icon_color column exists regardless of migration state
   await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS "icon_color" text`);
+  // Defensive: ensure feedback table and enums exist regardless of migration state
+  await db.execute(sql`DO $$ BEGIN CREATE TYPE "feedback_type" AS ENUM ('feature_request', 'improvement', 'bug'); EXCEPTION WHEN duplicate_object THEN null; END $$`);
+  await db.execute(sql`DO $$ BEGIN CREATE TYPE "feedback_status" AS ENUM ('pending', 'will_do', 'implemented', 'fixed', 'wont_do'); EXCEPTION WHEN duplicate_object THEN null; END $$`);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "feedback" (
+      "id" text PRIMARY KEY NOT NULL,
+      "user_id" text NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+      "type" "feedback_type" NOT NULL,
+      "message" text NOT NULL,
+      "status" "feedback_status" NOT NULL DEFAULT 'pending',
+      "created_at" timestamp NOT NULL DEFAULT now(),
+      "updated_at" timestamp NOT NULL DEFAULT now()
+    )
+  `);
   // Defensive: ensure players table exists regardless of migration state
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS "players" (

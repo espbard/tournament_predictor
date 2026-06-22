@@ -33,6 +33,10 @@ export const matchStatusEnum = pgEnum('match_status', ['scheduled', 'completed']
 
 export const bonusAnswerTypeEnum = pgEnum('bonus_answer_type', ['text', 'number', 'player', 'team', 'yes_no']);
 
+export const feedbackTypeEnum = pgEnum('feedback_type', ['feature_request', 'improvement', 'bug']);
+
+export const feedbackStatusEnum = pgEnum('feedback_status', ['pending', 'will_do', 'implemented', 'fixed', 'wont_do']);
+
 // ── Tables ────────────────────────────────────────────────────────────────────
 
 export const appConfig = pgTable('app_config', {
@@ -203,6 +207,18 @@ export const players = pgTable('players', {
   name: text('name').notNull(),
   gamesPlayed: integer('games_played').notNull().default(0),
   goalsScored: integer('goals_scored').notNull().default(0),
+});
+
+export const feedback = pgTable('feedback', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  type: feedbackTypeEnum('type').notNull(),
+  message: text('message').notNull(),
+  status: feedbackStatusEnum('status').notNull().default('pending'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 
 export const bonusAnswers = pgTable('bonus_answers', {

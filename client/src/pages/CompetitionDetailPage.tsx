@@ -105,6 +105,7 @@ export default function CompetitionDetailPage() {
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [showComparisonUsers, setShowComparisonUsers] = useState(false);
+  const [showInactiveUsers, setShowInactiveUsers] = useState(false);
 
   const [hasDeclined, setHasDeclined] = useState(false);
   const [showProceedPrompt, setShowProceedPrompt] = useState(false);
@@ -193,8 +194,14 @@ export default function CompetitionDetailPage() {
   });
 
   const { data: leaderboardProgression } = useQuery({
-    queryKey: ['competitions', id, 'leaderboard-progression'],
-    queryFn: () => api.get<LeaderboardProgressionResponse>(`/competitions/${id}/leaderboard-progression`),
+    queryKey: ['competitions', id, 'leaderboard-progression', showComparisonUsers, showInactiveUsers],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (showComparisonUsers) params.set('includeComparison', 'true');
+      if (showInactiveUsers) params.set('includeInactive', 'true');
+      const qs = params.toString();
+      return api.get<LeaderboardProgressionResponse>(`/competitions/${id}/leaderboard-progression${qs ? `?${qs}` : ''}`);
+    },
     enabled: !!competition && activeTab === 'pointProgression',
   });
 
@@ -451,12 +458,24 @@ export default function CompetitionDetailPage() {
     [matchList]
   );
 
+  const allMatchesSorted = useMemo(
+    () => [...matchList].sort((a, b) => {
+      if (!a.scheduledAt && !b.scheduledAt) return 0;
+      if (!a.scheduledAt) return 1;
+      if (!b.scheduledAt) return -1;
+      return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
+    }),
+    [matchList]
+  );
+
   useEffect(() => {
-    if (!predMatchInitializedRef.current && completedMatchesWithResults.length > 0) {
+    if (!predMatchInitializedRef.current && completedMatchesWithResults.length > 0 && allMatchesSorted.length > 0) {
       predMatchInitializedRef.current = true;
-      setCurrentPredMatchIdx(completedMatchesWithResults.length - 1);
+      const lastCompletedId = completedMatchesWithResults[completedMatchesWithResults.length - 1].id;
+      const idx = allMatchesSorted.findIndex(m => m.id === lastCompletedId);
+      setCurrentPredMatchIdx(idx >= 0 ? idx : 0);
     }
-  }, [completedMatchesWithResults]);
+  }, [completedMatchesWithResults, allMatchesSorted]);
 
   useEffect(() => {
     if (pendingScrollMatchId && activeTab === 'leaderboard') {
@@ -466,7 +485,7 @@ export default function CompetitionDetailPage() {
   }, [pendingScrollMatchId, activeTab]);
 
   const handleStatCardMatchClick = (matchId: string) => {
-    const idx = completedMatchesWithResults.findIndex(m => m.id === matchId);
+    const idx = allMatchesSorted.findIndex(m => m.id === matchId);
     if (idx === -1) return;
     setActiveTab('leaderboard');
     setCurrentPredMatchIdx(idx);
@@ -903,7 +922,7 @@ export default function CompetitionDetailPage() {
               {!user?.isAdmin && (
                 <button
                   onClick={() => setShowLeaveConfirm(true)}
-                  className="rounded-md border px-3 py-1.5 text-sm flex-shrink-0 text-destructive border-destructive/30 hover:bg-destructive/5"
+                  className="rounded-md border border-red-600 bg-red-600 px-3 py-1.5 text-sm flex-shrink-0 text-white hover:bg-red-700 hover:border-red-700 transition-colors"
                 >
                   {t('competitionDetail.leave')}
                 </button>
@@ -1653,8 +1672,8 @@ export default function CompetitionDetailPage() {
 
       {activeTab === 'leaderboard' && (
         <>
-          {user?.isTestAccount && (
-            <label className="flex items-center gap-2 mb-3 text-sm text-muted-foreground cursor-pointer select-none">
+          <div className="flex flex-wrap gap-4 mb-3">
+            <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={showComparisonUsers}
@@ -1663,27 +1682,37 @@ export default function CompetitionDetailPage() {
               />
               {language === 'no' ? 'Vis AI brukere' : 'Show AI users'}
             </label>
-          )}
+            <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={showInactiveUsers}
+                onChange={e => setShowInactiveUsers(e.target.checked)}
+                className="rounded"
+              />
+              {language === 'no' ? 'Vis inaktive brukere' : 'Show inactive users'}
+            </label>
+          </div>
           {leaderboardLoading ? (
             <LoadingSpinner />
           ) : leaderboard.length === 0 ? (
             <p className="text-sm text-muted-foreground py-4 text-center">{t('competitionDetail.leaderboard.noScores')}</p>
           ) : (() => {
-          const rankEntries = showComparisonUsers ? leaderboard : leaderboard.filter(e => !e.isComparisonUser);
-          const activeRankEntries = rankEntries.filter(e => !e.inactive);
-          const lastNonInactiveRank = activeRankEntries.length > 0 ? activeRankEntries[activeRankEntries.length - 1].rank : 0;
+          const rankEntries = leaderboard
+            .filter(e => showComparisonUsers || !e.isComparisonUser)
+            .filter(e => showInactiveUsers || !e.inactive);
+          const lastActiveRank = rankEntries.length > 0 ? rankEntries[rankEntries.length - 1].rank : 0;
           const rankColor = (rank: number) => {
             if (rank === 1) return 'text-yellow-500';
             if (rank === 2) return 'text-slate-400';
             if (rank === 3) return 'text-amber-600';
-            if (rankEntries.length >= 5 && lastNonInactiveRank > 3 && rank >= lastNonInactiveRank) return 'text-red-500';
+            if (rankEntries.length >= 5 && lastActiveRank > 3 && rank >= lastActiveRank) return 'text-red-500';
             return 'text-muted-foreground';
           };
           const rowBg = (rank: number) => {
             if (rank === 1) return 'bg-yellow-50 dark:bg-yellow-500/10';
             if (rank === 2) return 'bg-slate-100 dark:bg-slate-400/10';
             if (rank === 3) return 'bg-amber-50 dark:bg-amber-600/10';
-            if (rankEntries.length >= 5 && lastNonInactiveRank > 3 && rank >= lastNonInactiveRank) return 'bg-red-50 dark:bg-red-500/10';
+            if (rankEntries.length >= 5 && lastActiveRank > 3 && rank >= lastActiveRank) return 'bg-red-50 dark:bg-red-500/10';
             return '';
           };
           return (<>
@@ -1703,10 +1732,10 @@ export default function CompetitionDetailPage() {
                       {tournament && <p className="text-sm text-muted-foreground">{tournament.name}</p>}
                     </div>
                   </div>
-                  <PlayerPodium leaderboard={showComparisonUsers ? leaderboard : leaderboard.filter(e => !e.isComparisonUser)} large={true} competitionId={id} tournamentStatus={tournament?.status} />
+                  <PlayerPodium leaderboard={rankEntries} large={true} competitionId={id} tournamentStatus={tournament?.status} />
                 </div>
               ) : (
-                <PlayerPodium leaderboard={showComparisonUsers ? leaderboard : leaderboard.filter(e => !e.isComparisonUser)} large={false} competitionId={id} tournamentStatus={tournament?.status} />
+                <PlayerPodium leaderboard={rankEntries} large={false} competitionId={id} tournamentStatus={tournament?.status} />
               )
             )}
 
@@ -1730,14 +1759,14 @@ export default function CompetitionDetailPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {leaderboard.map((entry) => {
+                  {rankEntries.map((entry) => {
                     const isMe = entry.userId === user?.id;
                     const isComparison = entry.isComparisonUser;
                     const b = entry.breakdown;
                     return (
-                      <tr key={entry.userId} className={isComparison && !showComparisonUsers ? 'opacity-60 italic bg-muted/30' : `${rowBg(entry.rank) || (isMe ? 'bg-primary/5' : '')}${isComparison ? ' italic opacity-80' : ''}${entry.inactive ? ' opacity-60' : ''}`}>
-                        <td className={`pl-3 pr-2 py-2.5 font-bold text-center ${isComparison && !showComparisonUsers ? 'text-muted-foreground' : rankColor(entry.rank)}`}>
-                          {isComparison && !showComparisonUsers ? '—' : entry.rank}
+                      <tr key={entry.userId} className={`${rowBg(entry.rank) || (isMe ? 'bg-primary/5' : '')}${isComparison ? ' italic opacity-80' : ''}${entry.inactive ? ' opacity-60' : ''}`}>
+                        <td className={`pl-3 pr-2 py-2.5 font-bold text-center ${rankColor(entry.rank)}`}>
+                          {entry.rank}
                         </td>
                         <td className="px-3 py-2.5">
                           <Link to={`/competitions/${id}/predictions/${entry.userId}`} className="flex items-center gap-2 min-w-0 hover:opacity-80 transition-opacity">
@@ -1770,7 +1799,7 @@ export default function CompetitionDetailPage() {
 
             {/* TV split view: two columns, no headers */}
             {user?.isLeaderboardUser && (() => {
-              const mid = Math.ceil(leaderboard.length / 2);
+              const mid = Math.ceil(rankEntries.length / 2);
               const renderRows = (entries: typeof leaderboard) => entries.map((entry) => {
                 const b = entry.breakdown;
                 return (
@@ -1822,7 +1851,7 @@ export default function CompetitionDetailPage() {
                       <SoccerKickAnimation />
                       <table className="w-full text-sm">
                         {tableHead}
-                        <tbody className="divide-y">{renderRows(leaderboard.slice(0, mid))}</tbody>
+                        <tbody className="divide-y">{renderRows(rankEntries.slice(0, mid))}</tbody>
                       </table>
                     </div>
                   </div>
@@ -1831,7 +1860,7 @@ export default function CompetitionDetailPage() {
                       <CryingPlayerAnimation />
                       <table className="w-full text-sm">
                         {tableHead}
-                        <tbody className="divide-y">{renderRows(leaderboard.slice(mid))}</tbody>
+                        <tbody className="divide-y">{renderRows(rankEntries.slice(mid))}</tbody>
                       </table>
                     </div>
                   </div>
@@ -1845,7 +1874,7 @@ export default function CompetitionDetailPage() {
                 {t('competitionDetail.leaderboard.lateAdditionLegend')}
               </p>
             )}
-            {leaderboard.some(e => e.inactive) && (
+            {showInactiveUsers && leaderboard.some(e => e.inactive) && (
               <p className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground mt-3">
                 <span className="inline-block w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />
                 {t('competitionDetail.leaderboard.inactiveLegend')}
@@ -1856,23 +1885,31 @@ export default function CompetitionDetailPage() {
 
           {/* Match Predictions */}
           {!user?.isAdmin && completedMatchesWithResults.length > 0 && (() => {
-            const safePredMatchIdx = Math.min(currentPredMatchIdx, completedMatchesWithResults.length - 1);
-            const match = completedMatchesWithResults[safePredMatchIdx];
+            const safePredMatchIdx = Math.min(currentPredMatchIdx, allMatchesSorted.length - 1);
+            const match = allMatchesSorted[safePredMatchIdx];
             if (!match) return null;
 
+            const hasResult = match.homeScore !== null && match.awayScore !== null;
             const matchPreds = [...allMatchPredictions]
               .filter(p => p.matchId === match.id && !p.isReplacement)
               .sort((a, b) => {
-                const pointsDiff = (b.points ?? 0) - (a.points ?? 0);
-                if (pointsDiff !== 0) return pointsDiff;
-                const actualGD = (match.homeScore ?? 0) - (match.awayScore ?? 0);
-                const aGDDist = Math.abs((a.homeScore - a.awayScore) - actualGD);
-                const bGDDist = Math.abs((b.homeScore - b.awayScore) - actualGD);
-                const gdDiff = aGDDist - bGDDist;
-                if (gdDiff !== 0) return gdDiff;
-                const aHomeDist = Math.abs(a.homeScore - (match.homeScore ?? 0));
-                const bHomeDist = Math.abs(b.homeScore - (match.homeScore ?? 0));
-                return aHomeDist - bHomeDist;
+                if (hasResult) {
+                  const pointsDiff = (b.points ?? 0) - (a.points ?? 0);
+                  if (pointsDiff !== 0) return pointsDiff;
+                  const actualGD = (match.homeScore ?? 0) - (match.awayScore ?? 0);
+                  const aGDDist = Math.abs((a.homeScore - a.awayScore) - actualGD);
+                  const bGDDist = Math.abs((b.homeScore - b.awayScore) - actualGD);
+                  const gdDiff = aGDDist - bGDDist;
+                  if (gdDiff !== 0) return gdDiff;
+                  const aHomeDist = Math.abs(a.homeScore - (match.homeScore ?? 0));
+                  const bHomeDist = Math.abs(b.homeScore - (match.homeScore ?? 0));
+                  return aHomeDist - bHomeDist;
+                } else {
+                  const aGD = a.homeScore - a.awayScore;
+                  const bGD = b.homeScore - b.awayScore;
+                  if (bGD !== aGD) return bGD - aGD;
+                  return b.homeScore - a.homeScore;
+                }
               });
 
             const isKnockout = match.stage !== 'group';
@@ -1896,19 +1933,36 @@ export default function CompetitionDetailPage() {
                     {/* Navigation dots */}
                     <div className="mb-4">
                       <div className="flex flex-wrap gap-1.5">
-                        {completedMatchesWithResults.map((m, idx) => (
-                          <button
-                            key={m.id}
-                            type="button"
-                            onClick={() => setCurrentPredMatchIdx(idx)}
-                            className={`rounded-full transition-all duration-200 ${
-                              idx === safePredMatchIdx
-                                ? 'w-5 h-2.5 bg-primary'
-                                : 'w-2.5 h-2.5 bg-muted-foreground/30 hover:bg-muted-foreground/50'
-                            }`}
-                            aria-label={`Match ${idx + 1}`}
-                          />
-                        ))}
+                        {allMatchesSorted.map((m, idx) => {
+                          const isCurrent = idx === safePredMatchIdx;
+                          const pred = predMap[m.id];
+                          const hasActual = m.status === 'completed' && m.homeScore !== null && m.awayScore !== null;
+                          const hasPred = !!pred;
+                          const isCorrectResult = hasPred && hasActual &&
+                            Math.sign(pred.homeScore - pred.awayScore) === Math.sign(m.homeScore! - m.awayScore!);
+                          const isExactScore = hasPred && hasActual &&
+                            pred.homeScore === m.homeScore && pred.awayScore === m.awayScore;
+                          const dotClass = isCurrent
+                            ? 'w-5 h-2.5 bg-primary'
+                            : !hasPred
+                            ? 'w-2.5 h-2.5 bg-muted-foreground/30 hover:bg-muted-foreground/50'
+                            : !hasActual
+                            ? 'w-2.5 h-2.5 bg-yellow-300'
+                            : isExactScore
+                            ? 'w-2.5 h-2.5 bg-green-500 ring-1 ring-offset-1 ring-offset-background ring-amber-400'
+                            : isCorrectResult
+                            ? 'w-2.5 h-2.5 bg-green-500'
+                            : 'w-2.5 h-2.5 bg-red-500';
+                          return (
+                            <button
+                              key={m.id}
+                              type="button"
+                              onClick={() => setCurrentPredMatchIdx(idx)}
+                              className={`rounded-full transition-all duration-200 ${dotClass}`}
+                              aria-label={`Match ${idx + 1}`}
+                            />
+                          );
+                        })}
                       </div>
                     </div>
 
@@ -1933,7 +1987,7 @@ export default function CompetitionDetailPage() {
                             </p>
                           )}
                           <p className="text-xs text-muted-foreground mt-0.5">
-                            {safePredMatchIdx + 1} / {completedMatchesWithResults.length}
+                            {safePredMatchIdx + 1} / {allMatchesSorted.length}
                           </p>
                         </div>
 
@@ -1947,7 +2001,7 @@ export default function CompetitionDetailPage() {
                               )}
                             </div>
                             <span className="flex-1 text-sm font-medium truncate">{match.homeTeamName ?? 'TBD'}</span>
-                            <span className="w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0">{match.homeScore}</span>
+                            <span className="w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0">{match.homeScore ?? '—'}</span>
                           </div>
                           <div className="h-px bg-border" />
                           <div className="flex items-center gap-3 px-4 py-3.5">
@@ -1959,7 +2013,7 @@ export default function CompetitionDetailPage() {
                               )}
                             </div>
                             <span className="flex-1 text-sm font-medium truncate">{match.awayTeamName ?? 'TBD'}</span>
-                            <span className="w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0">{match.awayScore}</span>
+                            <span className="w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0">{match.awayScore ?? '—'}</span>
                           </div>
                         </div>
 
@@ -1972,8 +2026,8 @@ export default function CompetitionDetailPage() {
                           >←</button>
                           <button
                             type="button"
-                            onClick={() => setCurrentPredMatchIdx(i => Math.min(completedMatchesWithResults.length - 1, i + 1))}
-                            disabled={safePredMatchIdx === completedMatchesWithResults.length - 1}
+                            onClick={() => setCurrentPredMatchIdx(i => Math.min(allMatchesSorted.length - 1, i + 1))}
+                            disabled={safePredMatchIdx === allMatchesSorted.length - 1}
                             className="h-11 w-11 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20"
                           >→</button>
                         </div>
@@ -2136,6 +2190,26 @@ export default function CompetitionDetailPage() {
 
       {activeTab === 'pointProgression' && (
         <div>
+          <div className="flex flex-wrap gap-4 mb-3">
+            <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={showComparisonUsers}
+                onChange={e => setShowComparisonUsers(e.target.checked)}
+                className="rounded"
+              />
+              {language === 'no' ? 'Vis AI brukere' : 'Show AI users'}
+            </label>
+            <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={showInactiveUsers}
+                onChange={e => setShowInactiveUsers(e.target.checked)}
+                className="rounded"
+              />
+              {language === 'no' ? 'Vis inaktive brukere' : 'Show inactive users'}
+            </label>
+          </div>
           {leaderboardProgression && leaderboardProgression.matches.length > 0 ? (
             <LeaderboardLineGraph data={leaderboardProgression} />
           ) : (
