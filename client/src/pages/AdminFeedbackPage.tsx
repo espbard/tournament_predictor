@@ -86,7 +86,7 @@ export default function AdminFeedbackPage() {
             onClick={() => setActiveTab(tab)}
             className={`px-4 py-2.5 text-sm font-medium transition-colors relative ${
               activeTab === tab
-                ? 'border-b-2 border-primary text-foreground'
+                ? 'border-b-2 border-primary dark:border-[hsl(231,60%,65%)] text-foreground'
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
