@@ -99,9 +99,10 @@ export default function Navbar() {
           </Link>
           <button
             onClick={handleLogout}
-            className="rounded-md border border-primary-foreground/30 px-3 py-1.5 text-sm text-primary-foreground hover:bg-primary-foreground/10"
+            className="rounded-md border border-primary-foreground/30 p-1.5 text-primary-foreground hover:bg-primary-foreground/10"
+            title={t('nav.logOut')}
           >
-            {t('nav.logOut')}
+            <img src="/logout-icon.png" alt={t('nav.logOut')} className="h-4 w-4" style={{ filter: 'brightness(0) invert(1)' }} />
           </button>
         </div>
       </div>
