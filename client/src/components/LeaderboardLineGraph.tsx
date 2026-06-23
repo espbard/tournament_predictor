@@ -9,6 +9,7 @@ const COLORS = [
 ];
 
 const ICON_R = 8;
+const MAX_ZOOM = 5;
 
 interface FrozenEntry {
   userId: string;
@@ -32,7 +33,12 @@ export default function LeaderboardLineGraph({ data }: Props) {
   // After a dismiss, suppress Recharts' own hover tooltip until the next chart interaction.
   // On mobile, Recharts never fires mouseleave on tap-away so active stays true internally.
   const [suppressTooltip, setSuppressTooltip] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState(1);
   const containerRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const zoomLevelRef = useRef(1);
+  const pinchRef = useRef<{ initialDist: number; initialZoom: number } | null>(null);
+  zoomLevelRef.current = zoomLevel;
 
   const matchCount = data.matches.length;
   const sentinelIndex = matchCount;
@@ -107,6 +113,40 @@ export default function LeaderboardLineGraph({ data }: Props) {
     return () => document.removeEventListener('pointerdown', dismiss, true);
   }, []);
 
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        pinchRef.current = { initialDist: Math.hypot(dx, dy), initialZoom: zoomLevelRef.current };
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 2 && pinchRef.current) {
+        e.preventDefault();
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        const ratio = Math.hypot(dx, dy) / pinchRef.current.initialDist;
+        setZoomLevel(Math.max(1, Math.min(MAX_ZOOM, pinchRef.current.initialZoom * ratio)));
+      }
+    };
+
+    const onTouchEnd = () => { pinchRef.current = null; };
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd, { passive: true });
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+    };
+  }, []);
+
   const renderTooltip = ({
     active,
     payload,
@@ -162,9 +202,21 @@ export default function LeaderboardLineGraph({ data }: Props) {
     );
   };
 
+  const isZoomed = zoomLevel > 1.01;
+
   return (
     <div ref={containerRef}>
-      <ResponsiveContainer width="100%" height={280}>
+      <div
+        ref={scrollRef}
+        style={{
+          overflowX: isZoomed ? 'auto' : 'hidden',
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          WebkitOverflowScrolling: 'touch' as any,
+          touchAction: isZoomed ? 'pan-x' : 'auto',
+        }}
+      >
+        <div style={{ width: `${Math.max(100, zoomLevel * 100)}%` }}>
+        <ResponsiveContainer width="100%" height={280}>
         <LineChart
           data={chartData}
           margin={{ top: 5, right: ICON_R + 12, bottom: 5, left: -10 }}
@@ -247,6 +299,8 @@ export default function LeaderboardLineGraph({ data }: Props) {
           })}
         </LineChart>
       </ResponsiveContainer>
+      </div>
+      </div>
 
       <div className="flex flex-wrap gap-x-4 gap-y-2 mt-3 text-xs items-center">
         {data.users.map((u, i) => {
