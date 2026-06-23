@@ -102,7 +102,20 @@ export default function Navbar() {
             className="rounded-md border border-primary-foreground/30 p-1.5 text-primary-foreground hover:bg-primary-foreground/10"
             title={t('nav.logOut')}
           >
-            <img src="/logout-icon.png" alt={t('nav.logOut')} className="h-4 w-4" style={{ filter: 'brightness(0) invert(1)' }} />
+            <span
+              className="block h-4 w-4 bg-current"
+              aria-hidden="true"
+              style={{
+                maskImage: 'url(/logout-icon.png)',
+                WebkitMaskImage: 'url(/logout-icon.png)',
+                maskSize: 'contain',
+                WebkitMaskSize: 'contain',
+                maskRepeat: 'no-repeat',
+                WebkitMaskRepeat: 'no-repeat',
+                maskPosition: 'center',
+                WebkitMaskPosition: 'center',
+              }}
+            />
           </button>
         </div>
       </div>
