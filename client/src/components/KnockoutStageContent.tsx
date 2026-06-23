@@ -904,7 +904,7 @@ function FocusedBracketView({
           <h2 className="text-base font-semibold">{currentRoundLabel}</h2>
           {!current.isBronze && roundMatchesForDots.length > 1 && (
             <p className="text-xs text-muted-foreground mt-0.5">
-              Match {current.matchIdxInRound + 1} of {current.matchCountInRound}
+              {t('knockoutContent.matchOf', { n: current.matchIdxInRound + 1, total: current.matchCountInRound })}
             </p>
           )}
         </div>
