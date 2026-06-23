@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import type { LeaderboardProgressionResponse } from '@tournament-predictor/shared';
+import { useT } from '@/lib/useT';
 
 const COLORS = [
   '#6366f1', '#f59e0b', '#10b981', '#ef4444', '#3b82f6',
@@ -25,6 +26,7 @@ interface Props {
 }
 
 export default function LeaderboardLineGraph({ data }: Props) {
+  const { t } = useT();
   const [hiddenUsers, setHiddenUsers] = useState<Set<string>>(new Set());
   const [frozenTooltip, setFrozenTooltip] = useState<FrozenTooltip | null>(null);
   // After a dismiss, suppress Recharts' own hover tooltip until the next chart interaction.
@@ -273,7 +275,7 @@ export default function LeaderboardLineGraph({ data }: Props) {
             checked={hiddenUsers.size === 0}
             onChange={toggleAll}
           />
-          Toggle all
+          {t('competitionDetail.pointProgression.toggleAll')}
         </label>
       </div>
     </div>

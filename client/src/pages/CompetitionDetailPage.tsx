@@ -14,6 +14,7 @@ import { CryingPlayerAnimation } from '@/components/CryingPlayerAnimation';
 import BonusQuestionsTab from './BonusQuestionsTab';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { useT } from '@/lib/useT';
+import { useTeamName } from '@/lib/teamTranslations';
 import type { Competition, Tournament, Prediction, MatchStage, LeaderboardEntry, BracketPredictions, UserStatCardData, LeaderboardProgressionResponse } from '@tournament-predictor/shared';
 import {
   sortGroupTeams,
@@ -77,6 +78,8 @@ export default function CompetitionDetailPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { t, language } = useT();
+  const { tn } = useTeamName();
+  const dateLocale = { no: 'nb-NO', en: 'en-GB', de: 'de-DE' }[language];
 
   const [editName, setEditName] = useState('');
   const [editImageUrl, setEditImageUrl] = useState<string | null>(null);
@@ -517,6 +520,16 @@ export default function CompetitionDetailPage() {
     [user?.isAdmin, tournamentsData, tournamentData, competition?.tournamentId]
   );
 
+  useEffect(() => {
+    if (tabParam || user?.isLeaderboardUser || user?.isAdmin || !tournament) return;
+    if (tournament.status === 'active' || tournament.status === 'completed') {
+      setSearchParams(
+        prev => { const n = new URLSearchParams(prev); n.set('tab', 'leaderboard'); return n; },
+        { replace: true }
+      );
+    }
+  }, [tournament?.status, tabParam, user?.isLeaderboardUser, user?.isAdmin, setSearchParams]);
+
   const qualifyingThirdPlaceIds = useMemo(() => {
     const luckyLosers = tournament?.knockoutConfig?.luckyLosers ?? 0;
     if (luckyLosers <= 0) return new Set<string>();
@@ -837,7 +850,7 @@ export default function CompetitionDetailPage() {
   }
 
   const stageLabel = (stage: MatchStage, groupName?: string | null) => {
-    if (stage === 'group' && groupName) return `Group ${groupName}`;
+    if (stage === 'group' && groupName) return `${t('common.group')} ${groupName}`;
     const map: Record<MatchStage, string> = {
       group: t('stages.group'),
       round_of_32: t('stages.round_of_32'),
@@ -1077,20 +1090,20 @@ export default function CompetitionDetailPage() {
                     <div key={groupName} className="space-y-3">
                       <div className="rounded-lg border dark:bg-white/5 p-2">
                         <div className="bg-muted/50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                          Group {groupName}
+                          {t('common.group')} {groupName}
                         </div>
                         <table className="w-full text-xs">
                           <thead>
                             <tr className="border-b text-muted-foreground">
                               <th className="pl-3 py-1.5 text-left w-6">#</th>
-                              <th className="py-1.5 text-left">Team</th>
-                              <th className="py-1.5 text-center w-6">P</th>
-                              <th className="py-1.5 text-center w-6">W</th>
-                              <th className="py-1.5 text-center w-6">D</th>
-                              <th className="py-1.5 text-center w-6">L</th>
-                              <th className="py-1.5 text-center w-8">GF</th>
-                              <th className="py-1.5 text-center w-8">GA</th>
-                              <th className="py-1.5 text-center w-8 font-bold text-foreground">Pts</th>
+                              <th className="py-1.5 text-left">{t('groupTable.team')}</th>
+                              <th className="py-1.5 text-center w-6">{t('groupTable.played')}</th>
+                              <th className="py-1.5 text-center w-6">{t('groupTable.won')}</th>
+                              <th className="py-1.5 text-center w-6">{t('groupTable.drawn')}</th>
+                              <th className="py-1.5 text-center w-6">{t('groupTable.lost')}</th>
+                              <th className="py-1.5 text-center w-8">{t('groupTable.gf')}</th>
+                              <th className="py-1.5 text-center w-8">{t('groupTable.ga')}</th>
+                              <th className="py-1.5 text-center w-8 font-bold text-foreground">{t('groupTable.pts')}</th>
                               <th className="pr-3 py-1.5 w-12" />
                             </tr>
                           </thead>
@@ -1116,7 +1129,7 @@ export default function CompetitionDetailPage() {
                                     ) : (
                                       <div className="h-4 w-4 rounded-full bg-muted flex-shrink-0" />
                                     )}
-                                    <span className="truncate">{tm.teamName}</span>
+                                    <span className="truncate">{tn(tm.teamName)}</span>
                                     {tiebreakerChosenTeams.has(tm.teamId) && (
                                       <span className="text-amber-600 dark:text-amber-400 font-bold flex-shrink-0">✓</span>
                                     )}
@@ -1153,7 +1166,7 @@ export default function CompetitionDetailPage() {
                             </p>
                             <p className="text-muted-foreground mb-2">
                               {enoughRanked
-                                ? `${t('competitionDetail.tables.selected')}: ${ranked.slice(0, tie.requiredRankings).map(tid => tie.teams.find(tm => tm.teamId === tid)?.teamName).join(' › ')}`
+                                ? `${t('competitionDetail.tables.selected')}: ${ranked.slice(0, tie.requiredRankings).map(tid => tn(tie.teams.find(tm => tm.teamId === tid)?.teamName)).join(' › ')}`
                                 : t('competitionDetail.tables.selectTeams', { n: tie.requiredRankings, s: tie.requiredRankings > 1 ? 's' : '' })}
                             </p>
                             <div className="flex flex-wrap gap-1.5">
@@ -1170,7 +1183,7 @@ export default function CompetitionDetailPage() {
                                   >
                                     {isRanked && <span className="font-bold text-amber-600 dark:text-amber-400">{rank + 1}.</span>}
                                     {tm.imageUrl && <img src={tm.imageUrl} alt="" className="h-3.5 w-3.5 rounded-sm" />}
-                                    {tm.teamName}
+                                    {tn(tm.teamName)}
                                   </button>
                                 );
                               })}
@@ -1228,7 +1241,7 @@ export default function CompetitionDetailPage() {
                         </p>
                         <p className="text-muted-foreground mb-2">
                           {enoughRanked
-                            ? `${t('competitionDetail.tables.selected')}: ${ranked.slice(0, requiredRankings).map(tid => tie.teams.find(tm => tm.teamId === tid)?.teamName).join(' › ')}`
+                            ? `${t('competitionDetail.tables.selected')}: ${ranked.slice(0, requiredRankings).map(tid => tn(tie.teams.find(tm => tm.teamId === tid)?.teamName)).join(' › ')}`
                             : t('competitionDetail.tables.selectTeams', { n: requiredRankings, s: requiredRankings > 1 ? 's' : '' })}
                         </p>
                         <div className="flex flex-wrap gap-1.5">
@@ -1245,7 +1258,7 @@ export default function CompetitionDetailPage() {
                               >
                                 {isRanked && <span className="font-bold text-amber-600 dark:text-amber-400">{rank + 1}.</span>}
                                 {tm.imageUrl && <img src={tm.imageUrl} alt="" className="h-3.5 w-3.5 rounded-sm" />}
-                                {tm.teamName}
+                                {tn(tm.teamName)}
                               </button>
                             );
                           })}
@@ -1444,7 +1457,7 @@ export default function CompetitionDetailPage() {
                     </p>
                     {match.scheduledAt && (
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        {new Date(match.scheduledAt).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}
+                        {new Date(match.scheduledAt).toLocaleDateString(dateLocale, { weekday: 'short', day: 'numeric', month: 'short' })}
                         {' · '}
                         {new Date(match.scheduledAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
                       </p>
@@ -1474,7 +1487,7 @@ export default function CompetitionDetailPage() {
                           ) : (
                             <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
                           )}
-                          <span className="flex-1 text-sm font-medium truncate">{match.homeTeamName ?? 'TBD'}</span>
+                          <span className="flex-1 text-sm font-medium truncate">{tn(match.homeTeamName) || 'TBD'}</span>
                           {match.status === 'completed' && !user?.isComparisonUser ? (
                             <span className={`w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400 border border-amber-400 bg-amber-50/70 dark:bg-amber-900/30' : ''}`}>{pred ? pred.homeScore : '—'}</span>
                           ) : isMatchLocked ? (
@@ -1524,7 +1537,7 @@ export default function CompetitionDetailPage() {
                           ) : (
                             <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
                           )}
-                          <span className="flex-1 text-sm font-medium truncate">{match.awayTeamName ?? 'TBD'}</span>
+                          <span className="flex-1 text-sm font-medium truncate">{tn(match.awayTeamName) || 'TBD'}</span>
                           {match.status === 'completed' && !user?.isComparisonUser ? (
                             <span className={`w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400 border border-amber-400 bg-amber-50/70 dark:bg-amber-900/30' : ''}`}>{pred ? pred.awayScore : '—'}</span>
                           ) : isMatchLocked ? (
@@ -1680,7 +1693,7 @@ export default function CompetitionDetailPage() {
                 onChange={e => setShowComparisonUsers(e.target.checked)}
                 className="rounded"
               />
-              {language === 'no' ? 'Vis AI brukere' : 'Show AI users'}
+              {t('competitionDetail.leaderboard.showAiUsers')}
             </label>
             <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
               <input
@@ -1689,7 +1702,7 @@ export default function CompetitionDetailPage() {
                 onChange={e => setShowInactiveUsers(e.target.checked)}
                 className="rounded"
               />
-              {language === 'no' ? 'Vis inaktive brukere' : 'Show inactive users'}
+              {t('competitionDetail.leaderboard.showInactiveUsers')}
             </label>
           </div>
           {leaderboardLoading ? (
@@ -1924,7 +1937,7 @@ export default function CompetitionDetailPage() {
                   onClick={() => setMatchPredictionsCollapsed(c => !c)}
                   className="flex items-center justify-between w-full text-left mb-3"
                 >
-                  <h2 className="font-semibold">Match Predictions</h2>
+                  <h2 className="font-semibold">{t('competitionDetail.leaderboard.matchPredictions')}</h2>
                   <span className="text-xs text-muted-foreground">{matchPredictionsCollapsed ? '▼' : '▲'}</span>
                 </button>
 
@@ -1983,7 +1996,7 @@ export default function CompetitionDetailPage() {
                           </p>
                           {match.scheduledAt && (
                             <p className="text-xs text-muted-foreground mt-0.5">
-                              {new Date(match.scheduledAt).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}
+                              {new Date(match.scheduledAt).toLocaleDateString(dateLocale, { weekday: 'short', day: 'numeric', month: 'short' })}
                             </p>
                           )}
                           <p className="text-xs text-muted-foreground mt-0.5">
@@ -2000,7 +2013,7 @@ export default function CompetitionDetailPage() {
                                 <div className="h-7 w-7 rounded-full bg-muted" />
                               )}
                             </div>
-                            <span className="flex-1 text-sm font-medium truncate">{match.homeTeamName ?? 'TBD'}</span>
+                            <span className="flex-1 text-sm font-medium truncate">{tn(match.homeTeamName) || 'TBD'}</span>
                             <span className="w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0">{match.homeScore ?? '—'}</span>
                           </div>
                           <div className="h-px bg-border" />
@@ -2012,7 +2025,7 @@ export default function CompetitionDetailPage() {
                                 <div className="h-7 w-7 rounded-full bg-muted" />
                               )}
                             </div>
-                            <span className="flex-1 text-sm font-medium truncate">{match.awayTeamName ?? 'TBD'}</span>
+                            <span className="flex-1 text-sm font-medium truncate">{tn(match.awayTeamName) || 'TBD'}</span>
                             <span className="w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0">{match.awayScore ?? '—'}</span>
                           </div>
                         </div>
@@ -2198,7 +2211,7 @@ export default function CompetitionDetailPage() {
                 onChange={e => setShowComparisonUsers(e.target.checked)}
                 className="rounded"
               />
-              {language === 'no' ? 'Vis AI brukere' : 'Show AI users'}
+              {t('competitionDetail.leaderboard.showAiUsers')}
             </label>
             <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
               <input
@@ -2207,7 +2220,7 @@ export default function CompetitionDetailPage() {
                 onChange={e => setShowInactiveUsers(e.target.checked)}
                 className="rounded"
               />
-              {language === 'no' ? 'Vis inaktive brukere' : 'Show inactive users'}
+              {t('competitionDetail.leaderboard.showInactiveUsers')}
             </label>
           </div>
           {leaderboardProgression && leaderboardProgression.matches.length > 0 ? (

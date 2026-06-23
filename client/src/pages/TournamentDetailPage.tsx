@@ -15,6 +15,7 @@ import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import ImageUpload from '@/components/ImageUpload';
 import { useT } from '@/lib/useT';
+import { useTeamName } from '@/lib/teamTranslations';
 import BonusQuestionsTab from './BonusQuestionsTab';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { TournamentKnockoutTabContent } from './TournamentKnockoutPage';
@@ -203,6 +204,7 @@ export default function TournamentDetailPage() {
   const queryClient = useQueryClient();
   const isAdmin = user?.isAdmin ?? false;
   const { t } = useT();
+  const { tn } = useTeamName();
 
   const STAGE_LABELS: Record<MatchStage, string> = {
     group: t('stages.group'),
@@ -941,7 +943,7 @@ export default function TournamentDetailPage() {
                 return (
                   <div key={group.id} className="rounded-lg border overflow-hidden">
                     <div className="flex items-center justify-between border-b px-4 py-2.5 bg-muted/30">
-                      <h3 className="font-semibold text-sm">Group {group.name}</h3>
+                      <h3 className="font-semibold text-sm">{t('common.group')} {group.name}</h3>
                       {hasPending && (
                         <span className="text-xs text-amber-600 dark:text-amber-400">{t('tournamentDetail.standings.provisional')}</span>
                       )}
@@ -951,13 +953,13 @@ export default function TournamentDetailPage() {
                         <tr className="border-b text-xs text-muted-foreground">
                           <th className="w-1 py-1.5" />
                           <th className="px-3 py-1.5 text-left w-6">#</th>
-                          <th className="px-3 py-1.5 text-left">Team</th>
-                          <th className="px-2 py-1.5 text-center w-8" title="Played">MP</th>
-                          <th className="px-2 py-1.5 text-center w-8" title="Won">W</th>
-                          <th className="px-2 py-1.5 text-center w-8" title="Drawn">D</th>
-                          <th className="px-2 py-1.5 text-center w-8" title="Lost">L</th>
-                          <th className="px-2 py-1.5 text-center w-8" title="Goal Difference">GD</th>
-                          <th className="px-2 py-1.5 text-center w-10 font-bold" title="Points">Pts</th>
+                          <th className="px-3 py-1.5 text-left">{t('groupTable.team')}</th>
+                          <th className="px-2 py-1.5 text-center w-8">{t('groupTable.played')}</th>
+                          <th className="px-2 py-1.5 text-center w-8">{t('groupTable.won')}</th>
+                          <th className="px-2 py-1.5 text-center w-8">{t('groupTable.drawn')}</th>
+                          <th className="px-2 py-1.5 text-center w-8">{t('groupTable.lost')}</th>
+                          <th className="px-2 py-1.5 text-center w-8">{t('groupTable.gd')}</th>
+                          <th className="px-2 py-1.5 text-center w-10 font-bold">{t('groupTable.pts')}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1634,7 +1636,7 @@ export default function TournamentDetailPage() {
                               </div>
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
-                                  <TeamBadge name={match.homeTeamName} imageUrl={match.homeTeamImageUrl} />
+                                  <TeamBadge name={tn(match.homeTeamName)} imageUrl={match.homeTeamImageUrl} />
                                   {pendingResults[match.id] ? (
                                     <span className="rounded bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 text-sm font-bold tabular-nums text-amber-800 dark:text-amber-200">
                                       {pendingResults[match.id].home} – {pendingResults[match.id].away}
@@ -1646,7 +1648,7 @@ export default function TournamentDetailPage() {
                                   ) : (
                                     <span className="text-sm text-muted-foreground">vs</span>
                                   )}
-                                  <TeamBadge name={match.awayTeamName} imageUrl={match.awayTeamImageUrl} />
+                                  <TeamBadge name={tn(match.awayTeamName)} imageUrl={match.awayTeamImageUrl} />
                                 </div>
                                 {isAdmin && scoreMatchId !== match.id && (
                                   <div className="flex items-center gap-1.5">
@@ -1889,7 +1891,7 @@ export default function TournamentDetailPage() {
                               </div>
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
-                                  <TeamBadge name={match.homeTeamName} imageUrl={match.homeTeamImageUrl} />
+                                  <TeamBadge name={tn(match.homeTeamName)} imageUrl={match.homeTeamImageUrl} />
                                   {pendingResults[match.id] ? (
                                     <span className="rounded bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 text-sm font-bold tabular-nums text-amber-800 dark:text-amber-200">
                                       {pendingResults[match.id].home} – {pendingResults[match.id].away}
@@ -1901,7 +1903,7 @@ export default function TournamentDetailPage() {
                                   ) : (
                                     <span className="text-sm text-muted-foreground">vs</span>
                                   )}
-                                  <TeamBadge name={match.awayTeamName} imageUrl={match.awayTeamImageUrl} />
+                                  <TeamBadge name={tn(match.awayTeamName)} imageUrl={match.awayTeamImageUrl} />
                                 </div>
                                 {isAdmin && scoreMatchId !== match.id && (
                                   <div className="flex items-center gap-1.5">

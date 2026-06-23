@@ -7,6 +7,7 @@ import BonusQuestionsTab from '@/pages/BonusQuestionsTab';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { UserAvatar } from '@/components/UserAvatar';
 import { useT } from '@/lib/useT';
+import { useTeamName } from '@/lib/teamTranslations';
 import { sortGroupTeams, makeDisciplinaryKey, type MatchResult, type DisciplinaryChoices } from '@/lib/tiebreakers';
 import type { Competition, Tournament, Prediction, MatchStage } from '@tournament-predictor/shared';
 
@@ -27,24 +28,26 @@ interface MatchWithTeams {
   groupName: string | null;
 }
 
-function stageLabel(stage: MatchStage, groupName?: string | null): string {
-  if (stage === 'group' && groupName) return `Group ${groupName}`;
-  const map: Record<MatchStage, string> = {
-    group: 'Group Stage',
-    round_of_32: 'Round of 32',
-    round_of_16: 'Round of 16',
-    quarter_final: 'Quarter-final',
-    semi_final: 'Semi-final',
-    bronze_final: 'Bronze Final',
-    final: 'Final',
-  };
-  return map[stage] ?? stage;
-}
-
 export default function UserPredictionsPage() {
   const { id, userId } = useParams<{ id: string; userId: string }>();
   const [searchParams] = useSearchParams();
-  const { t } = useT();
+  const { t, language } = useT();
+  const { tn } = useTeamName();
+  const dateLocale = { no: 'nb-NO', en: 'en-GB', de: 'de-DE' }[language];
+
+  function stageLabel(stage: MatchStage, groupName?: string | null): string {
+    if (stage === 'group' && groupName) return `${t('common.group')} ${groupName}`;
+    const map: Record<MatchStage, string> = {
+      group: t('stages.group'),
+      round_of_32: t('stages.round_of_32'),
+      round_of_16: t('stages.round_of_16'),
+      quarter_final: t('stages.quarter_final'),
+      semi_final: t('stages.semi_final'),
+      bronze_final: t('stages.bronze_final'),
+      final: t('stages.final'),
+    };
+    return map[stage] ?? stage;
+  }
 
   const [activeTab, setActiveTab] = useState<'group' | 'tables' | 'knockout' | 'bonus'>(
     searchParams.get('tab') === 'bonus' ? 'bonus' :
@@ -343,7 +346,7 @@ export default function UserPredictionsPage() {
                       </p>
                       {match.scheduledAt && (
                         <p className="text-xs text-muted-foreground mt-0.5">
-                          {new Date(match.scheduledAt).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}
+                          {new Date(match.scheduledAt).toLocaleDateString(dateLocale, { weekday: 'short', day: 'numeric', month: 'short' })}
                           {' · '}
                           {new Date(match.scheduledAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
                         </p>
@@ -370,7 +373,7 @@ export default function UserPredictionsPage() {
                             ) : (
                               <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
                             )}
-                            <span className="flex-1 text-sm font-medium truncate">{match.homeTeamName ?? 'TBD'}</span>
+                            <span className="flex-1 text-sm font-medium truncate">{tn(match.homeTeamName) || 'TBD'}</span>
                             <span className={`w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400 border border-amber-400 bg-amber-50/70 dark:bg-amber-900/30' : ''}`}>
                               {pred ? pred.homeScore : '—'}
                             </span>
@@ -382,7 +385,7 @@ export default function UserPredictionsPage() {
                             ) : (
                               <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
                             )}
-                            <span className="flex-1 text-sm font-medium truncate">{match.awayTeamName ?? 'TBD'}</span>
+                            <span className="flex-1 text-sm font-medium truncate">{tn(match.awayTeamName) || 'TBD'}</span>
                             <span className={`w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400 border border-amber-400 bg-amber-50/70 dark:bg-amber-900/30' : ''}`}>
                               {pred ? pred.awayScore : '—'}
                             </span>
@@ -486,7 +489,7 @@ export default function UserPredictionsPage() {
                             ) : (
                               <div className="h-4 w-4 rounded-full bg-muted flex-shrink-0" />
                             )}
-                            <span className="truncate">{tm.teamName}</span>
+                            <span className="truncate">{tn(tm.teamName)}</span>
                           </div>
                         </td>
                         <td className="py-1.5 text-center text-muted-foreground">{tm.P}</td>

@@ -15,6 +15,7 @@ import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { useT } from '@/lib/useT';
+import { useTeamName } from '@/lib/teamTranslations';
 import type { Tournament, Group, KnockoutConfig, KnockoutFirstRound, Match } from '@tournament-predictor/shared';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -362,6 +363,7 @@ function FocusedAdminMatchCard({
   }
 
   const { t } = useT();
+  const { tn } = useTeamName();
 
   if (!match) {
     return (
@@ -386,7 +388,7 @@ function FocusedAdminMatchCard({
           : <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
         }
         <span className={`flex-1 text-sm truncate ${match.homeTeamName ? (homeWins ? 'font-semibold' : 'font-medium') : 'text-muted-foreground italic'}`}>
-          {match.homeTeamName ?? 'TBD'}
+          {tn(match.homeTeamName) || 'TBD'}
         </span>
         <div className="flex items-center gap-0.5 flex-shrink-0">
           <button
@@ -436,7 +438,7 @@ function FocusedAdminMatchCard({
           : <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
         }
         <span className={`flex-1 text-sm truncate ${match.awayTeamName ? (awayWins ? 'font-semibold' : 'font-medium') : 'text-muted-foreground italic'}`}>
-          {match.awayTeamName ?? 'TBD'}
+          {tn(match.awayTeamName) || 'TBD'}
         </span>
         <div className="flex items-center gap-0.5 flex-shrink-0">
           <button
@@ -487,8 +489,8 @@ function FocusedAdminMatchCard({
             </p>
             <div className="flex gap-2">
               {[
-                { id: match.homeTeamId!, name: match.homeTeamName },
-                { id: match.awayTeamId!, name: match.awayTeamName },
+                { id: match.homeTeamId!, name: tn(match.homeTeamName) },
+                { id: match.awayTeamId!, name: tn(match.awayTeamName) },
               ].map(team => (
                 <button
                   key={team.id}
