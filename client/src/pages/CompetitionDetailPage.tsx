@@ -520,6 +520,16 @@ export default function CompetitionDetailPage() {
     [user?.isAdmin, tournamentsData, tournamentData, competition?.tournamentId]
   );
 
+  useEffect(() => {
+    if (tabParam || user?.isLeaderboardUser || user?.isAdmin || !tournament) return;
+    if (tournament.status === 'active' || tournament.status === 'completed') {
+      setSearchParams(
+        prev => { const n = new URLSearchParams(prev); n.set('tab', 'leaderboard'); return n; },
+        { replace: true }
+      );
+    }
+  }, [tournament?.status, tabParam, user?.isLeaderboardUser, user?.isAdmin, setSearchParams]);
+
   const qualifyingThirdPlaceIds = useMemo(() => {
     const luckyLosers = tournament?.knockoutConfig?.luckyLosers ?? 0;
     if (luckyLosers <= 0) return new Set<string>();
