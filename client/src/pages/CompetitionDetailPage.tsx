@@ -1784,7 +1784,7 @@ export default function CompetitionDetailPage() {
                         <td className="px-3 py-2.5">
                           <Link to={`/competitions/${id}/predictions/${entry.userId}`} className="flex items-center gap-2 min-w-0 hover:opacity-80 transition-opacity">
                             <UserAvatar username={entry.username} imageUrl={entry.imageUrl} iconColor={entry.iconColor} className="h-5 w-5 flex-shrink-0" />
-                            <span className={`font-medium truncate ${isMe ? 'text-primary' : ''}`}>
+                            <span className={`font-medium truncate ${isMe ? 'text-primary dark:text-[hsl(231,60%,65%)]' : ''}`}>
                               {entry.username}
                               {isMe && <span className="ml-1 font-normal text-muted-foreground">{t('competitionDetail.leaderboard.you')}</span>}
                               {isComparison && <span className="ml-1 font-normal text-muted-foreground not-italic">(AI)</span>}
