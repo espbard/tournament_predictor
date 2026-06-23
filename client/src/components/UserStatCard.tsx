@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import type { UserStatCardData } from '@tournament-predictor/shared';
 import { UserAvatar } from '@/components/UserAvatar';
+import { useThemeStore } from '@/store/themeStore';
 
 interface UserStatCardProps {
   competitionId: string;
@@ -119,14 +120,21 @@ function collageSliceLayout(index: number, total: number): SliceLayout {
   return { clipPath, left: minX, top: minY, width, height };
 }
 
-const DARK_BLUE = 'hsl(231, 70%, 28%)';
-const DARK_RED = 'hsl(358, 70%, 32%)';
+const LIGHT_TITLE   = 'hsl(231, 70%, 28%)';
+const LIGHT_BOLD    = 'hsl(358, 70%, 32%)';
+const LIGHT_TEXT    = 'hsl(180, 2%, 28%)';
+const LIGHT_BORDER  = 'hsl(231, 70%, 28%)';
+
+const DARK_TITLE    = 'hsl(231, 60%, 65%)';
+const DARK_BOLD     = 'hsl(358, 55%, 62%)';
+const DARK_TEXT     = 'hsl(120, 3%, 85%)';
+const DARK_BORDER   = 'hsl(231, 40%, 28%)';
 
 // Renders `**bold**` markers in stat text (e.g. usernames) as <strong> spans.
-function renderStatistic(text: string) {
+function renderStatistic(text: string, boldColor: string) {
   return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
     part.startsWith('**') && part.endsWith('**') ? (
-      <strong key={i} style={{ color: DARK_RED }}>
+      <strong key={i} style={{ color: boldColor }}>
         {part.slice(2, -2)}
       </strong>
     ) : (
@@ -137,6 +145,11 @@ function renderStatistic(text: string) {
 
 export default function UserStatCard({ competitionId, data, iconOnRight, onMatchClick, onLeaderboardClick }: UserStatCardProps) {
   const { title, statistic, subjects } = data;
+  const isDark = useThemeStore((s) => s.theme === 'dark');
+  const titleColor  = isDark ? DARK_TITLE  : LIGHT_TITLE;
+  const boldColor   = isDark ? DARK_BOLD   : LIGHT_BOLD;
+  const textColor   = isDark ? DARK_TEXT   : LIGHT_TEXT;
+  const borderColor = isDark ? DARK_BORDER : LIGHT_BORDER;
 
   const icon = (
     <div className="relative min-h-40 w-1/3 flex-shrink-0 sm:w-1/4">
@@ -209,17 +222,17 @@ export default function UserStatCard({ competitionId, data, iconOnRight, onMatch
 
   const content = (
     <div className="min-w-0 flex-1 p-6">
-      <h3 className="text-lg font-bold uppercase tracking-wide" style={{ color: DARK_BLUE }}>
+      <h3 className="text-lg font-bold uppercase tracking-wide" style={{ color: titleColor }}>
         {title}
       </h3>
-      <p className="mt-2 text-sm">{renderStatistic(statistic)}</p>
+      <p className="mt-2 text-sm">{renderStatistic(statistic, boldColor)}</p>
     </div>
   );
 
   const card = (
     <div
-      className={`flex items-stretch overflow-hidden rounded-2xl border-4 bg-[hsla(120,3%,91%,0.5)] dark:bg-[hsl(120,3%,91%)] ${iconOnRight ? 'flex-row-reverse' : 'flex-row'}`}
-      style={{ color: 'hsl(180, 2%, 28%)', borderColor: DARK_BLUE }}
+      className={`flex items-stretch overflow-hidden rounded-2xl border-4 dark:border bg-[hsla(120,3%,91%,0.5)] dark:bg-[hsl(231,28%,16%)] ${iconOnRight ? 'flex-row-reverse' : 'flex-row'}`}
+      style={{ color: textColor, borderColor }}
     >
       {icon}
       {content}

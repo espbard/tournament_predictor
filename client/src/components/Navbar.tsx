@@ -99,9 +99,23 @@ export default function Navbar() {
           </Link>
           <button
             onClick={handleLogout}
-            className="rounded-md border border-primary-foreground/30 px-3 py-1.5 text-sm text-primary-foreground hover:bg-primary-foreground/10"
+            className="rounded-md border border-primary-foreground/30 p-1.5 text-primary-foreground hover:bg-primary-foreground/10"
+            title={t('nav.logOut')}
           >
-            {t('nav.logOut')}
+            <span
+              className="block h-4 w-4 bg-current"
+              aria-hidden="true"
+              style={{
+                maskImage: 'url(/logout-icon.png)',
+                WebkitMaskImage: 'url(/logout-icon.png)',
+                maskSize: 'contain',
+                WebkitMaskSize: 'contain',
+                maskRepeat: 'no-repeat',
+                WebkitMaskRepeat: 'no-repeat',
+                maskPosition: 'center',
+                WebkitMaskPosition: 'center',
+              }}
+            />
           </button>
         </div>
       </div>
