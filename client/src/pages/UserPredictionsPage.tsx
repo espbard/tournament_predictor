@@ -280,7 +280,7 @@ export default function UserPredictionsPage() {
             onClick={() => setActiveTab(tab)}
             className={`whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
               activeTab === tab
-                ? 'border-primary text-primary'
+                ? 'border-primary text-primary dark:border-[hsl(231,60%,65%)] dark:text-[hsl(231,60%,65%)]'
                 : 'border-transparent text-muted-foreground hover:text-foreground'
             }`}
           >
