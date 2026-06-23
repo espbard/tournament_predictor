@@ -231,7 +231,7 @@ export default function UserStatCard({ competitionId, data, iconOnRight, onMatch
 
   const card = (
     <div
-      className={`flex items-stretch overflow-hidden rounded-2xl border-4 bg-[hsla(120,3%,91%,0.5)] dark:bg-[hsl(231,28%,16%)] ${iconOnRight ? 'flex-row-reverse' : 'flex-row'}`}
+      className={`flex items-stretch overflow-hidden rounded-2xl border-4 dark:border bg-[hsla(120,3%,91%,0.5)] dark:bg-[hsl(231,28%,16%)] ${iconOnRight ? 'flex-row-reverse' : 'flex-row'}`}
       style={{ color: textColor, borderColor }}
     >
       {icon}
