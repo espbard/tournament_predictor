@@ -16,7 +16,7 @@ import { LoadingSpinner } from '@/components/LoadingSpinner';
 import BackButton from '@/components/BackButton';
 import { useT } from '@/lib/useT';
 import { useTeamName } from '@/lib/teamTranslations';
-import type { Competition, Tournament, Prediction, MatchStage, LeaderboardEntry, BracketPredictions, UserStatCardData, LeaderboardProgressionResponse } from '@tournament-predictor/shared';
+import type { Competition, Tournament, Prediction, MatchStage, LeaderboardEntry, BracketPredictions, BracketMatchPrediction, UserStatCardData, LeaderboardProgressionResponse } from '@tournament-predictor/shared';
 import {
   sortGroupTeams,
   findGroupDisciplinaryTies,
@@ -182,7 +182,7 @@ export default function CompetitionDetailPage() {
   const { data: bracketPreds } = useQuery({
     queryKey: ['competitions', id, 'bracket-predictions'],
     queryFn: () => api.get<BracketPredictions>(`/competitions/${id}/bracket-predictions`),
-    enabled: !!competition && !user?.isAdmin && !user?.isLeaderboardUser && (myStatus?.groupStageLocked ?? false),
+    enabled: !!competition && !user?.isAdmin && !user?.isLeaderboardUser,
   });
 
   const { data: leaderboard = [], isLoading: leaderboardLoading } = useQuery({
@@ -274,6 +274,31 @@ export default function CompetitionDetailPage() {
     () => Object.fromEntries(savedPredictions.map(p => [p.matchId, p])),
     [savedPredictions]
   );
+
+  // Map actual knockout match UUIDs → the user's bracket prediction for that slot.
+  // Bracket predictions are keyed by position (e.g. "round_of_16_0") not by match UUID,
+  // so we replicate the server's ordering: sort each stage's matches by scheduledAt, then
+  // assign indices to build the same "stage_i" keys.
+  const knockoutPredByMatchId = useMemo<Record<string, BracketMatchPrediction>>(() => {
+    if (!bracketPreds) return {};
+    const koMatches = [...matchList]
+      .filter(m => m.stage !== 'group')
+      .sort((a, b) => {
+        if (!a.scheduledAt && !b.scheduledAt) return 0;
+        if (!a.scheduledAt) return 1;
+        if (!b.scheduledAt) return -1;
+        return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
+      });
+    const stageCount = new Map<string, number>();
+    const result: Record<string, BracketMatchPrediction> = {};
+    for (const m of koMatches) {
+      const i = stageCount.get(m.stage) ?? 0;
+      stageCount.set(m.stage, i + 1);
+      const pred = bracketPreds[`${m.stage}_${i}`];
+      if (pred) result[m.id] = pred;
+    }
+    return result;
+  }, [matchList, bracketPreds]);
 
   type TeamStat = {
     teamId: string;
@@ -521,6 +546,22 @@ export default function CompetitionDetailPage() {
     [user?.isAdmin, tournamentsData, tournamentData, competition?.tournamentId]
   );
 
+  // When the admin has confirmed standings, reorder the actual group display to match.
+  const displayActualGroupStandings = useMemo(() => {
+    const confirmed = tournament?.knockoutConfig?.confirmedGroupStandings;
+    if (!tournament?.knockoutConfig?.groupStandingsLocked || !confirmed) return actualGroupStandings;
+    const result = new Map(actualGroupStandings);
+    for (const [groupName, confirmedOrder] of Object.entries(confirmed)) {
+      const teams = actualGroupStandings.get(groupName);
+      if (!teams) continue;
+      const reordered = confirmedOrder
+        .map(teamId => teams.find(t => t.teamId === teamId))
+        .filter((t): t is typeof teams[number] => t !== undefined);
+      result.set(groupName, reordered);
+    }
+    return result;
+  }, [actualGroupStandings, tournament?.knockoutConfig?.groupStandingsLocked, tournament?.knockoutConfig?.confirmedGroupStandings]);
+
   useEffect(() => {
     if (tabParam || user?.isLeaderboardUser || user?.isAdmin || !tournament) return;
     if (tournament.status === 'active' || tournament.status === 'completed') {
@@ -531,12 +572,14 @@ export default function CompetitionDetailPage() {
     }
   }, [tournament?.status, tabParam, user?.isLeaderboardUser, user?.isAdmin, setSearchParams]);
 
+  const directQualifiers = tournament?.knockoutConfig?.directQualifiers ?? 2;
+
   const qualifyingThirdPlaceIds = useMemo(() => {
     const luckyLosers = tournament?.knockoutConfig?.luckyLosers ?? 0;
     if (luckyLosers <= 0) return new Set<string>();
     const third = groupStandings
-      .filter(([, teams]) => teams.length >= 3)
-      .map(([, teams]) => teams[2]);
+      .filter(([, teams]) => teams.length > directQualifiers)
+      .map(([, teams]) => teams[directQualifiers]);
 
     // Sort by natural criteria only (no disciplinary tiebreaker) so tied teams stay grouped together.
     const sorted = [...third].sort((a, b) => {
@@ -564,10 +607,10 @@ export default function CompetitionDetailPage() {
         for (const tm of bucket) qualifying.add(tm.teamId);
         filled += bucket.length;
       } else {
-        // Tied bucket straddles the cutoff — only highlight once the tiebreaker is resolved.
+        // Tied bucket straddles the cutoff — highlight once enough teams are ranked to fill remaining slots.
         const key = makeDisciplinaryKey(bucket.map(tm => tm.teamId));
         const ranked = luckyLoserDisciplinaryChoices[key] ?? [];
-        if (ranked.length >= bucket.length) {
+        if (ranked.length >= remaining) {
           for (const id of ranked.slice(0, remaining)) qualifying.add(id);
         }
         filled += remaining;
@@ -576,15 +619,19 @@ export default function CompetitionDetailPage() {
       i = j;
     }
     return qualifying;
-  }, [groupStandings, luckyLoserDisciplinaryChoices, tournament]);
+  }, [groupStandings, luckyLoserDisciplinaryChoices, tournament, directQualifiers]);
 
   const actualQualifyingThirdPlaceIds = useMemo(() => {
     const luckyLosers = tournament?.knockoutConfig?.luckyLosers ?? 0;
     if (luckyLosers <= 0) return new Set<string>();
-    const groupEntries = [...actualGroupStandings.entries()].sort(([a], [b]) => a.localeCompare(b));
+    const confirmedLuckyLosers = tournament?.knockoutConfig?.confirmedLuckyLosers;
+    if (tournament?.knockoutConfig?.groupStandingsLocked && confirmedLuckyLosers) {
+      return new Set<string>(confirmedLuckyLosers.slice(0, luckyLosers));
+    }
+    const groupEntries = [...displayActualGroupStandings.entries()].sort(([a], [b]) => a.localeCompare(b));
     const third = groupEntries
-      .filter(([, teams]) => teams.length >= 3)
-      .map(([, teams]) => teams[2]);
+      .filter(([, teams]) => teams.length > directQualifiers)
+      .map(([, teams]) => teams[directQualifiers]);
     const sorted = [...third].sort((a, b) => {
       const pa = a.W * 3 + a.D, pb = b.W * 3 + b.D;
       if (pb !== pa) return pb - pa;
@@ -614,7 +661,7 @@ export default function CompetitionDetailPage() {
       i = j;
     }
     return qualifying;
-  }, [actualGroupStandings, tournament]);
+  }, [displayActualGroupStandings, tournament, directQualifiers]);
 
   // All disciplinary ties for the group stage, including already-resolved ones.
   const allGroupDisciplinaryTieInfo = useMemo(() => {
@@ -685,6 +732,11 @@ export default function CompetitionDetailPage() {
       return;
     }
 
+    if (activeTab !== 'group') {
+      setShowProceedPrompt(false);
+      return;
+    }
+
     const tournamentUnderway = tournament?.status === 'active' || tournament?.status === 'completed';
     if (!groupStageLocked && !hasDeclined && !showProceedPrompt && !tournamentUnderway) {
       const timer = setTimeout(() => {
@@ -692,7 +744,7 @@ export default function CompetitionDetailPage() {
       }, 3000);
       return () => clearTimeout(timer);
     }
-  }, [allGroupMatchesList, allGroupFilled, localEdits, groupStageLocked, hasDeclined, showProceedPrompt, predictionsFetched, tournament?.status]);
+  }, [allGroupMatchesList, allGroupFilled, localEdits, groupStageLocked, hasDeclined, showProceedPrompt, predictionsFetched, tournament?.status, activeTab]);
 
   useEffect(() => {
     if (firstGroupUnfilledRef.current || !savedPredictions.length) return;
@@ -1165,13 +1217,14 @@ export default function CompetitionDetailPage() {
                               {teams.map((tm, i) => {
                                 const counts = completedGroupMatchCounts.get(groupName);
                                 const groupComplete = counts && counts.total > 0 && counts.completed === counts.total;
-                                const actualTeams = actualGroupStandings.get(groupName) ?? [];
+                                const actualTeams = displayActualGroupStandings.get(groupName) ?? [];
                                 const positionCorrect = groupComplete && actualTeams[i]?.teamId === tm.teamId;
+                                const effectiveDQ = Math.min(directQualifiers, teams.length - 1);
                                 return (
                                 <tr key={tm.teamId} className={
-                                  i < 2
+                                  i < effectiveDQ
                                     ? 'bg-green-50 dark:bg-green-950/30'
-                                    : i === 2 && qualifyingThirdPlaceIds.has(tm.teamId)
+                                    : i === effectiveDQ && qualifyingThirdPlaceIds.has(tm.teamId)
                                     ? 'bg-yellow-50 dark:bg-yellow-950/30'
                                     : ''
                                 }>
@@ -1274,7 +1327,7 @@ export default function CompetitionDetailPage() {
                     const groupTies = allGroupFilled
                       ? groupDisciplinaryTies.filter(tie => tie.groupName === groupName)
                       : [];
-                    const actualTeams = actualGroupStandings.get(groupName) ?? [];
+                    const actualTeams = displayActualGroupStandings.get(groupName) ?? [];
                     return (
                       <div key={groupName} className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
                         {/* Predicted */}
@@ -1304,11 +1357,12 @@ export default function CompetitionDetailPage() {
                                   const counts = completedGroupMatchCounts.get(groupName);
                                   const groupComplete = counts && counts.total > 0 && counts.completed === counts.total;
                                   const positionCorrect = groupComplete && actualTeams[i]?.teamId === tm.teamId;
+                                  const effectiveDQ = Math.min(directQualifiers, teams.length - 1);
                                   return (
                                   <tr key={tm.teamId} className={
-                                    i < 2
+                                    i < effectiveDQ
                                       ? 'bg-green-50 dark:bg-green-950/30'
-                                      : i === 2 && qualifyingThirdPlaceIds.has(tm.teamId)
+                                      : i === effectiveDQ && qualifyingThirdPlaceIds.has(tm.teamId)
                                       ? 'bg-yellow-50 dark:bg-yellow-950/30'
                                       : ''
                                   }>
@@ -1413,11 +1467,13 @@ export default function CompetitionDetailPage() {
                                 </tr>
                               </thead>
                               <tbody className="divide-y">
-                                {actualTeams.map((tm, i) => (
+                                {actualTeams.map((tm, i) => {
+                                  const effectiveDQ = Math.min(directQualifiers, actualTeams.length - 1);
+                                  return (
                                   <tr key={tm.teamId} className={
-                                    i < 2
+                                    i < effectiveDQ
                                       ? 'bg-green-50 dark:bg-green-950/30'
-                                      : i === 2 && actualQualifyingThirdPlaceIds.has(tm.teamId)
+                                      : i === effectiveDQ && actualQualifyingThirdPlaceIds.has(tm.teamId)
                                       ? 'bg-yellow-50 dark:bg-yellow-950/30'
                                       : ''
                                   }>
@@ -1440,7 +1496,8 @@ export default function CompetitionDetailPage() {
                                     <td className="py-1.5 text-center text-muted-foreground">{tm.GA}</td>
                                     <td className="pr-3 py-1.5 text-center font-bold">{tm.W * 3 + tm.D}</td>
                                   </tr>
-                                ))}
+                                );
+                                })}
                               </tbody>
                             </table>
                           </div>
@@ -1649,7 +1706,7 @@ export default function CompetitionDetailPage() {
                   const isExactScore = hasPred && hasActual &&
                     pred.homeScore === m.homeScore && pred.awayScore === m.awayScore;
                   const dotClass = isCurrent
-                    ? 'w-5 h-2.5 bg-primary'
+                    ? 'w-5 h-2.5 bg-primary dark:bg-blue-400'
                     : !hasPred && !hasPendingEdit
                     ? 'w-2.5 h-2.5 bg-muted-foreground/30 hover:bg-muted-foreground/50'
                     : !hasActual
@@ -1719,7 +1776,7 @@ export default function CompetitionDetailPage() {
                       type="button"
                       onClick={() => setCurrentGroupMatchIdx(i => Math.max(0, i - 1))}
                       disabled={!canGoPrev}
-                      className="hidden sm:flex flex-shrink-0 h-10 w-10 rounded-full border items-center justify-center transition-opacity disabled:opacity-20"
+                      className="hidden sm:flex flex-shrink-0 h-10 w-10 rounded-full border items-center justify-center transition-opacity disabled:opacity-20 dark:border-blue-400 dark:text-blue-400"
                       aria-label="Previous match"
                     >
                       ←
@@ -1890,14 +1947,14 @@ export default function CompetitionDetailPage() {
                           type="button"
                           onClick={() => setCurrentGroupMatchIdx(i => Math.max(0, i - 1))}
                           disabled={!canGoPrev}
-                          className="h-11 w-11 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20"
+                          className="h-11 w-11 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20 dark:border-blue-400 dark:text-blue-400"
                           aria-label="Previous match"
                         >←</button>
                         <button
                           type="button"
                           onClick={() => setCurrentGroupMatchIdx(i => Math.min(allGroupMatchesList.length - 1, i + 1))}
                           disabled={!canGoNext}
-                          className="h-11 w-11 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20"
+                          className="h-11 w-11 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20 dark:border-blue-400 dark:text-blue-400"
                           aria-label="Next match"
                         >→</button>
                       </div>
@@ -1907,7 +1964,7 @@ export default function CompetitionDetailPage() {
                       type="button"
                       onClick={() => setCurrentGroupMatchIdx(i => Math.min(allGroupMatchesList.length - 1, i + 1))}
                       disabled={!canGoNext}
-                      className="hidden sm:flex flex-shrink-0 h-10 w-10 rounded-full border items-center justify-center transition-opacity disabled:opacity-20"
+                      className="hidden sm:flex flex-shrink-0 h-10 w-10 rounded-full border items-center justify-center transition-opacity disabled:opacity-20 dark:border-blue-400 dark:text-blue-400"
                       aria-label="Next match"
                     >
                       →
@@ -2203,15 +2260,20 @@ export default function CompetitionDetailPage() {
                       <div className="flex flex-wrap gap-1.5">
                         {allMatchesSorted.map((m, idx) => {
                           const isCurrent = idx === safePredMatchIdx;
-                          const pred = predMap[m.id];
+                          const groupPred = predMap[m.id];
+                          const koPred = knockoutPredByMatchId[m.id];
+                          const activePred = groupPred ?? koPred;
                           const hasActual = m.status === 'completed' && m.homeScore !== null && m.awayScore !== null;
-                          const hasPred = !!pred;
+                          const hasPred = !!activePred;
+                          const flipAct = !!(koPred?.flipped);
+                          const effActH = flipAct ? (m.awayScore ?? 0) : (m.homeScore ?? 0);
+                          const effActA = flipAct ? (m.homeScore ?? 0) : (m.awayScore ?? 0);
                           const isCorrectResult = hasPred && hasActual &&
-                            Math.sign(pred.homeScore - pred.awayScore) === Math.sign(m.homeScore! - m.awayScore!);
+                            Math.sign(activePred!.homeScore - activePred!.awayScore) === Math.sign(effActH - effActA);
                           const isExactScore = hasPred && hasActual &&
-                            pred.homeScore === m.homeScore && pred.awayScore === m.awayScore;
+                            activePred!.homeScore === effActH && activePred!.awayScore === effActA;
                           const dotClass = isCurrent
-                            ? 'w-5 h-2.5 bg-primary'
+                            ? 'w-5 h-2.5 bg-primary dark:bg-blue-400'
                             : !hasPred
                             ? 'w-2.5 h-2.5 bg-muted-foreground/30 hover:bg-muted-foreground/50'
                             : !hasActual
@@ -2240,7 +2302,7 @@ export default function CompetitionDetailPage() {
                         type="button"
                         onClick={() => setCurrentPredMatchIdx(i => Math.max(0, i - 1))}
                         disabled={safePredMatchIdx === 0}
-                        className="hidden sm:flex flex-shrink-0 h-10 w-10 rounded-full border items-center justify-center transition-opacity disabled:opacity-20"
+                        className="hidden sm:flex flex-shrink-0 h-10 w-10 rounded-full border items-center justify-center transition-opacity disabled:opacity-20 dark:border-blue-400 dark:text-blue-400"
                         aria-label="Previous match"
                       >←</button>
 
@@ -2298,13 +2360,13 @@ export default function CompetitionDetailPage() {
                             type="button"
                             onClick={() => setCurrentPredMatchIdx(i => Math.max(0, i - 1))}
                             disabled={safePredMatchIdx === 0}
-                            className="h-11 w-11 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20"
+                            className="h-11 w-11 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20 dark:border-blue-400 dark:text-blue-400"
                           >←</button>
                           <button
                             type="button"
                             onClick={() => setCurrentPredMatchIdx(i => Math.min(allMatchesSorted.length - 1, i + 1))}
                             disabled={safePredMatchIdx === allMatchesSorted.length - 1}
-                            className="h-11 w-11 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20"
+                            className="h-11 w-11 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20 dark:border-blue-400 dark:text-blue-400"
                           >→</button>
                         </div>
                       </div>
@@ -2313,7 +2375,7 @@ export default function CompetitionDetailPage() {
                         type="button"
                         onClick={() => setCurrentPredMatchIdx(i => Math.min(completedMatchesWithResults.length - 1, i + 1))}
                         disabled={safePredMatchIdx === completedMatchesWithResults.length - 1}
-                        className="hidden sm:flex flex-shrink-0 h-10 w-10 rounded-full border items-center justify-center transition-opacity disabled:opacity-20"
+                        className="hidden sm:flex flex-shrink-0 h-10 w-10 rounded-full border items-center justify-center transition-opacity disabled:opacity-20 dark:border-blue-400 dark:text-blue-400"
                         aria-label="Next match"
                       >→</button>
                     </div>

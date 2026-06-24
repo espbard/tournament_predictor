@@ -26,8 +26,22 @@ interface Props {
   data: LeaderboardProgressionResponse;
 }
 
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+  return isMobile;
+}
+
 export default function LeaderboardLineGraph({ data }: Props) {
   const { t } = useT();
+  const isMobile = useIsMobile();
   const [hiddenUsers, setHiddenUsers] = useState<Set<string>>(new Set());
   const [frozenTooltip, setFrozenTooltip] = useState<FrozenTooltip | null>(null);
   // After a dismiss, suppress Recharts' own hover tooltip until the next chart interaction.
@@ -216,7 +230,7 @@ export default function LeaderboardLineGraph({ data }: Props) {
         }}
       >
         <div style={{ width: `${Math.max(100, zoomLevel * 100)}%` }}>
-        <ResponsiveContainer width="100%" height={280}>
+        <ResponsiveContainer width="100%" height={isMobile ? 420 : 280}>
         <LineChart
           data={chartData}
           margin={{ top: 5, right: ICON_R + 12, bottom: 5, left: -10 }}

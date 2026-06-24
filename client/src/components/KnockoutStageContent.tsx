@@ -347,7 +347,7 @@ function FocusedMatchCard({
           if (!teamId) continue;
           if (effectivePredHomeId !== teamId && effectivePredAwayId !== teamId) continue;
           if (isFinal) {
-            if (teamId === actualMatch.progressingTeamId) correctWinner = scoringConfig.correct_winner;
+            if (teamId === actualMatch.progressingTeamId && prediction.progressingTeamId === actualMatch.progressingTeamId) correctWinner = scoringConfig.correct_winner;
             else correctTeamInFinal += scoringConfig.correct_team_in_final;
           } else {
             correctTeamInKnockoutTie += scoringConfig.correct_team_in_knockout_tie;
@@ -959,7 +959,7 @@ function FocusedBracketView({
                 isExactScore = predH === h && predA === a;
               }
               const dotClass = isCurrent
-                ? 'w-5 h-2.5 bg-primary'
+                ? 'w-5 h-2.5 bg-primary dark:bg-blue-400'
                 : !hasPred
                 ? 'w-2.5 h-2.5 bg-muted-foreground/30 hover:bg-muted-foreground/50'
                 : !hasActual
@@ -1021,14 +1021,14 @@ function FocusedBracketView({
                 type="button"
                 onClick={() => canGoPrev && goTo(currentIdx - 1)}
                 disabled={!canGoPrev}
-                className="h-11 w-11 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20"
+                className="h-11 w-11 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20 dark:border-blue-400 dark:text-blue-400"
                 aria-label="Previous match"
               >←</button>
               <button
                 type="button"
                 onClick={() => showNextArrow && goTo(currentIdx + 1)}
                 disabled={!showNextArrow}
-                className={`h-11 w-11 rounded-full border flex items-center justify-center transition-all duration-200 ${showNextArrow ? 'border-primary text-primary hover:bg-primary/10 shadow-sm' : 'opacity-0 pointer-events-none'}`}
+                className={`h-11 w-11 rounded-full border flex items-center justify-center transition-all duration-200 ${showNextArrow ? 'border-primary text-primary hover:bg-primary/10 shadow-sm dark:border-blue-400 dark:text-blue-400' : 'opacity-0 pointer-events-none'}`}
                 aria-label="Next match"
               >→</button>
             </div>
@@ -1040,7 +1040,7 @@ function FocusedBracketView({
             disabled={!showNextArrow}
             className={`hidden sm:flex flex-shrink-0 h-10 w-10 rounded-full border items-center justify-center transition-all duration-200 ${
               showNextArrow
-                ? 'border-primary text-primary hover:bg-primary/10 shadow-sm'
+                ? 'border-primary text-primary hover:bg-primary/10 shadow-sm dark:border-blue-400 dark:text-blue-400'
                 : 'opacity-0 pointer-events-none'
             }`}
             aria-label="Next match"
