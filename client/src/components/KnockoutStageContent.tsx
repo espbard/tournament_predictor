@@ -1060,6 +1060,20 @@ const V_CARD_W = 22;  // wider to accommodate progressive icon sizes
 const V_HPAD = 7;
 const V_COL_W = V_CARD_W + V_HPAD * 2; // 36px per column
 
+// Horizontal final card (icons side-by-side, much larger)
+const FINAL_ICON = 28;
+const FINAL_HPAD = 5;
+const FINAL_HCARD_H = FINAL_ICON + FINAL_HPAD * 2; // 38px
+const FINAL_HSLOT_W = FINAL_ICON + FINAL_HPAD * 2;  // 38px per team slot
+const FINAL_HCARD_W = FINAL_HSLOT_W * 2 + 1;         // 77px total
+
+// Horizontal bronze final card (smaller, also side-by-side)
+const BRONZE_ICON = 20;
+const BRONZE_HPAD = 4;
+const BRONZE_HCARD_H = BRONZE_ICON + BRONZE_HPAD * 2; // 28px
+const BRONZE_HSLOT_W = BRONZE_ICON + BRONZE_HPAD * 2;  // 28px per team slot
+const BRONZE_HCARD_W = BRONZE_HSLOT_W * 2 + 1;          // 57px total
+
 const VIZ_SHORT_LABELS: Record<KnockoutFirstRound, string> = {
   round_of_32: 'R32',
   round_of_16: 'R16',
@@ -1136,7 +1150,6 @@ function KnockoutBracketVisualizer({
   // Spacing is driven by the first-round card height (most matches, most rows).
   // Cards in later rounds are taller but centered on the same yCenter grid.
   const firstRoundDims = vizRoundDims(maxRoundIdx, maxRoundIdx);
-  const bronzeDims = vizBronzeDims(maxRoundIdx);
 
   // yCenter[`${R}_${i}`] = vertical midpoint for local index i (0-based within each side).
   const yCenter = useMemo(() => {
@@ -1163,16 +1176,24 @@ function KnockoutBracketVisualizer({
     ? firstRoundDims.cardH
     : halfCount * (firstRoundDims.cardH + V_ROW_GAP) - V_ROW_GAP;
   const bronzeGap = V_ROW_GAP * 5;
-  const totalH = mainH + (hasBronzeFinal ? bronzeGap + bronzeDims.cardH : 0);
+
+  // Final card sits above the main bracket; space reserved = card height + connector gap
+  const topOffset = isSingleMatch ? 0 : FINAL_HCARD_H + 20;
+  const bracketBodyH = isSingleMatch ? FINAL_HCARD_H : topOffset + mainH;
+  const totalH = bracketBodyH + (hasBronzeFinal ? bronzeGap + BRONZE_HCARD_H : 0);
+
   // (2*maxRoundIdx + 1) columns: left side + center (final) + right side
-  const totalW = isSingleMatch ? V_COL_W : (2 * maxRoundIdx + 1) * V_COL_W;
+  const totalW = isSingleMatch ? FINAL_HCARD_W : (2 * maxRoundIdx + 1) * V_COL_W;
 
   // Left side: R=maxRoundIdx at col 0, R=1 at col maxRoundIdx-1
   const cardLeftX_left = (R: number) => (maxRoundIdx - R) * V_COL_W + V_HPAD;
-  // Center column (final, R=0)
-  const finalCardLeft = maxRoundIdx * V_COL_W + V_HPAD;
   // Right side: R=1 at col maxRoundIdx+1, R=maxRoundIdx at col 2*maxRoundIdx
   const cardLeftX_right = (R: number) => (maxRoundIdx + R) * V_COL_W + V_HPAD;
+
+  // Horizontal final card: centered on bracket, sitting at y=0 in bracket area
+  const finalCenterX = isSingleMatch ? FINAL_HCARD_W / 2 : maxRoundIdx * V_COL_W + V_COL_W / 2;
+  const finalHCardLeft = finalCenterX - FINAL_HCARD_W / 2;
+  const bronzeHCardLeft = finalCenterX - BRONZE_HCARD_W / 2;
 
   function getTeams(side: 'left' | 'right', R: number, localI: number): { home: VizTeam | null; away: VizTeam | null } {
     // Right side: offset local index by half the total matches at round R
@@ -1203,6 +1224,31 @@ function KnockoutBracketVisualizer({
         <div className="bg-border flex-shrink-0" style={{ height: 1 }} />
         <div style={{ height: dims.slot }} className="flex items-center justify-center">
           <VizTeamIcon team={away} size={dims.icon} progressed={awayProgressed} />
+        </div>
+      </div>
+    );
+  }
+
+  function renderHorizCard(
+    key: string, left: number, top: number,
+    home: VizTeam | null, away: VizTeam | null,
+    iconSize: number, slotW: number, cardH: number,
+    opts?: { dashed?: boolean },
+  ) {
+    const { dashed = false } = opts ?? {};
+    const cardW = slotW * 2 + 1;
+    return (
+      <div
+        key={key}
+        style={{ position: 'absolute', left, top, width: cardW, height: cardH }}
+        className={`rounded-sm border${dashed ? ' border-dashed' : ''} bg-card overflow-hidden flex flex-row`}
+      >
+        <div style={{ width: slotW, height: cardH }} className="flex items-center justify-center flex-shrink-0">
+          <VizTeamIcon team={home} size={iconSize} />
+        </div>
+        <div className="bg-border flex-shrink-0" style={{ width: 1 }} />
+        <div style={{ width: slotW, height: cardH }} className="flex items-center justify-center flex-shrink-0">
+          <VizTeamIcon team={away} size={iconSize} />
         </div>
       </div>
     );
@@ -1253,7 +1299,7 @@ function KnockoutBracketVisualizer({
                 className="text-muted-foreground font-semibold whitespace-nowrap leading-none">{label}</span>,
             ];
           }).flat()}
-          <span style={{ position: 'absolute', left: maxRoundIdx * V_COL_W + V_COL_W / 2, transform: 'translateX(-50%)', fontSize: 8 }}
+          <span style={{ position: 'absolute', left: finalCenterX, transform: 'translateX(-50%)', fontSize: 8 }}
             className="text-muted-foreground font-semibold whitespace-nowrap leading-none">F</span>
         </div>
 
@@ -1263,7 +1309,7 @@ function KnockoutBracketVisualizer({
           <svg
             style={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'visible' }}
             width={totalW}
-            height={mainH}
+            height={bracketBodyH}
           >
             {!isSingleMatch && (
               <>
@@ -1273,9 +1319,9 @@ function KnockoutBracketVisualizer({
                   const parentR = childR - 1;
                   const numParents = Math.pow(2, parentR - 1);
                   return Array.from({ length: numParents }, (_, i) => {
-                    const topY = yCenter[`${childR}_${2 * i}`];
-                    const botY = yCenter[`${childR}_${2 * i + 1}`];
-                    const parentY = yCenter[`${parentR}_${i}`];
+                    const topY = topOffset + yCenter[`${childR}_${2 * i}`];
+                    const botY = topOffset + yCenter[`${childR}_${2 * i + 1}`];
+                    const parentY = topOffset + yCenter[`${parentR}_${i}`];
                     const childRight = cardLeftX_left(childR) + V_CARD_W;
                     const parentLeft = cardLeftX_left(parentR);
                     const midX = (childRight + parentLeft) / 2;
@@ -1294,12 +1340,25 @@ function KnockoutBracketVisualizer({
                     ];
                   });
                 })}
-                {/* Left SF → Final */}
+                {/* SF → Final: L-shaped paths meeting at center, vertical up to final card bottom */}
                 {(() => {
-                  const gold = getProgressedSlot(1, 'left', 0) !== null;
-                  return <path key="Lc_sf_final" fill="none" strokeWidth={gold ? 1.5 : 1}
-                    stroke={gold ? GOLD : BORDER}
-                    d={`M ${cardLeftX_left(1) + V_CARD_W} ${yCenter['0_0']} L ${finalCardLeft} ${yCenter['0_0']}`} />;
+                  const leftGold = getProgressedSlot(1, 'left', 0) !== null;
+                  const rightGold = getProgressedSlot(1, 'right', 0) !== null;
+                  const anyGold = leftGold || rightGold;
+                  const sfCenterY = topOffset + yCenter['0_0'];
+                  return (
+                    <>
+                      <path key="Lc_sf_final" fill="none" strokeWidth={leftGold ? 1.5 : 1}
+                        stroke={leftGold ? GOLD : BORDER}
+                        d={`M ${cardLeftX_left(1) + V_CARD_W} ${sfCenterY} H ${finalCenterX}`} />
+                      <path key="Rc_sf_final" fill="none" strokeWidth={rightGold ? 1.5 : 1}
+                        stroke={rightGold ? GOLD : BORDER}
+                        d={`M ${cardLeftX_right(1)} ${sfCenterY} H ${finalCenterX}`} />
+                      <path key="vert_sf_final" fill="none" strokeWidth={anyGold ? 1.5 : 1}
+                        stroke={anyGold ? GOLD : BORDER}
+                        d={`M ${finalCenterX} ${sfCenterY} V ${FINAL_HCARD_H}`} />
+                    </>
+                  );
                 })()}
                 {/* Right side: connect each round to its parent (mirrored) */}
                 {Array.from({ length: maxRoundIdx - 1 }).flatMap((_, step) => {
@@ -1307,9 +1366,9 @@ function KnockoutBracketVisualizer({
                   const parentR = childR - 1;
                   const numParents = Math.pow(2, parentR - 1);
                   return Array.from({ length: numParents }, (_, i) => {
-                    const topY = yCenter[`${childR}_${2 * i}`];
-                    const botY = yCenter[`${childR}_${2 * i + 1}`];
-                    const parentY = yCenter[`${parentR}_${i}`];
+                    const topY = topOffset + yCenter[`${childR}_${2 * i}`];
+                    const botY = topOffset + yCenter[`${childR}_${2 * i + 1}`];
+                    const parentY = topOffset + yCenter[`${parentR}_${i}`];
                     const childLeft = cardLeftX_right(childR);
                     const parentRight = cardLeftX_right(parentR) + V_CARD_W;
                     const midX = (childLeft + parentRight) / 2;
@@ -1328,28 +1387,20 @@ function KnockoutBracketVisualizer({
                     ];
                   });
                 })}
-                {/* Right SF → Final */}
-                {(() => {
-                  const gold = getProgressedSlot(1, 'right', 0) !== null;
-                  return <path key="Rc_sf_final" fill="none" strokeWidth={gold ? 1.5 : 1}
-                    stroke={gold ? GOLD : BORDER}
-                    d={`M ${finalCardLeft + V_CARD_W} ${yCenter['0_0']} L ${cardLeftX_right(1)} ${yCenter['0_0']}`} />;
-                })()}
                 {/* Dotted lines: left SF bottom → bronze final top, right SF bottom → bronze final top */}
                 {hasBronzeFinal && maxRoundIdx >= 1 && (() => {
                   const sfDims = vizRoundDims(1, maxRoundIdx);
-                  const sfBottomY = yCenter['0_0'] + sfDims.cardH / 2;
-                  const bronzeTopY = mainH + bronzeGap;
-                  const bronzeCenterX = finalCardLeft + V_CARD_W / 2;
+                  const sfBottomY = topOffset + yCenter['0_0'] + sfDims.cardH / 2;
+                  const bronzeTopY = bracketBodyH + bronzeGap;
                   const leftSFCenterX = cardLeftX_left(1) + V_CARD_W / 2;
                   const rightSFCenterX = cardLeftX_right(1) + V_CARD_W / 2;
                   return (
                     <>
                       <path key="bronze_left"
-                        d={`M ${leftSFCenterX} ${sfBottomY} L ${bronzeCenterX} ${bronzeTopY}`}
+                        d={`M ${leftSFCenterX} ${sfBottomY} L ${finalCenterX} ${bronzeTopY}`}
                         fill="none" stroke="hsl(var(--border))" strokeWidth="1" strokeDasharray="3 2" />
                       <path key="bronze_right"
-                        d={`M ${rightSFCenterX} ${sfBottomY} L ${bronzeCenterX} ${bronzeTopY}`}
+                        d={`M ${rightSFCenterX} ${sfBottomY} L ${finalCenterX} ${bronzeTopY}`}
                         fill="none" stroke="hsl(var(--border))" strokeWidth="1" strokeDasharray="3 2" />
                     </>
                   );
@@ -1365,20 +1416,19 @@ function KnockoutBracketVisualizer({
             const dims = vizRoundDims(R, maxRoundIdx);
             return Array.from({ length: numSide }, (_, i) => {
               const { home, away } = getTeams('left', R, i);
-              const top = yCenter[`${R}_${i}`] - dims.cardH / 2;
+              const top = topOffset + yCenter[`${R}_${i}`] - dims.cardH / 2;
               const prog = getProgressedSlot(R, 'left', i);
               return renderCard(`L_${R}_${i}`, cardLeftX_left(R), top, home, away, dims,
                 { homeProgressed: prog === 'home', awayProgressed: prog === 'away' });
             });
           })}
 
-          {/* Final card (center) — no gold borders, it's the destination not the source */}
+          {/* Final card (horizontal, icons side-by-side, at top of bracket area) */}
           {(() => {
             const m = actualMatchMap[`${reversedRounds[0]}_0`];
             const home = m?.homeTeamId ? { imageUrl: m.homeTeamImageUrl, name: m.homeTeamName } : null;
             const away = m?.awayTeamId ? { imageUrl: m.awayTeamImageUrl, name: m.awayTeamName } : null;
-            const dims = vizRoundDims(0, maxRoundIdx);
-            return renderCard('final', finalCardLeft, yCenter['0_0'] - dims.cardH / 2, home, away, dims);
+            return renderHorizCard('final', finalHCardLeft, 0, home, away, FINAL_ICON, FINAL_HSLOT_W, FINAL_HCARD_H);
           })()}
 
           {/* Right side match cards */}
@@ -1388,26 +1438,26 @@ function KnockoutBracketVisualizer({
             const dims = vizRoundDims(R, maxRoundIdx);
             return Array.from({ length: numSide }, (_, i) => {
               const { home, away } = getTeams('right', R, i);
-              const top = yCenter[`${R}_${i}`] - dims.cardH / 2;
+              const top = topOffset + yCenter[`${R}_${i}`] - dims.cardH / 2;
               const prog = getProgressedSlot(R, 'right', i);
               return renderCard(`R_${R}_${i}`, cardLeftX_right(R), top, home, away, dims,
                 { homeProgressed: prog === 'home', awayProgressed: prog === 'away' });
             });
           })}
 
-          {/* Bronze final (below final card, centered) */}
+          {/* Bronze final (horizontal, below main bracket, centered) */}
           {hasBronzeFinal && (
             <>
               <span
-                style={{ position: 'absolute', left: finalCardLeft + V_CARD_W / 2, top: mainH + bronzeGap / 2 - 6, transform: 'translateX(-50%)', fontSize: 8 }}
+                style={{ position: 'absolute', left: finalCenterX, top: bracketBodyH + bronzeGap / 2 - 6, transform: 'translateX(-50%)', fontSize: 8 }}
                 className="text-muted-foreground font-semibold whitespace-nowrap leading-none"
               >
                 3rd
               </span>
-              {renderCard('bronze', finalCardLeft, mainH + bronzeGap,
+              {renderHorizCard('bronze', bronzeHCardLeft, bracketBodyH + bronzeGap,
                 bronzeMatch?.homeTeamId ? { imageUrl: bronzeMatch.homeTeamImageUrl, name: bronzeMatch.homeTeamName } : null,
                 bronzeMatch?.awayTeamId ? { imageUrl: bronzeMatch.awayTeamImageUrl, name: bronzeMatch.awayTeamName } : null,
-                bronzeDims, { dashed: true })}
+                BRONZE_ICON, BRONZE_HSLOT_W, BRONZE_HCARD_H, { dashed: true })}
             </>
           )}
         </div>
