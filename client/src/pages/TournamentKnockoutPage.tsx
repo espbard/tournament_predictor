@@ -705,7 +705,7 @@ function FocusedAdminResults({
                   key={m.match?.id ?? flatIdx}
                   type="button"
                   onClick={() => goTo(flatIdx)}
-                  className={`rounded-full transition-all duration-200 ${isCurrent ? 'w-5 h-2.5 bg-primary' : isDone ? 'w-2.5 h-2.5 bg-green-500' : isStaged ? 'w-2.5 h-2.5 bg-amber-400' : 'w-2.5 h-2.5 bg-muted-foreground/30 hover:bg-muted-foreground/50'}`}
+                  className={`rounded-full transition-all duration-200 ${isCurrent ? 'w-5 h-2.5 bg-primary dark:bg-blue-400' : isDone ? 'w-2.5 h-2.5 bg-green-500' : isStaged ? 'w-2.5 h-2.5 bg-amber-400' : 'w-2.5 h-2.5 bg-muted-foreground/30 hover:bg-muted-foreground/50'}`}
                   aria-label={`Match ${m.matchIdxInRound + 1}`}
                 />
               );
@@ -718,7 +718,7 @@ function FocusedAdminResults({
             type="button"
             onClick={() => canGoPrev && goTo(currentIdx - 1)}
             disabled={!canGoPrev}
-            className="hidden sm:flex flex-shrink-0 h-10 w-10 rounded-full border items-center justify-center transition-opacity disabled:opacity-20"
+            className="hidden sm:flex flex-shrink-0 h-10 w-10 rounded-full border items-center justify-center transition-opacity disabled:opacity-20 dark:border-blue-400 dark:text-blue-400"
             aria-label="Previous match"
           >
             ←
@@ -737,14 +737,14 @@ function FocusedAdminResults({
                 type="button"
                 onClick={() => canGoPrev && goTo(currentIdx - 1)}
                 disabled={!canGoPrev}
-                className="h-11 w-11 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20"
+                className="h-11 w-11 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20 dark:border-blue-400 dark:text-blue-400"
                 aria-label="Previous match"
               >←</button>
               <button
                 type="button"
                 onClick={() => canGoNext && goTo(currentIdx + 1)}
                 disabled={!canGoNext}
-                className={`h-11 w-11 rounded-full border flex items-center justify-center transition-all duration-200 ${canGoNext ? 'border-primary text-primary hover:bg-primary/10 shadow-sm' : 'opacity-0 pointer-events-none'}`}
+                className={`h-11 w-11 rounded-full border flex items-center justify-center transition-all duration-200 ${canGoNext ? 'border-primary text-primary hover:bg-primary/10 shadow-sm dark:border-blue-400 dark:text-blue-400' : 'opacity-0 pointer-events-none'}`}
                 aria-label="Next match"
               >→</button>
             </div>
@@ -754,7 +754,7 @@ function FocusedAdminResults({
             type="button"
             onClick={() => canGoNext && goTo(currentIdx + 1)}
             disabled={!canGoNext}
-            className={`hidden sm:flex flex-shrink-0 h-10 w-10 rounded-full border items-center justify-center transition-all duration-200 ${canGoNext ? 'border-primary text-primary hover:bg-primary/10 shadow-sm' : 'opacity-0 pointer-events-none'}`}
+            className={`hidden sm:flex flex-shrink-0 h-10 w-10 rounded-full border items-center justify-center transition-all duration-200 ${canGoNext ? 'border-primary text-primary hover:bg-primary/10 shadow-sm dark:border-blue-400 dark:text-blue-400' : 'opacity-0 pointer-events-none'}`}
             aria-label="Next match"
           >
             →

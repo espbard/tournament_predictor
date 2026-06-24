@@ -779,18 +779,19 @@ router.get('/:id/leaderboard-progression', requireAuth, async (req, res) => {
       milestones.push({ matchId: match.id, label: formatMatchLabel(match), stage: match.stage, cumulativePoints: { ...cumulativeTotals } });
     }
 
-    // Group position points (vests after all group matches done)
-    if (allGroupDone) {
-      let anyGroupPositionPts = false;
+    // Group position points milestone — only shown when admin has confirmed the standings
+    const groupStandingsLocked = knockoutCfg?.groupStandingsLocked ?? false;
+    const confirmedGroupStandingsData = knockoutCfg?.confirmedGroupStandings;
+    if (groupStandingsLocked && confirmedGroupStandingsData) {
+      const lockedActualStandings = new Map(
+        Object.entries(confirmedGroupStandingsData).map(([g, ids]) => [g, ids.map(id => ({ teamId: id, points: 0, gd: 0, gf: 0 }))]),
+      );
       for (const member of memberRows) {
         const predictedStandings = userPredictedStandings.get(member.userId) ?? new Map();
-        const pts = calculateGroupPositionPoints(actualStandings, predictedStandings, config);
-        if (pts > 0) anyGroupPositionPts = true;
+        const pts = calculateGroupPositionPoints(lockedActualStandings, predictedStandings, config);
         cumulativeTotals[member.userId] += pts;
       }
-      if (anyGroupPositionPts) {
-        milestones.push({ matchId: 'group-complete', label: 'Group Stage', stage: 'group', cumulativePoints: { ...cumulativeTotals } });
-      }
+      milestones.push({ matchId: 'group-complete', label: 'Group Tables', stage: 'group', cumulativePoints: { ...cumulativeTotals } });
     }
 
     // Knockout milestones — compute calculateKnockoutPoints incrementally
