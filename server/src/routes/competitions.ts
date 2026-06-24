@@ -2781,34 +2781,58 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     }
 
     if (heavenByTeam.size > 0) {
-      interface HeavenTeamEntry {
-        teamId: string;
-        teamLabel: string;
-        users: { userId: string; username: string; imageUrl: string | null; iconColor: string | null; count: number }[];
-        count: number;
-      }
-      const heavenTeams: HeavenTeamEntry[] = [];
+      // Invert to user → [{teamId, count}] so one user with multiple teams stays on one line
+      const userToTeams = new Map<string, { teamId: string; count: number }[]>();
       for (const [teamId, entries] of heavenByTeam.entries()) {
-        const usersForTeam = entries
-          .map(e => ({ ...e, ...userInfo.get(e.userId)! }))
-          .sort((a, b) => a.username.localeCompare(b.username));
-        heavenTeams.push({ teamId, teamLabel: teamName(teamId), users: usersForTeam, count: entries[0].count });
+        for (const { userId, count } of entries) {
+          if (!userToTeams.has(userId)) userToTeams.set(userId, []);
+          userToTeams.get(userId)!.push({ teamId, count });
+        }
       }
-      heavenTeams.sort((a, b) => a.teamLabel.localeCompare(b.teamLabel));
+      for (const teams of userToTeams.values()) {
+        teams.sort((a, b) => teamName(a.teamId).localeCompare(teamName(b.teamId)));
+      }
 
-      const allCounts = heavenTeams.map(t => t.count);
+      // Group users who share the exact same set of teams into one line
+      const lineGroups = new Map<string, { teamIds: string[]; counts: number[]; userIds: string[] }>();
+      for (const [userId, teams] of userToTeams.entries()) {
+        const key = teams.map(t => t.teamId).join('|');
+        if (!lineGroups.has(key)) {
+          lineGroups.set(key, { teamIds: teams.map(t => t.teamId), counts: teams.map(t => t.count), userIds: [] });
+        }
+        lineGroups.get(key)!.userIds.push(userId);
+      }
+
+      const sortedGroups = [...lineGroups.values()]
+        .map(g => ({
+          teamIds: g.teamIds,
+          counts: g.counts,
+          users: g.userIds.map(uid => ({ uid, ...userInfo.get(uid)! })).sort((a, b) => a.username.localeCompare(b.username)),
+        }))
+        .sort((a, b) => teamName(a.teamIds[0]).localeCompare(teamName(b.teamIds[0])));
+
+      const allCounts = sortedGroups.flatMap(g => g.counts);
       const firstCount = allCounts[0];
       const allSameCount = allCounts.every(c => c === firstCount);
 
-      const heavenSubjects = heavenTeams.flatMap(t =>
-        t.users.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor }))
+      const heavenSubjects = sortedGroups.flatMap(g =>
+        g.users.map(u => ({ type: 'user' as const, id: u.uid, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor }))
       );
 
-      const buildConnectionLine = (users: HeavenTeamEntry['users'], tName: string): string => {
+      const joinTeamNames = (tIds: string[]): string => {
+        const bolded = tIds.map(id => `**${teamName(id)}**`);
+        const andWord = lang === 'no' ? 'og' : lang === 'de' ? 'und' : 'and';
+        if (bolded.length === 1) return bolded[0];
+        if (bolded.length === 2) return `${bolded[0]} ${andWord} ${bolded[1]}`;
+        return `${bolded.slice(0, -1).join(', ')}, ${andWord} ${bolded[bolded.length - 1]}`;
+      };
+
+      const buildConnectionLine = (users: typeof sortedGroups[0]['users'], tIds: string[]): string => {
         const userNames = formatUserList(users.map(u => u.username), lang);
-        if (lang === 'no') return `${userNames} ${users.length === 1 ? 'har' : 'har'} en åndelig forbindelse med **${tName}**!`;
-        if (lang === 'de') return `${userNames} ${users.length === 1 ? 'hat' : 'haben'} eine spirituelle Verbindung mit **${tName}**!`;
-        return `${userNames} ${users.length === 1 ? 'has' : 'have'} a spiritual connection with **${tName}**!`;
+        const teams = joinTeamNames(tIds);
+        if (lang === 'no') return `${userNames} har en åndelig forbindelse med ${teams}!`;
+        if (lang === 'de') return `${userNames} ${users.length === 1 ? 'hat' : 'haben'} eine spirituelle Verbindung mit ${teams}!`;
+        return `${userNames} ${users.length === 1 ? 'has' : 'have'} a spiritual connection with ${teams}!`;
       };
 
       const buildCountPhrase = (): string => {
@@ -2830,10 +2854,10 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
             : `They have guessed the perfect score in ${buildCountPhrase()}!`;
 
       let heavenStatistic: string;
-      if (heavenTeams.length === 1) {
-        heavenStatistic = `${buildConnectionLine(heavenTeams[0].users, heavenTeams[0].teamLabel)} ${gamesLine}`;
+      if (sortedGroups.length === 1) {
+        heavenStatistic = `${buildConnectionLine(sortedGroups[0].users, sortedGroups[0].teamIds)} ${gamesLine}`;
       } else {
-        const lines = heavenTeams.map(ht => buildConnectionLine(ht.users, ht.teamLabel));
+        const lines = sortedGroups.map(g => buildConnectionLine(g.users, g.teamIds));
         heavenStatistic = lines.join('\n') + '\n' + gamesLine;
       }
 
