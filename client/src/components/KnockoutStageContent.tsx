@@ -737,6 +737,7 @@ function FocusedBracketView({
   editOverride,
   teamPageCompetitionId,
   teamPageUserId,
+  onFocusedKeyChange,
 }: {
   knockoutConfig: KnockoutConfig;
   resolvedSlots: Record<string, TeamStat | null>;
@@ -750,6 +751,7 @@ function FocusedBracketView({
   editOverride?: boolean;
   teamPageCompetitionId?: string;
   teamPageUserId?: string;
+  onFocusedKeyChange?: (key: string) => void;
 }) {
   const { firstRound, hasBronzeFinal } = knockoutConfig;
   const startIdx = ROUND_ORDER.indexOf(firstRound);
@@ -823,6 +825,10 @@ function FocusedBracketView({
   const [slideDir, setSlideDir] = useState<'fromRight' | 'fromLeft'>('fromRight');
   const [animKey, setAnimKey] = useState(0);
   const initedRef = useRef(false);
+
+  useEffect(() => {
+    onFocusedKeyChange?.(allMatches[currentIdx]?.predKey ?? '');
+  }, [currentIdx, allMatches, onFocusedKeyChange]);
 
   useEffect(() => {
     if (initedRef.current || !predsLoaded) return;
@@ -1133,9 +1139,11 @@ function VizTeamIcon({ team, size, progressed }: { team: VizTeam | null; size: n
 function KnockoutBracketVisualizer({
   knockoutConfig,
   actualMatchMap,
+  focusedPredKey = '',
 }: {
   knockoutConfig: KnockoutConfig;
   actualMatchMap: Record<string, MatchWithTeams>;
+  focusedPredKey?: string;
 }) {
   const { firstRound, hasBronzeFinal } = knockoutConfig;
   const startIdx = ROUND_ORDER.indexOf(firstRound);
@@ -1209,13 +1217,14 @@ function KnockoutBracketVisualizer({
     key: string, left: number, top: number,
     home: VizTeam | null, away: VizTeam | null,
     dims: { icon: number; slot: number; cardH: number },
-    opts?: { homeProgressed?: boolean; awayProgressed?: boolean; dashed?: boolean },
+    opts?: { homeProgressed?: boolean; awayProgressed?: boolean; dashed?: boolean; focused?: boolean },
   ) {
-    const { homeProgressed = false, awayProgressed = false, dashed = false } = opts ?? {};
+    const { homeProgressed = false, awayProgressed = false, dashed = false, focused = false } = opts ?? {};
+    const focusStyle = focused ? { outline: '1.5px dashed #eab308', outlineOffset: '2px' } : {};
     return (
       <div
         key={key}
-        style={{ position: 'absolute', left, top, width: V_CARD_W, height: dims.cardH }}
+        style={{ position: 'absolute', left, top, width: V_CARD_W, height: dims.cardH, ...focusStyle }}
         className={`rounded-sm border${dashed ? ' border-dashed' : ''} bg-card overflow-hidden flex flex-col`}
       >
         <div style={{ height: dims.slot }} className="flex items-center justify-center">
@@ -1233,14 +1242,15 @@ function KnockoutBracketVisualizer({
     key: string, left: number, top: number,
     home: VizTeam | null, away: VizTeam | null,
     iconSize: number, slotW: number, cardH: number,
-    opts?: { dashed?: boolean },
+    opts?: { dashed?: boolean; focused?: boolean },
   ) {
-    const { dashed = false } = opts ?? {};
+    const { dashed = false, focused = false } = opts ?? {};
     const cardW = slotW * 2 + 1;
+    const focusStyle = focused ? { outline: '1.5px dashed #eab308', outlineOffset: '2px' } : {};
     return (
       <div
         key={key}
-        style={{ position: 'absolute', left, top, width: cardW, height: cardH }}
+        style={{ position: 'absolute', left, top, width: cardW, height: cardH, ...focusStyle }}
         className={`rounded-sm border${dashed ? ' border-dashed' : ''} bg-card overflow-hidden flex flex-row`}
       >
         <div style={{ width: slotW, height: cardH }} className="flex items-center justify-center flex-shrink-0">
@@ -1418,8 +1428,9 @@ function KnockoutBracketVisualizer({
               const { home, away } = getTeams('left', R, i);
               const top = topOffset + yCenter[`${R}_${i}`] - dims.cardH / 2;
               const prog = getProgressedSlot(R, 'left', i);
+              const predKey = `${reversedRounds[R]}_${i}`;
               return renderCard(`L_${R}_${i}`, cardLeftX_left(R), top, home, away, dims,
-                { homeProgressed: prog === 'home', awayProgressed: prog === 'away' });
+                { homeProgressed: prog === 'home', awayProgressed: prog === 'away', focused: predKey === focusedPredKey });
             });
           })}
 
@@ -1428,7 +1439,8 @@ function KnockoutBracketVisualizer({
             const m = actualMatchMap[`${reversedRounds[0]}_0`];
             const home = m?.homeTeamId ? { imageUrl: m.homeTeamImageUrl, name: m.homeTeamName } : null;
             const away = m?.awayTeamId ? { imageUrl: m.awayTeamImageUrl, name: m.awayTeamName } : null;
-            return renderHorizCard('final', finalHCardLeft, 0, home, away, FINAL_ICON, FINAL_HSLOT_W, FINAL_HCARD_H);
+            return renderHorizCard('final', finalHCardLeft, 0, home, away, FINAL_ICON, FINAL_HSLOT_W, FINAL_HCARD_H,
+              { focused: `${reversedRounds[0]}_0` === focusedPredKey });
           })()}
 
           {/* Right side match cards */}
@@ -1440,8 +1452,9 @@ function KnockoutBracketVisualizer({
               const { home, away } = getTeams('right', R, i);
               const top = topOffset + yCenter[`${R}_${i}`] - dims.cardH / 2;
               const prog = getProgressedSlot(R, 'right', i);
+              const predKey = `${reversedRounds[R]}_${Math.pow(2, R - 1) + i}`;
               return renderCard(`R_${R}_${i}`, cardLeftX_right(R), top, home, away, dims,
-                { homeProgressed: prog === 'home', awayProgressed: prog === 'away' });
+                { homeProgressed: prog === 'home', awayProgressed: prog === 'away', focused: predKey === focusedPredKey });
             });
           })}
 
@@ -1457,7 +1470,7 @@ function KnockoutBracketVisualizer({
               {renderHorizCard('bronze', bronzeHCardLeft, bracketBodyH + bronzeGap,
                 bronzeMatch?.homeTeamId ? { imageUrl: bronzeMatch.homeTeamImageUrl, name: bronzeMatch.homeTeamName } : null,
                 bronzeMatch?.awayTeamId ? { imageUrl: bronzeMatch.awayTeamImageUrl, name: bronzeMatch.awayTeamName } : null,
-                BRONZE_ICON, BRONZE_HSLOT_W, BRONZE_HCARD_H, { dashed: true })}
+                BRONZE_ICON, BRONZE_HSLOT_W, BRONZE_HCARD_H, { dashed: true, focused: focusedPredKey === 'bronze_final_0' })}
             </>
           )}
         </div>
@@ -1539,6 +1552,7 @@ export default function KnockoutStageContent({
   const [localPreds, setLocalPreds] = useState<BracketPredictions>({});
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [initialized, setInitialized] = useState(false);
+  const [focusedPredKey, setFocusedPredKey] = useState<string>('');
   const [groupDisciplinaryChoices, setGroupDisciplinaryChoices] = useState<DisciplinaryChoices>({});
   const [luckyLoserDisciplinaryChoices, setLuckyLoserDisciplinaryChoices] = useState<DisciplinaryChoices>({});
   const latestPredsRef = useRef<BracketPredictions>({});
@@ -1858,6 +1872,7 @@ export default function KnockoutStageContent({
               editOverride={isComparisonUser}
               teamPageCompetitionId={competitionId}
               teamPageUserId={viewUserId}
+              onFocusedKeyChange={setFocusedPredKey}
             />
             {hasPendingTies && !isReadOnly && (
               <div className="absolute inset-0 bg-background/70 rounded-xl flex items-center justify-center backdrop-blur-[2px]">
@@ -1875,6 +1890,7 @@ export default function KnockoutStageContent({
             <KnockoutBracketVisualizer
               knockoutConfig={knockoutConfig}
               actualMatchMap={knockoutMatchMap}
+              focusedPredKey={focusedPredKey}
             />
           </div>
         </>
