@@ -347,7 +347,7 @@ function FocusedMatchCard({
           if (!teamId) continue;
           if (effectivePredHomeId !== teamId && effectivePredAwayId !== teamId) continue;
           if (isFinal) {
-            if (teamId === actualMatch.progressingTeamId) correctWinner = scoringConfig.correct_winner;
+            if (teamId === actualMatch.progressingTeamId && prediction.progressingTeamId === actualMatch.progressingTeamId) correctWinner = scoringConfig.correct_winner;
             else correctTeamInFinal += scoringConfig.correct_team_in_final;
           } else {
             correctTeamInKnockoutTie += scoringConfig.correct_team_in_knockout_tie;
