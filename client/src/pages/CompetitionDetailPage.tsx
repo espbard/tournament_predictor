@@ -1285,7 +1285,7 @@ export default function CompetitionDetailPage() {
                           <div className="rounded-lg border dark:bg-white/5 p-2">
                             <div className="bg-muted/50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground flex justify-between items-center">
                               <span>{t('common.group')} {groupName}</span>
-                              <span className="sm:hidden normal-case tracking-normal font-normal">{t('competitionDetail.tables.labelPredicted')}</span>
+                              <span className="sm:hidden normal-case tracking-normal font-medium rounded px-1.5 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">{t('competitionDetail.tables.labelPredicted')}</span>
                             </div>
                             <table className="w-full text-xs">
                               <thead>
@@ -1399,7 +1399,7 @@ export default function CompetitionDetailPage() {
                           <div className="rounded-lg border dark:bg-white/5 p-2">
                             <div className="bg-muted/50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground flex justify-between items-center">
                               <span>{t('common.group')} {groupName}</span>
-                              <span className="sm:hidden normal-case tracking-normal font-normal">{t('competitionDetail.tables.labelActual')}</span>
+                              <span className="sm:hidden normal-case tracking-normal font-medium rounded px-1.5 py-0.5 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">{t('competitionDetail.tables.labelActual')}</span>
                             </div>
                             <table className="w-full text-xs">
                               <thead>

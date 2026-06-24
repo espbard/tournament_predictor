@@ -628,7 +628,7 @@ const translations = {
       tables: {
         yourPredictions: 'Dine Tips',
         actualResults: 'Faktiske Resultater',
-        labelPredicted: 'Tips',
+        labelPredicted: 'Dine Tips',
         labelActual: 'Faktisk',
         predictionsFilled: '{{filled}} / {{total}} tips fylt ut — tabellene oppdateres etter hvert som du tipper.',
         qualifying: 'Kvalifiserer',
