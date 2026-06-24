@@ -47,10 +47,13 @@ export default function LeaderboardLineGraph({ data }: Props) {
   // After a dismiss, suppress Recharts' own hover tooltip until the next chart interaction.
   // On mobile, Recharts never fires mouseleave on tap-away so active stays true internally.
   const [suppressTooltip, setSuppressTooltip] = useState(false);
-  const [zoomLevel, setZoomLevel] = useState(1);
+  const [zoomLevel, setZoomLevel] = useState(() => {
+    const count = data.matches.length;
+    return count > 20 ? Math.min(MAX_ZOOM, count / 20) : 1;
+  });
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const zoomLevelRef = useRef(1);
+  const zoomLevelRef = useRef(zoomLevel);
   const pinchRef = useRef<{ initialDist: number; initialZoom: number } | null>(null);
   zoomLevelRef.current = zoomLevel;
 
@@ -110,6 +113,12 @@ export default function LeaderboardLineGraph({ data }: Props) {
       .sort((a, b) => b.value - a.value);
     setFrozenTooltip({ matchLabel, entries });
   }, [chartData, hiddenUsers, matchCount]);
+
+  useEffect(() => {
+    if (scrollRef.current && data.matches.length > 20) {
+      scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
+    }
+  }, []);
 
   useEffect(() => {
     // Use pointerdown in capture phase so:
