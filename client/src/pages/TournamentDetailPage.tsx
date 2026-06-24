@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useParams, Link, useSearchParams } from 'react-router-dom';
 import BackButton from '@/components/BackButton';
-import { Pencil, ChevronDown } from 'lucide-react';
+import { Pencil, ChevronDown, Trash2 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   DndContext,
@@ -424,6 +424,11 @@ export default function TournamentDetailPage() {
       setEditError('');
     },
     onError: (err: any) => setEditError(err.message),
+  });
+
+  const deleteMatchMutation = useMutation({
+    mutationFn: (matchId: string) => api.delete(`/matches/${matchId}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['matches', id] }),
   });
 
   function simulateGroupStage() {
@@ -1628,6 +1633,19 @@ export default function TournamentDetailPage() {
                                       <Pencil size={13} />
                                     </button>
                                   )}
+                                  {isAdmin && tournament?.status === 'upcoming' && match.stage === 'group' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (confirm('Delete this match?')) deleteMatchMutation.mutate(match.id);
+                                      }}
+                                      disabled={deleteMatchMutation.isPending}
+                                      className="text-muted-foreground hover:text-destructive disabled:opacity-50"
+                                      title="Delete match"
+                                    >
+                                      <Trash2 size={13} />
+                                    </button>
+                                  )}
                                 </div>
                               </div>
                               <div className="flex items-center justify-between">
@@ -1881,6 +1899,19 @@ export default function TournamentDetailPage() {
                                       title="Edit match"
                                     >
                                       <Pencil size={13} />
+                                    </button>
+                                  )}
+                                  {isAdmin && tournament?.status === 'upcoming' && match.stage === 'group' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (confirm('Delete this match?')) deleteMatchMutation.mutate(match.id);
+                                      }}
+                                      disabled={deleteMatchMutation.isPending}
+                                      className="text-muted-foreground hover:text-destructive disabled:opacity-50"
+                                      title="Delete match"
+                                    >
+                                      <Trash2 size={13} />
                                     </button>
                                   )}
                                 </div>
