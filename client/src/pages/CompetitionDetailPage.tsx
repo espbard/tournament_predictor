@@ -601,7 +601,7 @@ export default function CompetitionDetailPage() {
     if (luckyLosers <= 0) return new Set<string>();
     const confirmedLuckyLosers = tournament?.knockoutConfig?.confirmedLuckyLosers;
     if (tournament?.knockoutConfig?.groupStandingsLocked && confirmedLuckyLosers) {
-      return new Set<string>(confirmedLuckyLosers);
+      return new Set<string>(confirmedLuckyLosers.slice(0, luckyLosers));
     }
     const groupEntries = [...displayActualGroupStandings.entries()].sort(([a], [b]) => a.localeCompare(b));
     const third = groupEntries
