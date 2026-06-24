@@ -226,7 +226,7 @@ export default function TeamPage() {
                     )}
                     <span className="flex-1 text-sm font-medium truncate">{tn(match.homeTeamName) || 'TBD'}</span>
                     <span className={`w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400 border border-amber-400 bg-amber-50/70 dark:bg-amber-900/30' : ''}`}>
-                      {hasPred && displayHomeScore !== null ? displayHomeScore : '—'}
+                      {hasActual ? match.homeScore : '—'}
                     </span>
                   </div>
                   <div className="h-px bg-border" />
@@ -239,15 +239,15 @@ export default function TeamPage() {
                     )}
                     <span className="flex-1 text-sm font-medium truncate">{tn(match.awayTeamName) || 'TBD'}</span>
                     <span className={`w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400 border border-amber-400 bg-amber-50/70 dark:bg-amber-900/30' : ''}`}>
-                      {hasPred && displayAwayScore !== null ? displayAwayScore : '—'}
+                      {hasActual ? match.awayScore : '—'}
                     </span>
                   </div>
                 </div>
 
                 <div className="mt-2 text-center space-y-0.5">
-                  {hasActual && (
+                  {hasPred && displayHomeScore !== null && displayAwayScore !== null && (
                     <p className="text-xs text-muted-foreground">
-                      {t('competitionDetail.predictions.actualResult')}: {match.homeScore}–{match.awayScore}
+                      {t('competitionDetail.tables.labelPredicted')}: {displayHomeScore}–{displayAwayScore}
                     </p>
                   )}
                   {hasActual && hasPred && isGroup && groupPoints !== null && (
