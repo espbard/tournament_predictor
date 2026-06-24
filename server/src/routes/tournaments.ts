@@ -759,6 +759,39 @@ tournamentsRouter.post('/:id/confirm-group-standings', requireAdmin, async (req,
   }
 });
 
+tournamentsRouter.post('/:id/reopen-group-standings', requireAdmin, async (req, res) => {
+  try {
+    const tournamentId = req.params.id;
+    const [tournament] = await db.select().from(tournaments).where(eq(tournaments.id, tournamentId)).limit(1);
+    if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
+
+    const existing: KnockoutConfig = (tournament.knockoutConfig as KnockoutConfig | null) ?? {
+      firstRound: 'round_of_16',
+      hasBronzeFinal: false,
+      directQualifiers: 2,
+      luckyLosers: 0,
+      bracketSlots: {},
+    };
+
+    const updated: KnockoutConfig = {
+      ...existing,
+      groupStandingsLocked: false,
+      confirmedGroupStandings: undefined,
+      confirmedLuckyLosers: undefined,
+    };
+
+    await db.update(tournaments).set({ knockoutConfig: updated }).where(eq(tournaments.id, tournamentId));
+
+    // Recalculate scores — group position points will be zeroed since standings are no longer locked
+    await recalculateAllScoresForTournament(tournamentId);
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('Reopen group standings error:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 tournamentsRouter.post('/:id/clear-group-stage', requireAdmin, async (req, res) => {
   try {
     const tournamentId = req.params.id;

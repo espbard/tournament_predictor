@@ -455,6 +455,17 @@ export default function TournamentDetailPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['matches', id] }),
   });
 
+  const reopenGroupStandingsMutation = useMutation({
+    mutationFn: (_initialOrder: Record<string, string[]>) =>
+      api.post(`/tournaments/${id}/reopen-group-standings`, {}),
+    onSuccess: (_data, initialOrder) => {
+      queryClient.invalidateQueries({ queryKey: ['tournament', id] });
+      queryClient.invalidateQueries({ queryKey: ['matches', id] });
+      setOverrideGroupOrder(initialOrder);
+      setConfirmStep('groups');
+    },
+  });
+
   const confirmGroupStandingsMutation = useMutation({
     mutationFn: (body: { groupStandings: Record<string, string[]>; luckyLosers: string[] }) =>
       api.post(`/tournaments/${id}/confirm-group-standings`, body),
@@ -1074,13 +1085,13 @@ export default function TournamentDetailPage() {
                     </p>
                     <button
                       type="button"
+                      disabled={reopenGroupStandingsMutation.isPending}
                       onClick={() => {
-                        setOverrideGroupOrder(confirmedGroupStandings ?? currentComputedGroupOrder);
-                        setConfirmStep('groups');
+                        reopenGroupStandingsMutation.mutate(confirmedGroupStandings ?? currentComputedGroupOrder);
                       }}
-                      className="flex-shrink-0 rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+                      className="flex-shrink-0 rounded-md border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
                     >
-                      Re-open
+                      {reopenGroupStandingsMutation.isPending ? 'Clearing…' : 'Re-open'}
                     </button>
                   </div>
                 ) : confirmStep === 'groups' ? (
