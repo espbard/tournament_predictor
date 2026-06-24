@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
+import BackButton from '@/components/BackButton';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import ImageUpload from '@/components/ImageUpload';
@@ -54,12 +55,7 @@ export default function EditTournamentPage() {
 
   return (
     <main className="mx-auto max-w-sm px-4 py-8">
-      <Link
-        to={`/admin/tournaments/${id}`}
-        className="mb-4 inline-block text-sm text-muted-foreground hover:text-foreground"
-      >
-        {t('editTournament.backToTournament')}
-      </Link>
+      <BackButton href={`/admin/tournaments/${id}`} />
       <h1 className="mb-6 text-2xl font-bold">{t('editTournament.title')}</h1>
 
       <form onSubmit={handleSubmit} className="space-y-4">

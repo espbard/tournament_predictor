@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import BackButton from '@/components/BackButton';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -1097,9 +1098,7 @@ export default function TournamentKnockoutPage() {
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-8">
-      <Link to="/admin/tournaments" className="mb-4 inline-block text-sm text-muted-foreground hover:text-foreground">
-        {t('knockout.backToTournaments')}
-      </Link>
+      <BackButton href="/admin/tournaments" />
 
       <div className="flex border-b mb-6">
         <Link to={`/admin/tournaments/${id}`} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground">

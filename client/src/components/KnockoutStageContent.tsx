@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
@@ -267,6 +268,8 @@ function FocusedMatchCard({
   predictedFirstRoundTeams,
   readOnly,
   editOverride,
+  teamPageCompetitionId,
+  teamPageUserId,
 }: {
   matchKey: string;
   homeTeam: TeamStat | null;
@@ -280,6 +283,8 @@ function FocusedMatchCard({
   predictedFirstRoundTeams?: { predHomeId: string | null; predAwayId: string | null };
   readOnly?: boolean;
   editOverride?: boolean;
+  teamPageCompetitionId?: string;
+  teamPageUserId?: string;
 }) {
   const [homeStr, setHomeStr] = useState('');
   const [awayStr, setAwayStr] = useState('');
@@ -485,9 +490,15 @@ function FocusedMatchCard({
                 ) : (
                   <div className={`h-7 w-7 rounded-full bg-muted flex-shrink-0${isDisplayHomeTeamCorrect ? ' ring-2 ring-green-400' : ''}`} />
                 )}
-                <span className={`flex-1 text-sm truncate ${displayHomeWins ? 'font-semibold' : 'font-medium'}`}>
-                  {tn(displayHomeTeam.teamName)}
-                </span>
+                {teamPageCompetitionId && displayHomeTeam.teamId ? (
+                  <Link to={`/competitions/${teamPageCompetitionId}/team/${displayHomeTeam.teamId}${teamPageUserId ? `?userId=${teamPageUserId}` : ''}`} className={`flex-1 text-sm truncate hover:underline ${displayHomeWins ? 'font-semibold' : 'font-medium'}`}>
+                    {tn(displayHomeTeam.teamName)}
+                  </Link>
+                ) : (
+                  <span className={`flex-1 text-sm truncate ${displayHomeWins ? 'font-semibold' : 'font-medium'}`}>
+                    {tn(displayHomeTeam.teamName)}
+                  </span>
+                )}
                 {isDisplayHomeChampion && (
                   <span style={{ animation: 'ko_trophy_pop 0.45s cubic-bezier(0.34,1.56,0.64,1) forwards' }}>
                     🏆
@@ -546,9 +557,15 @@ function FocusedMatchCard({
                 ) : (
                   <div className={`h-7 w-7 rounded-full bg-muted flex-shrink-0${isDisplayAwayTeamCorrect ? ' ring-2 ring-green-400' : ''}`} />
                 )}
-                <span className={`flex-1 text-sm truncate ${displayAwayWins ? 'font-semibold' : 'font-medium'}`}>
-                  {tn(displayAwayTeam.teamName)}
-                </span>
+                {teamPageCompetitionId && displayAwayTeam.teamId ? (
+                  <Link to={`/competitions/${teamPageCompetitionId}/team/${displayAwayTeam.teamId}${teamPageUserId ? `?userId=${teamPageUserId}` : ''}`} className={`flex-1 text-sm truncate hover:underline ${displayAwayWins ? 'font-semibold' : 'font-medium'}`}>
+                    {tn(displayAwayTeam.teamName)}
+                  </Link>
+                ) : (
+                  <span className={`flex-1 text-sm truncate ${displayAwayWins ? 'font-semibold' : 'font-medium'}`}>
+                    {tn(displayAwayTeam.teamName)}
+                  </span>
+                )}
                 {isDisplayAwayChampion && (
                   <span style={{ animation: 'ko_trophy_pop 0.45s cubic-bezier(0.34,1.56,0.64,1) forwards' }}>
                     🏆
@@ -718,6 +735,8 @@ function FocusedBracketView({
   predictedFirstRoundMap,
   readOnly,
   editOverride,
+  teamPageCompetitionId,
+  teamPageUserId,
 }: {
   knockoutConfig: KnockoutConfig;
   resolvedSlots: Record<string, TeamStat | null>;
@@ -729,6 +748,8 @@ function FocusedBracketView({
   predictedFirstRoundMap: Record<string, { predHomeId: string | null; predAwayId: string | null }>;
   readOnly?: boolean;
   editOverride?: boolean;
+  teamPageCompetitionId?: string;
+  teamPageUserId?: string;
 }) {
   const { firstRound, hasBronzeFinal } = knockoutConfig;
   const startIdx = ROUND_ORDER.indexOf(firstRound);
@@ -992,6 +1013,8 @@ function FocusedBracketView({
               predictedFirstRoundTeams={current.round === firstRound && !current.isBronze ? predictedFirstRoundMap[current.predKey] : undefined}
               readOnly={readOnly}
               editOverride={editOverride}
+              teamPageCompetitionId={teamPageCompetitionId}
+              teamPageUserId={teamPageUserId}
             />
             <div className="mt-3 flex sm:hidden items-center justify-between">
               <button
@@ -1419,6 +1442,8 @@ export default function KnockoutStageContent({
             predictedFirstRoundMap={predictedFirstRoundMap}
             readOnly={isReadOnly}
             editOverride={isComparisonUser}
+            teamPageCompetitionId={competitionId}
+            teamPageUserId={viewUserId}
           />
           {hasPendingTies && !isReadOnly && (
             <div className="absolute inset-0 bg-background/70 rounded-xl flex items-center justify-center backdrop-blur-[2px]">

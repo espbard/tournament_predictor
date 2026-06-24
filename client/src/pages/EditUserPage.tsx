@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import BackButton from '@/components/BackButton';
 import { useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
@@ -37,9 +38,7 @@ export default function EditUserPage() {
 
   return (
     <main className="mx-auto max-w-sm px-4 py-8">
-      <Link to="/" className="mb-4 inline-block text-sm text-muted-foreground hover:text-foreground">
-        {t('editUser.back')}
-      </Link>
+      <BackButton href="/" />
       <h1 className="mb-6 text-2xl font-bold">{t('editUser.title')}</h1>
 
       <form onSubmit={handleSubmit} className="space-y-6">

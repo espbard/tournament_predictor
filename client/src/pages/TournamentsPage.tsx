@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import BackButton from '@/components/BackButton';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
@@ -63,9 +64,7 @@ export default function TournamentsPage() {
     <main className="mx-auto max-w-2xl px-4 py-8">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <Link to="/" className="mb-1 block text-sm text-muted-foreground hover:text-foreground">
-            {t('tournaments.backToHome')}
-          </Link>
+          <BackButton href="/" />
           <h1 className="text-2xl font-bold">{t('tournaments.title')}</h1>
         </div>
         {user?.isAdmin && !showForm && (

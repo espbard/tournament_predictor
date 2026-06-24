@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useParams, Link, useSearchParams } from 'react-router-dom';
+import BackButton from '@/components/BackButton';
 import { Pencil, ChevronDown } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -850,12 +851,7 @@ export default function TournamentDetailPage() {
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-8">
-      <Link
-        to="/admin/tournaments"
-        className="mb-4 inline-block text-sm text-muted-foreground hover:text-foreground"
-      >
-        {t('tournamentDetail.backToTournaments')}
-      </Link>
+      <BackButton href="/admin/tournaments" />
 
       {/* Stage tabs */}
       <div className="flex flex-wrap gap-1 border-b mb-6">

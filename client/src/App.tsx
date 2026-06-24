@@ -20,6 +20,7 @@ import EditTeamPage from '@/pages/EditTeamPage';
 import TournamentKnockoutPage from '@/pages/TournamentKnockoutPage';
 import MaintenancePage from '@/pages/MaintenancePage';
 import AdminFeedbackPage from '@/pages/AdminFeedbackPage';
+import TeamPage from '@/pages/TeamPage';
 import FeedbackButton from '@/components/FeedbackButton';
 
 function PrivateRoute({ children, maintenanceMode }: { children: React.ReactNode; maintenanceMode: boolean }) {
@@ -110,6 +111,14 @@ export default function App() {
         element={
           <PrivateRoute maintenanceMode={maintenanceMode}>
             <UserPredictionsPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/competitions/:id/team/:teamId"
+        element={
+          <PrivateRoute maintenanceMode={maintenanceMode}>
+            <TeamPage />
           </PrivateRoute>
         }
       />

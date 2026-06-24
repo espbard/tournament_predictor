@@ -13,6 +13,7 @@ import { SoccerKickAnimation } from '@/components/SoccerKickAnimation';
 import { CryingPlayerAnimation } from '@/components/CryingPlayerAnimation';
 import BonusQuestionsTab from './BonusQuestionsTab';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
+import BackButton from '@/components/BackButton';
 import { useT } from '@/lib/useT';
 import { useTeamName } from '@/lib/teamTranslations';
 import type { Competition, Tournament, Prediction, MatchStage, LeaderboardEntry, BracketPredictions, UserStatCardData, LeaderboardProgressionResponse } from '@tournament-predictor/shared';
@@ -914,11 +915,7 @@ export default function CompetitionDetailPage() {
     }`}>
       <div>
       {!user?.isLeaderboardUser && (
-        <div className="mb-2 text-sm text-muted-foreground">
-          <Link to={user?.isAdmin ? '/competitions' : '/'} className="hover:underline">
-            {user?.isAdmin ? t('competitionDetail.backToCompetitions') : t('competitionDetail.backToHome')}
-          </Link>
-        </div>
+        <BackButton href={user?.isAdmin ? '/competitions' : '/'} />
       )}
 
       {/* Header */}
@@ -1186,7 +1183,7 @@ export default function CompetitionDetailPage() {
                                       ) : (
                                         <div className="h-4 w-4 rounded-full bg-muted flex-shrink-0" />
                                       )}
-                                      <span className="truncate">{tn(tm.teamName)}</span>
+                                      <Link to={`/competitions/${id}/team/${tm.teamId}`} className="truncate hover:underline">{tn(tm.teamName)}</Link>
                                       {tiebreakerChosenTeams.has(tm.teamId) && (
                                         <span className="text-amber-600 dark:text-amber-400 font-bold flex-shrink-0">✓</span>
                                       )}
@@ -1323,7 +1320,7 @@ export default function CompetitionDetailPage() {
                                         ) : (
                                           <div className="h-4 w-4 rounded-full bg-muted flex-shrink-0" />
                                         )}
-                                        <span className="truncate">{tn(tm.teamName)}</span>
+                                        <Link to={`/competitions/${id}/team/${tm.teamId}`} className="truncate hover:underline">{tn(tm.teamName)}</Link>
                                         {tiebreakerChosenTeams.has(tm.teamId) && (
                                           <span className="text-amber-600 dark:text-amber-400 font-bold flex-shrink-0">✓</span>
                                         )}
@@ -1432,7 +1429,7 @@ export default function CompetitionDetailPage() {
                                         ) : (
                                           <div className="h-4 w-4 rounded-full bg-muted flex-shrink-0" />
                                         )}
-                                        <span className="truncate">{tn(tm.teamName)}</span>
+                                        <Link to={`/competitions/${id}/team/${tm.teamId}`} className="truncate hover:underline">{tn(tm.teamName)}</Link>
                                       </div>
                                     </td>
                                     <td className="py-1.5 text-center text-muted-foreground">{tm.P}</td>
@@ -1737,7 +1734,11 @@ export default function CompetitionDetailPage() {
                           ) : (
                             <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
                           )}
-                          <span className="flex-1 text-sm font-medium truncate">{tn(match.homeTeamName) || 'TBD'}</span>
+                          {match.homeTeamId ? (
+                            <Link to={`/competitions/${id}/team/${match.homeTeamId}`} className="flex-1 text-sm font-medium truncate hover:underline">{tn(match.homeTeamName) || 'TBD'}</Link>
+                          ) : (
+                            <span className="flex-1 text-sm font-medium truncate">{tn(match.homeTeamName) || 'TBD'}</span>
+                          )}
                           {match.status === 'completed' && !user?.isComparisonUser ? (
                             <span className={`w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400 border border-amber-400 bg-amber-50/70 dark:bg-amber-900/30' : ''}`}>{pred ? pred.homeScore : '—'}</span>
                           ) : isMatchLocked ? (
@@ -1787,7 +1788,11 @@ export default function CompetitionDetailPage() {
                           ) : (
                             <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
                           )}
-                          <span className="flex-1 text-sm font-medium truncate">{tn(match.awayTeamName) || 'TBD'}</span>
+                          {match.awayTeamId ? (
+                            <Link to={`/competitions/${id}/team/${match.awayTeamId}`} className="flex-1 text-sm font-medium truncate hover:underline">{tn(match.awayTeamName) || 'TBD'}</Link>
+                          ) : (
+                            <span className="flex-1 text-sm font-medium truncate">{tn(match.awayTeamName) || 'TBD'}</span>
+                          )}
                           {match.status === 'completed' && !user?.isComparisonUser ? (
                             <span className={`w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400 border border-amber-400 bg-amber-50/70 dark:bg-amber-900/30' : ''}`}>{pred ? pred.awayScore : '—'}</span>
                           ) : isMatchLocked ? (
@@ -2263,7 +2268,11 @@ export default function CompetitionDetailPage() {
                                 <div className="h-7 w-7 rounded-full bg-muted" />
                               )}
                             </div>
-                            <span className="flex-1 text-sm font-medium truncate">{tn(match.homeTeamName) || 'TBD'}</span>
+                            {match.homeTeamId ? (
+                              <Link to={`/competitions/${id}/team/${match.homeTeamId}`} className="flex-1 text-sm font-medium truncate hover:underline">{tn(match.homeTeamName) || 'TBD'}</Link>
+                            ) : (
+                              <span className="flex-1 text-sm font-medium truncate">{tn(match.homeTeamName) || 'TBD'}</span>
+                            )}
                             <span className="w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0">{match.homeScore ?? '—'}</span>
                           </div>
                           <div className="h-px bg-border" />
@@ -2275,7 +2284,11 @@ export default function CompetitionDetailPage() {
                                 <div className="h-7 w-7 rounded-full bg-muted" />
                               )}
                             </div>
-                            <span className="flex-1 text-sm font-medium truncate">{tn(match.awayTeamName) || 'TBD'}</span>
+                            {match.awayTeamId ? (
+                              <Link to={`/competitions/${id}/team/${match.awayTeamId}`} className="flex-1 text-sm font-medium truncate hover:underline">{tn(match.awayTeamName) || 'TBD'}</Link>
+                            ) : (
+                              <span className="flex-1 text-sm font-medium truncate">{tn(match.awayTeamName) || 'TBD'}</span>
+                            )}
                             <span className="w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0">{match.awayScore ?? '—'}</span>
                           </div>
                         </div>
