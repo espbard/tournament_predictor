@@ -16,7 +16,7 @@ import { LoadingSpinner } from '@/components/LoadingSpinner';
 import BackButton from '@/components/BackButton';
 import { useT } from '@/lib/useT';
 import { useTeamName } from '@/lib/teamTranslations';
-import type { Competition, Tournament, Prediction, MatchStage, LeaderboardEntry, BracketPredictions, UserStatCardData, LeaderboardProgressionResponse } from '@tournament-predictor/shared';
+import type { Competition, Tournament, Prediction, MatchStage, LeaderboardEntry, BracketPredictions, BracketMatchPrediction, UserStatCardData, LeaderboardProgressionResponse } from '@tournament-predictor/shared';
 import {
   sortGroupTeams,
   findGroupDisciplinaryTies,
@@ -274,6 +274,31 @@ export default function CompetitionDetailPage() {
     () => Object.fromEntries(savedPredictions.map(p => [p.matchId, p])),
     [savedPredictions]
   );
+
+  // Map actual knockout match UUIDs → the user's bracket prediction for that slot.
+  // Bracket predictions are keyed by position (e.g. "round_of_16_0") not by match UUID,
+  // so we replicate the server's ordering: sort each stage's matches by scheduledAt, then
+  // assign indices to build the same "stage_i" keys.
+  const knockoutPredByMatchId = useMemo<Record<string, BracketMatchPrediction>>(() => {
+    if (!bracketPreds) return {};
+    const koMatches = [...matchList]
+      .filter(m => m.stage !== 'group')
+      .sort((a, b) => {
+        if (!a.scheduledAt && !b.scheduledAt) return 0;
+        if (!a.scheduledAt) return 1;
+        if (!b.scheduledAt) return -1;
+        return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
+      });
+    const stageCount = new Map<string, number>();
+    const result: Record<string, BracketMatchPrediction> = {};
+    for (const m of koMatches) {
+      const i = stageCount.get(m.stage) ?? 0;
+      stageCount.set(m.stage, i + 1);
+      const pred = bracketPreds[`${m.stage}_${i}`];
+      if (pred) result[m.id] = pred;
+    }
+    return result;
+  }, [matchList, bracketPreds]);
 
   type TeamStat = {
     teamId: string;
@@ -2235,13 +2260,18 @@ export default function CompetitionDetailPage() {
                       <div className="flex flex-wrap gap-1.5">
                         {allMatchesSorted.map((m, idx) => {
                           const isCurrent = idx === safePredMatchIdx;
-                          const pred = predMap[m.id];
+                          const groupPred = predMap[m.id];
+                          const koPred = knockoutPredByMatchId[m.id];
+                          const activePred = groupPred ?? koPred;
                           const hasActual = m.status === 'completed' && m.homeScore !== null && m.awayScore !== null;
-                          const hasPred = !!pred;
+                          const hasPred = !!activePred;
+                          const flipAct = !!(koPred?.flipped);
+                          const effActH = flipAct ? (m.awayScore ?? 0) : (m.homeScore ?? 0);
+                          const effActA = flipAct ? (m.homeScore ?? 0) : (m.awayScore ?? 0);
                           const isCorrectResult = hasPred && hasActual &&
-                            Math.sign(pred.homeScore - pred.awayScore) === Math.sign(m.homeScore! - m.awayScore!);
+                            Math.sign(activePred!.homeScore - activePred!.awayScore) === Math.sign(effActH - effActA);
                           const isExactScore = hasPred && hasActual &&
-                            pred.homeScore === m.homeScore && pred.awayScore === m.awayScore;
+                            activePred!.homeScore === effActH && activePred!.awayScore === effActA;
                           const dotClass = isCurrent
                             ? 'w-5 h-2.5 bg-primary'
                             : !hasPred
