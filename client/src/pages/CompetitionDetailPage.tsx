@@ -388,22 +388,6 @@ export default function CompetitionDetailPage() {
     return { actualGroupStandings: byGroup, completedGroupMatchCounts: matchCounts };
   }, [matchList]);
 
-  // When the admin has confirmed standings, reorder the actual group display to match.
-  const displayActualGroupStandings = useMemo(() => {
-    const confirmed = tournament?.knockoutConfig?.confirmedGroupStandings;
-    if (!tournament?.knockoutConfig?.groupStandingsLocked || !confirmed) return actualGroupStandings;
-    const result = new Map(actualGroupStandings);
-    for (const [groupName, confirmedOrder] of Object.entries(confirmed)) {
-      const teams = actualGroupStandings.get(groupName);
-      if (!teams) continue;
-      const reordered = confirmedOrder
-        .map(teamId => teams.find(t => t.teamId === teamId))
-        .filter((t): t is typeof teams[number] => t !== undefined);
-      result.set(groupName, reordered);
-    }
-    return result;
-  }, [actualGroupStandings, tournament?.knockoutConfig?.groupStandingsLocked, tournament?.knockoutConfig?.confirmedGroupStandings]);
-
   const matchesByDate = useMemo(() => {
     const sorted = [...matchList].sort((a, b) => {
       if (!a.scheduledAt && !b.scheduledAt) return 0;
@@ -536,6 +520,22 @@ export default function CompetitionDetailPage() {
       : tournamentData,
     [user?.isAdmin, tournamentsData, tournamentData, competition?.tournamentId]
   );
+
+  // When the admin has confirmed standings, reorder the actual group display to match.
+  const displayActualGroupStandings = useMemo(() => {
+    const confirmed = tournament?.knockoutConfig?.confirmedGroupStandings;
+    if (!tournament?.knockoutConfig?.groupStandingsLocked || !confirmed) return actualGroupStandings;
+    const result = new Map(actualGroupStandings);
+    for (const [groupName, confirmedOrder] of Object.entries(confirmed)) {
+      const teams = actualGroupStandings.get(groupName);
+      if (!teams) continue;
+      const reordered = confirmedOrder
+        .map(teamId => teams.find(t => t.teamId === teamId))
+        .filter((t): t is typeof teams[number] => t !== undefined);
+      result.set(groupName, reordered);
+    }
+    return result;
+  }, [actualGroupStandings, tournament?.knockoutConfig?.groupStandingsLocked, tournament?.knockoutConfig?.confirmedGroupStandings]);
 
   useEffect(() => {
     if (tabParam || user?.isLeaderboardUser || user?.isAdmin || !tournament) return;
