@@ -149,6 +149,10 @@ const translations = {
       groupStageLocked: 'Group stage predictions are locked.',
       noGroupMatches: 'No group stage matches configured yet.',
       tables: {
+        yourPredictions: 'Your Predictions',
+        actualResults: 'Actual Results',
+        labelPredicted: 'Predicted',
+        labelActual: 'Actual',
         predictionsFilled: '{{filled}} / {{total}} predictions filled — tables update as you predict.',
         qualifying: 'Qualifying',
         luckyLoser: 'Lucky loser (best 3rd place)',
@@ -622,6 +626,10 @@ const translations = {
       groupStageLocked: 'Gruppespill-tips er låst.',
       noGroupMatches: 'Ingen kampoppsett for gruppespillet ennå.',
       tables: {
+        yourPredictions: 'Dine Tips',
+        actualResults: 'Faktiske Resultater',
+        labelPredicted: 'Dine Tips',
+        labelActual: 'Faktisk',
         predictionsFilled: '{{filled}} / {{total}} tips fylt ut — tabellene oppdateres etter hvert som du tipper.',
         qualifying: 'Kvalifiserer',
         luckyLoser: 'Lucky loser (beste tredjeplass)',
@@ -1093,6 +1101,10 @@ const translations = {
       groupStageLocked: 'Gruppenphase-Tipps sind gesperrt. Kein Ändern mehr!',
       noGroupMatches: 'Noch keine Gruppenspiele konfiguriert.',
       tables: {
+        yourPredictions: 'Deine Tipps',
+        actualResults: 'Tatsächliche Ergebnisse',
+        labelPredicted: 'Getippt',
+        labelActual: 'Tatsächlich',
         predictionsFilled: '{{filled}} / {{total}} Tipps ausgefüllt — Tabellen aktualisieren sich beim Tippen.',
         qualifying: 'Qualifiziert',
         luckyLoser: 'Glücklicher Verlierer (bester Dritter)',
