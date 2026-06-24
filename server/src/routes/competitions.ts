@@ -1532,6 +1532,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     let swingAndAMissCard: UserStatCardData | null = null;
     let jaViElskerCard: UserStatCardData | null = null;
     let traitorCard: UserStatCardData | null = null;
+    let matchMadeInHeavenCard: UserStatCardData | null = null;
 
     if (kingGroup.length > 0) {
       const gameCount = kingGroup[0].streak;
@@ -1898,6 +1899,32 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       }
     }
 
+    // ── Match Made in Heaven: users with perfect scores in ALL games featuring the same team ──
+    const userTeamPredStats = new Map<string, Map<string, { total: number; perfect: number }>>();
+    for (const row of activeRows) {
+      if (row.actualHomeScore === null || row.actualAwayScore === null) continue;
+      const isPerfect = row.predHomeScore === row.actualHomeScore && row.predAwayScore === row.actualAwayScore;
+      for (const teamId of [row.homeTeamId, row.awayTeamId]) {
+        if (!teamId) continue;
+        if (!userTeamPredStats.has(row.userId)) userTeamPredStats.set(row.userId, new Map());
+        const teamMap = userTeamPredStats.get(row.userId)!;
+        const entry = teamMap.get(teamId) ?? { total: 0, perfect: 0 };
+        entry.total += 1;
+        if (isPerfect) entry.perfect += 1;
+        teamMap.set(teamId, entry);
+      }
+    }
+    const heavenByTeam = new Map<string, { userId: string; count: number }[]>();
+    for (const [userId, teamMap] of userTeamPredStats.entries()) {
+      for (const [teamId, stats] of teamMap.entries()) {
+        if (stats.total > 0 && stats.total === stats.perfect) {
+          if (!heavenByTeam.has(teamId)) heavenByTeam.set(teamId, []);
+          heavenByTeam.get(teamId)!.push({ userId, count: stats.total });
+        }
+      }
+    }
+    const heavenTeamIds = new Set<string>(heavenByTeam.keys());
+
     // ── The Optimist: highest vs. lowest total predicted goals across played matches ──
     const actualTotalGoals = [...matchStats.values()].reduce((sum, m) => sum + m.homeScore + m.awayScore, 0);
     const predictedGoalsByUser = new Map<string, number>();
@@ -2081,6 +2108,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       if (m?.homeTeamId) neededTeamIds.add(m.homeTeamId);
       if (m?.awayTeamId) neededTeamIds.add(m.awayTeamId);
     }
+    for (const teamId of heavenTeamIds) neededTeamIds.add(teamId);
     const teamRows =
       neededTeamIds.size > 0 ? await db.select().from(teams).where(inArray(teams.id, [...neededTeamIds])) : [];
     const teamNameMap = new Map(teamRows.map(t => [t.id, t.name]));
@@ -2752,6 +2780,72 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       }
     }
 
+    if (heavenByTeam.size > 0) {
+      interface HeavenTeamEntry {
+        teamId: string;
+        teamLabel: string;
+        users: { userId: string; username: string; imageUrl: string | null; iconColor: string | null; count: number }[];
+        count: number;
+      }
+      const heavenTeams: HeavenTeamEntry[] = [];
+      for (const [teamId, entries] of heavenByTeam.entries()) {
+        const usersForTeam = entries
+          .map(e => ({ ...e, ...userInfo.get(e.userId)! }))
+          .sort((a, b) => a.username.localeCompare(b.username));
+        heavenTeams.push({ teamId, teamLabel: teamName(teamId), users: usersForTeam, count: entries[0].count });
+      }
+      heavenTeams.sort((a, b) => a.teamLabel.localeCompare(b.teamLabel));
+
+      const allCounts = heavenTeams.map(t => t.count);
+      const firstCount = allCounts[0];
+      const allSameCount = allCounts.every(c => c === firstCount);
+
+      const heavenSubjects = heavenTeams.flatMap(t =>
+        t.users.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor }))
+      );
+
+      const buildConnectionLine = (users: HeavenTeamEntry['users'], tName: string): string => {
+        const userNames = formatUserList(users.map(u => u.username), lang);
+        if (lang === 'no') return `${userNames} ${users.length === 1 ? 'har' : 'har'} en åndelig forbindelse med **${tName}**!`;
+        if (lang === 'de') return `${userNames} ${users.length === 1 ? 'hat' : 'haben'} eine spirituelle Verbindung mit **${tName}**!`;
+        return `${userNames} ${users.length === 1 ? 'has' : 'have'} a spiritual connection with **${tName}**!`;
+      };
+
+      const buildCountPhrase = (): string => {
+        if (allSameCount) {
+          if (lang === 'no') return `alle ${firstCount} ${firstCount === 1 ? 'kamp' : 'kamper'} de har spilt`;
+          if (lang === 'de') return `allen ${firstCount} ${firstCount === 1 ? 'Spiel' : 'Spielen'}, die sie gespielt haben`;
+          return `all ${firstCount} ${firstCount === 1 ? 'game' : 'games'} they have played`;
+        }
+        if (lang === 'no') return 'alle kampene de har spilt';
+        if (lang === 'de') return 'allen Spielen, die sie gespielt haben';
+        return 'all the games they have played';
+      };
+
+      const gamesLine =
+        lang === 'no'
+          ? `De har gjettet eksakt resultat i ${buildCountPhrase()}!`
+          : lang === 'de'
+            ? `Sie haben in ${buildCountPhrase()} das perfekte Ergebnis getippt!`
+            : `They have guessed the perfect score in ${buildCountPhrase()}!`;
+
+      let heavenStatistic: string;
+      if (heavenTeams.length === 1) {
+        heavenStatistic = `${buildConnectionLine(heavenTeams[0].users, heavenTeams[0].teamLabel)} ${gamesLine}`;
+      } else {
+        const lines = heavenTeams.map(ht => buildConnectionLine(ht.users, ht.teamLabel));
+        heavenStatistic = lines.join('\n') + '\n' + gamesLine;
+      }
+
+      matchMadeInHeavenCard = {
+        id: 'matchMadeInHeaven',
+        title: 'Match made in heaven',
+        statistic: heavenStatistic,
+        subjects: heavenSubjects,
+        linkType: 'user',
+      };
+    }
+
     const cards = [
       theLeaderCard,
       bottomOfTheLeagueCard,
@@ -2772,6 +2866,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       jaViElskerCard,
       traitorCard,
       brautometerCard,
+      matchMadeInHeavenCard,
     ].filter((card): card is UserStatCardData => card !== null);
 
     res.json(cards);
