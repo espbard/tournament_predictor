@@ -1917,7 +1917,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     const heavenByTeam = new Map<string, { userId: string; count: number }[]>();
     for (const [userId, teamMap] of userTeamPredStats.entries()) {
       for (const [teamId, stats] of teamMap.entries()) {
-        if (stats.total > 0 && stats.total === stats.perfect) {
+        if (stats.total >= 2 && stats.total === stats.perfect) {
           if (!heavenByTeam.has(teamId)) heavenByTeam.set(teamId, []);
           heavenByTeam.get(teamId)!.push({ userId, count: stats.total });
         }
