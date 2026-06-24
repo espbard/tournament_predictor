@@ -1047,6 +1047,37 @@ tournamentsRouter.delete('/:id/bonus-questions/:qid', requireAdmin, async (req, 
   }
 });
 
+matchesRouter.delete('/:id', requireAdmin, async (req, res) => {
+  try {
+    const [match] = await db
+      .select({ id: matches.id, stage: matches.stage, tournamentId: matches.tournamentId })
+      .from(matches)
+      .where(eq(matches.id, req.params.id))
+      .limit(1);
+    if (!match) return res.status(404).json({ error: 'Match not found' });
+
+    if (match.stage !== 'group') {
+      return res.status(403).json({ error: 'Only group stage matches can be deleted' });
+    }
+
+    const [tournament] = await db
+      .select({ status: tournaments.status })
+      .from(tournaments)
+      .where(eq(tournaments.id, match.tournamentId))
+      .limit(1);
+
+    if (!tournament || tournament.status !== 'upcoming') {
+      return res.status(403).json({ error: 'Matches can only be deleted when the tournament is upcoming' });
+    }
+
+    await db.delete(matches).where(eq(matches.id, req.params.id));
+    return res.status(204).send();
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 matchesRouter.patch('/:id', requireAdmin, async (req, res) => {
   try {
     const updates = UpdateMatchSchema.parse(req.body);
