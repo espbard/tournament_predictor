@@ -24,9 +24,6 @@ import type { Tournament, Team, Match, MatchStage, Group, Player } from '@tourna
 import {
   sortGroupTeams,
   sortLuckyLosers,
-  findGroupDisciplinaryTies,
-  findLuckyLoserDisciplinaryTies,
-  makeDisciplinaryKey,
   type MatchResult as TbMatchResult,
   type TeamTiebreakerStat,
 } from '@/lib/tiebreakers';
@@ -458,14 +455,6 @@ export default function TournamentDetailPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['matches', id] }),
   });
 
-  const saveChoicesMutation = useMutation({
-    mutationFn: (body: {
-      groupDisciplinaryChoices?: Record<string, string[]>;
-      luckyLoserDisciplinaryChoices?: Record<string, string[]>;
-    }) => api.patch(`/tournaments/${id}/knockout-config`, body),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tournament', id] }),
-  });
-
   const confirmGroupStandingsMutation = useMutation({
     mutationFn: (body: { groupStandings: Record<string, string[]>; luckyLosers: string[] }) =>
       api.post(`/tournaments/${id}/confirm-group-standings`, body),
@@ -705,13 +694,9 @@ export default function TournamentDetailPage() {
   const sortedLL = sortLuckyLosers(llCandidates, llChoices);
   const luckyLoserIds = new Set(sortedLL.slice(0, numLuckyLosers).map(s => s.teamId));
 
-  const groupDisciplinaryTies = groupStandingData
-    .map(gd => ({ group: gd.group, ties: findGroupDisciplinaryTies(gd.rows.map(r => r.stat), gd.matchResults) }))
-    .filter(g => g.ties.length > 0);
-  const llDisciplinaryTies = findLuckyLoserDisciplinaryTies(llCandidates);
-
   // Group standings confirmation
   const groupStandingsLocked = tournament.knockoutConfig?.groupStandingsLocked ?? false;
+  const confirmedGroupStandings = tournament.knockoutConfig?.confirmedGroupStandings;
   const allGroupMatchesDone = matchList.some(m => m.stage === 'group') &&
     matchList.filter(m => m.stage === 'group').every(m => m.status === 'completed');
   const hasPendingResults = Object.keys(pendingResults).length > 0;
@@ -721,6 +706,18 @@ export default function TournamentDetailPage() {
     groupStandingData.map(({ group, rows }) => [group.name, rows.map(r => r.team.id)])
   );
   const activeOverrideGroupOrder = overrideGroupOrder ?? currentComputedGroupOrder;
+
+  // When standings are locked, reorder display rows to match the confirmed order
+  const displayGroupStandingData = groupStandingData.map(({ group, rows, matchResults }) => {
+    if (groupStandingsLocked && confirmedGroupStandings?.[group.name]) {
+      const confirmedOrder = confirmedGroupStandings[group.name];
+      const reordered = confirmedOrder
+        .map(teamId => rows.find(r => r.team.id === teamId))
+        .filter((r): r is FullRow => r !== undefined);
+      return { group, rows: reordered, matchResults };
+    }
+    return { group, rows, matchResults };
+  });
 
   // Group matches by calendar date for display — group stage only (knockout shown in Knockout tab)
   const groupStageMatches = matchList.filter(m => m.stage === 'group');
@@ -970,7 +967,7 @@ export default function TournamentDetailPage() {
           ) : (<>
             {/* Group tables */}
             <div className="grid gap-6 sm:grid-cols-2">
-              {groupStandingData.map(({ group, rows }) => {
+              {displayGroupStandingData.map(({ group, rows }) => {
                 const hasPending = Object.keys(pendingResults).length > 0;
                 return (
                   <div key={group.id} className="rounded-lg border overflow-hidden">
@@ -1052,144 +1049,40 @@ export default function TournamentDetailPage() {
               )}
             </div>
 
-            {/* Admin tiebreaker resolution */}
-            {isAdmin && (groupDisciplinaryTies.length > 0 || (numLuckyLosers > 0 && llDisciplinaryTies.length > 0)) && (
-              <div>
-                <h3 className="mb-1 text-sm font-semibold">{t('tournamentDetail.standings.tiebreakerResolution')}</h3>
-                <p className="mb-4 text-xs text-muted-foreground">
-                  These teams are equal on all objective criteria. Set the order manually — position 1 ranks highest.
-                </p>
-
-                {groupDisciplinaryTies.map(({ group, ties }) => (
-                  <div key={group.id} className="mb-5">
-                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Group {group.name}
-                    </p>
-                    {ties.map(tied => {
-                      const key = makeDisciplinaryKey(tied.map(t => t.teamId));
-                      const currentOrder = gdChoices[key] ?? tied.map(t => t.teamId);
-                      return (
-                        <div key={key} className="mb-3 rounded-lg border p-3 space-y-1.5">
-                          {currentOrder.map((teamId, idx) => {
-                            const team = teams.find(t => t.id === teamId);
-                            if (!team) return null;
-                            return (
-                              <div key={teamId} className="flex items-center gap-2 rounded-md border bg-muted/20 px-2.5 py-1.5">
-                                <span className="w-5 text-xs font-bold tabular-nums text-muted-foreground">{idx + 1}.</span>
-                                {team.imageUrl ? (
-                                  <img src={team.imageUrl} alt={team.name} className="h-5 w-5 rounded-sm object-cover flex-shrink-0" />
-                                ) : (
-                                  <span className="h-5 w-5 rounded-sm bg-muted inline-block flex-shrink-0" />
-                                )}
-                                <span className="flex-1 text-sm">{team.name}</span>
-                                <div className="flex gap-0.5">
-                                  <button
-                                    type="button"
-                                    disabled={idx === 0 || saveChoicesMutation.isPending}
-                                    onClick={() => {
-                                      const next = [...currentOrder];
-                                      [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
-                                      saveChoicesMutation.mutate({ groupDisciplinaryChoices: { ...gdChoices, [key]: next } });
-                                    }}
-                                    className="rounded px-1 py-0.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
-                                  >↑</button>
-                                  <button
-                                    type="button"
-                                    disabled={idx === currentOrder.length - 1 || saveChoicesMutation.isPending}
-                                    onClick={() => {
-                                      const next = [...currentOrder];
-                                      [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
-                                      saveChoicesMutation.mutate({ groupDisciplinaryChoices: { ...gdChoices, [key]: next } });
-                                    }}
-                                    className="rounded px-1 py-0.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
-                                  >↓</button>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ))}
-
-                {numLuckyLosers > 0 && llDisciplinaryTies.length > 0 && (
-                  <div className="mb-5">
-                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Lucky Loser tiebreakers
-                    </p>
-                    {llDisciplinaryTies.map(tied => {
-                      const key = makeDisciplinaryKey(tied.map(t => t.teamId));
-                      const currentOrder = llChoices[key] ?? tied.map(t => t.teamId);
-                      return (
-                        <div key={key} className="mb-3 rounded-lg border p-3 space-y-1.5">
-                          {currentOrder.map((teamId, idx) => {
-                            const team = teams.find(t => t.id === teamId);
-                            if (!team) return null;
-                            return (
-                              <div key={teamId} className="flex items-center gap-2 rounded-md border bg-muted/20 px-2.5 py-1.5">
-                                <span className="w-5 text-xs font-bold tabular-nums text-muted-foreground">{idx + 1}.</span>
-                                {team.imageUrl ? (
-                                  <img src={team.imageUrl} alt={team.name} className="h-5 w-5 rounded-sm object-cover flex-shrink-0" />
-                                ) : (
-                                  <span className="h-5 w-5 rounded-sm bg-muted inline-block flex-shrink-0" />
-                                )}
-                                <span className="flex-1 text-sm">{team.name}</span>
-                                <div className="flex gap-0.5">
-                                  <button
-                                    type="button"
-                                    disabled={idx === 0 || saveChoicesMutation.isPending}
-                                    onClick={() => {
-                                      const next = [...currentOrder];
-                                      [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
-                                      saveChoicesMutation.mutate({ luckyLoserDisciplinaryChoices: { ...llChoices, [key]: next } });
-                                    }}
-                                    className="rounded px-1 py-0.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
-                                  >↑</button>
-                                  <button
-                                    type="button"
-                                    disabled={idx === currentOrder.length - 1 || saveChoicesMutation.isPending}
-                                    onClick={() => {
-                                      const next = [...currentOrder];
-                                      [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
-                                      saveChoicesMutation.mutate({ luckyLoserDisciplinaryChoices: { ...llChoices, [key]: next } });
-                                    }}
-                                    className="rounded px-1 py-0.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
-                                  >↓</button>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* Confirm Group Standings — admin only, when all group games have results */}
             {isAdmin && allGroupMatchesDone && !hasPendingResults && (
               <div className="rounded-lg border p-4 space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-semibold">
-                    {groupStandingsLocked
+                    {groupStandingsLocked && overrideGroupOrder === null
                       ? 'Group Standings Confirmed'
                       : confirmStep === 'lucky_losers'
                       ? 'Lucky Loser Selection'
                       : 'Confirm Group Standings'}
                   </h3>
-                  {groupStandingsLocked && (
+                  {groupStandingsLocked && overrideGroupOrder === null && (
                     <span className="rounded-full bg-green-500/10 px-2.5 py-1 text-xs font-medium text-green-600 dark:text-green-400">
                       Locked
                     </span>
                   )}
                 </div>
 
-                {groupStandingsLocked ? (
-                  <p className="text-xs text-muted-foreground">
-                    These standings are locked. Group position points have been calculated for all competition members.
-                  </p>
+                {groupStandingsLocked && overrideGroupOrder === null ? (
+                  <div className="flex items-center justify-between gap-4">
+                    <p className="text-xs text-muted-foreground">
+                      These standings are locked. Group position points have been calculated for all competition members.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOverrideGroupOrder(confirmedGroupStandings ?? currentComputedGroupOrder);
+                        setConfirmStep('groups');
+                      }}
+                      className="flex-shrink-0 rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+                    >
+                      Re-open
+                    </button>
+                  </div>
                 ) : confirmStep === 'groups' ? (
                   <>
                     <p className="text-xs text-muted-foreground">
