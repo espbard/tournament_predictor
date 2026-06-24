@@ -1087,12 +1087,13 @@ function vizBronzeDims(maxRoundIdx: number): { icon: number; slot: number; cardH
   return { icon, slot, cardH: slot * 2 + 1 };
 }
 
-function VizTeamIcon({ team, size }: { team: VizTeam | null; size: number }) {
+function VizTeamIcon({ team, size, progressed }: { team: VizTeam | null; size: number; progressed?: boolean }) {
+  const goldRing = progressed ? { boxShadow: '0 0 0 1.5px #eab308' } : {};
   if (!team) {
     return (
       <div
         className="rounded-full bg-muted flex items-center justify-center flex-shrink-0 text-muted-foreground"
-        style={{ width: size, height: size, fontSize: Math.max(6, Math.round(size * 0.55)), fontWeight: 700 }}
+        style={{ width: size, height: size, fontSize: Math.max(6, Math.round(size * 0.55)), fontWeight: 700, ...goldRing }}
       >
         ?
       </div>
@@ -1103,12 +1104,12 @@ function VizTeamIcon({ team, size }: { team: VizTeam | null; size: number }) {
       src={team.imageUrl}
       alt=""
       className="rounded-full object-cover flex-shrink-0"
-      style={{ width: size, height: size }}
+      style={{ width: size, height: size, ...goldRing }}
     />
   ) : (
     <div
       className="rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 font-bold text-foreground"
-      style={{ width: size, height: size, fontSize: Math.max(6, Math.round(size * 0.45)) }}
+      style={{ width: size, height: size, fontSize: Math.max(6, Math.round(size * 0.45)), ...goldRing }}
     >
       {team.name?.charAt(0) ?? '?'}
     </div>
@@ -1187,8 +1188,9 @@ function KnockoutBracketVisualizer({
     key: string, left: number, top: number,
     home: VizTeam | null, away: VizTeam | null,
     dims: { icon: number; slot: number; cardH: number },
-    dashed = false,
+    opts?: { homeProgressed?: boolean; awayProgressed?: boolean; dashed?: boolean },
   ) {
+    const { homeProgressed = false, awayProgressed = false, dashed = false } = opts ?? {};
     return (
       <div
         key={key}
@@ -1196,17 +1198,43 @@ function KnockoutBracketVisualizer({
         className={`rounded-sm border${dashed ? ' border-dashed' : ''} bg-card overflow-hidden flex flex-col`}
       >
         <div style={{ height: dims.slot }} className="flex items-center justify-center">
-          <VizTeamIcon team={home} size={dims.icon} />
+          <VizTeamIcon team={home} size={dims.icon} progressed={homeProgressed} />
         </div>
         <div className="bg-border flex-shrink-0" style={{ height: 1 }} />
         <div style={{ height: dims.slot }} className="flex items-center justify-center">
-          <VizTeamIcon team={away} size={dims.icon} />
+          <VizTeamIcon team={away} size={dims.icon} progressed={awayProgressed} />
         </div>
       </div>
     );
   }
 
   const bronzeMatch = hasBronzeFinal ? actualMatchMap['bronze_final_0'] : undefined;
+
+  // Returns which slot ('home' | 'away') of match (R, side, localI) progressed to the next round,
+  // or null if no team from that match appears in the parent match.
+  function getProgressedSlot(R: number, side: 'left' | 'right', localI: number): 'home' | 'away' | null {
+    if (R === 0) return null;
+    const childActualI = side === 'right' ? Math.pow(2, R - 1) + localI : localI;
+    const child = actualMatchMap[`${reversedRounds[R]}_${childActualI}`];
+    if (!child) return null;
+
+    let parent: MatchWithTeams | undefined;
+    if (R === 1) {
+      parent = actualMatchMap[`${reversedRounds[0]}_0`]; // SF → Final
+    } else {
+      const parentLocalI = Math.floor(localI / 2);
+      const parentActualI = side === 'right' ? Math.pow(2, R - 2) + parentLocalI : parentLocalI;
+      parent = actualMatchMap[`${reversedRounds[R - 1]}_${parentActualI}`];
+    }
+    if (!parent) return null;
+
+    if (child.homeTeamId && (parent.homeTeamId === child.homeTeamId || parent.awayTeamId === child.homeTeamId)) return 'home';
+    if (child.awayTeamId && (parent.homeTeamId === child.awayTeamId || parent.awayTeamId === child.awayTeamId)) return 'away';
+    return null;
+  }
+
+  const GOLD = '#eab308';
+  const BORDER = 'hsl(var(--border))';
 
   return (
     <div className="overflow-x-auto -mx-4 px-4">
@@ -1251,22 +1279,28 @@ function KnockoutBracketVisualizer({
                     const childRight = cardLeftX_left(childR) + V_CARD_W;
                     const parentLeft = cardLeftX_left(parentR);
                     const midX = (childRight + parentLeft) / 2;
-                    return (
-                      <path key={`Lc_${childR}_${i}`}
-                        d={[
-                          `M ${childRight} ${topY} L ${midX} ${topY}`,
-                          `M ${midX} ${topY} L ${midX} ${botY}`,
-                          `M ${midX} ${botY} L ${childRight} ${botY}`,
-                          `M ${midX} ${parentY} L ${parentLeft} ${parentY}`,
-                        ].join(' ')}
-                        fill="none" stroke="hsl(var(--border))" strokeWidth="1" />
-                    );
+                    const topGold = getProgressedSlot(childR, 'left', 2 * i) !== null;
+                    const botGold = getProgressedSlot(childR, 'left', 2 * i + 1) !== null;
+                    const anyGold = topGold || botGold;
+                    return [
+                      <path key={`Lc_${childR}_${i}_t`} fill="none" strokeWidth={topGold ? 1.5 : 1}
+                        stroke={topGold ? GOLD : BORDER} d={`M ${childRight} ${topY} L ${midX} ${topY}`} />,
+                      <path key={`Lc_${childR}_${i}_v`} fill="none" strokeWidth="1"
+                        stroke={BORDER} d={`M ${midX} ${topY} L ${midX} ${botY}`} />,
+                      <path key={`Lc_${childR}_${i}_b`} fill="none" strokeWidth={botGold ? 1.5 : 1}
+                        stroke={botGold ? GOLD : BORDER} d={`M ${midX} ${botY} L ${childRight} ${botY}`} />,
+                      <path key={`Lc_${childR}_${i}_p`} fill="none" strokeWidth={anyGold ? 1.5 : 1}
+                        stroke={anyGold ? GOLD : BORDER} d={`M ${midX} ${parentY} L ${parentLeft} ${parentY}`} />,
+                    ];
                   });
                 })}
                 {/* Left SF → Final */}
-                <path key="Lc_sf_final"
-                  d={`M ${cardLeftX_left(1) + V_CARD_W} ${yCenter['0_0']} L ${finalCardLeft} ${yCenter['0_0']}`}
-                  fill="none" stroke="hsl(var(--border))" strokeWidth="1" />
+                {(() => {
+                  const gold = getProgressedSlot(1, 'left', 0) !== null;
+                  return <path key="Lc_sf_final" fill="none" strokeWidth={gold ? 1.5 : 1}
+                    stroke={gold ? GOLD : BORDER}
+                    d={`M ${cardLeftX_left(1) + V_CARD_W} ${yCenter['0_0']} L ${finalCardLeft} ${yCenter['0_0']}`} />;
+                })()}
                 {/* Right side: connect each round to its parent (mirrored) */}
                 {Array.from({ length: maxRoundIdx - 1 }).flatMap((_, step) => {
                   const childR = maxRoundIdx - step;
@@ -1279,22 +1313,28 @@ function KnockoutBracketVisualizer({
                     const childLeft = cardLeftX_right(childR);
                     const parentRight = cardLeftX_right(parentR) + V_CARD_W;
                     const midX = (childLeft + parentRight) / 2;
-                    return (
-                      <path key={`Rc_${childR}_${i}`}
-                        d={[
-                          `M ${childLeft} ${topY} L ${midX} ${topY}`,
-                          `M ${midX} ${topY} L ${midX} ${botY}`,
-                          `M ${midX} ${botY} L ${childLeft} ${botY}`,
-                          `M ${midX} ${parentY} L ${parentRight} ${parentY}`,
-                        ].join(' ')}
-                        fill="none" stroke="hsl(var(--border))" strokeWidth="1" />
-                    );
+                    const topGold = getProgressedSlot(childR, 'right', 2 * i) !== null;
+                    const botGold = getProgressedSlot(childR, 'right', 2 * i + 1) !== null;
+                    const anyGold = topGold || botGold;
+                    return [
+                      <path key={`Rc_${childR}_${i}_t`} fill="none" strokeWidth={topGold ? 1.5 : 1}
+                        stroke={topGold ? GOLD : BORDER} d={`M ${childLeft} ${topY} L ${midX} ${topY}`} />,
+                      <path key={`Rc_${childR}_${i}_v`} fill="none" strokeWidth="1"
+                        stroke={BORDER} d={`M ${midX} ${topY} L ${midX} ${botY}`} />,
+                      <path key={`Rc_${childR}_${i}_b`} fill="none" strokeWidth={botGold ? 1.5 : 1}
+                        stroke={botGold ? GOLD : BORDER} d={`M ${midX} ${botY} L ${childLeft} ${botY}`} />,
+                      <path key={`Rc_${childR}_${i}_p`} fill="none" strokeWidth={anyGold ? 1.5 : 1}
+                        stroke={anyGold ? GOLD : BORDER} d={`M ${midX} ${parentY} L ${parentRight} ${parentY}`} />,
+                    ];
                   });
                 })}
                 {/* Right SF → Final */}
-                <path key="Rc_sf_final"
-                  d={`M ${finalCardLeft + V_CARD_W} ${yCenter['0_0']} L ${cardLeftX_right(1)} ${yCenter['0_0']}`}
-                  fill="none" stroke="hsl(var(--border))" strokeWidth="1" />
+                {(() => {
+                  const gold = getProgressedSlot(1, 'right', 0) !== null;
+                  return <path key="Rc_sf_final" fill="none" strokeWidth={gold ? 1.5 : 1}
+                    stroke={gold ? GOLD : BORDER}
+                    d={`M ${finalCardLeft + V_CARD_W} ${yCenter['0_0']} L ${cardLeftX_right(1)} ${yCenter['0_0']}`} />;
+                })()}
                 {/* Dotted lines: left SF bottom → bronze final top, right SF bottom → bronze final top */}
                 {hasBronzeFinal && maxRoundIdx >= 1 && (() => {
                   const sfDims = vizRoundDims(1, maxRoundIdx);
@@ -1326,11 +1366,13 @@ function KnockoutBracketVisualizer({
             return Array.from({ length: numSide }, (_, i) => {
               const { home, away } = getTeams('left', R, i);
               const top = yCenter[`${R}_${i}`] - dims.cardH / 2;
-              return renderCard(`L_${R}_${i}`, cardLeftX_left(R), top, home, away, dims);
+              const prog = getProgressedSlot(R, 'left', i);
+              return renderCard(`L_${R}_${i}`, cardLeftX_left(R), top, home, away, dims,
+                { homeProgressed: prog === 'home', awayProgressed: prog === 'away' });
             });
           })}
 
-          {/* Final card (center) */}
+          {/* Final card (center) — no gold borders, it's the destination not the source */}
           {(() => {
             const m = actualMatchMap[`${reversedRounds[0]}_0`];
             const home = m?.homeTeamId ? { imageUrl: m.homeTeamImageUrl, name: m.homeTeamName } : null;
@@ -1347,7 +1389,9 @@ function KnockoutBracketVisualizer({
             return Array.from({ length: numSide }, (_, i) => {
               const { home, away } = getTeams('right', R, i);
               const top = yCenter[`${R}_${i}`] - dims.cardH / 2;
-              return renderCard(`R_${R}_${i}`, cardLeftX_right(R), top, home, away, dims);
+              const prog = getProgressedSlot(R, 'right', i);
+              return renderCard(`R_${R}_${i}`, cardLeftX_right(R), top, home, away, dims,
+                { homeProgressed: prog === 'home', awayProgressed: prog === 'away' });
             });
           })}
 
@@ -1363,7 +1407,7 @@ function KnockoutBracketVisualizer({
               {renderCard('bronze', finalCardLeft, mainH + bronzeGap,
                 bronzeMatch?.homeTeamId ? { imageUrl: bronzeMatch.homeTeamImageUrl, name: bronzeMatch.homeTeamName } : null,
                 bronzeMatch?.awayTeamId ? { imageUrl: bronzeMatch.awayTeamImageUrl, name: bronzeMatch.awayTeamName } : null,
-                bronzeDims, true)}
+                bronzeDims, { dashed: true })}
             </>
           )}
         </div>
