@@ -162,8 +162,20 @@ async function generateFirstRoundKnockout(tournamentId: string): Promise<void> {
   const allGroupMatches = await db.select().from(matches).where(
     and(eq(matches.tournamentId, tournamentId), eq(matches.stage, 'group'))
   );
-  const completedGroupMatches = allGroupMatches.filter(m => m.status === 'completed');
-  const standings = computeGroupStandings(completedGroupMatches, teamGroupMap, groupDisciplinaryChoices);
+
+  // Use admin-confirmed standings when locked, otherwise compute from results
+  let standings: Map<string, TeamStat[]>;
+  if (cfg.groupStandingsLocked && cfg.confirmedGroupStandings) {
+    standings = new Map(
+      Object.entries(cfg.confirmedGroupStandings).map(([groupName, teamIds]) => [
+        groupName,
+        teamIds.map(id => ({ teamId: id, points: 0, gd: 0, gf: 0 })),
+      ]),
+    );
+  } else {
+    const completedGroupMatches = allGroupMatches.filter(m => m.status === 'completed');
+    standings = computeGroupStandings(completedGroupMatches, teamGroupMap, groupDisciplinaryChoices);
+  }
 
   // Resolve direct qualifier label (e.g. "1A") → teamId
   function qualifierToTeamId(label: string): string | null {
@@ -174,28 +186,33 @@ async function generateFirstRoundKnockout(tournamentId: string): Promise<void> {
     return groupStandings && groupStandings.length > pos ? groupStandings[pos].teamId : null;
   }
 
-  // Collect lucky losers: rank (directQualifiers)-th place teams across all groups
-  const luckyLoserCandidates: TeamStat[] = [];
-  for (const [, gs] of standings) {
-    if (gs.length > directQualifiers) luckyLoserCandidates.push(gs[directQualifiers]);
-  }
-  luckyLoserCandidates.sort((a, b) => {
-    if (b.points !== a.points) return b.points - a.points;
-    if (b.gd !== a.gd) return b.gd - a.gd;
-    if (b.gf !== a.gf) return b.gf - a.gf;
-    const tied = luckyLoserCandidates.filter(
-      t => t.points === a.points && t.gd === a.gd && t.gf === a.gf,
-    );
-    const key = [...tied.map(t => t.teamId)].sort().join('|');
-    const ranking = luckyLoserDisciplinaryChoices[key];
-    if (ranking) {
-      const da = ranking.indexOf(a.teamId);
-      const db = ranking.indexOf(b.teamId);
-      if (da !== -1 && db !== -1 && da !== db) return da - db;
+  // Collect lucky losers — use confirmed list when locked, otherwise rank algorithmically
+  let selectedLuckyLosers: string[];
+  if (cfg.groupStandingsLocked && cfg.confirmedLuckyLosers) {
+    selectedLuckyLosers = cfg.confirmedLuckyLosers.slice(0, luckyLosers);
+  } else {
+    const luckyLoserCandidates: TeamStat[] = [];
+    for (const [, gs] of standings) {
+      if (gs.length > directQualifiers) luckyLoserCandidates.push(gs[directQualifiers]);
     }
-    return a.teamId.localeCompare(b.teamId);
-  });
-  const selectedLuckyLosers = luckyLoserCandidates.slice(0, luckyLosers).map(t => t.teamId);
+    luckyLoserCandidates.sort((a, b) => {
+      if (b.points !== a.points) return b.points - a.points;
+      if (b.gd !== a.gd) return b.gd - a.gd;
+      if (b.gf !== a.gf) return b.gf - a.gf;
+      const tied = luckyLoserCandidates.filter(
+        t => t.points === a.points && t.gd === a.gd && t.gf === a.gf,
+      );
+      const key = [...tied.map(t => t.teamId)].sort().join('|');
+      const ranking = luckyLoserDisciplinaryChoices[key];
+      if (ranking) {
+        const da = ranking.indexOf(a.teamId);
+        const db = ranking.indexOf(b.teamId);
+        if (da !== -1 && db !== -1 && da !== db) return da - db;
+      }
+      return a.teamId.localeCompare(b.teamId);
+    });
+    selectedLuckyLosers = luckyLoserCandidates.slice(0, luckyLosers).map(t => t.teamId);
+  }
 
   // Empty bracket slots (left-to-right) → lucky losers in order
   const emptySlots: string[] = [];
@@ -685,6 +702,60 @@ tournamentsRouter.post('/:id/recalculate-scores', requireAdmin, async (req, res)
   } catch (err) {
     console.error('Recalculate scores error:', err);
     return res.status(500).json({ error: 'Failed to recalculate scores' });
+  }
+});
+
+tournamentsRouter.post('/:id/confirm-group-standings', requireAdmin, async (req, res) => {
+  try {
+    const tournamentId = req.params.id;
+    const { groupStandings, luckyLosers } = req.body as {
+      groupStandings: Record<string, string[]>;
+      luckyLosers: string[];
+    };
+
+    if (!groupStandings || typeof groupStandings !== 'object' || !Array.isArray(luckyLosers)) {
+      return res.status(400).json({ error: 'Invalid input: groupStandings and luckyLosers are required' });
+    }
+
+    const [tournament] = await db.select().from(tournaments).where(eq(tournaments.id, tournamentId)).limit(1);
+    if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
+
+    const allGroupMatches = await db
+      .select({ status: matches.status })
+      .from(matches)
+      .where(and(eq(matches.tournamentId, tournamentId), eq(matches.stage, 'group')));
+
+    if (allGroupMatches.length === 0 || !allGroupMatches.every(m => m.status === 'completed')) {
+      return res.status(400).json({ error: 'All group stage matches must be completed before confirming standings' });
+    }
+
+    const existing: KnockoutConfig = (tournament.knockoutConfig as KnockoutConfig | null) ?? {
+      firstRound: 'round_of_16',
+      hasBronzeFinal: false,
+      directQualifiers: 2,
+      luckyLosers: 0,
+      bracketSlots: {},
+    };
+
+    const updated: KnockoutConfig = {
+      ...existing,
+      groupStandingsLocked: true,
+      confirmedGroupStandings: groupStandings,
+      confirmedLuckyLosers: luckyLosers,
+    };
+
+    await db.update(tournaments).set({ knockoutConfig: updated }).where(eq(tournaments.id, tournamentId));
+
+    // Regenerate first-round knockout using the confirmed standings
+    await generateFirstRoundKnockout(tournamentId);
+
+    // Trigger score recalculation so group position points are awarded
+    await recalculateAllScoresForTournament(tournamentId);
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('Confirm group standings error:', err);
+    return res.status(500).json({ error: 'Internal server error' });
   }
 });
 

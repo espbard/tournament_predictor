@@ -20,6 +20,9 @@ export interface KnockoutConfig {
   bracketSlots: Record<string, string>;
   groupDisciplinaryChoices?: Record<string, string[]>;
   luckyLoserDisciplinaryChoices?: Record<string, string[]>;
+  groupStandingsLocked?: boolean;
+  confirmedGroupStandings?: Record<string, string[]>;
+  confirmedLuckyLosers?: string[];
 }
 
 export interface Tournament {

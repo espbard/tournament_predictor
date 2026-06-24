@@ -78,18 +78,14 @@ async function recomputeAllMemberBreakdowns(
   bracketSlots: Record<string, string> = {},
   tournamentGroupDisciplinaryChoices: Record<string, string[]> = {},
   directQualifiers = 2,
+  groupStandingsLocked = false,
+  confirmedGroupStandings: Record<string, string[]> | undefined = undefined,
 ): Promise<void> {
   // --- Group stage data ---
   const completedGroupMatches = await db
     .select()
     .from(matches)
     .where(and(eq(matches.tournamentId, tournamentId), eq(matches.stage, 'group'), eq(matches.status, 'completed')));
-
-  const allGroupMatches = await db
-    .select({ status: matches.status })
-    .from(matches)
-    .where(and(eq(matches.tournamentId, tournamentId), eq(matches.stage, 'group')));
-  const allGroupDone = allGroupMatches.length > 0 && allGroupMatches.every(m => m.status === 'completed');
 
   const teamRows = await db
     .select({ id: teams.id, groupId: teams.groupId })
@@ -214,10 +210,13 @@ async function recomputeAllMemberBreakdowns(
       });
     const predictedStandings = computeGroupStandings(simulatedMatches, teamGroupMap, userGroupDisciplinaryChoices ?? {});
 
-    // --- Group position points ---
+    // --- Group position points (only after admin confirms standings) ---
     let groupPositionPts = 0;
-    if (allGroupDone) {
-      groupPositionPts = calculateGroupPositionPoints(actualStandings, predictedStandings, config);
+    if (groupStandingsLocked && confirmedGroupStandings) {
+      const lockedStandings = new Map(
+        Object.entries(confirmedGroupStandings).map(([g, ids]) => [g, ids.map(id => ({ teamId: id, points: 0, gd: 0, gf: 0 }))]),
+      );
+      groupPositionPts = calculateGroupPositionPoints(lockedStandings, predictedStandings, config);
     }
 
     // --- Knockout bracket breakdown ---
@@ -380,6 +379,8 @@ export async function triggerScoringForMatch(matchId: string, tournamentId: stri
   const firstRound = knockoutCfg?.firstRound ?? 'round_of_16';
   const bracketSlots = knockoutCfg?.bracketSlots ?? {};
   const tournamentGroupDisciplinaryChoices = knockoutCfg?.groupDisciplinaryChoices ?? {};
+  const groupStandingsLocked = knockoutCfg?.groupStandingsLocked ?? false;
+  const confirmedGroupStandings = knockoutCfg?.confirmedGroupStandings;
 
   for (const comp of allComps) {
     const config = comp.scoringConfig as ScoringConfig;
@@ -398,6 +399,8 @@ export async function triggerScoringForMatch(matchId: string, tournamentId: stri
     await recomputeAllMemberBreakdowns(
       tournamentId, comp.id, config, firstRound, bracketSlots, tournamentGroupDisciplinaryChoices,
       knockoutCfg?.directQualifiers ?? 2,
+      groupStandingsLocked,
+      confirmedGroupStandings,
     );
   }
   notifyLeaderboardUpdate(allComps.map(c => c.id));
@@ -420,6 +423,8 @@ export async function recalculateAllScoresForTournament(tournamentId: string): P
   const firstRound = knockoutCfgFull?.firstRound ?? 'round_of_16';
   const bracketSlotsFull = knockoutCfgFull?.bracketSlots ?? {};
   const tournamentGroupDisciplinaryChoicesFull = knockoutCfgFull?.groupDisciplinaryChoices ?? {};
+  const groupStandingsLockedFull = knockoutCfgFull?.groupStandingsLocked ?? false;
+  const confirmedGroupStandingsFull = knockoutCfgFull?.confirmedGroupStandings;
 
   const completedGroupMatches = await db
     .select()
@@ -444,6 +449,8 @@ export async function recalculateAllScoresForTournament(tournamentId: string): P
     await recomputeAllMemberBreakdowns(
       tournamentId, comp.id, config, firstRound, bracketSlotsFull, tournamentGroupDisciplinaryChoicesFull,
       knockoutCfgFull?.directQualifiers ?? 2,
+      groupStandingsLockedFull,
+      confirmedGroupStandingsFull,
     );
   }
   notifyLeaderboardUpdate(allComps.map(c => c.id));
