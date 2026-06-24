@@ -151,6 +151,8 @@ const translations = {
       tables: {
         yourPredictions: 'Your Predictions',
         actualResults: 'Actual Results',
+        labelPredicted: 'Predicted',
+        labelActual: 'Actual',
         predictionsFilled: '{{filled}} / {{total}} predictions filled — tables update as you predict.',
         qualifying: 'Qualifying',
         luckyLoser: 'Lucky loser (best 3rd place)',
@@ -626,6 +628,8 @@ const translations = {
       tables: {
         yourPredictions: 'Dine Tips',
         actualResults: 'Faktiske Resultater',
+        labelPredicted: 'Tips',
+        labelActual: 'Faktisk',
         predictionsFilled: '{{filled}} / {{total}} tips fylt ut — tabellene oppdateres etter hvert som du tipper.',
         qualifying: 'Kvalifiserer',
         luckyLoser: 'Lucky loser (beste tredjeplass)',
@@ -1099,6 +1103,8 @@ const translations = {
       tables: {
         yourPredictions: 'Deine Tipps',
         actualResults: 'Tatsächliche Ergebnisse',
+        labelPredicted: 'Getippt',
+        labelActual: 'Tatsächlich',
         predictionsFilled: '{{filled}} / {{total}} Tipps ausgefüllt — Tabellen aktualisieren sich beim Tippen.',
         qualifying: 'Qualifiziert',
         luckyLoser: 'Glücklicher Verlierer (bester Dritter)',
