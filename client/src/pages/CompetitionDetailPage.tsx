@@ -1136,12 +1136,14 @@ export default function CompetitionDetailPage() {
                 </p>
               )}
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-8">
+              <div className={tournament?.status === 'upcoming' ? 'grid gap-6 sm:grid-cols-2' : 'grid grid-cols-2 gap-x-6 gap-y-8'}>
                 {/* Left: Your Predictions */}
-                <div className="space-y-3">
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground border-b pb-1.5">
-                    {t('competitionDetail.tables.yourPredictions')}
-                  </h3>
+                <div className="space-y-3 min-w-0">
+                  {tournament?.status !== 'upcoming' && (
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground border-b pb-1.5">
+                      {t('competitionDetail.tables.yourPredictions')}
+                    </h3>
+                  )}
                   {groupStandings.map(([groupName, teams]) => {
                     const groupTies = allGroupFilled
                       ? groupDisciplinaryTies.filter(tie => tie.groupName === groupName)
@@ -1264,7 +1266,8 @@ export default function CompetitionDetailPage() {
                   })}
                 </div>
 
-                {/* Right: Actual Results */}
+                {/* Right: Actual Results — hidden when tournament is upcoming */}
+                {tournament?.status !== 'upcoming' && (
                 <div className="space-y-3">
                   <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground border-b pb-1.5">
                     {t('competitionDetail.tables.actualResults')}
@@ -1272,7 +1275,7 @@ export default function CompetitionDetailPage() {
                   {groupStandings.map(([groupName]) => {
                     const actualTeams = actualGroupStandings.get(groupName) ?? [];
                     return (
-                      <div key={groupName} className="rounded-lg border dark:bg-white/5 p-2">
+                      <div key={groupName} className="rounded-lg border dark:bg-white/5 p-2 min-w-0">
                         <div className="bg-muted/50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                           {t('common.group')} {groupName}
                         </div>
@@ -1325,6 +1328,7 @@ export default function CompetitionDetailPage() {
                     );
                   })}
                 </div>
+                )}
               </div>
 
               {/* Legend */}
