@@ -16,7 +16,7 @@ const CONFIG: ScoringConfig = {
   correct_team_progresses: 2,
   correct_team_in_knockout_tie: 1,
   correct_team_in_final: 5,
-  correct_winner: 10,
+  correct_winner: 7,
 };
 
 // ── calculateMatchPoints ──────────────────────────────────────────────────────
@@ -321,9 +321,9 @@ describe('calculateKnockoutPoints', () => {
       'final_0': { homeScore: 1, awayScore: 0, progressingTeamId: null }, // team-a wins final
     };
     const result = calculateKnockoutPoints(matchesForTest, sfFirstRound, preds, CONFIG);
-    // Final: team-a via trajectory → correct_winner(10), team-d via trajectory → correct_team_in_final(5)
-    expect(result.breakdown.correctWinner).toBe(CONFIG.correct_winner); // 10
-    expect(result.breakdown.correctTeamInFinal).toBe(CONFIG.correct_team_in_final); // 5
+    // Final: team-a → correct_team_in_final(5) + correct_winner(7); team-d → correct_team_in_final(5)
+    expect(result.breakdown.correctWinner).toBe(CONFIG.correct_winner); // 7
+    expect(result.breakdown.correctTeamInFinal).toBe(CONFIG.correct_team_in_final * 2); // 5+5=10
   });
 
   // ── flip logic tests ────────────────────────────────────────────────────────

@@ -73,11 +73,11 @@ export interface ScoringConfig {
 export const DEFAULT_SCORING_CONFIG: ScoringConfig = {
   exact_score: 3,
   correct_result: 1,
-  correct_group_position: 2,
+  correct_group_position: 1,
   correct_team_progresses: 2,
   correct_team_in_knockout_tie: 1,
   correct_team_in_final: 5,
-  correct_winner: 10,
+  correct_winner: 7,
 };
 
 export interface Competition {

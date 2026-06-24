@@ -382,10 +382,9 @@ export function calculateKnockoutPoints(
       if (predictedHome !== actualTeamId && predictedAway !== actualTeamId) continue;
 
       if (stage === 'final') {
+        breakdown.correctTeamInFinal += config.correct_team_in_final;
         if (actualTeamId === m.progressingTeamId && actualTeamId === userPredictedWinner) {
           breakdown.correctWinner += config.correct_winner;
-        } else {
-          breakdown.correctTeamInFinal += config.correct_team_in_final;
         }
       } else {
         breakdown.correctTeamInKnockoutTie += config.correct_team_in_knockout_tie;
