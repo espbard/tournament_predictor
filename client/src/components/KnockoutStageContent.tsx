@@ -1055,12 +1055,9 @@ function FocusedBracketView({
 
 // ── Knockout Bracket Visualizer ───────────────────────────────────────────────
 
-const V_ICON = 14;
-const V_SLOT = 19;
-const V_CARD_H = V_SLOT * 2 + 1; // 39px
 const V_ROW_GAP = 3;
-const V_CARD_W = 18;
-const V_HPAD = 9;
+const V_CARD_W = 22;  // wider to accommodate progressive icon sizes
+const V_HPAD = 7;
 const V_COL_W = V_CARD_W + V_HPAD * 2; // 36px per column
 
 const VIZ_SHORT_LABELS: Record<KnockoutFirstRound, string> = {
@@ -1073,12 +1070,29 @@ const VIZ_SHORT_LABELS: Record<KnockoutFirstRound, string> = {
 
 type VizTeam = { imageUrl: string | null; name: string | null };
 
-function VizTeamIcon({ team }: { team: VizTeam | null }) {
+// Icon and card height scale progressively toward the final.
+// R=0=final (largest), R=maxRoundIdx=first round (smallest).
+function vizRoundDims(R: number, maxRoundIdx: number): { icon: number; slot: number; cardH: number } {
+  const icon = 16 + (maxRoundIdx - R); // base 16px at first round, +1 per round toward final
+  const extraSlot = R === 0 ? 2 : 0;  // final card gets 4px extra height (2px per slot)
+  const slot = icon + 4 + extraSlot;
+  return { icon, slot, cardH: slot * 2 + 1 };
+}
+
+// Bronze final: smaller than the semi-finals (opposite direction from the final).
+function vizBronzeDims(maxRoundIdx: number): { icon: number; slot: number; cardH: number } {
+  const sfIcon = vizRoundDims(1, maxRoundIdx).icon;
+  const icon = Math.max(12, sfIcon - 2);
+  const slot = icon + 3;
+  return { icon, slot, cardH: slot * 2 + 1 };
+}
+
+function VizTeamIcon({ team, size }: { team: VizTeam | null; size: number }) {
   if (!team) {
     return (
       <div
         className="rounded-full bg-muted flex items-center justify-center flex-shrink-0 text-muted-foreground"
-        style={{ width: V_ICON, height: V_ICON, fontSize: 8, fontWeight: 700 }}
+        style={{ width: size, height: size, fontSize: Math.max(6, Math.round(size * 0.55)), fontWeight: 700 }}
       >
         ?
       </div>
@@ -1089,12 +1103,12 @@ function VizTeamIcon({ team }: { team: VizTeam | null }) {
       src={team.imageUrl}
       alt=""
       className="rounded-full object-cover flex-shrink-0"
-      style={{ width: V_ICON, height: V_ICON }}
+      style={{ width: size, height: size }}
     />
   ) : (
     <div
       className="rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 font-bold text-foreground"
-      style={{ width: V_ICON, height: V_ICON, fontSize: 7 }}
+      style={{ width: size, height: size, fontSize: Math.max(6, Math.round(size * 0.45)) }}
     >
       {team.name?.charAt(0) ?? '?'}
     </div>
@@ -1118,18 +1132,20 @@ function KnockoutBracketVisualizer({
   const halfCount = Math.floor(firstRoundMatchCount / 2);
   const isSingleMatch = firstRoundMatchCount === 1;
 
-  // Mirrored bracket: left half (matches 0..halfCount-1) goes left→right toward center,
-  // right half (matches halfCount..firstRoundMatchCount-1) goes right→left toward center,
-  // final card sits in the center column.
+  // Spacing is driven by the first-round card height (most matches, most rows).
+  // Cards in later rounds are taller but centered on the same yCenter grid.
+  const firstRoundDims = vizRoundDims(maxRoundIdx, maxRoundIdx);
+  const bronzeDims = vizBronzeDims(maxRoundIdx);
+
   // yCenter[`${R}_${i}`] = vertical midpoint for local index i (0-based within each side).
   const yCenter = useMemo(() => {
     const map: Record<string, number> = {};
     if (isSingleMatch) {
-      map['0_0'] = V_CARD_H / 2;
+      map['0_0'] = firstRoundDims.cardH / 2;
       return map;
     }
     for (let i = 0; i < halfCount; i++) {
-      map[`${maxRoundIdx}_${i}`] = i * (V_CARD_H + V_ROW_GAP) + V_CARD_H / 2;
+      map[`${maxRoundIdx}_${i}`] = i * (firstRoundDims.cardH + V_ROW_GAP) + firstRoundDims.cardH / 2;
     }
     for (let R = maxRoundIdx - 1; R >= 1; R--) {
       const numSide = Math.pow(2, R - 1);
@@ -1138,15 +1154,15 @@ function KnockoutBracketVisualizer({
       }
     }
     // Final y = same as SF y (both halves are symmetric)
-    map['0_0'] = map['1_0'] ?? V_CARD_H / 2;
+    map['0_0'] = map['1_0'] ?? firstRoundDims.cardH / 2;
     return map;
-  }, [halfCount, maxRoundIdx, isSingleMatch]);
+  }, [halfCount, maxRoundIdx, isSingleMatch, firstRoundDims.cardH]);
 
   const mainH = isSingleMatch
-    ? V_CARD_H
-    : halfCount * (V_CARD_H + V_ROW_GAP) - V_ROW_GAP;
+    ? firstRoundDims.cardH
+    : halfCount * (firstRoundDims.cardH + V_ROW_GAP) - V_ROW_GAP;
   const bronzeGap = V_ROW_GAP * 5;
-  const totalH = mainH + (hasBronzeFinal ? bronzeGap + V_CARD_H : 0);
+  const totalH = mainH + (hasBronzeFinal ? bronzeGap + bronzeDims.cardH : 0);
   // (2*maxRoundIdx + 1) columns: left side + center (final) + right side
   const totalW = isSingleMatch ? V_COL_W : (2 * maxRoundIdx + 1) * V_COL_W;
 
@@ -1167,19 +1183,24 @@ function KnockoutBracketVisualizer({
     };
   }
 
-  function renderCard(key: string, left: number, top: number, home: VizTeam | null, away: VizTeam | null, dashed = false) {
+  function renderCard(
+    key: string, left: number, top: number,
+    home: VizTeam | null, away: VizTeam | null,
+    dims: { icon: number; slot: number; cardH: number },
+    dashed = false,
+  ) {
     return (
       <div
         key={key}
-        style={{ position: 'absolute', left, top, width: V_CARD_W, height: V_CARD_H }}
+        style={{ position: 'absolute', left, top, width: V_CARD_W, height: dims.cardH }}
         className={`rounded-sm border${dashed ? ' border-dashed' : ''} bg-card overflow-hidden flex flex-col`}
       >
-        <div style={{ height: V_SLOT }} className="flex items-center justify-center">
-          <VizTeamIcon team={home} />
+        <div style={{ height: dims.slot }} className="flex items-center justify-center">
+          <VizTeamIcon team={home} size={dims.icon} />
         </div>
         <div className="bg-border flex-shrink-0" style={{ height: 1 }} />
-        <div style={{ height: V_SLOT }} className="flex items-center justify-center">
-          <VizTeamIcon team={away} />
+        <div style={{ height: dims.slot }} className="flex items-center justify-center">
+          <VizTeamIcon team={away} size={dims.icon} />
         </div>
       </div>
     );
@@ -1274,6 +1295,25 @@ function KnockoutBracketVisualizer({
                 <path key="Rc_sf_final"
                   d={`M ${finalCardLeft + V_CARD_W} ${yCenter['0_0']} L ${cardLeftX_right(1)} ${yCenter['0_0']}`}
                   fill="none" stroke="hsl(var(--border))" strokeWidth="1" />
+                {/* Dotted lines: left SF bottom → bronze final top, right SF bottom → bronze final top */}
+                {hasBronzeFinal && maxRoundIdx >= 1 && (() => {
+                  const sfDims = vizRoundDims(1, maxRoundIdx);
+                  const sfBottomY = yCenter['0_0'] + sfDims.cardH / 2;
+                  const bronzeTopY = mainH + bronzeGap;
+                  const bronzeCenterX = finalCardLeft + V_CARD_W / 2;
+                  const leftSFCenterX = cardLeftX_left(1) + V_CARD_W / 2;
+                  const rightSFCenterX = cardLeftX_right(1) + V_CARD_W / 2;
+                  return (
+                    <>
+                      <path key="bronze_left"
+                        d={`M ${leftSFCenterX} ${sfBottomY} L ${bronzeCenterX} ${bronzeTopY}`}
+                        fill="none" stroke="hsl(var(--border))" strokeWidth="1" strokeDasharray="3 2" />
+                      <path key="bronze_right"
+                        d={`M ${rightSFCenterX} ${sfBottomY} L ${bronzeCenterX} ${bronzeTopY}`}
+                        fill="none" stroke="hsl(var(--border))" strokeWidth="1" strokeDasharray="3 2" />
+                    </>
+                  );
+                })()}
               </>
             )}
           </svg>
@@ -1282,10 +1322,11 @@ function KnockoutBracketVisualizer({
           {!isSingleMatch && Array.from({ length: maxRoundIdx }).flatMap((_, step) => {
             const R = maxRoundIdx - step;
             const numSide = R === maxRoundIdx ? halfCount : Math.pow(2, R - 1);
+            const dims = vizRoundDims(R, maxRoundIdx);
             return Array.from({ length: numSide }, (_, i) => {
               const { home, away } = getTeams('left', R, i);
-              const top = yCenter[`${R}_${i}`] - V_CARD_H / 2;
-              return renderCard(`L_${R}_${i}`, cardLeftX_left(R), top, home, away);
+              const top = yCenter[`${R}_${i}`] - dims.cardH / 2;
+              return renderCard(`L_${R}_${i}`, cardLeftX_left(R), top, home, away, dims);
             });
           })}
 
@@ -1294,17 +1335,19 @@ function KnockoutBracketVisualizer({
             const m = actualMatchMap[`${reversedRounds[0]}_0`];
             const home = m?.homeTeamId ? { imageUrl: m.homeTeamImageUrl, name: m.homeTeamName } : null;
             const away = m?.awayTeamId ? { imageUrl: m.awayTeamImageUrl, name: m.awayTeamName } : null;
-            return renderCard('final', finalCardLeft, yCenter['0_0'] - V_CARD_H / 2, home, away);
+            const dims = vizRoundDims(0, maxRoundIdx);
+            return renderCard('final', finalCardLeft, yCenter['0_0'] - dims.cardH / 2, home, away, dims);
           })()}
 
           {/* Right side match cards */}
           {!isSingleMatch && Array.from({ length: maxRoundIdx }).flatMap((_, step) => {
             const R = maxRoundIdx - step;
             const numSide = R === maxRoundIdx ? halfCount : Math.pow(2, R - 1);
+            const dims = vizRoundDims(R, maxRoundIdx);
             return Array.from({ length: numSide }, (_, i) => {
               const { home, away } = getTeams('right', R, i);
-              const top = yCenter[`${R}_${i}`] - V_CARD_H / 2;
-              return renderCard(`R_${R}_${i}`, cardLeftX_right(R), top, home, away);
+              const top = yCenter[`${R}_${i}`] - dims.cardH / 2;
+              return renderCard(`R_${R}_${i}`, cardLeftX_right(R), top, home, away, dims);
             });
           })}
 
@@ -1320,7 +1363,7 @@ function KnockoutBracketVisualizer({
               {renderCard('bronze', finalCardLeft, mainH + bronzeGap,
                 bronzeMatch?.homeTeamId ? { imageUrl: bronzeMatch.homeTeamImageUrl, name: bronzeMatch.homeTeamName } : null,
                 bronzeMatch?.awayTeamId ? { imageUrl: bronzeMatch.awayTeamImageUrl, name: bronzeMatch.awayTeamName } : null,
-                true)}
+                bronzeDims, true)}
             </>
           )}
         </div>
