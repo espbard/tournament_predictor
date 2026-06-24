@@ -5,6 +5,7 @@ import { api, ApiError } from '@/lib/api';
 import KnockoutStageContent from '@/components/KnockoutStageContent';
 import BonusQuestionsTab from '@/pages/BonusQuestionsTab';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
+import BackButton from '@/components/BackButton';
 import { UserAvatar } from '@/components/UserAvatar';
 import { useT } from '@/lib/useT';
 import { useTeamName } from '@/lib/teamTranslations';
@@ -254,13 +255,7 @@ export default function UserPredictionsPage() {
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-12">
-      <Link
-        to={`/competitions/${id}`}
-        className="mb-4 inline-flex h-8 items-center justify-center rounded-lg border border-border bg-card px-3 text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground transition-colors"
-        aria-label="Go back"
-      >
-        ←
-      </Link>
+      <BackButton href={`/competitions/${id}`} />
 
       <div className="flex items-center gap-3 mb-6">
         <UserAvatar username={username} imageUrl={imageUrl} iconColor={iconColor} className="h-10 w-10" />

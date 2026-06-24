@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
+import BackButton from '@/components/BackButton';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import ImageUpload from '@/components/ImageUpload';
@@ -71,13 +72,7 @@ export default function EditTeamPage() {
 
   return (
     <main className="mx-auto max-w-sm px-4 py-8">
-      <Link
-        to={`/admin/tournaments/${team.tournamentId}`}
-        className="mb-4 inline-flex h-8 items-center justify-center rounded-lg border border-border bg-card px-3 text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground transition-colors"
-        aria-label="Go back"
-      >
-        ←
-      </Link>
+      <BackButton href={`/admin/tournaments/${team.tournamentId}`} />
       <h1 className="mb-6 text-2xl font-bold">{t('editTeam.title')}</h1>
 
       {isLocked && (

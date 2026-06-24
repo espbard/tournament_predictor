@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import BackButton from '@/components/BackButton';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useT } from '@/lib/useT';
@@ -73,13 +73,7 @@ export default function AdminFeedbackPage() {
   return (
     <main className="mx-auto max-w-2xl px-4 py-12">
       <div className="mb-6">
-        <Link
-          to="/admin"
-          className="mb-4 inline-flex h-8 items-center justify-center rounded-lg border border-border bg-card px-3 text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground transition-colors"
-          aria-label="Go back"
-        >
-          ←
-        </Link>
+        <BackButton href="/admin" />
         <h1 className="mt-2 text-2xl font-bold">{t('feedback.adminTitle')}</h1>
       </div>
 

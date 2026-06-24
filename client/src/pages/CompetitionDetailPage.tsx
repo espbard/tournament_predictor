@@ -13,6 +13,7 @@ import { SoccerKickAnimation } from '@/components/SoccerKickAnimation';
 import { CryingPlayerAnimation } from '@/components/CryingPlayerAnimation';
 import BonusQuestionsTab from './BonusQuestionsTab';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
+import BackButton from '@/components/BackButton';
 import { useT } from '@/lib/useT';
 import { useTeamName } from '@/lib/teamTranslations';
 import type { Competition, Tournament, Prediction, MatchStage, LeaderboardEntry, BracketPredictions, UserStatCardData, LeaderboardProgressionResponse } from '@tournament-predictor/shared';
@@ -914,13 +915,7 @@ export default function CompetitionDetailPage() {
     }`}>
       <div>
       {!user?.isLeaderboardUser && (
-        <Link
-          to={user?.isAdmin ? '/competitions' : '/'}
-          className="mb-4 inline-flex h-8 items-center justify-center rounded-lg border border-border bg-card px-3 text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground transition-colors"
-          aria-label="Go back"
-        >
-          ←
-        </Link>
+        <BackButton href={user?.isAdmin ? '/competitions' : '/'} />
       )}
 
       {/* Header */}
