@@ -81,10 +81,10 @@ function CompetitionsHome() {
               ) : (
                 <div className="h-12 w-12 rounded-lg bg-muted flex-shrink-0" />
               )}
-              <div className="flex-1 min-w-0 flex items-center justify-between gap-2">
+              <div className="flex-1 min-w-0 flex flex-col gap-0.5">
                 <h3 className="font-semibold">{c.name}</h3>
                 {c.predictionDeadline && (
-                  <span className="text-xs text-muted-foreground flex-shrink-0">
+                  <span className="text-xs text-muted-foreground">
                     {t('home.deadline')}: {new Date(c.predictionDeadline).toLocaleDateString()}
                   </span>
                 )}
