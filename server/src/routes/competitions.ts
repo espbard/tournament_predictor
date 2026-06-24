@@ -1532,6 +1532,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     let swingAndAMissCard: UserStatCardData | null = null;
     let jaViElskerCard: UserStatCardData | null = null;
     let traitorCard: UserStatCardData | null = null;
+    let matchMadeInHeavenCard: UserStatCardData | null = null;
 
     if (kingGroup.length > 0) {
       const gameCount = kingGroup[0].streak;
@@ -1898,6 +1899,58 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       }
     }
 
+    // ── Match Made in Heaven: users with perfect scores in ALL games featuring the same team ──
+    const userTeamPredStats = new Map<string, Map<string, { total: number; perfect: number }>>();
+    for (const row of activeRows) {
+      if (row.actualHomeScore === null || row.actualAwayScore === null) continue;
+      const isPerfect = row.predHomeScore === row.actualHomeScore && row.predAwayScore === row.actualAwayScore;
+      for (const teamId of [row.homeTeamId, row.awayTeamId]) {
+        if (!teamId) continue;
+        if (!userTeamPredStats.has(row.userId)) userTeamPredStats.set(row.userId, new Map());
+        const teamMap = userTeamPredStats.get(row.userId)!;
+        const entry = teamMap.get(teamId) ?? { total: 0, perfect: 0 };
+        entry.total += 1;
+        if (isPerfect) entry.perfect += 1;
+        teamMap.set(teamId, entry);
+      }
+    }
+    const heavenByTeam = new Map<string, { userId: string; count: number }[]>();
+    for (const [userId, teamMap] of userTeamPredStats.entries()) {
+      for (const [teamId, stats] of teamMap.entries()) {
+        if (stats.total >= 2 && stats.total === stats.perfect) {
+          if (!heavenByTeam.has(teamId)) heavenByTeam.set(teamId, []);
+          heavenByTeam.get(teamId)!.push({ userId, count: stats.total });
+        }
+      }
+    }
+
+    // Fallback: if no one has a perfect record, find who has the most perfect predictions (min 2)
+    let heavenFallbackMaxPerfect = 0;
+    const heavenFallbackByTeam = new Map<string, { userId: string; count: number }[]>();
+    if (heavenByTeam.size === 0) {
+      for (const teamMap of userTeamPredStats.values()) {
+        for (const stats of teamMap.values()) {
+          if (stats.perfect >= 2 && stats.perfect > heavenFallbackMaxPerfect) {
+            heavenFallbackMaxPerfect = stats.perfect;
+          }
+        }
+      }
+      if (heavenFallbackMaxPerfect >= 2) {
+        for (const [userId, teamMap] of userTeamPredStats.entries()) {
+          for (const [teamId, stats] of teamMap.entries()) {
+            if (stats.perfect === heavenFallbackMaxPerfect) {
+              if (!heavenFallbackByTeam.has(teamId)) heavenFallbackByTeam.set(teamId, []);
+              heavenFallbackByTeam.get(teamId)!.push({ userId, count: stats.perfect });
+            }
+          }
+        }
+      }
+    }
+
+    const heavenActiveByTeam = heavenByTeam.size > 0 ? heavenByTeam : heavenFallbackByTeam;
+    const heavenIsFallback = heavenByTeam.size === 0 && heavenFallbackByTeam.size > 0;
+    const heavenTeamIds = new Set<string>(heavenActiveByTeam.keys());
+
     // ── The Optimist: highest vs. lowest total predicted goals across played matches ──
     const actualTotalGoals = [...matchStats.values()].reduce((sum, m) => sum + m.homeScore + m.awayScore, 0);
     const predictedGoalsByUser = new Map<string, number>();
@@ -2081,6 +2134,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       if (m?.homeTeamId) neededTeamIds.add(m.homeTeamId);
       if (m?.awayTeamId) neededTeamIds.add(m.awayTeamId);
     }
+    for (const teamId of heavenTeamIds) neededTeamIds.add(teamId);
     const teamRows =
       neededTeamIds.size > 0 ? await db.select().from(teams).where(inArray(teams.id, [...neededTeamIds])) : [];
     const teamNameMap = new Map(teamRows.map(t => [t.id, t.name]));
@@ -2752,6 +2806,107 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       }
     }
 
+    if (heavenActiveByTeam.size > 0) {
+      // Invert to user → [{teamId, count}] so one user with multiple teams stays on one line
+      const userToTeams = new Map<string, { teamId: string; count: number }[]>();
+      for (const [teamId, entries] of heavenActiveByTeam.entries()) {
+        for (const { userId, count } of entries) {
+          if (!userToTeams.has(userId)) userToTeams.set(userId, []);
+          userToTeams.get(userId)!.push({ teamId, count });
+        }
+      }
+      for (const teams of userToTeams.values()) {
+        teams.sort((a, b) => teamName(a.teamId).localeCompare(teamName(b.teamId)));
+      }
+
+      // Group users who share the exact same set of teams into one line
+      const lineGroups = new Map<string, { teamIds: string[]; counts: number[]; userIds: string[] }>();
+      for (const [userId, teams] of userToTeams.entries()) {
+        const key = teams.map(t => t.teamId).join('|');
+        if (!lineGroups.has(key)) {
+          lineGroups.set(key, { teamIds: teams.map(t => t.teamId), counts: teams.map(t => t.count), userIds: [] });
+        }
+        lineGroups.get(key)!.userIds.push(userId);
+      }
+
+      const sortedGroups = [...lineGroups.values()]
+        .map(g => ({
+          teamIds: g.teamIds,
+          counts: g.counts,
+          users: g.userIds.map(uid => ({ uid, ...userInfo.get(uid)! })).sort((a, b) => a.username.localeCompare(b.username)),
+        }))
+        .sort((a, b) => teamName(a.teamIds[0]).localeCompare(teamName(b.teamIds[0])));
+
+      const allCounts = sortedGroups.flatMap(g => g.counts);
+      const firstCount = allCounts[0];
+      const allSameCount = allCounts.every(c => c === firstCount);
+
+      const heavenSubjects = sortedGroups.flatMap(g =>
+        g.users.map(u => ({ type: 'user' as const, id: u.uid, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor }))
+      );
+
+      const joinTeamNames = (tIds: string[]): string => {
+        const bolded = tIds.map(id => `**${teamName(id)}**`);
+        const andWord = lang === 'no' ? 'og' : lang === 'de' ? 'und' : 'and';
+        if (bolded.length === 1) return bolded[0];
+        if (bolded.length === 2) return `${bolded[0]} ${andWord} ${bolded[1]}`;
+        return `${bolded.slice(0, -1).join(', ')}, ${andWord} ${bolded[bolded.length - 1]}`;
+      };
+
+      const buildConnectionLine = (users: typeof sortedGroups[0]['users'], tIds: string[]): string => {
+        const userNames = formatUserList(users.map(u => u.username), lang);
+        const teams = joinTeamNames(tIds);
+        if (heavenIsFallback) {
+          const n = firstCount;
+          if (lang === 'no') return `${userNames} har tippet eksakt resultat ${n} ${n === 1 ? 'gang' : 'ganger'} for ${teams}!`;
+          if (lang === 'de') return `${userNames} ${users.length === 1 ? 'hat' : 'haben'} ${n} Mal das exakte Ergebnis für ${teams} getippt!`;
+          return `${userNames} ${users.length === 1 ? 'has' : 'have'} predicted the exact score ${n} ${n === 1 ? 'time' : 'times'} for ${teams}!`;
+        }
+        if (lang === 'no') return `${userNames} har en åndelig forbindelse med ${teams}!`;
+        if (lang === 'de') return `${userNames} ${users.length === 1 ? 'hat' : 'haben'} eine spirituelle Verbindung mit ${teams}!`;
+        return `${userNames} ${users.length === 1 ? 'has' : 'have'} a spiritual connection with ${teams}!`;
+      };
+
+      const buildCountPhrase = (): string => {
+        if (allSameCount) {
+          if (lang === 'no') return `alle ${firstCount} ${firstCount === 1 ? 'kamp' : 'kamper'} de har spilt`;
+          if (lang === 'de') return `allen ${firstCount} ${firstCount === 1 ? 'Spiel' : 'Spielen'}, die sie gespielt haben`;
+          return `all ${firstCount} ${firstCount === 1 ? 'game' : 'games'} they have played`;
+        }
+        if (lang === 'no') return 'alle kampene de har spilt';
+        if (lang === 'de') return 'allen Spielen, die sie gespielt haben';
+        return 'all the games they have played';
+      };
+
+      const gamesLine = heavenIsFallback
+        ? (lang === 'no'
+          ? 'Det er flest eksakte resultater for ett enkelt lag!'
+          : lang === 'de'
+            ? 'Das sind die meisten exakten Treffer für ein einzelnes Team!'
+            : 'That\'s the most perfect score predictions for any single team!')
+        : (lang === 'no'
+          ? `De har gjettet eksakt resultat i ${buildCountPhrase()}!`
+          : lang === 'de'
+            ? `Sie haben in ${buildCountPhrase()} das perfekte Ergebnis getippt!`
+            : `They have guessed the perfect score in ${buildCountPhrase()}!`);
+
+      let heavenStatistic: string;
+      if (sortedGroups.length === 1) {
+        heavenStatistic = `${buildConnectionLine(sortedGroups[0].users, sortedGroups[0].teamIds)} ${gamesLine}`;
+      } else {
+        const lines = sortedGroups.map(g => buildConnectionLine(g.users, g.teamIds));
+        heavenStatistic = lines.join('\n') + '\n' + gamesLine;
+      }
+
+      matchMadeInHeavenCard = {
+        id: 'matchMadeInHeaven',
+        title: 'Match made in heaven',
+        statistic: heavenStatistic,
+        subjects: heavenSubjects,
+        linkType: 'user',
+      };
+    }
+
     const cards = [
       theLeaderCard,
       bottomOfTheLeagueCard,
@@ -2772,6 +2927,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       jaViElskerCard,
       traitorCard,
       brautometerCard,
+      matchMadeInHeavenCard,
     ].filter((card): card is UserStatCardData => card !== null);
 
     res.json(cards);
