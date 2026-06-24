@@ -1136,14 +1136,9 @@ export default function CompetitionDetailPage() {
                 </p>
               )}
 
-              <div className={tournament?.status === 'upcoming' ? 'grid gap-6 sm:grid-cols-2' : 'grid grid-cols-2 gap-x-6 gap-y-8'}>
-                {/* Left: Your Predictions */}
-                <div className="space-y-3 min-w-0">
-                  {tournament?.status !== 'upcoming' && (
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground border-b pb-1.5">
-                      {t('competitionDetail.tables.yourPredictions')}
-                    </h3>
-                  )}
+              {tournament?.status === 'upcoming' ? (
+                /* Upcoming: original 2-col group grid, predicted only */
+                <div className="grid gap-6 sm:grid-cols-2">
                   {groupStandings.map(([groupName, teams]) => {
                     const groupTies = allGroupFilled
                       ? groupDisciplinaryTies.filter(tie => tie.groupName === groupName)
@@ -1217,7 +1212,6 @@ export default function CompetitionDetailPage() {
                             </tbody>
                           </table>
                         </div>
-
                         {groupTies.map(tie => {
                           const ranked = groupDisciplinaryChoices[tie.key] ?? [];
                           const enoughRanked = ranked.length >= tie.requiredRankings;
@@ -1265,71 +1259,198 @@ export default function CompetitionDetailPage() {
                     );
                   })}
                 </div>
-
-                {/* Right: Actual Results — hidden when tournament is upcoming */}
-                {tournament?.status !== 'upcoming' && (
+              ) : (
+                /* Active/completed: per-group split — on mobile stacks as Pred A, Act A, Pred B, Act B...
+                   On sm+ each group row shows predicted | actual side by side */
                 <div className="space-y-3">
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground border-b pb-1.5">
-                    {t('competitionDetail.tables.actualResults')}
-                  </h3>
-                  {groupStandings.map(([groupName]) => {
+                  {/* Column headers — only visible on sm+ */}
+                  <div className="hidden sm:grid sm:grid-cols-2 sm:gap-x-6">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground border-b pb-1.5">
+                      {t('competitionDetail.tables.yourPredictions')}
+                    </h3>
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground border-b pb-1.5">
+                      {t('competitionDetail.tables.actualResults')}
+                    </h3>
+                  </div>
+
+                  {groupStandings.map(([groupName, teams]) => {
+                    const groupTies = allGroupFilled
+                      ? groupDisciplinaryTies.filter(tie => tie.groupName === groupName)
+                      : [];
                     const actualTeams = actualGroupStandings.get(groupName) ?? [];
                     return (
-                      <div key={groupName} className="rounded-lg border dark:bg-white/5 p-2 min-w-0">
-                        <div className="bg-muted/50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                          {t('common.group')} {groupName}
+                      <div key={groupName} className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
+                        {/* Predicted */}
+                        <div className="space-y-2 min-w-0">
+                          <div className="rounded-lg border dark:bg-white/5 p-2">
+                            <div className="bg-muted/50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                              {t('common.group')} {groupName}
+                            </div>
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="border-b text-muted-foreground">
+                                  <th className="pl-3 py-1.5 text-left w-6">#</th>
+                                  <th className="py-1.5 text-left">{t('groupTable.team')}</th>
+                                  <th className="py-1.5 text-center w-6">{t('groupTable.played')}</th>
+                                  <th className="py-1.5 text-center w-6">{t('groupTable.won')}</th>
+                                  <th className="py-1.5 text-center w-6">{t('groupTable.drawn')}</th>
+                                  <th className="py-1.5 text-center w-6">{t('groupTable.lost')}</th>
+                                  <th className="py-1.5 text-center w-8">{t('groupTable.gf')}</th>
+                                  <th className="py-1.5 text-center w-8">{t('groupTable.ga')}</th>
+                                  <th className="py-1.5 text-center w-8 font-bold text-foreground">{t('groupTable.pts')}</th>
+                                  <th className="pr-3 py-1.5 w-12" />
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y">
+                                {teams.map((tm, i) => {
+                                  const counts = completedGroupMatchCounts.get(groupName);
+                                  const groupComplete = counts && counts.total > 0 && counts.completed === counts.total;
+                                  const positionCorrect = groupComplete && actualTeams[i]?.teamId === tm.teamId;
+                                  return (
+                                  <tr key={tm.teamId} className={
+                                    i < 2
+                                      ? 'bg-green-50 dark:bg-green-950/30'
+                                      : i === 2 && qualifyingThirdPlaceIds.has(tm.teamId)
+                                      ? 'bg-yellow-50 dark:bg-yellow-950/30'
+                                      : ''
+                                  }>
+                                    <td className="pl-3 py-1.5 text-muted-foreground">{i + 1}</td>
+                                    <td className="py-1.5 pr-2">
+                                      <div className="flex items-center gap-1.5">
+                                        {tm.imageUrl ? (
+                                          <img src={tm.imageUrl} alt="" className="h-4 w-4 rounded-full object-cover flex-shrink-0" />
+                                        ) : (
+                                          <div className="h-4 w-4 rounded-full bg-muted flex-shrink-0" />
+                                        )}
+                                        <span className="truncate">{tn(tm.teamName)}</span>
+                                        {tiebreakerChosenTeams.has(tm.teamId) && (
+                                          <span className="text-amber-600 dark:text-amber-400 font-bold flex-shrink-0">✓</span>
+                                        )}
+                                      </div>
+                                    </td>
+                                    <td className="py-1.5 text-center text-muted-foreground">{tm.P}</td>
+                                    <td className="py-1.5 text-center text-muted-foreground">{tm.W}</td>
+                                    <td className="py-1.5 text-center text-muted-foreground">{tm.D}</td>
+                                    <td className="py-1.5 text-center text-muted-foreground">{tm.L}</td>
+                                    <td className="py-1.5 text-center text-muted-foreground">{tm.GF}</td>
+                                    <td className="py-1.5 text-center text-muted-foreground">{tm.GA}</td>
+                                    <td className="py-1.5 text-center font-bold">{tm.W * 3 + tm.D}</td>
+                                    <td className="pr-3 py-1.5 text-right">
+                                      {positionCorrect && (
+                                        <span className="text-green-600 dark:text-green-400 font-semibold whitespace-nowrap">
+                                          +{competition.scoringConfig.correct_group_position}
+                                        </span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                          {groupTies.map(tie => {
+                            const ranked = groupDisciplinaryChoices[tie.key] ?? [];
+                            const enoughRanked = ranked.length >= tie.requiredRankings;
+                            return (
+                              <div key={tie.key} className="rounded-lg border border-amber-400/40 bg-amber-50/10 p-3 text-xs">
+                                <p className="font-semibold text-amber-700 dark:text-amber-400 mb-1">
+                                  {t('competitionDetail.tables.disciplinaryTiebreaker')}
+                                </p>
+                                <p className="text-muted-foreground mb-2">
+                                  {enoughRanked
+                                    ? `${t('competitionDetail.tables.selected')}: ${ranked.slice(0, tie.requiredRankings).map(tid => tn(tie.teams.find(tm => tm.teamId === tid)?.teamName)).join(' › ')}`
+                                    : t('competitionDetail.tables.selectTeams', { n: tie.requiredRankings, s: tie.requiredRankings > 1 ? 's' : '' })}
+                                </p>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {tie.teams.map(tm => {
+                                    const rank = ranked.indexOf(tm.teamId);
+                                    const isRanked = rank !== -1;
+                                    const isLockedBtn = !isRanked && enoughRanked;
+                                    return (
+                                      <button
+                                        key={tm.teamId}
+                                        onClick={() => !isLockedBtn && handleDisciplinaryChoice(groupDisciplinaryChoices, setGroupDisciplinaryChoices, tie.key, tm.teamId)}
+                                        disabled={isLockedBtn}
+                                        className={`flex items-center gap-1 rounded border px-2 py-1 transition-colors ${isRanked ? 'border-amber-500 bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300' : isLockedBtn ? 'border-border opacity-30 cursor-not-allowed' : 'border-border hover:border-amber-400 hover:bg-amber-50/20'}`}
+                                      >
+                                        {isRanked && <span className="font-bold text-amber-600 dark:text-amber-400">{rank + 1}.</span>}
+                                        {tm.imageUrl && <img src={tm.imageUrl} alt="" className="h-3.5 w-3.5 rounded-sm" />}
+                                        {tn(tm.teamName)}
+                                      </button>
+                                    );
+                                  })}
+                                  {enoughRanked && (
+                                    <button
+                                      onClick={() => confirmGroupTiebreaker(tie.key, tie.teams.map(tm => tm.teamId))}
+                                      className="rounded border border-green-500/50 bg-green-50/20 px-2 py-1 font-medium text-green-700 dark:text-green-400 hover:bg-green-50/40 transition-colors"
+                                    >
+                                      {t('common.confirm')}
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
-                        <table className="w-full text-xs">
-                          <thead>
-                            <tr className="border-b text-muted-foreground">
-                              <th className="pl-3 py-1.5 text-left w-6">#</th>
-                              <th className="py-1.5 text-left">{t('groupTable.team')}</th>
-                              <th className="py-1.5 text-center w-6">{t('groupTable.played')}</th>
-                              <th className="py-1.5 text-center w-6">{t('groupTable.won')}</th>
-                              <th className="py-1.5 text-center w-6">{t('groupTable.drawn')}</th>
-                              <th className="py-1.5 text-center w-6">{t('groupTable.lost')}</th>
-                              <th className="py-1.5 text-center w-8">{t('groupTable.gf')}</th>
-                              <th className="py-1.5 text-center w-8">{t('groupTable.ga')}</th>
-                              <th className="pr-3 py-1.5 text-center w-8 font-bold text-foreground">{t('groupTable.pts')}</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y">
-                            {actualTeams.map((tm, i) => (
-                              <tr key={tm.teamId} className={
-                                i < 2
-                                  ? 'bg-green-50 dark:bg-green-950/30'
-                                  : i === 2 && actualQualifyingThirdPlaceIds.has(tm.teamId)
-                                  ? 'bg-yellow-50 dark:bg-yellow-950/30'
-                                  : ''
-                              }>
-                                <td className="pl-3 py-1.5 text-muted-foreground">{i + 1}</td>
-                                <td className="py-1.5 pr-2">
-                                  <div className="flex items-center gap-1.5">
-                                    {tm.imageUrl ? (
-                                      <img src={tm.imageUrl} alt="" className="h-4 w-4 rounded-full object-cover flex-shrink-0" />
-                                    ) : (
-                                      <div className="h-4 w-4 rounded-full bg-muted flex-shrink-0" />
-                                    )}
-                                    <span className="truncate">{tn(tm.teamName)}</span>
-                                  </div>
-                                </td>
-                                <td className="py-1.5 text-center text-muted-foreground">{tm.P}</td>
-                                <td className="py-1.5 text-center text-muted-foreground">{tm.W}</td>
-                                <td className="py-1.5 text-center text-muted-foreground">{tm.D}</td>
-                                <td className="py-1.5 text-center text-muted-foreground">{tm.L}</td>
-                                <td className="py-1.5 text-center text-muted-foreground">{tm.GF}</td>
-                                <td className="py-1.5 text-center text-muted-foreground">{tm.GA}</td>
-                                <td className="pr-3 py-1.5 text-center font-bold">{tm.W * 3 + tm.D}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+
+                        {/* Actual */}
+                        <div className="min-w-0">
+                          <div className="rounded-lg border dark:bg-white/5 p-2">
+                            <div className="bg-muted/50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                              {t('common.group')} {groupName}
+                            </div>
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="border-b text-muted-foreground">
+                                  <th className="pl-3 py-1.5 text-left w-6">#</th>
+                                  <th className="py-1.5 text-left">{t('groupTable.team')}</th>
+                                  <th className="py-1.5 text-center w-6">{t('groupTable.played')}</th>
+                                  <th className="py-1.5 text-center w-6">{t('groupTable.won')}</th>
+                                  <th className="py-1.5 text-center w-6">{t('groupTable.drawn')}</th>
+                                  <th className="py-1.5 text-center w-6">{t('groupTable.lost')}</th>
+                                  <th className="py-1.5 text-center w-8">{t('groupTable.gf')}</th>
+                                  <th className="py-1.5 text-center w-8">{t('groupTable.ga')}</th>
+                                  <th className="pr-3 py-1.5 text-center w-8 font-bold text-foreground">{t('groupTable.pts')}</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y">
+                                {actualTeams.map((tm, i) => (
+                                  <tr key={tm.teamId} className={
+                                    i < 2
+                                      ? 'bg-green-50 dark:bg-green-950/30'
+                                      : i === 2 && actualQualifyingThirdPlaceIds.has(tm.teamId)
+                                      ? 'bg-yellow-50 dark:bg-yellow-950/30'
+                                      : ''
+                                  }>
+                                    <td className="pl-3 py-1.5 text-muted-foreground">{i + 1}</td>
+                                    <td className="py-1.5 pr-2">
+                                      <div className="flex items-center gap-1.5">
+                                        {tm.imageUrl ? (
+                                          <img src={tm.imageUrl} alt="" className="h-4 w-4 rounded-full object-cover flex-shrink-0" />
+                                        ) : (
+                                          <div className="h-4 w-4 rounded-full bg-muted flex-shrink-0" />
+                                        )}
+                                        <span className="truncate">{tn(tm.teamName)}</span>
+                                      </div>
+                                    </td>
+                                    <td className="py-1.5 text-center text-muted-foreground">{tm.P}</td>
+                                    <td className="py-1.5 text-center text-muted-foreground">{tm.W}</td>
+                                    <td className="py-1.5 text-center text-muted-foreground">{tm.D}</td>
+                                    <td className="py-1.5 text-center text-muted-foreground">{tm.L}</td>
+                                    <td className="py-1.5 text-center text-muted-foreground">{tm.GF}</td>
+                                    <td className="py-1.5 text-center text-muted-foreground">{tm.GA}</td>
+                                    <td className="pr-3 py-1.5 text-center font-bold">{tm.W * 3 + tm.D}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
                       </div>
                     );
                   })}
                 </div>
-                )}
-              </div>
+              )}
 
               {/* Legend */}
               <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
