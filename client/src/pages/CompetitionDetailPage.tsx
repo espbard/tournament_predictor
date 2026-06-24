@@ -2271,7 +2271,11 @@ export default function CompetitionDetailPage() {
                                 <div className="h-7 w-7 rounded-full bg-muted" />
                               )}
                             </div>
-                            <span className="flex-1 text-sm font-medium truncate">{tn(match.homeTeamName) || 'TBD'}</span>
+                            {match.homeTeamId ? (
+                              <Link to={`/competitions/${id}/team/${match.homeTeamId}`} className="flex-1 text-sm font-medium truncate hover:underline">{tn(match.homeTeamName) || 'TBD'}</Link>
+                            ) : (
+                              <span className="flex-1 text-sm font-medium truncate">{tn(match.homeTeamName) || 'TBD'}</span>
+                            )}
                             <span className="w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0">{match.homeScore ?? '—'}</span>
                           </div>
                           <div className="h-px bg-border" />
@@ -2283,7 +2287,11 @@ export default function CompetitionDetailPage() {
                                 <div className="h-7 w-7 rounded-full bg-muted" />
                               )}
                             </div>
-                            <span className="flex-1 text-sm font-medium truncate">{tn(match.awayTeamName) || 'TBD'}</span>
+                            {match.awayTeamId ? (
+                              <Link to={`/competitions/${id}/team/${match.awayTeamId}`} className="flex-1 text-sm font-medium truncate hover:underline">{tn(match.awayTeamName) || 'TBD'}</Link>
+                            ) : (
+                              <span className="flex-1 text-sm font-medium truncate">{tn(match.awayTeamName) || 'TBD'}</span>
+                            )}
                             <span className="w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0">{match.awayScore ?? '—'}</span>
                           </div>
                         </div>
