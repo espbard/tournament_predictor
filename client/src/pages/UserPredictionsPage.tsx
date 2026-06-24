@@ -218,7 +218,7 @@ export default function UserPredictionsPage() {
       } else {
         const key = makeDisciplinaryKey(bucket.map(tm => tm.teamId));
         const ranked = luckyLoserChoices[key] ?? [];
-        if (ranked.length >= bucket.length) {
+        if (ranked.length >= remaining) {
           for (const tid of ranked.slice(0, remaining)) qualifying.add(tid);
         }
         filled += remaining;
