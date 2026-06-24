@@ -1923,7 +1923,33 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         }
       }
     }
-    const heavenTeamIds = new Set<string>(heavenByTeam.keys());
+
+    // Fallback: if no one has a perfect record, find who has the most perfect predictions (min 2)
+    let heavenFallbackMaxPerfect = 0;
+    const heavenFallbackByTeam = new Map<string, { userId: string; count: number }[]>();
+    if (heavenByTeam.size === 0) {
+      for (const teamMap of userTeamPredStats.values()) {
+        for (const stats of teamMap.values()) {
+          if (stats.perfect >= 2 && stats.perfect > heavenFallbackMaxPerfect) {
+            heavenFallbackMaxPerfect = stats.perfect;
+          }
+        }
+      }
+      if (heavenFallbackMaxPerfect >= 2) {
+        for (const [userId, teamMap] of userTeamPredStats.entries()) {
+          for (const [teamId, stats] of teamMap.entries()) {
+            if (stats.perfect === heavenFallbackMaxPerfect) {
+              if (!heavenFallbackByTeam.has(teamId)) heavenFallbackByTeam.set(teamId, []);
+              heavenFallbackByTeam.get(teamId)!.push({ userId, count: stats.perfect });
+            }
+          }
+        }
+      }
+    }
+
+    const heavenActiveByTeam = heavenByTeam.size > 0 ? heavenByTeam : heavenFallbackByTeam;
+    const heavenIsFallback = heavenByTeam.size === 0 && heavenFallbackByTeam.size > 0;
+    const heavenTeamIds = new Set<string>(heavenActiveByTeam.keys());
 
     // ── The Optimist: highest vs. lowest total predicted goals across played matches ──
     const actualTotalGoals = [...matchStats.values()].reduce((sum, m) => sum + m.homeScore + m.awayScore, 0);
@@ -2780,10 +2806,10 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       }
     }
 
-    if (heavenByTeam.size > 0) {
+    if (heavenActiveByTeam.size > 0) {
       // Invert to user → [{teamId, count}] so one user with multiple teams stays on one line
       const userToTeams = new Map<string, { teamId: string; count: number }[]>();
-      for (const [teamId, entries] of heavenByTeam.entries()) {
+      for (const [teamId, entries] of heavenActiveByTeam.entries()) {
         for (const { userId, count } of entries) {
           if (!userToTeams.has(userId)) userToTeams.set(userId, []);
           userToTeams.get(userId)!.push({ teamId, count });
@@ -2830,6 +2856,12 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       const buildConnectionLine = (users: typeof sortedGroups[0]['users'], tIds: string[]): string => {
         const userNames = formatUserList(users.map(u => u.username), lang);
         const teams = joinTeamNames(tIds);
+        if (heavenIsFallback) {
+          const n = firstCount;
+          if (lang === 'no') return `${userNames} har tippet eksakt resultat ${n} ${n === 1 ? 'gang' : 'ganger'} for ${teams}!`;
+          if (lang === 'de') return `${userNames} ${users.length === 1 ? 'hat' : 'haben'} ${n} Mal das exakte Ergebnis für ${teams} getippt!`;
+          return `${userNames} ${users.length === 1 ? 'has' : 'have'} predicted the exact score ${n} ${n === 1 ? 'time' : 'times'} for ${teams}!`;
+        }
         if (lang === 'no') return `${userNames} har en åndelig forbindelse med ${teams}!`;
         if (lang === 'de') return `${userNames} ${users.length === 1 ? 'hat' : 'haben'} eine spirituelle Verbindung mit ${teams}!`;
         return `${userNames} ${users.length === 1 ? 'has' : 'have'} a spiritual connection with ${teams}!`;
@@ -2846,12 +2878,17 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         return 'all the games they have played';
       };
 
-      const gamesLine =
-        lang === 'no'
+      const gamesLine = heavenIsFallback
+        ? (lang === 'no'
+          ? 'Det er flest eksakte resultater for ett enkelt lag!'
+          : lang === 'de'
+            ? 'Das sind die meisten exakten Treffer für ein einzelnes Team!'
+            : 'That\'s the most perfect score predictions for any single team!')
+        : (lang === 'no'
           ? `De har gjettet eksakt resultat i ${buildCountPhrase()}!`
           : lang === 'de'
             ? `Sie haben in ${buildCountPhrase()} das perfekte Ergebnis getippt!`
-            : `They have guessed the perfect score in ${buildCountPhrase()}!`;
+            : `They have guessed the perfect score in ${buildCountPhrase()}!`);
 
       let heavenStatistic: string;
       if (sortedGroups.length === 1) {
