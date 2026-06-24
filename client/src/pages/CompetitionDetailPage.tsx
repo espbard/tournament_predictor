@@ -182,7 +182,7 @@ export default function CompetitionDetailPage() {
   const { data: bracketPreds } = useQuery({
     queryKey: ['competitions', id, 'bracket-predictions'],
     queryFn: () => api.get<BracketPredictions>(`/competitions/${id}/bracket-predictions`),
-    enabled: !!competition && !user?.isAdmin && !user?.isLeaderboardUser && (myStatus?.groupStageLocked ?? false),
+    enabled: !!competition && !user?.isAdmin && !user?.isLeaderboardUser,
   });
 
   const { data: leaderboard = [], isLoading: leaderboardLoading } = useQuery({
