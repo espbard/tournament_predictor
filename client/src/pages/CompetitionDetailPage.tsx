@@ -1706,7 +1706,7 @@ export default function CompetitionDetailPage() {
                   const isExactScore = hasPred && hasActual &&
                     pred.homeScore === m.homeScore && pred.awayScore === m.awayScore;
                   const dotClass = isCurrent
-                    ? 'w-5 h-2.5 bg-primary'
+                    ? 'w-5 h-2.5 bg-primary dark:bg-blue-400'
                     : !hasPred && !hasPendingEdit
                     ? 'w-2.5 h-2.5 bg-muted-foreground/30 hover:bg-muted-foreground/50'
                     : !hasActual
@@ -1776,7 +1776,7 @@ export default function CompetitionDetailPage() {
                       type="button"
                       onClick={() => setCurrentGroupMatchIdx(i => Math.max(0, i - 1))}
                       disabled={!canGoPrev}
-                      className="hidden sm:flex flex-shrink-0 h-10 w-10 rounded-full border items-center justify-center transition-opacity disabled:opacity-20"
+                      className="hidden sm:flex flex-shrink-0 h-10 w-10 rounded-full border items-center justify-center transition-opacity disabled:opacity-20 dark:border-blue-400 dark:text-blue-400"
                       aria-label="Previous match"
                     >
                       ←
@@ -1947,14 +1947,14 @@ export default function CompetitionDetailPage() {
                           type="button"
                           onClick={() => setCurrentGroupMatchIdx(i => Math.max(0, i - 1))}
                           disabled={!canGoPrev}
-                          className="h-11 w-11 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20"
+                          className="h-11 w-11 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20 dark:border-blue-400 dark:text-blue-400"
                           aria-label="Previous match"
                         >←</button>
                         <button
                           type="button"
                           onClick={() => setCurrentGroupMatchIdx(i => Math.min(allGroupMatchesList.length - 1, i + 1))}
                           disabled={!canGoNext}
-                          className="h-11 w-11 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20"
+                          className="h-11 w-11 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20 dark:border-blue-400 dark:text-blue-400"
                           aria-label="Next match"
                         >→</button>
                       </div>
@@ -1964,7 +1964,7 @@ export default function CompetitionDetailPage() {
                       type="button"
                       onClick={() => setCurrentGroupMatchIdx(i => Math.min(allGroupMatchesList.length - 1, i + 1))}
                       disabled={!canGoNext}
-                      className="hidden sm:flex flex-shrink-0 h-10 w-10 rounded-full border items-center justify-center transition-opacity disabled:opacity-20"
+                      className="hidden sm:flex flex-shrink-0 h-10 w-10 rounded-full border items-center justify-center transition-opacity disabled:opacity-20 dark:border-blue-400 dark:text-blue-400"
                       aria-label="Next match"
                     >
                       →
@@ -2273,7 +2273,7 @@ export default function CompetitionDetailPage() {
                           const isExactScore = hasPred && hasActual &&
                             activePred!.homeScore === effActH && activePred!.awayScore === effActA;
                           const dotClass = isCurrent
-                            ? 'w-5 h-2.5 bg-primary'
+                            ? 'w-5 h-2.5 bg-primary dark:bg-blue-400'
                             : !hasPred
                             ? 'w-2.5 h-2.5 bg-muted-foreground/30 hover:bg-muted-foreground/50'
                             : !hasActual
@@ -2302,7 +2302,7 @@ export default function CompetitionDetailPage() {
                         type="button"
                         onClick={() => setCurrentPredMatchIdx(i => Math.max(0, i - 1))}
                         disabled={safePredMatchIdx === 0}
-                        className="hidden sm:flex flex-shrink-0 h-10 w-10 rounded-full border items-center justify-center transition-opacity disabled:opacity-20"
+                        className="hidden sm:flex flex-shrink-0 h-10 w-10 rounded-full border items-center justify-center transition-opacity disabled:opacity-20 dark:border-blue-400 dark:text-blue-400"
                         aria-label="Previous match"
                       >←</button>
 
@@ -2360,13 +2360,13 @@ export default function CompetitionDetailPage() {
                             type="button"
                             onClick={() => setCurrentPredMatchIdx(i => Math.max(0, i - 1))}
                             disabled={safePredMatchIdx === 0}
-                            className="h-11 w-11 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20"
+                            className="h-11 w-11 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20 dark:border-blue-400 dark:text-blue-400"
                           >←</button>
                           <button
                             type="button"
                             onClick={() => setCurrentPredMatchIdx(i => Math.min(allMatchesSorted.length - 1, i + 1))}
                             disabled={safePredMatchIdx === allMatchesSorted.length - 1}
-                            className="h-11 w-11 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20"
+                            className="h-11 w-11 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20 dark:border-blue-400 dark:text-blue-400"
                           >→</button>
                         </div>
                       </div>
@@ -2375,7 +2375,7 @@ export default function CompetitionDetailPage() {
                         type="button"
                         onClick={() => setCurrentPredMatchIdx(i => Math.min(completedMatchesWithResults.length - 1, i + 1))}
                         disabled={safePredMatchIdx === completedMatchesWithResults.length - 1}
-                        className="hidden sm:flex flex-shrink-0 h-10 w-10 rounded-full border items-center justify-center transition-opacity disabled:opacity-20"
+                        className="hidden sm:flex flex-shrink-0 h-10 w-10 rounded-full border items-center justify-center transition-opacity disabled:opacity-20 dark:border-blue-400 dark:text-blue-400"
                         aria-label="Next match"
                       >→</button>
                     </div>

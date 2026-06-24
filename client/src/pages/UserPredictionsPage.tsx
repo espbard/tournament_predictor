@@ -465,7 +465,7 @@ export default function UserPredictionsPage() {
                     const isExactScore = hasPred && hasActual &&
                       pred.homeScore === m.homeScore && pred.awayScore === m.awayScore;
                     const dotClass = isCurrent
-                      ? 'w-5 h-2.5 bg-primary'
+                      ? 'w-5 h-2.5 bg-primary dark:bg-blue-400'
                       : !hasPred
                       ? 'w-2.5 h-2.5 bg-muted-foreground/30 hover:bg-muted-foreground/50'
                       : !hasActual
@@ -519,7 +519,7 @@ export default function UserPredictionsPage() {
                         type="button"
                         onClick={() => setCurrentMatchIdx(i => Math.max(0, i - 1))}
                         disabled={!canGoPrev}
-                        className="hidden sm:flex flex-shrink-0 h-10 w-10 rounded-full border items-center justify-center transition-opacity disabled:opacity-20"
+                        className="hidden sm:flex flex-shrink-0 h-10 w-10 rounded-full border items-center justify-center transition-opacity disabled:opacity-20 dark:border-blue-400 dark:text-blue-400"
                         aria-label="Previous match"
                       >←</button>
 
@@ -587,14 +587,14 @@ export default function UserPredictionsPage() {
                             type="button"
                             onClick={() => setCurrentMatchIdx(i => Math.max(0, i - 1))}
                             disabled={!canGoPrev}
-                            className="h-11 w-11 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20"
+                            className="h-11 w-11 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20 dark:border-blue-400 dark:text-blue-400"
                             aria-label="Previous match"
                           >←</button>
                           <button
                             type="button"
                             onClick={() => setCurrentMatchIdx(i => Math.min(allGroupMatches.length - 1, i + 1))}
                             disabled={!canGoNext}
-                            className="h-11 w-11 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20"
+                            className="h-11 w-11 rounded-full border flex items-center justify-center transition-opacity disabled:opacity-20 dark:border-blue-400 dark:text-blue-400"
                             aria-label="Next match"
                           >→</button>
                         </div>
@@ -604,7 +604,7 @@ export default function UserPredictionsPage() {
                         type="button"
                         onClick={() => setCurrentMatchIdx(i => Math.min(allGroupMatches.length - 1, i + 1))}
                         disabled={!canGoNext}
-                        className="hidden sm:flex flex-shrink-0 h-10 w-10 rounded-full border items-center justify-center transition-opacity disabled:opacity-20"
+                        className="hidden sm:flex flex-shrink-0 h-10 w-10 rounded-full border items-center justify-center transition-opacity disabled:opacity-20 dark:border-blue-400 dark:text-blue-400"
                         aria-label="Next match"
                       >→</button>
                     </div>
