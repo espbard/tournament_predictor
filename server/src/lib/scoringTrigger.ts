@@ -210,9 +210,9 @@ async function recomputeAllMemberBreakdowns(
       });
     const predictedStandings = computeGroupStandings(simulatedMatches, teamGroupMap, userGroupDisciplinaryChoices ?? {});
 
-    // --- Group position points (only after admin confirms standings) ---
+    // --- Group position points (awarded per confirmed group, incrementally) ---
     let groupPositionPts = 0;
-    if (groupStandingsLocked && confirmedGroupStandings) {
+    if (confirmedGroupStandings && Object.keys(confirmedGroupStandings).length > 0) {
       const lockedStandings = new Map(
         Object.entries(confirmedGroupStandings).map(([g, ids]) => [g, ids.map(id => ({ teamId: id, points: 0, gd: 0, gf: 0 }))]),
       );
