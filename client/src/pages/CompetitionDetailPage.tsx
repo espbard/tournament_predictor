@@ -553,8 +553,8 @@ export default function CompetitionDetailPage() {
     const luckyLosers = tournament?.knockoutConfig?.luckyLosers ?? 0;
     if (luckyLosers <= 0) return new Set<string>();
     const third = groupStandings
-      .filter(([, teams]) => teams.length >= 3)
-      .map(([, teams]) => teams[2]);
+      .filter(([, teams]) => teams.length > directQualifiers)
+      .map(([, teams]) => teams[directQualifiers]);
 
     // Sort by natural criteria only (no disciplinary tiebreaker) so tied teams stay grouped together.
     const sorted = [...third].sort((a, b) => {
@@ -594,15 +594,19 @@ export default function CompetitionDetailPage() {
       i = j;
     }
     return qualifying;
-  }, [groupStandings, luckyLoserDisciplinaryChoices, tournament]);
+  }, [groupStandings, luckyLoserDisciplinaryChoices, tournament, directQualifiers]);
 
   const actualQualifyingThirdPlaceIds = useMemo(() => {
     const luckyLosers = tournament?.knockoutConfig?.luckyLosers ?? 0;
     if (luckyLosers <= 0) return new Set<string>();
-    const groupEntries = [...actualGroupStandings.entries()].sort(([a], [b]) => a.localeCompare(b));
+    const confirmedLuckyLosers = tournament?.knockoutConfig?.confirmedLuckyLosers;
+    if (tournament?.knockoutConfig?.groupStandingsLocked && confirmedLuckyLosers) {
+      return new Set<string>(confirmedLuckyLosers);
+    }
+    const groupEntries = [...displayActualGroupStandings.entries()].sort(([a], [b]) => a.localeCompare(b));
     const third = groupEntries
-      .filter(([, teams]) => teams.length >= 3)
-      .map(([, teams]) => teams[2]);
+      .filter(([, teams]) => teams.length > directQualifiers)
+      .map(([, teams]) => teams[directQualifiers]);
     const sorted = [...third].sort((a, b) => {
       const pa = a.W * 3 + a.D, pb = b.W * 3 + b.D;
       if (pb !== pa) return pb - pa;
@@ -632,7 +636,7 @@ export default function CompetitionDetailPage() {
       i = j;
     }
     return qualifying;
-  }, [actualGroupStandings, tournament]);
+  }, [displayActualGroupStandings, tournament, directQualifiers]);
 
   // All disciplinary ties for the group stage, including already-resolved ones.
   const allGroupDisciplinaryTieInfo = useMemo(() => {
