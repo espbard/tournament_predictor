@@ -607,10 +607,10 @@ export default function CompetitionDetailPage() {
         for (const tm of bucket) qualifying.add(tm.teamId);
         filled += bucket.length;
       } else {
-        // Tied bucket straddles the cutoff — only highlight once the tiebreaker is resolved.
+        // Tied bucket straddles the cutoff — highlight once enough teams are ranked to fill remaining slots.
         const key = makeDisciplinaryKey(bucket.map(tm => tm.teamId));
         const ranked = luckyLoserDisciplinaryChoices[key] ?? [];
-        if (ranked.length >= bucket.length) {
+        if (ranked.length >= remaining) {
           for (const id of ranked.slice(0, remaining)) qualifying.add(id);
         }
         filled += remaining;
