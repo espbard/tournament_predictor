@@ -37,8 +37,12 @@ export default function EditUserPage() {
 
   return (
     <main className="mx-auto max-w-sm px-4 py-8">
-      <Link to="/" className="mb-4 inline-block text-sm text-muted-foreground hover:text-foreground">
-        {t('editUser.back')}
+      <Link
+        to="/"
+        className="mb-4 inline-flex h-8 items-center justify-center rounded-lg border border-border bg-card px-3 text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground transition-colors"
+        aria-label="Go back"
+      >
+        ←
       </Link>
       <h1 className="mb-6 text-2xl font-bold">{t('editUser.title')}</h1>
 

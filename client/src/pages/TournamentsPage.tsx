@@ -63,8 +63,12 @@ export default function TournamentsPage() {
     <main className="mx-auto max-w-2xl px-4 py-8">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <Link to="/" className="mb-1 block text-sm text-muted-foreground hover:text-foreground">
-            {t('tournaments.backToHome')}
+          <Link
+            to="/"
+            className="mb-3 inline-flex h-8 items-center justify-center rounded-lg border border-border bg-card px-3 text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground transition-colors"
+            aria-label="Go back"
+          >
+            ←
           </Link>
           <h1 className="text-2xl font-bold">{t('tournaments.title')}</h1>
         </div>

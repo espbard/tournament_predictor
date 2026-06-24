@@ -852,9 +852,10 @@ export default function TournamentDetailPage() {
     <main className="mx-auto max-w-4xl px-4 py-8">
       <Link
         to="/admin/tournaments"
-        className="mb-4 inline-block text-sm text-muted-foreground hover:text-foreground"
+        className="mb-4 inline-flex h-8 items-center justify-center rounded-lg border border-border bg-card px-3 text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground transition-colors"
+        aria-label="Go back"
       >
-        {t('tournamentDetail.backToTournaments')}
+        ←
       </Link>
 
       {/* Stage tabs */}

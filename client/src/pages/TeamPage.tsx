@@ -141,7 +141,7 @@ export default function TeamPage() {
     <main className="mx-auto max-w-2xl px-4 py-12">
       <button
         onClick={() => navigate(-1)}
-        className="mb-4 flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground transition-colors"
+        className="mb-4 inline-flex h-8 items-center justify-center rounded-lg border border-border bg-card px-3 text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground transition-colors"
         aria-label="Go back"
       >
         ←

@@ -914,11 +914,13 @@ export default function CompetitionDetailPage() {
     }`}>
       <div>
       {!user?.isLeaderboardUser && (
-        <div className="mb-2 text-sm text-muted-foreground">
-          <Link to={user?.isAdmin ? '/competitions' : '/'} className="hover:underline">
-            {user?.isAdmin ? t('competitionDetail.backToCompetitions') : t('competitionDetail.backToHome')}
-          </Link>
-        </div>
+        <Link
+          to={user?.isAdmin ? '/competitions' : '/'}
+          className="mb-4 inline-flex h-8 items-center justify-center rounded-lg border border-border bg-card px-3 text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground transition-colors"
+          aria-label="Go back"
+        >
+          ←
+        </Link>
       )}
 
       {/* Header */}

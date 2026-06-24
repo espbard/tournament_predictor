@@ -254,11 +254,13 @@ export default function UserPredictionsPage() {
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-12">
-      <div className="mb-2 text-sm text-muted-foreground">
-        <Link to={`/competitions/${id}`} className="hover:underline">
-          ← {competition.name}
-        </Link>
-      </div>
+      <Link
+        to={`/competitions/${id}`}
+        className="mb-4 inline-flex h-8 items-center justify-center rounded-lg border border-border bg-card px-3 text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground transition-colors"
+        aria-label="Go back"
+      >
+        ←
+      </Link>
 
       <div className="flex items-center gap-3 mb-6">
         <UserAvatar username={username} imageUrl={imageUrl} iconColor={iconColor} className="h-10 w-10" />
