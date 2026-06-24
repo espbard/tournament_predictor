@@ -247,7 +247,7 @@ export default function TeamPage() {
                 <div className="mt-2 text-center space-y-0.5">
                   {hasPred && displayHomeScore !== null && displayAwayScore !== null && (
                     <p className="text-xs text-muted-foreground">
-                      {t('competitionDetail.tables.labelPredicted')}: {displayHomeScore}–{displayAwayScore}
+                      {t('competitionDetail.predictions.yourPrediction')}: {displayHomeScore}–{displayAwayScore}
                     </p>
                   )}
                   {hasActual && hasPred && isGroup && groupPoints !== null && (
