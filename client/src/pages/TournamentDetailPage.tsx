@@ -276,6 +276,7 @@ export default function TournamentDetailPage() {
   const [overrideGroupOrder, setOverrideGroupOrder] = useState<Record<string, string[]> | null>(null);
   const [overrideLuckyLosers, setOverrideLuckyLosers] = useState<string[] | null>(null);
   const [showConfirmStandingsDialog, setShowConfirmStandingsDialog] = useState(false);
+  const [confirmStep, setConfirmStep] = useState<'groups' | 'lucky_losers'>('groups');
 
   // Players tab state
   const [showAddPlayer, setShowAddPlayer] = useState(false);
@@ -474,6 +475,7 @@ export default function TournamentDetailPage() {
       setShowConfirmStandingsDialog(false);
       setOverrideGroupOrder(null);
       setOverrideLuckyLosers(null);
+      setConfirmStep('groups');
     },
   });
 
@@ -718,9 +720,7 @@ export default function TournamentDetailPage() {
   const currentComputedGroupOrder = Object.fromEntries(
     groupStandingData.map(({ group, rows }) => [group.name, rows.map(r => r.team.id)])
   );
-  const currentComputedLLAll = sortedLL.map(s => s.teamId);
   const activeOverrideGroupOrder = overrideGroupOrder ?? currentComputedGroupOrder;
-  const activeOverrideLuckyLosers = overrideLuckyLosers ?? currentComputedLLAll;
 
   // Group matches by calendar date for display — group stage only (knockout shown in Knockout tab)
   const groupStageMatches = matchList.filter(m => m.stage === 'group');
@@ -1173,7 +1173,11 @@ export default function TournamentDetailPage() {
               <div className="rounded-lg border p-4 space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-semibold">
-                    {groupStandingsLocked ? 'Group Standings Confirmed' : 'Confirm Group Standings'}
+                    {groupStandingsLocked
+                      ? 'Group Standings Confirmed'
+                      : confirmStep === 'lucky_losers'
+                      ? 'Lucky Loser Selection'
+                      : 'Confirm Group Standings'}
                   </h3>
                   {groupStandingsLocked && (
                     <span className="rounded-full bg-green-500/10 px-2.5 py-1 text-xs font-medium text-green-600 dark:text-green-400">
@@ -1186,10 +1190,10 @@ export default function TournamentDetailPage() {
                   <p className="text-xs text-muted-foreground">
                     These standings are locked. Group position points have been calculated for all competition members.
                   </p>
-                ) : (
+                ) : confirmStep === 'groups' ? (
                   <>
                     <p className="text-xs text-muted-foreground">
-                      Review and optionally reorder the standings. Once confirmed, these will be locked and group position points will be awarded to all competition members.
+                      Review and optionally reorder the standings before confirming.
                     </p>
 
                     {/* Reorderable group standings */}
@@ -1251,67 +1255,99 @@ export default function TournamentDetailPage() {
                       })}
                     </div>
 
-                    {/* Lucky loser ordering */}
-                    {numLuckyLosers > 0 && activeOverrideLuckyLosers.length > 0 && (
-                      <div>
-                        <h4 className="mb-1 text-sm font-semibold">Lucky Loser Selection</h4>
-                        <p className="mb-3 text-xs text-muted-foreground">
-                          Order the 3rd-place teams. The top {numLuckyLosers} will advance as lucky loser{numLuckyLosers > 1 ? 's' : ''}.
-                        </p>
-                        <div className="space-y-1.5">
-                          {activeOverrideLuckyLosers.map((teamId, idx) => {
-                            const team = teams.find(t => t.id === teamId);
-                            if (!team) return null;
-                            const isSelected = idx < numLuckyLosers;
-                            return (
-                              <div
-                                key={teamId}
-                                className={`flex items-center gap-2 rounded-md border px-2.5 py-1.5 ${isSelected ? 'border-yellow-400/30 bg-yellow-400/5' : ''}`}
-                              >
-                                <span className="w-5 text-xs font-bold tabular-nums text-muted-foreground">{idx + 1}.</span>
-                                {isSelected && <span className="h-2 w-2 rounded-sm bg-yellow-400 flex-shrink-0" />}
-                                {team.imageUrl ? (
-                                  <img src={team.imageUrl} alt={team.name} className="h-5 w-5 rounded-sm object-cover flex-shrink-0" />
-                                ) : (
-                                  <span className="h-5 w-5 rounded-sm bg-muted inline-block flex-shrink-0" />
-                                )}
-                                <span className="flex-1 text-sm truncate">{team.name}</span>
-                                <div className="flex gap-0.5">
-                                  <button
-                                    type="button"
-                                    disabled={idx === 0}
-                                    onClick={() => {
-                                      const next = [...activeOverrideLuckyLosers];
-                                      [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
-                                      setOverrideLuckyLosers(next);
-                                    }}
-                                    className="rounded px-1 py-0.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
-                                  >↑</button>
-                                  <button
-                                    type="button"
-                                    disabled={idx === activeOverrideLuckyLosers.length - 1}
-                                    onClick={() => {
-                                      const next = [...activeOverrideLuckyLosers];
-                                      [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
-                                      setOverrideLuckyLosers(next);
-                                    }}
-                                    className="rounded px-1 py-0.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
-                                  >↓</button>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
                     <button
                       type="button"
-                      onClick={() => setShowConfirmStandingsDialog(true)}
+                      onClick={() => {
+                        if (numLuckyLosers > 0) {
+                          // Derive LL candidates from the admin's chosen group order
+                          const llFromOrder = groupStandingData
+                            .map(({ group, rows }) => {
+                              const order = activeOverrideGroupOrder[group.name] ?? rows.map(r => r.team.id);
+                              const effectiveDQ = Math.min(directQualifiers, order.length - 1);
+                              return order[effectiveDQ];
+                            })
+                            .filter((id): id is string => Boolean(id));
+                          setOverrideLuckyLosers(llFromOrder);
+                          setConfirmStep('lucky_losers');
+                        } else {
+                          setShowConfirmStandingsDialog(true);
+                        }
+                      }}
                       className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
                     >
                       Confirm Group Standings
                     </button>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs text-muted-foreground">
+                      Order the teams in the lucky loser spots. The top {numLuckyLosers} will advance as lucky loser{numLuckyLosers > 1 ? 's' : ''}.
+                    </p>
+
+                    {/* Lucky loser ordering */}
+                    {(overrideLuckyLosers ?? []).length > 0 && (
+                      <div className="space-y-1.5">
+                        {(overrideLuckyLosers ?? []).map((teamId, idx) => {
+                          const team = teams.find(t => t.id === teamId);
+                          if (!team) return null;
+                          const isSelected = idx < numLuckyLosers;
+                          return (
+                            <div
+                              key={teamId}
+                              className={`flex items-center gap-2 rounded-md border px-2.5 py-1.5 ${isSelected ? 'border-yellow-400/30 bg-yellow-400/5' : ''}`}
+                            >
+                              <span className="w-5 text-xs font-bold tabular-nums text-muted-foreground">{idx + 1}.</span>
+                              {isSelected && <span className="h-2 w-2 rounded-sm bg-yellow-400 flex-shrink-0" />}
+                              {team.imageUrl ? (
+                                <img src={team.imageUrl} alt={team.name} className="h-5 w-5 rounded-sm object-cover flex-shrink-0" />
+                              ) : (
+                                <span className="h-5 w-5 rounded-sm bg-muted inline-block flex-shrink-0" />
+                              )}
+                              <span className="flex-1 text-sm truncate">{team.name}</span>
+                              <div className="flex gap-0.5">
+                                <button
+                                  type="button"
+                                  disabled={idx === 0}
+                                  onClick={() => {
+                                    const next = [...(overrideLuckyLosers ?? [])];
+                                    [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+                                    setOverrideLuckyLosers(next);
+                                  }}
+                                  className="rounded px-1 py-0.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
+                                >↑</button>
+                                <button
+                                  type="button"
+                                  disabled={idx === (overrideLuckyLosers ?? []).length - 1}
+                                  onClick={() => {
+                                    const next = [...(overrideLuckyLosers ?? [])];
+                                    [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+                                    setOverrideLuckyLosers(next);
+                                  }}
+                                  className="rounded px-1 py-0.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
+                                >↓</button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    <div className="flex gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setConfirmStep('groups')}
+                        className="rounded-md border px-4 py-2 text-sm hover:bg-muted"
+                      >
+                        ← Back to Groups
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmStandingsDialog(true)}
+                        className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                      >
+                        Confirm
+                      </button>
+                    </div>
                   </>
                 )}
               </div>
@@ -1339,7 +1375,7 @@ export default function TournamentDetailPage() {
                 onClick={() => {
                   confirmGroupStandingsMutation.mutate({
                     groupStandings: activeOverrideGroupOrder,
-                    luckyLosers: activeOverrideLuckyLosers,
+                    luckyLosers: overrideLuckyLosers ?? [],
                   });
                 }}
                 disabled={confirmGroupStandingsMutation.isPending}
