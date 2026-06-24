@@ -531,6 +531,8 @@ export default function CompetitionDetailPage() {
     }
   }, [tournament?.status, tabParam, user?.isLeaderboardUser, user?.isAdmin, setSearchParams]);
 
+  const directQualifiers = tournament?.knockoutConfig?.directQualifiers ?? 2;
+
   const qualifyingThirdPlaceIds = useMemo(() => {
     const luckyLosers = tournament?.knockoutConfig?.luckyLosers ?? 0;
     if (luckyLosers <= 0) return new Set<string>();
@@ -1167,11 +1169,12 @@ export default function CompetitionDetailPage() {
                                 const groupComplete = counts && counts.total > 0 && counts.completed === counts.total;
                                 const actualTeams = actualGroupStandings.get(groupName) ?? [];
                                 const positionCorrect = groupComplete && actualTeams[i]?.teamId === tm.teamId;
+                                const effectiveDQ = Math.min(directQualifiers, teams.length - 1);
                                 return (
                                 <tr key={tm.teamId} className={
-                                  i < 2
+                                  i < effectiveDQ
                                     ? 'bg-green-50 dark:bg-green-950/30'
-                                    : i === 2 && qualifyingThirdPlaceIds.has(tm.teamId)
+                                    : i === effectiveDQ && qualifyingThirdPlaceIds.has(tm.teamId)
                                     ? 'bg-yellow-50 dark:bg-yellow-950/30'
                                     : ''
                                 }>
@@ -1304,11 +1307,12 @@ export default function CompetitionDetailPage() {
                                   const counts = completedGroupMatchCounts.get(groupName);
                                   const groupComplete = counts && counts.total > 0 && counts.completed === counts.total;
                                   const positionCorrect = groupComplete && actualTeams[i]?.teamId === tm.teamId;
+                                  const effectiveDQ = Math.min(directQualifiers, teams.length - 1);
                                   return (
                                   <tr key={tm.teamId} className={
-                                    i < 2
+                                    i < effectiveDQ
                                       ? 'bg-green-50 dark:bg-green-950/30'
-                                      : i === 2 && qualifyingThirdPlaceIds.has(tm.teamId)
+                                      : i === effectiveDQ && qualifyingThirdPlaceIds.has(tm.teamId)
                                       ? 'bg-yellow-50 dark:bg-yellow-950/30'
                                       : ''
                                   }>
@@ -1413,11 +1417,13 @@ export default function CompetitionDetailPage() {
                                 </tr>
                               </thead>
                               <tbody className="divide-y">
-                                {actualTeams.map((tm, i) => (
+                                {actualTeams.map((tm, i) => {
+                                  const effectiveDQ = Math.min(directQualifiers, actualTeams.length - 1);
+                                  return (
                                   <tr key={tm.teamId} className={
-                                    i < 2
+                                    i < effectiveDQ
                                       ? 'bg-green-50 dark:bg-green-950/30'
-                                      : i === 2 && actualQualifyingThirdPlaceIds.has(tm.teamId)
+                                      : i === effectiveDQ && actualQualifyingThirdPlaceIds.has(tm.teamId)
                                       ? 'bg-yellow-50 dark:bg-yellow-950/30'
                                       : ''
                                   }>
@@ -1440,7 +1446,8 @@ export default function CompetitionDetailPage() {
                                     <td className="py-1.5 text-center text-muted-foreground">{tm.GA}</td>
                                     <td className="pr-3 py-1.5 text-center font-bold">{tm.W * 3 + tm.D}</td>
                                   </tr>
-                                ))}
+                                );
+                                })}
                               </tbody>
                             </table>
                           </div>

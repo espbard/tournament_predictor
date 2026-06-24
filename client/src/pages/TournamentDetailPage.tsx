@@ -1002,8 +1002,9 @@ export default function TournamentDetailPage() {
                             </td>
                           </tr>
                         ) : rows.map((row, i) => {
-                          const isDirect = i < directQualifiers;
-                          const isLL = i === directQualifiers && luckyLoserIds.has(row.team.id);
+                          const effectiveDQ = Math.min(directQualifiers, rows.length - 1);
+                          const isDirect = i < effectiveDQ;
+                          const isLL = i === effectiveDQ && luckyLoserIds.has(row.team.id);
                           const stripe = isDirect
                             ? 'bg-green-500'
                             : isLL
@@ -1204,8 +1205,9 @@ export default function TournamentDetailPage() {
                               {groupOrder.map((teamId, idx) => {
                                 const team = teams.find(t => t.id === teamId);
                                 if (!team) return null;
-                                const isDirect = idx < directQualifiers;
-                                const isLL = numLuckyLosers > 0 && idx === directQualifiers;
+                                const effectiveDQ = Math.min(directQualifiers, groupOrder.length - 1);
+                                const isDirect = idx < effectiveDQ;
+                                const isLL = numLuckyLosers > 0 && idx === effectiveDQ;
                                 return (
                                   <div
                                     key={teamId}
