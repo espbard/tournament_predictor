@@ -373,7 +373,11 @@ export default function UserPredictionsPage() {
                             ) : (
                               <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
                             )}
-                            <span className="flex-1 text-sm font-medium truncate">{tn(match.homeTeamName) || 'TBD'}</span>
+                            {match.homeTeamId ? (
+                              <Link to={`/competitions/${id}/team/${match.homeTeamId}?userId=${userId}`} className="flex-1 text-sm font-medium truncate hover:underline">{tn(match.homeTeamName) || 'TBD'}</Link>
+                            ) : (
+                              <span className="flex-1 text-sm font-medium truncate">{tn(match.homeTeamName) || 'TBD'}</span>
+                            )}
                             <span className={`w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400 border border-amber-400 bg-amber-50/70 dark:bg-amber-900/30' : ''}`}>
                               {pred ? pred.homeScore : '—'}
                             </span>
@@ -385,7 +389,11 @@ export default function UserPredictionsPage() {
                             ) : (
                               <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
                             )}
-                            <span className="flex-1 text-sm font-medium truncate">{tn(match.awayTeamName) || 'TBD'}</span>
+                            {match.awayTeamId ? (
+                              <Link to={`/competitions/${id}/team/${match.awayTeamId}?userId=${userId}`} className="flex-1 text-sm font-medium truncate hover:underline">{tn(match.awayTeamName) || 'TBD'}</Link>
+                            ) : (
+                              <span className="flex-1 text-sm font-medium truncate">{tn(match.awayTeamName) || 'TBD'}</span>
+                            )}
                             <span className={`w-11 h-9 flex items-center justify-center text-xl font-bold rounded-lg flex-shrink-0 ${isExactScore ? 'text-amber-500 dark:text-amber-400 border border-amber-400 bg-amber-50/70 dark:bg-amber-900/30' : ''}`}>
                               {pred ? pred.awayScore : '—'}
                             </span>
@@ -489,7 +497,7 @@ export default function UserPredictionsPage() {
                             ) : (
                               <div className="h-4 w-4 rounded-full bg-muted flex-shrink-0" />
                             )}
-                            <span className="truncate">{tn(tm.teamName)}</span>
+                            <Link to={`/competitions/${id}/team/${tm.teamId}?userId=${userId}`} className="truncate hover:underline">{tn(tm.teamName)}</Link>
                           </div>
                         </td>
                         <td className="py-1.5 text-center text-muted-foreground">{tm.P}</td>
