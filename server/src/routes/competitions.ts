@@ -1279,6 +1279,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       .from(predictions)
       .innerJoin(users, eq(predictions.userId, users.id))
       .innerJoin(matches, eq(predictions.matchId, matches.id))
+      .innerJoin(competitionMembers, and(eq(competitionMembers.userId, predictions.userId), eq(competitionMembers.competitionId, id)))
       .where(
         and(
           eq(predictions.competitionId, id),
