@@ -687,6 +687,11 @@ export default function CompetitionDetailPage() {
       return;
     }
 
+    if (activeTab !== 'group') {
+      setShowProceedPrompt(false);
+      return;
+    }
+
     const tournamentUnderway = tournament?.status === 'active' || tournament?.status === 'completed';
     if (!groupStageLocked && !hasDeclined && !showProceedPrompt && !tournamentUnderway) {
       const timer = setTimeout(() => {
@@ -694,7 +699,7 @@ export default function CompetitionDetailPage() {
       }, 3000);
       return () => clearTimeout(timer);
     }
-  }, [allGroupMatchesList, allGroupFilled, localEdits, groupStageLocked, hasDeclined, showProceedPrompt, predictionsFetched, tournament?.status]);
+  }, [allGroupMatchesList, allGroupFilled, localEdits, groupStageLocked, hasDeclined, showProceedPrompt, predictionsFetched, tournament?.status, activeTab]);
 
   useEffect(() => {
     if (firstGroupUnfilledRef.current || !savedPredictions.length) return;
