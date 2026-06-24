@@ -392,6 +392,7 @@ const translations = {
       whoAdvances: 'Who advances after extra time / penalties?',
       predictionFlipped: 'Your prediction was adjusted because one or more of the teams ended up on opposite side of the fixture.',
       predictionsLocked: 'Knockout predictions are locked — the tournament has started.',
+      bracketOverview: 'Bracket',
     },
     stages: {
       group: 'Group Stage',
@@ -868,6 +869,7 @@ const translations = {
       whoAdvances: 'Hvem går videre etter ekstraomganger/straffespark?',
       predictionFlipped: 'Tipset ditt ble justert fordi lagene endte opp på motsatte sider av kampen.',
       predictionsLocked: 'Sluttspill-tips er låst – turneringen har startet.',
+      bracketOverview: 'Bracket',
     },
     stages: {
       group: 'Gruppespill',
@@ -1343,6 +1345,7 @@ const translations = {
       whoAdvances: 'Wer geht weiter nach Verlängerung / Elfmeterschießen?',
       predictionFlipped: 'Dein Tipp wurde angepasst weil eines der Teams auf der anderen Seite gelandet ist.',
       predictionsLocked: 'K.o.-Tipps sind gesperrt — das Turnier hat begonnen.',
+      bracketOverview: 'Bracket',
     },
     stages: {
       group: 'Gruppenphase',
