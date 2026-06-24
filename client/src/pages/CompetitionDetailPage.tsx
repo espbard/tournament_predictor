@@ -388,6 +388,22 @@ export default function CompetitionDetailPage() {
     return { actualGroupStandings: byGroup, completedGroupMatchCounts: matchCounts };
   }, [matchList]);
 
+  // When the admin has confirmed standings, reorder the actual group display to match.
+  const displayActualGroupStandings = useMemo(() => {
+    const confirmed = tournament?.knockoutConfig?.confirmedGroupStandings;
+    if (!tournament?.knockoutConfig?.groupStandingsLocked || !confirmed) return actualGroupStandings;
+    const result = new Map(actualGroupStandings);
+    for (const [groupName, confirmedOrder] of Object.entries(confirmed)) {
+      const teams = actualGroupStandings.get(groupName);
+      if (!teams) continue;
+      const reordered = confirmedOrder
+        .map(teamId => teams.find(t => t.teamId === teamId))
+        .filter((t): t is typeof teams[number] => t !== undefined);
+      result.set(groupName, reordered);
+    }
+    return result;
+  }, [actualGroupStandings, tournament?.knockoutConfig?.groupStandingsLocked, tournament?.knockoutConfig?.confirmedGroupStandings]);
+
   const matchesByDate = useMemo(() => {
     const sorted = [...matchList].sort((a, b) => {
       if (!a.scheduledAt && !b.scheduledAt) return 0;
@@ -1172,7 +1188,7 @@ export default function CompetitionDetailPage() {
                               {teams.map((tm, i) => {
                                 const counts = completedGroupMatchCounts.get(groupName);
                                 const groupComplete = counts && counts.total > 0 && counts.completed === counts.total;
-                                const actualTeams = actualGroupStandings.get(groupName) ?? [];
+                                const actualTeams = displayActualGroupStandings.get(groupName) ?? [];
                                 const positionCorrect = groupComplete && actualTeams[i]?.teamId === tm.teamId;
                                 const effectiveDQ = Math.min(directQualifiers, teams.length - 1);
                                 return (
@@ -1282,7 +1298,7 @@ export default function CompetitionDetailPage() {
                     const groupTies = allGroupFilled
                       ? groupDisciplinaryTies.filter(tie => tie.groupName === groupName)
                       : [];
-                    const actualTeams = actualGroupStandings.get(groupName) ?? [];
+                    const actualTeams = displayActualGroupStandings.get(groupName) ?? [];
                     return (
                       <div key={groupName} className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
                         {/* Predicted */}
