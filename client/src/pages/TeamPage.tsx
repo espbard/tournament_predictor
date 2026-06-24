@@ -139,14 +139,13 @@ export default function TeamPage() {
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-12">
-      <div className="mb-2 text-sm text-muted-foreground">
-        <button
-          onClick={() => navigate(-1)}
-          className="hover:underline"
-        >
-          ← {t('common.back') || 'Back'}
-        </button>
-      </div>
+      <button
+        onClick={() => navigate(-1)}
+        className="mb-4 flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground transition-colors"
+        aria-label="Go back"
+      >
+        ←
+      </button>
 
       <div className="flex items-center gap-3 mb-4">
         {teamInfo.imageUrl ? (
