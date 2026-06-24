@@ -661,10 +661,6 @@ export default function CompetitionDetailPage() {
   }, [savedPredictions]);
 
   useEffect(() => {
-    if (user?.isLeaderboardUser) setActiveTab('leaderboard');
-  }, [user?.isLeaderboardUser]);
-
-  useEffect(() => {
     if (lastResultFocusedRef.current || allGroupMatchesList.length === 0) return;
     const lastCompletedIdx = allGroupMatchesList.reduce(
       (acc, m, i) => (m.status === 'completed' ? i : acc),
@@ -1031,6 +1027,27 @@ export default function CompetitionDetailPage() {
           >
             {t('competitionDetail.tabs.leaderboard')}
           </button>
+        </div>
+      )}
+
+      {user?.isLeaderboardUser && (
+        <div className="flex flex-wrap gap-1 mb-6 border-b tv:hidden">
+          {([
+            ['leaderboard', t('competitionDetail.tabs.leaderboard')],
+            ['pointProgression', t('competitionDetail.tabs.pointProgression')],
+          ] as const).map(([tab, label]) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                activeTab === tab
+                  ? 'border-primary text-primary dark:border-[hsl(231,60%,65%)] dark:text-[hsl(231,60%,65%)]'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       )}
 
