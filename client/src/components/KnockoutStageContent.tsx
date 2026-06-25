@@ -1099,13 +1099,6 @@ function vizRoundDims(R: number, maxRoundIdx: number): { icon: number; slot: num
   return { icon, slot, cardH: slot * 2 + 1 };
 }
 
-// Bronze final: smaller than the semi-finals (opposite direction from the final).
-function vizBronzeDims(maxRoundIdx: number): { icon: number; slot: number; cardH: number } {
-  const sfIcon = vizRoundDims(1, maxRoundIdx).icon;
-  const icon = Math.max(12, sfIcon - 2);
-  const slot = icon + 3;
-  return { icon, slot, cardH: slot * 2 + 1 };
-}
 
 function VizTeamIcon({ team, size, progressed }: { team: VizTeam | null; size: number; progressed?: boolean }) {
   const goldRing = progressed ? { boxShadow: '0 0 0 1.5px #eab308' } : {};
