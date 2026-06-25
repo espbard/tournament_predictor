@@ -1100,13 +1100,12 @@ function vizRoundDims(R: number, maxRoundIdx: number): { icon: number; slot: num
 }
 
 
-function VizTeamIcon({ team, size, progressed }: { team: VizTeam | null; size: number; progressed?: boolean }) {
-  const goldRing = progressed ? { boxShadow: '0 0 0 1.5px #eab308' } : {};
+function VizTeamIcon({ team, size }: { team: VizTeam | null; size: number }) {
   if (!team) {
     return (
       <div
         className="rounded-full bg-muted flex items-center justify-center flex-shrink-0 text-muted-foreground"
-        style={{ width: size, height: size, fontSize: Math.max(6, Math.round(size * 0.55)), fontWeight: 700, ...goldRing }}
+        style={{ width: size, height: size, fontSize: Math.max(6, Math.round(size * 0.55)), fontWeight: 700 }}
       >
         ?
       </div>
@@ -1117,12 +1116,12 @@ function VizTeamIcon({ team, size, progressed }: { team: VizTeam | null; size: n
       src={team.imageUrl}
       alt=""
       className="rounded-full object-cover flex-shrink-0"
-      style={{ width: size, height: size, ...goldRing }}
+      style={{ width: size, height: size }}
     />
   ) : (
     <div
       className="rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 font-bold text-foreground"
-      style={{ width: size, height: size, fontSize: Math.max(6, Math.round(size * 0.45)), ...goldRing }}
+      style={{ width: size, height: size, fontSize: Math.max(6, Math.round(size * 0.45)) }}
     >
       {team.name?.charAt(0) ?? '?'}
     </div>
@@ -1239,12 +1238,12 @@ function KnockoutBracketVisualizer({
         style={{ position: 'absolute', left, top, width: V_CARD_W, height: dims.cardH, ...focusStyle }}
         className={`rounded-sm border${dashed ? ' border-dashed' : ''} bg-card overflow-hidden flex flex-col`}
       >
-        <div style={{ height: dims.slot }} className="flex items-center justify-center">
-          <VizTeamIcon team={home} size={dims.icon} progressed={homeProgressed} />
+        <div style={{ height: dims.slot, boxShadow: homeProgressed ? 'inset 0 0 0 1.5px #eab308' : undefined }} className="flex items-center justify-center">
+          <VizTeamIcon team={home} size={dims.icon} />
         </div>
         <div className="bg-border flex-shrink-0" style={{ height: 1 }} />
-        <div style={{ height: dims.slot }} className="flex items-center justify-center">
-          <VizTeamIcon team={away} size={dims.icon} progressed={awayProgressed} />
+        <div style={{ height: dims.slot, boxShadow: awayProgressed ? 'inset 0 0 0 1.5px #eab308' : undefined }} className="flex items-center justify-center">
+          <VizTeamIcon team={away} size={dims.icon} />
         </div>
       </div>
     );
