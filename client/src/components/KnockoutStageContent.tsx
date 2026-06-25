@@ -1062,32 +1062,17 @@ function FocusedBracketView({
 // ── Knockout Bracket Visualizer ───────────────────────────────────────────────
 
 const V_ROW_GAP = 3;
-const V_CARD_W = 23;
-const V_HPAD = 7;
-const V_COL_W = V_CARD_W + V_HPAD * 2; // 37px per column
 
-// Horizontal final card (icons side-by-side, much larger)
-const FINAL_ICON = 29;
-const FINAL_HPAD = 5;
-const FINAL_HCARD_H = FINAL_ICON + FINAL_HPAD * 2; // 39px
-const FINAL_HSLOT_W = FINAL_ICON + FINAL_HPAD * 2;  // 39px per team slot
-const FINAL_HCARD_W = FINAL_HSLOT_W * 2 + 1;         // 79px total
-
-// Horizontal bronze final card (smaller, also side-by-side)
-const BRONZE_ICON = 21;
-const BRONZE_HPAD = 4;
-const BRONZE_HCARD_H = BRONZE_ICON + BRONZE_HPAD * 2; // 29px
-const BRONZE_HSLOT_W = BRONZE_ICON + BRONZE_HPAD * 2;  // 29px per team slot
-const BRONZE_HCARD_W = BRONZE_HSLOT_W * 2 + 1;          // 59px total
-
+const VIZ_NARROW = { vHPad: 7,  vCardW: 23, baseIcon: 17, finalIcon: 29, finalHPad: 5, bronzeIcon: 21, bronzeHPad: 4 };
+const VIZ_WIDE   = { vHPad: 11, vCardW: 26, baseIcon: 20, finalIcon: 32, finalHPad: 5, bronzeIcon: 24, bronzeHPad: 4 };
 
 type VizTeam = { imageUrl: string | null; name: string | null };
 
 // Icon and card height scale progressively toward the final.
 // R=0=final (largest), R=maxRoundIdx=first round (smallest).
-function vizRoundDims(R: number, maxRoundIdx: number): { icon: number; slot: number; cardH: number } {
-  const icon = 17 + (maxRoundIdx - R); // base 17px at first round, +1 per round toward final
-  const extraSlot = R === 0 ? 2 : 0;  // final card gets 4px extra height (2px per slot)
+function vizRoundDims(R: number, maxRoundIdx: number, baseIcon: number): { icon: number; slot: number; cardH: number } {
+  const icon = baseIcon + (maxRoundIdx - R);
+  const extraSlot = R === 0 ? 2 : 0;
   const slot = icon + 4 + extraSlot;
   return { icon, slot, cardH: slot * 2 + 1 };
 }
@@ -1131,6 +1116,30 @@ function KnockoutBracketVisualizer({
   focusedPredKey?: string;
 }) {
   const { t } = useT();
+
+  const [isWide, setIsWide] = useState(() => window.matchMedia('(min-width: 640px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 640px)');
+    const fn = (e: MediaQueryListEvent) => setIsWide(e.matches);
+    mq.addEventListener('change', fn);
+    return () => mq.removeEventListener('change', fn);
+  }, []);
+
+  const cfg = isWide ? VIZ_WIDE : VIZ_NARROW;
+  const V_HPAD = cfg.vHPad;
+  const V_CARD_W = cfg.vCardW;
+  const V_COL_W = V_CARD_W + V_HPAD * 2;
+  const FINAL_ICON = cfg.finalIcon;
+  const FINAL_HPAD = cfg.finalHPad;
+  const FINAL_HCARD_H = FINAL_ICON + FINAL_HPAD * 2;
+  const FINAL_HSLOT_W = FINAL_ICON + FINAL_HPAD * 2;
+  const FINAL_HCARD_W = FINAL_HSLOT_W * 2 + 1;
+  const BRONZE_ICON = cfg.bronzeIcon;
+  const BRONZE_HPAD = cfg.bronzeHPad;
+  const BRONZE_HCARD_H = BRONZE_ICON + BRONZE_HPAD * 2;
+  const BRONZE_HSLOT_W = BRONZE_ICON + BRONZE_HPAD * 2;
+  const BRONZE_HCARD_W = BRONZE_HSLOT_W * 2 + 1;
+
   const { firstRound, hasBronzeFinal } = knockoutConfig;
   const startIdx = ROUND_ORDER.indexOf(firstRound);
   const chronoRounds = ROUND_ORDER.slice(startIdx);
@@ -1143,7 +1152,7 @@ function KnockoutBracketVisualizer({
 
   // Spacing is driven by the first-round card height (most matches, most rows).
   // Cards in later rounds are taller but centered on the same yCenter grid.
-  const firstRoundDims = vizRoundDims(maxRoundIdx, maxRoundIdx);
+  const firstRoundDims = vizRoundDims(maxRoundIdx, maxRoundIdx, cfg.baseIcon);
 
   // yCenter[`${R}_${i}`] = vertical midpoint for local index i (0-based within each side).
   const yCenter = useMemo(() => {
@@ -1174,7 +1183,7 @@ function KnockoutBracketVisualizer({
   // regardless of how tall the overall bracket is.
   const sfGap = 36; // px between Final card bottom and SF center
   const bronzeCardGap = 26; // px between SF card bottom and bronze card top
-  const sfDims = maxRoundIdx >= 1 ? vizRoundDims(1, maxRoundIdx) : firstRoundDims;
+  const sfDims = maxRoundIdx >= 1 ? vizRoundDims(1, maxRoundIdx, cfg.baseIcon) : firstRoundDims;
   const sfCenterInGrid = isSingleMatch ? firstRoundDims.cardH / 2 : (yCenter['0_0'] ?? firstRoundDims.cardH / 2);
 
   // topOffset shifts the bracket grid down just enough so the Final card (above the SF) stays at y≥0
@@ -1414,7 +1423,7 @@ function KnockoutBracketVisualizer({
           {!isSingleMatch && Array.from({ length: maxRoundIdx }).flatMap((_, step) => {
             const R = maxRoundIdx - step;
             const numSide = R === maxRoundIdx ? halfCount : Math.pow(2, R - 1);
-            const dims = vizRoundDims(R, maxRoundIdx);
+            const dims = vizRoundDims(R, maxRoundIdx, cfg.baseIcon);
             return Array.from({ length: numSide }, (_, i) => {
               const { home, away } = getTeams('left', R, i);
               const top = topOffset + yCenter[`${R}_${i}`] - dims.cardH / 2;
@@ -1446,7 +1455,7 @@ function KnockoutBracketVisualizer({
           {!isSingleMatch && Array.from({ length: maxRoundIdx }).flatMap((_, step) => {
             const R = maxRoundIdx - step;
             const numSide = R === maxRoundIdx ? halfCount : Math.pow(2, R - 1);
-            const dims = vizRoundDims(R, maxRoundIdx);
+            const dims = vizRoundDims(R, maxRoundIdx, cfg.baseIcon);
             return Array.from({ length: numSide }, (_, i) => {
               const { home, away } = getTeams('right', R, i);
               const top = topOffset + yCenter[`${R}_${i}`] - dims.cardH / 2;
