@@ -237,7 +237,11 @@ async function generateFirstRoundKnockout(tournamentId: string): Promise<void> {
     and(eq(matches.tournamentId, tournamentId), inArray(matches.stage, [...KNOCKOUT_STAGES]))
   );
 
-  // Create first-round matches with sequential dates (base + 1, base + 2, …)
+  // Track created IDs per stage so we can wire nextMatchId afterward
+  const stageMatchIds = new Map<string, string[]>();
+
+  // Create first-round matches with sequential dates and bracketIndex
+  const firstRoundIds: string[] = [];
   for (let i = 1; i <= matchCount; i++) {
     const homeSlotId = `m${i}_home`;
     const awaySlotId = `m${i}_away`;
@@ -251,15 +255,19 @@ async function generateFirstRoundKnockout(tournamentId: string): Promise<void> {
     const matchDate = new Date(baseDate);
     matchDate.setDate(baseDate.getDate() + i);
 
+    const matchId = crypto.randomUUID();
     await db.insert(matches).values({
-      id: crypto.randomUUID(),
+      id: matchId,
       tournamentId,
       homeTeamId: homeTeamId ?? null,
       awayTeamId: awayTeamId ?? null,
       stage: firstRound,
       scheduledAt: matchDate,
+      bracketIndex: i - 1,
     });
+    firstRoundIds.push(matchId);
   }
+  stageMatchIds.set(firstRound, firstRoundIds);
 
   // Create empty shell matches for all subsequent rounds so winners can advance into them
   const BRACKET_STAGE_ORDER_LOCAL = ['round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'final'] as const;
@@ -271,18 +279,23 @@ async function generateFirstRoundKnockout(tournamentId: string): Promise<void> {
 
   for (const stage of subsequentStages) {
     const shellCount = FIRST_ROUND_MATCH_COUNTS[stage] ?? 0;
+    const stageIds: string[] = [];
     for (let i = 0; i < shellCount; i++) {
       const matchDate = new Date(shellDate);
       matchDate.setDate(shellDate.getDate() + i);
+      const matchId = crypto.randomUUID();
       await db.insert(matches).values({
-        id: crypto.randomUUID(),
+        id: matchId,
         tournamentId,
         homeTeamId: null,
         awayTeamId: null,
         stage,
         scheduledAt: matchDate,
+        bracketIndex: i,
       });
+      stageIds.push(matchId);
     }
+    stageMatchIds.set(stage, stageIds);
     shellDate.setDate(shellDate.getDate() + Math.max(shellCount, 1) + 7);
   }
 
@@ -295,6 +308,21 @@ async function generateFirstRoundKnockout(tournamentId: string): Promise<void> {
       stage: 'bronze_final',
       scheduledAt: null,
     });
+  }
+
+  // Wire nextMatchId: each match's winner advances into Math.floor(bracketIndex/2) of the next stage
+  const allStagesInOrder = BRACKET_STAGE_ORDER_LOCAL.slice(firstRoundStageIdx);
+  for (let si = 0; si < allStagesInOrder.length - 1; si++) {
+    const currentStage = allStagesInOrder[si];
+    const nextStage = allStagesInOrder[si + 1];
+    const currentIds = stageMatchIds.get(currentStage) ?? [];
+    const nextIds = stageMatchIds.get(nextStage) ?? [];
+    for (let i = 0; i < currentIds.length; i++) {
+      const nextId = nextIds[Math.floor(i / 2)];
+      if (nextId) {
+        await db.update(matches).set({ nextMatchId: nextId }).where(eq(matches.id, currentIds[i]));
+      }
+    }
   }
 }
 
@@ -339,18 +367,24 @@ async function ensureKnockoutShellExists(tournamentId: string): Promise<void> {
   baseDate.setHours(12, 0, 0, 0);
 
   // First-round shells
+  const shellStageMatchIds = new Map<string, string[]>();
+  const firstRoundIds: string[] = [];
   for (let i = 1; i <= matchCount; i++) {
     const d = new Date(baseDate);
     d.setDate(baseDate.getDate() + i);
+    const id = crypto.randomUUID();
     await db.insert(matches).values({
-      id: crypto.randomUUID(),
+      id,
       tournamentId,
       homeTeamId: null,
       awayTeamId: null,
       stage: firstRound,
       scheduledAt: d,
+      bracketIndex: i - 1,
     });
+    firstRoundIds.push(id);
   }
+  shellStageMatchIds.set(firstRound, firstRoundIds);
 
   // Subsequent-round shells
   const BRACKET_STAGES = ['round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'final'] as const;
@@ -359,15 +393,34 @@ async function ensureKnockoutShellExists(tournamentId: string): Promise<void> {
   shellDate.setDate(baseDate.getDate() + matchCount + 7);
   for (const stage of BRACKET_STAGES.slice(firstRoundIdx + 1)) {
     const cnt = FIRST_ROUND_MATCH_COUNTS[stage] ?? 0;
+    const stageIds: string[] = [];
     for (let i = 0; i < cnt; i++) {
       const d = new Date(shellDate);
       d.setDate(shellDate.getDate() + i);
-      await db.insert(matches).values({ id: crypto.randomUUID(), tournamentId, homeTeamId: null, awayTeamId: null, stage, scheduledAt: d });
+      const id = crypto.randomUUID();
+      await db.insert(matches).values({ id, tournamentId, homeTeamId: null, awayTeamId: null, stage, scheduledAt: d, bracketIndex: i });
+      stageIds.push(id);
     }
+    shellStageMatchIds.set(stage, stageIds);
     shellDate.setDate(shellDate.getDate() + Math.max(cnt, 1) + 7);
   }
   if (hasBronzeFinal) {
     await db.insert(matches).values({ id: crypto.randomUUID(), tournamentId, homeTeamId: null, awayTeamId: null, stage: 'bronze_final', scheduledAt: null });
+  }
+
+  // Wire nextMatchId for each stage
+  const stagesInOrder = BRACKET_STAGES.slice(firstRoundIdx);
+  for (let si = 0; si < stagesInOrder.length - 1; si++) {
+    const currentStage = stagesInOrder[si];
+    const nextStage = stagesInOrder[si + 1];
+    const currentIds = shellStageMatchIds.get(currentStage) ?? [];
+    const nextIds = shellStageMatchIds.get(nextStage) ?? [];
+    for (let i = 0; i < currentIds.length; i++) {
+      const nextId = nextIds[Math.floor(i / 2)];
+      if (nextId) {
+        await db.update(matches).set({ nextMatchId: nextId }).where(eq(matches.id, currentIds[i]));
+      }
+    }
   }
 }
 
@@ -385,11 +438,20 @@ async function applyGroupSlotsToKnockout(
   const matchCount = FIRST_ROUND_MATCH_COUNTS[firstRound] ?? 0;
   if (matchCount === 0) return;
 
-  const firstRoundMatches = await db
-    .select({ id: matches.id, homeTeamId: matches.homeTeamId, awayTeamId: matches.awayTeamId })
+  const firstRoundMatchesRaw = await db
+    .select({ id: matches.id, homeTeamId: matches.homeTeamId, awayTeamId: matches.awayTeamId, bracketIndex: matches.bracketIndex, scheduledAt: matches.scheduledAt })
     .from(matches)
-    .where(and(eq(matches.tournamentId, tournamentId), eq(matches.stage, firstRound)))
-    .orderBy(matches.scheduledAt);
+    .where(and(eq(matches.tournamentId, tournamentId), eq(matches.stage, firstRound)));
+
+  const firstRoundMatches = firstRoundMatchesRaw.sort((a, b) => {
+    if (a.bracketIndex !== null && b.bracketIndex !== null) return a.bracketIndex - b.bracketIndex;
+    if (a.bracketIndex !== null) return -1;
+    if (b.bracketIndex !== null) return 1;
+    if (!a.scheduledAt && !b.scheduledAt) return 0;
+    if (!a.scheduledAt) return 1;
+    if (!b.scheduledAt) return -1;
+    return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
+  });
 
   for (let i = 1; i <= matchCount; i++) {
     const m = firstRoundMatches[i - 1];
@@ -433,11 +495,20 @@ async function applyLuckyLoserSlotsToKnockout(
   const matchCount = FIRST_ROUND_MATCH_COUNTS[firstRound] ?? 0;
   if (matchCount === 0) return;
 
-  const firstRoundMatches = await db
-    .select({ id: matches.id, homeTeamId: matches.homeTeamId, awayTeamId: matches.awayTeamId })
+  const firstRoundMatchesRawLL = await db
+    .select({ id: matches.id, homeTeamId: matches.homeTeamId, awayTeamId: matches.awayTeamId, bracketIndex: matches.bracketIndex, scheduledAt: matches.scheduledAt })
     .from(matches)
-    .where(and(eq(matches.tournamentId, tournamentId), eq(matches.stage, firstRound)))
-    .orderBy(matches.scheduledAt);
+    .where(and(eq(matches.tournamentId, tournamentId), eq(matches.stage, firstRound)));
+
+  const firstRoundMatches = firstRoundMatchesRawLL.sort((a, b) => {
+    if (a.bracketIndex !== null && b.bracketIndex !== null) return a.bracketIndex - b.bracketIndex;
+    if (a.bracketIndex !== null) return -1;
+    if (b.bracketIndex !== null) return 1;
+    if (!a.scheduledAt && !b.scheduledAt) return 0;
+    if (!a.scheduledAt) return 1;
+    if (!b.scheduledAt) return -1;
+    return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
+  });
 
   const emptySlots: { matchIdx: number; side: 'home' | 'away' }[] = [];
   for (let i = 1; i <= matchCount; i++) {
@@ -471,66 +542,78 @@ async function advanceSingleKnockoutMatch(match: {
   homeTeamId: string | null;
   awayTeamId: string | null;
   progressingTeamId: string | null;
+  bracketIndex: number | null;
+  nextMatchId: string | null;
 }): Promise<void> {
-  const NEXT_STAGE: Record<string, string> = {
-    round_of_32: 'round_of_16',
-    round_of_16: 'quarter_final',
-    quarter_final: 'semi_final',
-    semi_final: 'final',
-  };
-
-  const { id: matchId, tournamentId, stage, progressingTeamId } = match;
+  const { id: matchId, tournamentId, stage, progressingTeamId, bracketIndex, nextMatchId } = match;
   if (!progressingTeamId) return;
 
-  const stageMatches = await db
-    .select({ id: matches.id })
-    .from(matches)
-    .where(and(
-      eq(matches.tournamentId, tournamentId),
-      eq(matches.stage, stage as typeof matches.stage._.data),
-    ))
-    .orderBy(matches.scheduledAt);
+  // effectiveIndex is used for home/away slot determination (bracketIndex % 2)
+  let effectiveIndex: number | null = bracketIndex;
 
-  const matchIndex = stageMatches.findIndex(m => m.id === matchId);
-  if (matchIndex === -1) return;
+  if (nextMatchId !== null && bracketIndex !== null) {
+    // New path: use explicit bracket IDs
+    const slot = bracketIndex % 2 === 0 ? 'homeTeamId' : 'awayTeamId';
+    await db.update(matches).set({ [slot]: progressingTeamId }).where(eq(matches.id, nextMatchId));
+  } else {
+    // Legacy fallback: derive position from date-sorted stage list
+    const NEXT_STAGE: Record<string, string> = {
+      round_of_32: 'round_of_16',
+      round_of_16: 'quarter_final',
+      quarter_final: 'semi_final',
+      semi_final: 'final',
+    };
 
-  const nextStage = NEXT_STAGE[stage];
-  if (nextStage) {
-    let nextMatches = await db
+    const stageMatches = await db
       .select({ id: matches.id })
       .from(matches)
       .where(and(
         eq(matches.tournamentId, tournamentId),
-        eq(matches.stage, nextStage as typeof matches.stage._.data),
+        eq(matches.stage, stage as typeof matches.stage._.data),
       ))
       .orderBy(matches.scheduledAt);
 
-    // Create all shells for the next stage if none exist yet
-    if (nextMatches.length === 0) {
-      const shellCount = FIRST_ROUND_MATCH_COUNTS[nextStage] ?? 0;
-      const baseDate = new Date();
-      baseDate.setFullYear(baseDate.getFullYear() + 5);
-      const created: { id: string }[] = [];
-      for (let i = 0; i < shellCount; i++) {
-        const shellDate = new Date(baseDate);
-        shellDate.setDate(baseDate.getDate() + i);
-        const [row] = await db.insert(matches).values({
-          id: crypto.randomUUID(),
-          tournamentId,
-          homeTeamId: null,
-          awayTeamId: null,
-          stage: nextStage as typeof matches.stage._.data,
-          scheduledAt: shellDate,
-        }).returning({ id: matches.id });
-        created.push(row);
-      }
-      nextMatches = created;
-    }
+    const matchIndex = stageMatches.findIndex(m => m.id === matchId);
+    if (matchIndex === -1) return;
+    effectiveIndex = matchIndex;
 
-    const target = nextMatches[Math.floor(matchIndex / 2)];
-    if (target) {
-      const slot = matchIndex % 2 === 0 ? 'homeTeamId' : 'awayTeamId';
-      await db.update(matches).set({ [slot]: progressingTeamId }).where(eq(matches.id, target.id));
+    const nextStage = NEXT_STAGE[stage];
+    if (nextStage) {
+      let nextMatches = await db
+        .select({ id: matches.id })
+        .from(matches)
+        .where(and(
+          eq(matches.tournamentId, tournamentId),
+          eq(matches.stage, nextStage as typeof matches.stage._.data),
+        ))
+        .orderBy(matches.scheduledAt);
+
+      if (nextMatches.length === 0) {
+        const shellCount = FIRST_ROUND_MATCH_COUNTS[nextStage] ?? 0;
+        const baseDate = new Date();
+        baseDate.setFullYear(baseDate.getFullYear() + 5);
+        const created: { id: string }[] = [];
+        for (let i = 0; i < shellCount; i++) {
+          const shellDate = new Date(baseDate);
+          shellDate.setDate(baseDate.getDate() + i);
+          const [row] = await db.insert(matches).values({
+            id: crypto.randomUUID(),
+            tournamentId,
+            homeTeamId: null,
+            awayTeamId: null,
+            stage: nextStage as typeof matches.stage._.data,
+            scheduledAt: shellDate,
+          }).returning({ id: matches.id });
+          created.push(row);
+        }
+        nextMatches = created;
+      }
+
+      const target = nextMatches[Math.floor(matchIndex / 2)];
+      if (target) {
+        const slot = matchIndex % 2 === 0 ? 'homeTeamId' : 'awayTeamId';
+        await db.update(matches).set({ [slot]: progressingTeamId }).where(eq(matches.id, target.id));
+      }
     }
   }
 
@@ -558,7 +641,7 @@ async function advanceSingleKnockoutMatch(match: {
         }).returning({ id: matches.id });
       }
       if (bronze) {
-        const slot = matchIndex % 2 === 0 ? 'homeTeamId' : 'awayTeamId';
+        const slot = (effectiveIndex ?? 0) % 2 === 0 ? 'homeTeamId' : 'awayTeamId';
         await db.update(matches).set({ [slot]: loserId }).where(eq(matches.id, bronze.id));
       }
     }
@@ -1126,7 +1209,10 @@ tournamentsRouter.post('/:id/simulate-knockout', requireAdmin, async (req, res) 
     const allKoMatches = await db.select().from(matches).where(
       and(eq(matches.tournamentId, tournamentId), inArray(matches.stage, [...KNOCKOUT_STAGES]))
     );
-    const sortByDate = (arr: typeof allKoMatches) => [...arr].sort((a, b) => {
+    const sortByBracketIndex = (arr: typeof allKoMatches) => [...arr].sort((a, b) => {
+      if (a.bracketIndex !== null && b.bracketIndex !== null) return a.bracketIndex - b.bracketIndex;
+      if (a.bracketIndex !== null) return -1;
+      if (b.bracketIndex !== null) return 1;
       if (!a.scheduledAt && !b.scheduledAt) return 0;
       if (!a.scheduledAt) return 1;
       if (!b.scheduledAt) return -1;
@@ -1137,7 +1223,7 @@ tournamentsRouter.post('/:id/simulate-knockout', requireAdmin, async (req, res) 
       if (!byStage.has(m.stage)) byStage.set(m.stage, []);
       byStage.get(m.stage)!.push(m);
     }
-    for (const [k, v] of byStage) byStage.set(k, sortByDate(v));
+    for (const [k, v] of byStage) byStage.set(k, sortByBracketIndex(v));
 
     let simulated = 0;
 
@@ -1227,6 +1313,101 @@ tournamentsRouter.post('/:id/clear-knockout', requireAdmin, async (req, res) => 
           eq(matches.tournamentId, tournamentId),
           inArray(matches.stage, stagesToClearTeams),
         ));
+    }
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * Re-populates first-round knockout match slots using ONLY confirmed group standings.
+ * Slots whose group has not yet been confirmed are left empty (null).
+ * Match shells are not deleted, so scheduled dates, bracketIndex, nextMatchId and
+ * user bracketPredictions are all untouched.
+ * Teams in subsequent rounds are cleared so they can be re-filled as results come in.
+ */
+tournamentsRouter.post('/:id/reallocate-knockout', requireAdmin, async (req, res) => {
+  try {
+    const tournamentId = req.params.id;
+    const [tournament] = await db.select().from(tournaments).where(eq(tournaments.id, tournamentId)).limit(1);
+    if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
+
+    const cfg = tournament.knockoutConfig as KnockoutConfig | null;
+    if (!cfg) return res.status(400).json({ error: 'No knockout config' });
+
+    const { firstRound, bracketSlots, luckyLosers } = cfg;
+    const matchCount = FIRST_ROUND_MATCH_COUNTS[firstRound] ?? 0;
+    if (matchCount === 0) return res.status(400).json({ error: 'No first-round matches configured' });
+
+    // Only use per-group confirmed standings — if a group hasn't been confirmed, its slots stay null
+    const confirmedGroupStandings = cfg.confirmedGroupStandings ?? {};
+
+    function qualifierToTeamId(label: string): string | null {
+      const m = label.match(/^(\d+)([A-Z])$/);
+      if (!m) return null;
+      const pos = parseInt(m[1]) - 1;
+      const confirmedTeamIds = confirmedGroupStandings[m[2]];
+      return confirmedTeamIds && confirmedTeamIds.length > pos ? confirmedTeamIds[pos] : null;
+    }
+
+    // Lucky losers: only use the confirmed list; if not confirmed yet, leave those slots empty
+    const selectedLuckyLosers: string[] = (cfg.confirmedLuckyLosers ?? []).slice(0, luckyLosers);
+
+    const emptySlots: string[] = [];
+    for (let i = 1; i <= matchCount; i++) {
+      if (!bracketSlots[`m${i}_home`]) emptySlots.push(`m${i}_home`);
+      if (!bracketSlots[`m${i}_away`]) emptySlots.push(`m${i}_away`);
+    }
+    const luckyLoserSlotMap = new Map<string, string>();
+    for (let i = 0; i < Math.min(emptySlots.length, selectedLuckyLosers.length); i++) {
+      luckyLoserSlotMap.set(emptySlots[i], selectedLuckyLosers[i]);
+    }
+
+    // Fetch and sort first-round matches by bracketIndex
+    const firstRoundMatchesRaw = await db
+      .select({ id: matches.id, bracketIndex: matches.bracketIndex, scheduledAt: matches.scheduledAt })
+      .from(matches)
+      .where(and(eq(matches.tournamentId, tournamentId), eq(matches.stage, firstRound)));
+
+    const firstRoundMatches = firstRoundMatchesRaw.sort((a, b) => {
+      if (a.bracketIndex !== null && b.bracketIndex !== null) return a.bracketIndex - b.bracketIndex;
+      if (a.bracketIndex !== null) return -1;
+      if (b.bracketIndex !== null) return 1;
+      if (!a.scheduledAt && !b.scheduledAt) return 0;
+      if (!a.scheduledAt) return 1;
+      if (!b.scheduledAt) return -1;
+      return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
+    });
+
+    // Update team assignments in first-round matches
+    for (let i = 1; i <= matchCount; i++) {
+      const m = firstRoundMatches[i - 1];
+      if (!m) continue;
+      const homeSlotId = `m${i}_home`;
+      const awaySlotId = `m${i}_away`;
+      const homeTeamId = bracketSlots[homeSlotId]
+        ? qualifierToTeamId(bracketSlots[homeSlotId])
+        : (luckyLoserSlotMap.get(homeSlotId) ?? null);
+      const awayTeamId = bracketSlots[awaySlotId]
+        ? qualifierToTeamId(bracketSlots[awaySlotId])
+        : (luckyLoserSlotMap.get(awaySlotId) ?? null);
+      await db.update(matches).set({ homeTeamId: homeTeamId ?? null, awayTeamId: awayTeamId ?? null }).where(eq(matches.id, m.id));
+    }
+
+    // Clear team assignments from all subsequent rounds (they'll be re-filled from results)
+    const BRACKET_STAGE_ORDER_LOCAL = ['round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'final'] as const;
+    const firstRoundStageIdx = BRACKET_STAGE_ORDER_LOCAL.indexOf(firstRound as typeof BRACKET_STAGE_ORDER_LOCAL[number]);
+    const stagesToClear = [
+      ...BRACKET_STAGE_ORDER_LOCAL.slice(firstRoundStageIdx + 1),
+      ...(cfg.hasBronzeFinal ? ['bronze_final' as const] : []),
+    ];
+    if (stagesToClear.length > 0) {
+      await db.update(matches)
+        .set({ homeTeamId: null, awayTeamId: null })
+        .where(and(eq(matches.tournamentId, tournamentId), inArray(matches.stage, stagesToClear)));
     }
 
     return res.json({ ok: true });
@@ -1431,9 +1612,11 @@ matchesRouter.patch('/:id', requireAdmin, async (req, res) => {
       }
     }
 
-    // For decisive knockout results: auto-set progressingTeamId, then advance immediately
+    // For decisive knockout results: auto-set progressingTeamId, then advance immediately.
+    // Guard on setData.status (not updated.status) so that date-only edits on already-completed
+    // matches don't re-trigger advancement with a potentially different date-sorted position.
     const KNOCKOUT_STAGE_SET = new Set(KNOCKOUT_STAGES as readonly string[]);
-    if (KNOCKOUT_STAGE_SET.has(updated.stage) && updated.status === 'completed') {
+    if (KNOCKOUT_STAGE_SET.has(updated.stage) && setData.status === 'completed') {
       if (!updated.progressingTeamId && updated.homeTeamId && updated.awayTeamId &&
           updated.homeScore !== null && updated.awayScore !== null && updated.homeScore !== updated.awayScore) {
         const winnerId = updated.homeScore > updated.awayScore ? updated.homeTeamId : updated.awayTeamId;

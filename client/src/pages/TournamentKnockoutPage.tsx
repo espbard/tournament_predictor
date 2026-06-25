@@ -276,31 +276,47 @@ function BracketVisualization({
 
 // ── Admin focused results ──────────────────────────────────────────────────────
 
+function toLocalDatetimeStr(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 interface FlatAdminMatch {
   stage: string;
   match: MatchWithTeams | null;
   isBronze: boolean;
   matchIdxInRound: number;
   matchCountInRound: number;
+  bracketPositionIdx: number;
 }
 
 function FocusedAdminMatchCard({
   match,
   onQueue,
   queuedScore,
+  homeSlotLabel,
+  awaySlotLabel,
+  onSaveScheduledAt,
 }: {
   match: MatchWithTeams | null;
   onQueue: (home: number, away: number, progressingTeamId: string | null) => void;
   queuedScore?: { home: number; away: number; progressingTeamId: string | null } | null;
+  homeSlotLabel?: string;
+  awaySlotLabel?: string;
+  onSaveScheduledAt?: (scheduledAt: string | null) => void;
 }) {
   const [homeStr, setHomeStr] = useState('');
   const [awayStr, setAwayStr] = useState('');
   const [selectedWinnerId, setSelectedWinnerId] = useState<string | null>(null);
+  const [editingSchedule, setEditingSchedule] = useState(false);
+  const [scheduledAtStr, setScheduledAtStr] = useState('');
   const prevMatchIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (match?.id !== prevMatchIdRef.current) {
       prevMatchIdRef.current = match?.id ?? null;
+      setEditingSchedule(false);
       if (queuedScore) {
         setHomeStr(String(queuedScore.home));
         setAwayStr(String(queuedScore.away));
@@ -354,6 +370,12 @@ function FocusedAdminMatchCard({
   // Away row is last only when there's no tiebreaker section below it.
   const adminAwayIsLast = !showTiebreaker;
 
+  function handleSaveSchedule() {
+    if (!onSaveScheduledAt) return;
+    onSaveScheduledAt(scheduledAtStr ? new Date(scheduledAtStr).toISOString() : null);
+    setEditingSchedule(false);
+  }
+
   function tryAutoQueue(hStr: string, aStr: string, winnerId: string | null) {
     const h = hStr === '' ? null : parseInt(hStr, 10);
     const a = aStr === '' ? null : parseInt(aStr, 10);
@@ -382,6 +404,13 @@ function FocusedAdminMatchCard({
         </div>
       )}
 
+      {/* Date/time */}
+      {match.scheduledAt && (
+        <div className="px-4 py-1.5 text-[11px] text-muted-foreground text-center bg-muted/30">
+          {new Date(match.scheduledAt).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+        </div>
+      )}
+
       {/* Home */}
       <div className={`flex items-center gap-3 px-4 py-3.5 ${adminHomeProgresses ? goldenBorderClass + (adminHomeIsFirst ? ' rounded-t-xl' : '') : homeWins ? 'bg-primary/5' : ''}`}>
         {match.homeTeamImageUrl
@@ -389,7 +418,7 @@ function FocusedAdminMatchCard({
           : <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
         }
         <span className={`flex-1 text-sm truncate ${match.homeTeamName ? (homeWins ? 'font-semibold' : 'font-medium') : 'text-muted-foreground italic'}`}>
-          {tn(match.homeTeamName) || 'TBD'}
+          {tn(match.homeTeamName) || homeSlotLabel || 'TBD'}
         </span>
         <div className="flex items-center gap-0.5 flex-shrink-0">
           <button
@@ -439,7 +468,7 @@ function FocusedAdminMatchCard({
           : <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
         }
         <span className={`flex-1 text-sm truncate ${match.awayTeamName ? (awayWins ? 'font-semibold' : 'font-medium') : 'text-muted-foreground italic'}`}>
-          {tn(match.awayTeamName) || 'TBD'}
+          {tn(match.awayTeamName) || awaySlotLabel || 'TBD'}
         </span>
         <div className="flex items-center gap-0.5 flex-shrink-0">
           <button
@@ -517,6 +546,53 @@ function FocusedAdminMatchCard({
       {isDrawEntry && !selectedWinnerId && hasTeams && (
         <p className="text-[11px] text-muted-foreground text-center px-4 pb-3">{t('knockout.selectToStage')}</p>
       )}
+
+      {/* Schedule editor */}
+      {onSaveScheduledAt && (
+        <>
+          <div className="h-px bg-border" />
+          {!editingSchedule ? (
+            <div className="flex items-center gap-2 px-4 py-2">
+              {!match.scheduledAt && (
+                <span className="text-xs text-muted-foreground flex-1">No date set</span>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setScheduledAtStr(match.scheduledAt ? toLocalDatetimeStr(match.scheduledAt) : '');
+                  setEditingSchedule(true);
+                }}
+                className="text-xs text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded hover:bg-muted shrink-0 ml-auto"
+              >
+                ✎ Edit
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 px-3 py-2">
+              <input
+                type="datetime-local"
+                value={scheduledAtStr}
+                onChange={e => setScheduledAtStr(e.target.value)}
+                className="flex-1 min-w-0 text-xs rounded border px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              <button
+                type="button"
+                onClick={handleSaveSchedule}
+                className="shrink-0 text-xs px-2 py-1.5 rounded bg-primary text-primary-foreground hover:bg-primary/90"
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditingSchedule(false)}
+                className="shrink-0 text-xs text-muted-foreground hover:text-foreground"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -526,11 +602,15 @@ function FocusedAdminResults({
   knockoutMatches,
   firstRound,
   hasBronzeFinal,
+  bracketSlots,
+  luckyLoserLabels,
 }: {
   tournamentId: string;
   knockoutMatches: MatchWithTeams[];
   firstRound: KnockoutFirstRound;
   hasBronzeFinal: boolean;
+  bracketSlots: Record<string, string>;
+  luckyLoserLabels: Record<string, string>;
 }) {
   const queryClient = useQueryClient();
   const { t } = useT();
@@ -553,6 +633,12 @@ function FocusedAdminResults({
     }
     for (const [, ms] of map) {
       ms.sort((a, b) => {
+        if (a.bracketIndex !== null && a.bracketIndex !== undefined &&
+            b.bracketIndex !== null && b.bracketIndex !== undefined) {
+          return a.bracketIndex - b.bracketIndex;
+        }
+        if (a.bracketIndex !== null && a.bracketIndex !== undefined) return -1;
+        if (b.bracketIndex !== null && b.bracketIndex !== undefined) return 1;
         if (!a.scheduledAt && !b.scheduledAt) return 0;
         if (!a.scheduledAt) return 1;
         if (!b.scheduledAt) return -1;
@@ -565,13 +651,21 @@ function FocusedAdminResults({
   const allFlatMatches = useMemo<FlatAdminMatch[]>(() => {
     const list: FlatAdminMatch[] = [];
     for (const stage of stages) {
-      const stageMs = matchesByStage.get(stage) ?? [];
+      const stageMs = matchesByStage.get(stage) ?? []; // bracket-index order; index = bracketPositionIdx
       if (stage === 'final' && hasBronzeFinal) {
         const bronzeMs = matchesByStage.get('bronze_final') ?? [];
-        list.push({ stage: 'bronze_final', match: bronzeMs[0] ?? null, isBronze: true, matchIdxInRound: 0, matchCountInRound: 1 });
+        list.push({ stage: 'bronze_final', match: bronzeMs[0] ?? null, isBronze: true, matchIdxInRound: 0, matchCountInRound: 1, bracketPositionIdx: 0 });
       }
-      for (let i = 0; i < stageMs.length; i++) {
-        list.push({ stage, match: stageMs[i] ?? null, isBronze: false, matchIdxInRound: i, matchCountInRound: stageMs.length });
+      // Sort by date for display order; bracket position (for slot labels) tracked separately
+      const displayOrder = [...stageMs].sort((a, b) => {
+        if (!a.scheduledAt && !b.scheduledAt) return 0;
+        if (!a.scheduledAt) return 1;
+        if (!b.scheduledAt) return -1;
+        return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
+      });
+      for (let i = 0; i < displayOrder.length; i++) {
+        const m = displayOrder[i];
+        list.push({ stage, match: m, isBronze: false, matchIdxInRound: i, matchCountInRound: stageMs.length, bracketPositionIdx: stageMs.indexOf(m) });
       }
     }
     return list;
@@ -588,6 +682,19 @@ function FocusedAdminResults({
 
   const [pendingResults, setPendingResults] = useState<Record<string, { home: number; away: number; progressingTeamId: string | null }>>({});
 
+  // After a date save the display re-sorts; track the saved match ID so we can
+  // navigate back to the same match once allFlatMatches recomputes.
+  const pendingNavigationMatchIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!pendingNavigationMatchIdRef.current) return;
+    const targetId = pendingNavigationMatchIdRef.current;
+    const newIdx = allFlatMatches.findIndex(m => m.match?.id === targetId);
+    if (newIdx !== -1) {
+      pendingNavigationMatchIdRef.current = null;
+      setCurrentIdx(newIdx);
+    }
+  }, [allFlatMatches]);
+
   const confirmResultsMutation = useMutation({
     mutationFn: async () => {
       for (const [matchId, { home, away, progressingTeamId }] of Object.entries(pendingResults)) {
@@ -597,6 +704,15 @@ function FocusedAdminResults({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['matches', tournamentId] });
       setPendingResults({});
+    },
+  });
+
+  const scheduleMatchMutation = useMutation({
+    mutationFn: ({ matchId, scheduledAt }: { matchId: string; scheduledAt: string | null }) =>
+      api.patch<Match>(`/matches/${matchId}`, { scheduledAt }),
+    onSuccess: (_data, variables) => {
+      pendingNavigationMatchIdRef.current = variables.matchId;
+      queryClient.invalidateQueries({ queryKey: ['matches', tournamentId] });
     },
   });
 
@@ -615,9 +731,7 @@ function FocusedAdminResults({
   if (!current) return <p className="text-sm text-muted-foreground">{noMatchesLabel}</p>;
 
   const currentMatch = current.match;
-  const isCompleted = currentMatch?.status === 'completed';
-  const hasTbdTeams = !currentMatch?.homeTeamId || !currentMatch?.awayTeamId;
-  const canGoNext = currentIdx < allFlatMatches.length - 1 && (isCompleted || hasTbdTeams || (currentMatch?.id ? !!pendingResults[currentMatch.id] : false));
+  const canGoNext = currentIdx < allFlatMatches.length - 1;
   const canGoPrev = currentIdx > 0;
   const pendingCount = Object.keys(pendingResults).length;
 
@@ -731,6 +845,9 @@ function FocusedAdminResults({
                 if (currentMatch) queueResult(currentMatch.id, home, away, progressingTeamId);
               }}
               queuedScore={currentMatch?.id ? pendingResults[currentMatch.id] ?? null : null}
+              homeSlotLabel={current.stage === firstRound ? (bracketSlots[`m${current.bracketPositionIdx + 1}_home`] ?? luckyLoserLabels[`m${current.bracketPositionIdx + 1}_home`]) : undefined}
+              awaySlotLabel={current.stage === firstRound ? (bracketSlots[`m${current.bracketPositionIdx + 1}_away`] ?? luckyLoserLabels[`m${current.bracketPositionIdx + 1}_away`]) : undefined}
+              onSaveScheduledAt={currentMatch ? (scheduledAt) => scheduleMatchMutation.mutate({ matchId: currentMatch.id, scheduledAt }) : undefined}
             />
             <div className="mt-3 flex sm:hidden items-center justify-between">
               <button
@@ -839,6 +956,11 @@ export function TournamentKnockoutTabContent({ tournamentId }: { tournamentId: s
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['matches', tournamentId] }),
   });
 
+  const reallocateKnockoutMutation = useMutation({
+    mutationFn: () => api.post(`/tournaments/${tournamentId}/reallocate-knockout`, {}),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['matches', tournamentId] }),
+  });
+
   const sortedGroups = useMemo(
     () => [...groupList].sort((a: Group, b: Group) => a.name.localeCompare(b.name)),
     [groupList]
@@ -928,6 +1050,17 @@ export function TournamentKnockoutTabContent({ tournamentId }: { tournamentId: s
             className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
           >
             {clearKnockoutMutation.isPending ? t('knockout.clearing') : t('knockout.clearResults')}
+          </button>
+          <button
+            onClick={() => {
+              if (confirm('Re-allocate teams to their bracket slots based on current group standings? This will update first-round match assignments and clear teams from later rounds. User bracket predictions are not affected.')) {
+                reallocateKnockoutMutation.mutate();
+              }
+            }}
+            disabled={reallocateKnockoutMutation.isPending}
+            className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
+          >
+            {reallocateKnockoutMutation.isPending ? 'Re-allocating…' : 'Re-allocate Teams'}
           </button>
         </div>
       )}
@@ -1075,6 +1208,8 @@ export function TournamentKnockoutTabContent({ tournamentId }: { tournamentId: s
             knockoutMatches={knockoutMatches}
             firstRound={firstRound}
             hasBronzeFinal={hasBronzeFinal}
+            bracketSlots={bracketSlots}
+            luckyLoserLabels={luckyLoserLabels}
           />
         )}
       </section>

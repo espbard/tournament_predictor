@@ -7,6 +7,7 @@ import {
   integer,
   json,
   primaryKey,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import type { ScoringConfig, KnockoutConfig, BracketPredictions, BonusAnswerType } from '@tournament-predictor/shared';
@@ -110,6 +111,8 @@ export const matches = pgTable('matches', {
   homeScore: integer('home_score'),
   awayScore: integer('away_score'),
   progressingTeamId: text('progressing_team_id').references(() => teams.id),
+  bracketIndex: integer('bracket_index'),
+  nextMatchId: text('next_match_id').references((): AnyPgColumn => matches.id, { onDelete: 'set null' }),
 });
 
 export const competitions = pgTable('competitions', {

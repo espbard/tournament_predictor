@@ -41,6 +41,7 @@ interface MatchWithTeams {
   stage: MatchStage;
   scheduledAt: string | null;
   status: 'scheduled' | 'completed';
+  bracketIndex?: number | null;
   homeScore: number | null;
   awayScore: number | null;
   progressingTeamId: string | null;
@@ -270,6 +271,10 @@ function FocusedMatchCard({
   editOverride,
   teamPageCompetitionId,
   teamPageUserId,
+  homeSlotLabel,
+  awaySlotLabel,
+  homeFallbackTeam,
+  awayFallbackTeam,
 }: {
   matchKey: string;
   homeTeam: TeamStat | null;
@@ -285,6 +290,10 @@ function FocusedMatchCard({
   editOverride?: boolean;
   teamPageCompetitionId?: string;
   teamPageUserId?: string;
+  homeSlotLabel?: string;
+  awaySlotLabel?: string;
+  homeFallbackTeam?: TeamStat | null;
+  awayFallbackTeam?: TeamStat | null;
 }) {
   const [homeStr, setHomeStr] = useState('');
   const [awayStr, setAwayStr] = useState('');
@@ -458,7 +467,7 @@ function FocusedMatchCard({
   const isDisplayAwayProgressing = (isFlipped ? predHomeProgresses : predAwayProgresses) && !isDisplayAwayChampion;
 
   // Highlight the team the actual result has progressing on a drawn scoreline.
-  const actualIsDraw = !!actualMatch && actualMatch.homeScore === actualMatch.awayScore;
+  const actualIsDraw = !!actualMatch && isCompleted && actualMatch.homeScore !== null && actualMatch.awayScore !== null && actualMatch.homeScore === actualMatch.awayScore;
   const actualHomeProgresses = actualIsDraw && actualMatch!.progressingTeamId === actualMatch!.homeTeamId;
   const actualAwayProgresses = actualIsDraw && actualMatch!.progressingTeamId === actualMatch!.awayTeamId;
 
@@ -655,24 +664,38 @@ function FocusedMatchCard({
       )}
 
       {/* ── Actual result card ─────────────────────────────── */}
-      {isCompleted && actualMatch && (
+      {actualMatch && (
         <div>
-          <p className="text-xs text-muted-foreground text-center mb-1.5 font-medium">
-            {t('knockoutContent.result')}
-          </p>
+          <div className="text-center mb-1.5">
+            <p className="text-xs text-muted-foreground font-medium">
+              {isCompleted ? t('knockoutContent.result') : 'Actual match'}
+            </p>
+            {actualMatch.scheduledAt && (
+              <p className="text-[11px] text-muted-foreground">
+                {new Date(actualMatch.scheduledAt).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+              </p>
+            )}
+          </div>
           <div className="rounded-xl border-2 bg-card shadow-sm overflow-hidden">
             {/* Home row */}
             <div className={`flex items-center gap-3 px-4 py-3.5 ${actualHomeProgresses ? goldenBorderClass + ' rounded-t-xl' : ''}`}>
               {actualMatch.homeTeamImageUrl ? (
                 <img src={actualMatch.homeTeamImageUrl} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0" />
+              ) : homeFallbackTeam?.imageUrl ? (
+                <img src={homeFallbackTeam.imageUrl} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0 opacity-40" />
               ) : (
                 <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
               )}
-              <span className={`flex-1 text-sm truncate ${(actualMatch.homeScore ?? 0) > (actualMatch.awayScore ?? 0) ? 'font-semibold' : 'font-medium'}`}>
-                {tn(actualMatch.homeTeamName)}
-              </span>
+              <div className="flex-1 min-w-0">
+                <span className={`text-sm truncate block ${isCompleted && (actualMatch.homeScore ?? 0) > (actualMatch.awayScore ?? 0) ? 'font-semibold' : 'font-medium'} ${!actualMatch.homeTeamName ? 'text-muted-foreground italic' : ''}`}>
+                  {actualMatch.homeTeamName ? tn(actualMatch.homeTeamName) : homeFallbackTeam ? tn(homeFallbackTeam.teamName) : (homeSlotLabel ?? 'TBD')}
+                </span>
+                {!actualMatch.homeTeamName && homeFallbackTeam && (
+                  <span className="text-[10px] text-muted-foreground/60 leading-none">Not confirmed</span>
+                )}
+              </div>
               <span className="w-11 h-9 flex items-center justify-center text-xl font-bold flex-shrink-0 tabular-nums">
-                {actualMatch.homeScore}
+                {actualMatch.homeScore ?? '—'}
               </span>
             </div>
             <div className="h-px bg-border" />
@@ -680,18 +703,25 @@ function FocusedMatchCard({
             <div className={`flex items-center gap-3 px-4 py-3.5 ${actualAwayProgresses ? goldenBorderClass : ''}`}>
               {actualMatch.awayTeamImageUrl ? (
                 <img src={actualMatch.awayTeamImageUrl} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0" />
+              ) : awayFallbackTeam?.imageUrl ? (
+                <img src={awayFallbackTeam.imageUrl} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0 opacity-40" />
               ) : (
                 <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
               )}
-              <span className={`flex-1 text-sm truncate ${(actualMatch.awayScore ?? 0) > (actualMatch.homeScore ?? 0) ? 'font-semibold' : 'font-medium'}`}>
-                {tn(actualMatch.awayTeamName)}
-              </span>
+              <div className="flex-1 min-w-0">
+                <span className={`text-sm truncate block ${isCompleted && (actualMatch.awayScore ?? 0) > (actualMatch.homeScore ?? 0) ? 'font-semibold' : 'font-medium'} ${!actualMatch.awayTeamName ? 'text-muted-foreground italic' : ''}`}>
+                  {actualMatch.awayTeamName ? tn(actualMatch.awayTeamName) : awayFallbackTeam ? tn(awayFallbackTeam.teamName) : (awaySlotLabel ?? 'TBD')}
+                </span>
+                {!actualMatch.awayTeamName && awayFallbackTeam && (
+                  <span className="text-[10px] text-muted-foreground/60 leading-none">Not confirmed</span>
+                )}
+              </div>
               <span className="w-11 h-9 flex items-center justify-center text-xl font-bold flex-shrink-0 tabular-nums">
-                {actualMatch.awayScore}
+                {actualMatch.awayScore ?? '—'}
               </span>
             </div>
-            {/* Extra time / penalties winner */}
-            {actualMatch.homeScore === actualMatch.awayScore && actualMatch.progressingTeamId && (
+            {/* Extra time / penalties winner - only when completed */}
+            {isCompleted && actualMatch.homeScore === actualMatch.awayScore && actualMatch.progressingTeamId && (
               <>
                 <div className="h-px bg-border" />
                 <p className="px-4 py-2 text-xs text-muted-foreground text-center">
@@ -703,7 +733,7 @@ function FocusedMatchCard({
             )}
           </div>
           {/* Points breakdown */}
-          {pointsInfo !== null && (
+          {isCompleted && pointsInfo !== null && (
             <div className="mt-1.5 flex flex-wrap justify-center items-center gap-x-2 gap-y-0.5 text-xs">
               <span className={`font-semibold ${pointsInfo.total > 0 ? 'text-green-700 dark:text-green-400' : 'text-muted-foreground'}`}>
                 {pointsInfo.total > 0 ? `+${pointsInfo.total} pts` : '0 pts'}
@@ -738,6 +768,7 @@ function FocusedBracketView({
   teamPageCompetitionId,
   teamPageUserId,
   onFocusedKeyChange,
+  externalFocusPredKey,
 }: {
   knockoutConfig: KnockoutConfig;
   resolvedSlots: Record<string, TeamStat | null>;
@@ -752,6 +783,7 @@ function FocusedBracketView({
   teamPageCompetitionId?: string;
   teamPageUserId?: string;
   onFocusedKeyChange?: (key: string) => void;
+  externalFocusPredKey?: string;
 }) {
   const { firstRound, hasBronzeFinal } = knockoutConfig;
   const startIdx = ROUND_ORDER.indexOf(firstRound);
@@ -815,8 +847,16 @@ function FocusedBracketView({
         });
       }
     });
+    list.sort((a, b) => {
+      const dateA = actualMatchMap[a.predKey]?.scheduledAt;
+      const dateB = actualMatchMap[b.predKey]?.scheduledAt;
+      if (!dateA && !dateB) return 0;
+      if (!dateA) return 1;
+      if (!dateB) return -1;
+      return new Date(dateA).getTime() - new Date(dateB).getTime();
+    });
     return list;
-  }, [chronoRounds, maxRoundIdx, hasBronzeFinal]);
+  }, [chronoRounds, maxRoundIdx, hasBronzeFinal, actualMatchMap]);
 
   const { t } = useT();
   const getRoundLabel = (round: KnockoutFirstRound) => t(`knockout.rounds.${round}` as any) || ROUND_LABELS[round] || round;
@@ -826,14 +866,29 @@ function FocusedBracketView({
   const [animKey, setAnimKey] = useState(0);
   const initedRef = useRef(false);
 
+  const allMatchesRef = useRef(allMatches);
+  allMatchesRef.current = allMatches;
+  const currentIdxRef = useRef(currentIdx);
+  currentIdxRef.current = currentIdx;
+
   useEffect(() => {
-    onFocusedKeyChange?.(allMatches[currentIdx]?.predKey ?? '');
-  }, [currentIdx, allMatches, onFocusedKeyChange]);
+    onFocusedKeyChange?.(allMatchesRef.current[currentIdx]?.predKey ?? '');
+  }, [currentIdx, onFocusedKeyChange]);
 
   useEffect(() => {
     if (initedRef.current || !predsLoaded) return;
     initedRef.current = true;
   }, [predsLoaded]);
+
+  useEffect(() => {
+    if (!externalFocusPredKey) return;
+    const idx = allMatchesRef.current.findIndex(m => m.predKey === externalFocusPredKey);
+    if (idx === -1 || idx === currentIdxRef.current) return;
+    const dir = idx > currentIdxRef.current ? 'fromRight' : 'fromLeft';
+    setSlideDir(dir);
+    setAnimKey(k => k + 1);
+    setCurrentIdx(idx);
+  }, [externalFocusPredKey]);
 
   function goTo(idx: number) {
     const dir = idx > currentIdx ? 'fromRight' : 'fromLeft';
@@ -1021,6 +1076,10 @@ function FocusedBracketView({
               editOverride={editOverride}
               teamPageCompetitionId={teamPageCompetitionId}
               teamPageUserId={teamPageUserId}
+              homeSlotLabel={current.round === firstRound && !current.isBronze ? knockoutConfig.bracketSlots[`m${current.matchIdxInRound + 1}_home`] : undefined}
+              awaySlotLabel={current.round === firstRound && !current.isBronze ? knockoutConfig.bracketSlots[`m${current.matchIdxInRound + 1}_away`] : undefined}
+              homeFallbackTeam={current.round === firstRound && !current.isBronze ? (resolvedSlots[`m${current.matchIdxInRound + 1}_home`] ?? null) : null}
+              awayFallbackTeam={current.round === firstRound && !current.isBronze ? (resolvedSlots[`m${current.matchIdxInRound + 1}_away`] ?? null) : null}
             />
             <div className="mt-3 flex sm:hidden items-center justify-between">
               <button
@@ -1110,10 +1169,16 @@ function KnockoutBracketVisualizer({
   knockoutConfig,
   actualMatchMap,
   focusedPredKey = '',
+  resolvedSlots,
+  bracketPreds,
+  onFocusMatch,
 }: {
   knockoutConfig: KnockoutConfig;
   actualMatchMap: Record<string, MatchWithTeams>;
   focusedPredKey?: string;
+  resolvedSlots?: Record<string, TeamStat | null>;
+  bracketPreds?: BracketPredictions;
+  onFocusMatch?: (predKey: string) => void;
 }) {
   const { t } = useT();
 
@@ -1149,6 +1214,43 @@ function KnockoutBracketVisualizer({
   const firstRoundMatchCount = FIRST_ROUND_COUNTS[firstRound];
   const halfCount = Math.floor(firstRoundMatchCount / 2);
   const isSingleMatch = firstRoundMatchCount === 1;
+
+  // Predicted teams for each bracket slot (VizTeam form), used as transparent fallbacks.
+  const predictedMatchTeams = useMemo(() => {
+    if (!resolvedSlots || !bracketPreds) return null;
+    const teamStats: Record<string, { home: TeamStat | null; away: TeamStat | null }> = {};
+    for (let i = 0; i < firstRoundMatchCount; i++) {
+      teamStats[`${maxRoundIdx}_${i}`] = {
+        home: resolvedSlots[`m${i + 1}_home`] ?? null,
+        away: resolvedSlots[`m${i + 1}_away`] ?? null,
+      };
+    }
+    for (let R = maxRoundIdx - 1; R >= 0; R--) {
+      const numMatches = Math.pow(2, R);
+      for (let i = 0; i < numMatches; i++) {
+        const leftPredKey = `${reversedRounds[R + 1]}_${2 * i}`;
+        const rightPredKey = `${reversedRounds[R + 1]}_${2 * i + 1}`;
+        teamStats[`${R}_${i}`] = {
+          home: getWinner(teamStats[`${R + 1}_${2 * i}`], bracketPreds[leftPredKey]),
+          away: getWinner(teamStats[`${R + 1}_${2 * i + 1}`], bracketPreds[rightPredKey]),
+        };
+      }
+    }
+    const result: Record<string, { home: VizTeam | null; away: VizTeam | null }> = {};
+    for (const [key, { home, away }] of Object.entries(teamStats)) {
+      result[key] = {
+        home: home ? { imageUrl: home.imageUrl, name: home.teamName } : null,
+        away: away ? { imageUrl: away.imageUrl, name: away.teamName } : null,
+      };
+    }
+    if (hasBronzeFinal && maxRoundIdx >= 1) {
+      result['bronze_final'] = {
+        home: (() => { const t = getLoser(teamStats['1_0'], bracketPreds['semi_final_0']); return t ? { imageUrl: t.imageUrl, name: t.teamName } : null; })(),
+        away: (() => { const t = getLoser(teamStats['1_1'], bracketPreds['semi_final_1']); return t ? { imageUrl: t.imageUrl, name: t.teamName } : null; })(),
+      };
+    }
+    return result;
+  }, [resolvedSlots, bracketPreds, reversedRounds, maxRoundIdx, firstRoundMatchCount, hasBronzeFinal]);
 
   // Spacing is driven by the first-round card height (most matches, most rows).
   // Cards in later rounds are taller but centered on the same yCenter grid.
@@ -1216,13 +1318,17 @@ function KnockoutBracketVisualizer({
   const finalHCardLeft = finalCenterX - FINAL_HCARD_W / 2;
   const bronzeHCardLeft = finalCenterX - BRONZE_HCARD_W / 2;
 
-  function getTeams(side: 'left' | 'right', R: number, localI: number): { home: VizTeam | null; away: VizTeam | null } {
-    // Right side: offset local index by half the total matches at round R
+  function getTeams(side: 'left' | 'right', R: number, localI: number): { home: VizTeam | null; away: VizTeam | null; homeFallback: boolean; awayFallback: boolean } {
     const actualI = side === 'right' ? Math.pow(2, R - 1) + localI : localI;
     const m = actualMatchMap[`${reversedRounds[R]}_${actualI}`];
+    const predicted = R === maxRoundIdx ? predictedMatchTeams?.[`${R}_${actualI}`] : null;
+    const actualHome = m?.homeTeamId ? { imageUrl: m.homeTeamImageUrl, name: m.homeTeamName } : null;
+    const actualAway = m?.awayTeamId ? { imageUrl: m.awayTeamImageUrl, name: m.awayTeamName } : null;
     return {
-      home: m?.homeTeamId ? { imageUrl: m.homeTeamImageUrl, name: m.homeTeamName } : null,
-      away: m?.awayTeamId ? { imageUrl: m.awayTeamImageUrl, name: m.awayTeamName } : null,
+      home: actualHome ?? predicted?.home ?? null,
+      away: actualAway ?? predicted?.away ?? null,
+      homeFallback: !actualHome && !!(predicted?.home),
+      awayFallback: !actualAway && !!(predicted?.away),
     };
   }
 
@@ -1230,21 +1336,23 @@ function KnockoutBracketVisualizer({
     key: string, left: number, top: number,
     home: VizTeam | null, away: VizTeam | null,
     dims: { icon: number; slot: number; cardH: number },
-    opts?: { homeProgressed?: boolean; awayProgressed?: boolean; dashed?: boolean; focused?: boolean },
+    opts?: { homeProgressed?: boolean; awayProgressed?: boolean; dashed?: boolean; focused?: boolean; homeFallback?: boolean; awayFallback?: boolean; predKey?: string },
   ) {
-    const { homeProgressed = false, awayProgressed = false, dashed = false, focused = false } = opts ?? {};
+    const { homeProgressed = false, awayProgressed = false, dashed = false, focused = false, homeFallback = false, awayFallback = false, predKey: pk } = opts ?? {};
     const focusStyle = focused ? { outline: '1.5px dashed #eab308', outlineOffset: '2px' } : {};
+    const clickable = !!pk && !!onFocusMatch;
     return (
       <div
         key={key}
         style={{ position: 'absolute', left, top, width: V_CARD_W, height: dims.cardH, ...focusStyle }}
-        className={`rounded-sm border${dashed ? ' border-dashed' : ''} bg-card overflow-hidden flex flex-col`}
+        className={`rounded-sm border${dashed ? ' border-dashed' : ''} bg-card overflow-hidden flex flex-col${clickable ? ' cursor-pointer' : ''}`}
+        onClick={clickable ? () => onFocusMatch!(pk!) : undefined}
       >
-        <div style={{ height: dims.slot, boxShadow: homeProgressed ? 'inset 0 0 0 1.5px #eab308' : undefined }} className="flex items-center justify-center">
+        <div style={{ height: dims.slot, opacity: homeFallback ? 0.35 : undefined, boxShadow: homeProgressed ? 'inset 0 0 0 1.5px #eab308' : undefined }} className="flex items-center justify-center">
           <VizTeamIcon team={home} size={dims.icon} />
         </div>
         <div className="bg-border flex-shrink-0" style={{ height: 1 }} />
-        <div style={{ height: dims.slot, boxShadow: awayProgressed ? 'inset 0 0 0 1.5px #eab308' : undefined }} className="flex items-center justify-center">
+        <div style={{ height: dims.slot, opacity: awayFallback ? 0.35 : undefined, boxShadow: awayProgressed ? 'inset 0 0 0 1.5px #eab308' : undefined }} className="flex items-center justify-center">
           <VizTeamIcon team={away} size={dims.icon} />
         </div>
       </div>
@@ -1255,22 +1363,24 @@ function KnockoutBracketVisualizer({
     key: string, left: number, top: number,
     home: VizTeam | null, away: VizTeam | null,
     iconSize: number, slotW: number, cardH: number,
-    opts?: { dashed?: boolean; focused?: boolean; homeProgressed?: boolean; awayProgressed?: boolean },
+    opts?: { dashed?: boolean; focused?: boolean; homeProgressed?: boolean; awayProgressed?: boolean; homeFallback?: boolean; awayFallback?: boolean; predKey?: string },
   ) {
-    const { dashed = false, focused = false, homeProgressed = false, awayProgressed = false } = opts ?? {};
+    const { dashed = false, focused = false, homeProgressed = false, awayProgressed = false, homeFallback = false, awayFallback = false, predKey: pk } = opts ?? {};
     const cardW = slotW * 2 + 1;
     const focusStyle = focused ? { outline: '1.5px dashed #eab308', outlineOffset: '2px' } : {};
+    const clickable = !!pk && !!onFocusMatch;
     return (
       <div
         key={key}
         style={{ position: 'absolute', left, top, width: cardW, height: cardH, ...focusStyle }}
-        className={`rounded-sm border${dashed ? ' border-dashed' : ''} bg-card overflow-hidden flex flex-row`}
+        className={`rounded-sm border${dashed ? ' border-dashed' : ''} bg-card overflow-hidden flex flex-row${clickable ? ' cursor-pointer' : ''}`}
+        onClick={clickable ? () => onFocusMatch!(pk!) : undefined}
       >
-        <div style={{ width: slotW, overflow: 'hidden', background: homeProgressed ? 'radial-gradient(circle, rgba(234,179,8,0.35) 0%, transparent 75%)' : undefined, boxShadow: homeProgressed ? 'inset 0 0 0 1.5px #eab308' : undefined }} className="flex items-center justify-center flex-shrink-0 self-stretch">
+        <div style={{ width: slotW, opacity: homeFallback ? 0.35 : undefined, overflow: 'hidden', background: homeProgressed ? 'radial-gradient(circle, rgba(234,179,8,0.35) 0%, transparent 75%)' : undefined, boxShadow: homeProgressed ? 'inset 0 0 0 1.5px #eab308' : undefined }} className="flex items-center justify-center flex-shrink-0 self-stretch">
           <VizTeamIcon team={home} size={iconSize} />
         </div>
         <div className="bg-border flex-shrink-0" style={{ width: 1 }} />
-        <div style={{ width: slotW, overflow: 'hidden', background: awayProgressed ? 'radial-gradient(circle, rgba(234,179,8,0.35) 0%, transparent 75%)' : undefined, boxShadow: awayProgressed ? 'inset 0 0 0 1.5px #eab308' : undefined }} className="flex items-center justify-center flex-shrink-0 self-stretch">
+        <div style={{ width: slotW, opacity: awayFallback ? 0.35 : undefined, overflow: 'hidden', background: awayProgressed ? 'radial-gradient(circle, rgba(234,179,8,0.35) 0%, transparent 75%)' : undefined, boxShadow: awayProgressed ? 'inset 0 0 0 1.5px #eab308' : undefined }} className="flex items-center justify-center flex-shrink-0 self-stretch">
           <VizTeamIcon team={away} size={iconSize} />
         </div>
       </div>
@@ -1425,12 +1535,12 @@ function KnockoutBracketVisualizer({
             const numSide = R === maxRoundIdx ? halfCount : Math.pow(2, R - 1);
             const dims = vizRoundDims(R, maxRoundIdx, cfg.baseIcon);
             return Array.from({ length: numSide }, (_, i) => {
-              const { home, away } = getTeams('left', R, i);
+              const { home, away, homeFallback, awayFallback } = getTeams('left', R, i);
               const top = topOffset + yCenter[`${R}_${i}`] - dims.cardH / 2;
               const prog = getProgressedSlot(R, 'left', i);
               const predKey = `${reversedRounds[R]}_${i}`;
               return renderCard(`L_${R}_${i}`, cardLeftX_left(R), top, home, away, dims,
-                { homeProgressed: prog === 'home', awayProgressed: prog === 'away', focused: predKey === focusedPredKey });
+                { homeProgressed: prog === 'home', awayProgressed: prog === 'away', focused: predKey === focusedPredKey, homeFallback, awayFallback, predKey });
             });
           })}
 
@@ -1443,12 +1553,15 @@ function KnockoutBracketVisualizer({
           </span>
           {(() => {
             const m = actualMatchMap[`${reversedRounds[0]}_0`];
-            const home = m?.homeTeamId ? { imageUrl: m.homeTeamImageUrl, name: m.homeTeamName } : null;
-            const away = m?.awayTeamId ? { imageUrl: m.awayTeamImageUrl, name: m.awayTeamName } : null;
+            const actualHome = m?.homeTeamId ? { imageUrl: m.homeTeamImageUrl, name: m.homeTeamName } : null;
+            const actualAway = m?.awayTeamId ? { imageUrl: m.awayTeamImageUrl, name: m.awayTeamName } : null;
+            const home = actualHome;
+            const away = actualAway;
             const homeProgressed = !!m?.progressingTeamId && m.progressingTeamId === m.homeTeamId;
             const awayProgressed = !!m?.progressingTeamId && m.progressingTeamId === m.awayTeamId;
+            const finalPredKey = `${reversedRounds[0]}_0`;
             return renderHorizCard('final', finalHCardLeft, finalTop, home, away, FINAL_ICON, FINAL_HSLOT_W, FINAL_HCARD_H,
-              { focused: `${reversedRounds[0]}_0` === focusedPredKey, homeProgressed, awayProgressed });
+              { focused: finalPredKey === focusedPredKey, homeProgressed, awayProgressed, predKey: finalPredKey });
           })()}
 
           {/* Right side match cards */}
@@ -1457,12 +1570,12 @@ function KnockoutBracketVisualizer({
             const numSide = R === maxRoundIdx ? halfCount : Math.pow(2, R - 1);
             const dims = vizRoundDims(R, maxRoundIdx, cfg.baseIcon);
             return Array.from({ length: numSide }, (_, i) => {
-              const { home, away } = getTeams('right', R, i);
+              const { home, away, homeFallback, awayFallback } = getTeams('right', R, i);
               const top = topOffset + yCenter[`${R}_${i}`] - dims.cardH / 2;
               const prog = getProgressedSlot(R, 'right', i);
               const predKey = `${reversedRounds[R]}_${Math.pow(2, R - 1) + i}`;
               return renderCard(`R_${R}_${i}`, cardLeftX_right(R), top, home, away, dims,
-                { homeProgressed: prog === 'home', awayProgressed: prog === 'away', focused: predKey === focusedPredKey });
+                { homeProgressed: prog === 'home', awayProgressed: prog === 'away', focused: predKey === focusedPredKey, homeFallback, awayFallback, predKey });
             });
           })}
 
@@ -1475,10 +1588,12 @@ function KnockoutBracketVisualizer({
               >
                 {t('knockoutContent.bronzeFinal')}
               </span>
-              {renderHorizCard('bronze', bronzeHCardLeft, bronzeTop,
-                bronzeMatch?.homeTeamId ? { imageUrl: bronzeMatch.homeTeamImageUrl, name: bronzeMatch.homeTeamName } : null,
-                bronzeMatch?.awayTeamId ? { imageUrl: bronzeMatch.awayTeamImageUrl, name: bronzeMatch.awayTeamName } : null,
-                BRONZE_ICON, BRONZE_HSLOT_W, BRONZE_HCARD_H, { dashed: true, focused: focusedPredKey === 'bronze_final_0' })}
+              {(() => {
+                const actualHome = bronzeMatch?.homeTeamId ? { imageUrl: bronzeMatch.homeTeamImageUrl, name: bronzeMatch.homeTeamName } : null;
+                const actualAway = bronzeMatch?.awayTeamId ? { imageUrl: bronzeMatch.awayTeamImageUrl, name: bronzeMatch.awayTeamName } : null;
+                return renderHorizCard('bronze', bronzeHCardLeft, bronzeTop, actualHome, actualAway,
+                  BRONZE_ICON, BRONZE_HSLOT_W, BRONZE_HCARD_H, { dashed: true, focused: focusedPredKey === 'bronze_final_0', predKey: 'bronze_final_0' });
+              })()}
             </>
           )}
         </div>
@@ -1664,6 +1779,9 @@ export default function KnockoutStageContent({
     }
     for (const ms of byStage.values()) {
       ms.sort((a, b) => {
+        if (a.bracketIndex != null && b.bracketIndex != null) return a.bracketIndex - b.bracketIndex;
+        if (a.bracketIndex != null) return -1;
+        if (b.bracketIndex != null) return 1;
         if (!a.scheduledAt && !b.scheduledAt) return 0;
         if (!a.scheduledAt) return 1;
         if (!b.scheduledAt) return -1;
@@ -1881,6 +1999,7 @@ export default function KnockoutStageContent({
               teamPageCompetitionId={competitionId}
               teamPageUserId={viewUserId}
               onFocusedKeyChange={setFocusedPredKey}
+              externalFocusPredKey={focusedPredKey}
             />
             {hasPendingTies && !isReadOnly && (
               <div className="absolute inset-0 bg-background/70 rounded-xl flex items-center justify-center backdrop-blur-[2px]">
@@ -1899,6 +2018,9 @@ export default function KnockoutStageContent({
               knockoutConfig={knockoutConfig}
               actualMatchMap={knockoutMatchMap}
               focusedPredKey={focusedPredKey}
+              resolvedSlots={resolvedSlots}
+              bracketPreds={localPreds}
+              onFocusMatch={setFocusedPredKey}
             />
           </div>
         </>
