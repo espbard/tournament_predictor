@@ -41,6 +41,7 @@ interface MatchWithTeams {
   stage: MatchStage;
   scheduledAt: string | null;
   status: 'scheduled' | 'completed';
+  bracketIndex?: number | null;
   homeScore: number | null;
   awayScore: number | null;
   progressingTeamId: string | null;
@@ -1664,6 +1665,9 @@ export default function KnockoutStageContent({
     }
     for (const ms of byStage.values()) {
       ms.sort((a, b) => {
+        if (a.bracketIndex != null && b.bracketIndex != null) return a.bracketIndex - b.bracketIndex;
+        if (a.bracketIndex != null) return -1;
+        if (b.bracketIndex != null) return 1;
         if (!a.scheduledAt && !b.scheduledAt) return 0;
         if (!a.scheduledAt) return 1;
         if (!b.scheduledAt) return -1;
