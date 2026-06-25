@@ -1612,9 +1612,11 @@ matchesRouter.patch('/:id', requireAdmin, async (req, res) => {
       }
     }
 
-    // For decisive knockout results: auto-set progressingTeamId, then advance immediately
+    // For decisive knockout results: auto-set progressingTeamId, then advance immediately.
+    // Guard on setData.status (not updated.status) so that date-only edits on already-completed
+    // matches don't re-trigger advancement with a potentially different date-sorted position.
     const KNOCKOUT_STAGE_SET = new Set(KNOCKOUT_STAGES as readonly string[]);
-    if (KNOCKOUT_STAGE_SET.has(updated.stage) && updated.status === 'completed') {
+    if (KNOCKOUT_STAGE_SET.has(updated.stage) && setData.status === 'completed') {
       if (!updated.progressingTeamId && updated.homeTeamId && updated.awayTeamId &&
           updated.homeScore !== null && updated.awayScore !== null && updated.homeScore !== updated.awayScore) {
         const winnerId = updated.homeScore > updated.awayScore ? updated.homeTeamId : updated.awayTeamId;
