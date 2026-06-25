@@ -1179,7 +1179,7 @@ function KnockoutBracketVisualizer({
 
   // Anchor Final and Bronze relative to the SF center so they stay visually adjacent
   // regardless of how tall the overall bracket is.
-  const sfGap = 26; // px between Final card bottom and SF center
+  const sfGap = 36; // px between Final card bottom and SF center
   const bronzeCardGap = 26; // px between SF card bottom and bronze card top
   const sfDims = maxRoundIdx >= 1 ? vizRoundDims(1, maxRoundIdx) : firstRoundDims;
   const sfCenterInGrid = isSingleMatch ? firstRoundDims.cardH / 2 : (yCenter['0_0'] ?? firstRoundDims.cardH / 2);
@@ -1198,7 +1198,7 @@ function KnockoutBracketVisualizer({
 
   const bracketCardsBottom = topOffset + mainH; // bottom edge of the last first-round card
   const totalH = hasBronzeFinal
-    ? Math.max(bracketCardsBottom, bronzeTop + BRONZE_HCARD_H) + 2
+    ? Math.max(bracketCardsBottom, bronzeTop + BRONZE_HCARD_H + 14) // +14 for "Bronze Final" label below
     : bracketCardsBottom;
 
   // (2*maxRoundIdx + 1) columns: left side + center (final) + right side
@@ -1466,10 +1466,10 @@ function KnockoutBracketVisualizer({
           {hasBronzeFinal && (
             <>
               <span
-                style={{ position: 'absolute', left: finalCenterX, top: sfAbsCenterY + sfDims.cardH / 2 + bronzeCardGap / 2 - 4, transform: 'translateX(-50%)', fontSize: 8 }}
+                style={{ position: 'absolute', left: finalCenterX, top: bronzeTop + BRONZE_HCARD_H + 4, transform: 'translateX(-50%)', fontSize: 8 }}
                 className="text-muted-foreground font-semibold whitespace-nowrap leading-none"
               >
-                3rd
+                Bronze Final
               </span>
               {renderHorizCard('bronze', bronzeHCardLeft, bronzeTop,
                 bronzeMatch?.homeTeamId ? { imageUrl: bronzeMatch.homeTeamImageUrl, name: bronzeMatch.homeTeamName } : null,
