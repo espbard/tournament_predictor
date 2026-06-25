@@ -298,7 +298,171 @@ async function generateFirstRoundKnockout(tournamentId: string): Promise<void> {
   }
 }
 
-// ── advanceSingleKnockoutMatch ────────────────────────────────────────────────
+// ── Per-group knockout slot helpers ───────────────────────────────────────────
+
+const DEFAULT_KNOCKOUT_CONFIG: KnockoutConfig = {
+  firstRound: 'round_of_16',
+  hasBronzeFinal: false,
+  directQualifiers: 2,
+  luckyLosers: 0,
+  bracketSlots: {},
+};
+
+/**
+ * Creates all knockout match shells (with null teams) if they don't exist yet.
+ * Safe to call multiple times — does nothing if first-round matches already exist.
+ */
+async function ensureKnockoutShellExists(tournamentId: string): Promise<void> {
+  const [tournament] = await db.select().from(tournaments).where(eq(tournaments.id, tournamentId)).limit(1);
+  if (!tournament?.knockoutConfig) return;
+  const cfg = tournament.knockoutConfig as KnockoutConfig;
+  const { firstRound, hasBronzeFinal } = cfg;
+  const matchCount = FIRST_ROUND_MATCH_COUNTS[firstRound] ?? 0;
+  if (matchCount === 0) return;
+
+  const existing = await db
+    .select({ id: matches.id })
+    .from(matches)
+    .where(and(eq(matches.tournamentId, tournamentId), eq(matches.stage, firstRound)))
+    .limit(1);
+  if (existing.length > 0) return;
+
+  // Base date from last group match
+  const allGroupMatches = await db
+    .select({ scheduledAt: matches.scheduledAt })
+    .from(matches)
+    .where(and(eq(matches.tournamentId, tournamentId), eq(matches.stage, 'group')));
+  const dated = allGroupMatches.filter(m => m.scheduledAt).sort(
+    (a, b) => new Date(b.scheduledAt!).getTime() - new Date(a.scheduledAt!).getTime(),
+  );
+  const baseDate = dated.length > 0 ? new Date(dated[0].scheduledAt!) : new Date();
+  baseDate.setHours(12, 0, 0, 0);
+
+  // First-round shells
+  for (let i = 1; i <= matchCount; i++) {
+    const d = new Date(baseDate);
+    d.setDate(baseDate.getDate() + i);
+    await db.insert(matches).values({
+      id: crypto.randomUUID(),
+      tournamentId,
+      homeTeamId: null,
+      awayTeamId: null,
+      stage: firstRound,
+      scheduledAt: d,
+    });
+  }
+
+  // Subsequent-round shells
+  const BRACKET_STAGES = ['round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'final'] as const;
+  const firstRoundIdx = BRACKET_STAGES.indexOf(firstRound as typeof BRACKET_STAGES[number]);
+  let shellDate = new Date(baseDate);
+  shellDate.setDate(baseDate.getDate() + matchCount + 7);
+  for (const stage of BRACKET_STAGES.slice(firstRoundIdx + 1)) {
+    const cnt = FIRST_ROUND_MATCH_COUNTS[stage] ?? 0;
+    for (let i = 0; i < cnt; i++) {
+      const d = new Date(shellDate);
+      d.setDate(shellDate.getDate() + i);
+      await db.insert(matches).values({ id: crypto.randomUUID(), tournamentId, homeTeamId: null, awayTeamId: null, stage, scheduledAt: d });
+    }
+    shellDate.setDate(shellDate.getDate() + Math.max(cnt, 1) + 7);
+  }
+  if (hasBronzeFinal) {
+    await db.insert(matches).values({ id: crypto.randomUUID(), tournamentId, homeTeamId: null, awayTeamId: null, stage: 'bronze_final', scheduledAt: null });
+  }
+}
+
+/**
+ * Updates homeTeamId/awayTeamId in first-round matches for direct qualifier slots
+ * belonging to the given group (e.g. "1A", "2A"). Pass null teamIds to clear.
+ */
+async function applyGroupSlotsToKnockout(
+  tournamentId: string,
+  groupName: string,
+  teamIds: string[] | null,
+  cfg: KnockoutConfig,
+): Promise<void> {
+  const { firstRound, bracketSlots } = cfg;
+  const matchCount = FIRST_ROUND_MATCH_COUNTS[firstRound] ?? 0;
+  if (matchCount === 0) return;
+
+  const firstRoundMatches = await db
+    .select({ id: matches.id, homeTeamId: matches.homeTeamId, awayTeamId: matches.awayTeamId })
+    .from(matches)
+    .where(and(eq(matches.tournamentId, tournamentId), eq(matches.stage, firstRound)))
+    .orderBy(matches.scheduledAt);
+
+  for (let i = 1; i <= matchCount; i++) {
+    const m = firstRoundMatches[i - 1];
+    if (!m) continue;
+    const homeSlot = bracketSlots[`m${i}_home`];
+    const awaySlot = bracketSlots[`m${i}_away`];
+    const slotBelongsToGroup = (slot: string | undefined) => {
+      if (!slot) return false;
+      const match = slot.match(/^(\d+)([A-Z]+)$/);
+      return match ? match[2] === groupName : false;
+    };
+    let homeTeamId = m.homeTeamId;
+    let awayTeamId = m.awayTeamId;
+    let changed = false;
+    if (slotBelongsToGroup(homeSlot)) {
+      const pos = parseInt(homeSlot!.match(/^(\d+)/)![1], 10) - 1;
+      const newId = teamIds ? (teamIds[pos] ?? null) : null;
+      if (newId !== homeTeamId) { homeTeamId = newId; changed = true; }
+    }
+    if (slotBelongsToGroup(awaySlot)) {
+      const pos = parseInt(awaySlot!.match(/^(\d+)/)![1], 10) - 1;
+      const newId = teamIds ? (teamIds[pos] ?? null) : null;
+      if (newId !== awayTeamId) { awayTeamId = newId; changed = true; }
+    }
+    if (changed) {
+      await db.update(matches).set({ homeTeamId, awayTeamId }).where(eq(matches.id, m.id));
+    }
+  }
+}
+
+/**
+ * Fills (or clears when luckyLoserIds is null) the lucky-loser slots in first-round
+ * matches — slots that have no entry in bracketSlots.
+ */
+async function applyLuckyLoserSlotsToKnockout(
+  tournamentId: string,
+  luckyLoserIds: string[] | null,
+  cfg: KnockoutConfig,
+): Promise<void> {
+  const { firstRound, bracketSlots } = cfg;
+  const matchCount = FIRST_ROUND_MATCH_COUNTS[firstRound] ?? 0;
+  if (matchCount === 0) return;
+
+  const firstRoundMatches = await db
+    .select({ id: matches.id, homeTeamId: matches.homeTeamId, awayTeamId: matches.awayTeamId })
+    .from(matches)
+    .where(and(eq(matches.tournamentId, tournamentId), eq(matches.stage, firstRound)))
+    .orderBy(matches.scheduledAt);
+
+  const emptySlots: { matchIdx: number; side: 'home' | 'away' }[] = [];
+  for (let i = 1; i <= matchCount; i++) {
+    if (!bracketSlots[`m${i}_home`]) emptySlots.push({ matchIdx: i - 1, side: 'home' });
+    if (!bracketSlots[`m${i}_away`]) emptySlots.push({ matchIdx: i - 1, side: 'away' });
+  }
+
+  const updates = new Map<string, { homeTeamId: string | null; awayTeamId: string | null }>();
+  for (let si = 0; si < emptySlots.length; si++) {
+    const { matchIdx, side } = emptySlots[si];
+    const m = firstRoundMatches[matchIdx];
+    if (!m) continue;
+    const newId = luckyLoserIds ? (luckyLoserIds[si] ?? null) : null;
+    if (!updates.has(m.id)) updates.set(m.id, { homeTeamId: m.homeTeamId, awayTeamId: m.awayTeamId });
+    const upd = updates.get(m.id)!;
+    if (side === 'home') upd.homeTeamId = newId;
+    else upd.awayTeamId = newId;
+  }
+
+  for (const [matchId, upd] of updates) {
+    await db.update(matches).set(upd).where(eq(matches.id, matchId));
+  }
+}
+
+
 
 async function advanceSingleKnockoutMatch(match: {
   id: string;
@@ -705,56 +869,160 @@ tournamentsRouter.post('/:id/recalculate-scores', requireAdmin, async (req, res)
   }
 });
 
-tournamentsRouter.post('/:id/confirm-group-standings', requireAdmin, async (req, res) => {
-  try {
-    const tournamentId = req.params.id;
-    const { groupStandings, luckyLosers } = req.body as {
-      groupStandings: Record<string, string[]>;
-      luckyLosers: string[];
-    };
+// ── Per-group confirm / reopen ─────────────────────────────────────────────────
 
-    if (!groupStandings || typeof groupStandings !== 'object' || !Array.isArray(luckyLosers)) {
-      return res.status(400).json({ error: 'Invalid input: groupStandings and luckyLosers are required' });
+tournamentsRouter.post('/:id/confirm-group/:groupName', requireAdmin, async (req, res) => {
+  try {
+    const { id: tournamentId, groupName } = req.params;
+    const { standings } = req.body as { standings: string[] };
+
+    if (!Array.isArray(standings) || standings.length === 0) {
+      return res.status(400).json({ error: 'standings must be a non-empty array of team IDs' });
     }
 
     const [tournament] = await db.select().from(tournaments).where(eq(tournaments.id, tournamentId)).limit(1);
     if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
 
+    // Validate the group exists
+    const [groupRow] = await db
+      .select({ id: groups.id })
+      .from(groups)
+      .where(and(eq(groups.tournamentId, tournamentId), eq(groups.name, groupName)))
+      .limit(1);
+    if (!groupRow) return res.status(404).json({ error: `Group "${groupName}" not found` });
+
+    // Validate all matches in this group are completed
+    const groupTeams = await db
+      .select({ id: teams.id })
+      .from(teams)
+      .where(and(eq(teams.tournamentId, tournamentId), eq(teams.groupId, groupRow.id)));
+    const groupTeamIds = new Set(groupTeams.map(t => t.id));
     const allGroupMatches = await db
-      .select({ status: matches.status })
+      .select({ homeTeamId: matches.homeTeamId, awayTeamId: matches.awayTeamId, status: matches.status })
       .from(matches)
       .where(and(eq(matches.tournamentId, tournamentId), eq(matches.stage, 'group')));
-
-    if (allGroupMatches.length === 0 || !allGroupMatches.every(m => m.status === 'completed')) {
-      return res.status(400).json({ error: 'All group stage matches must be completed before confirming standings' });
+    const groupMatches = allGroupMatches.filter(
+      m => m.homeTeamId && m.awayTeamId && groupTeamIds.has(m.homeTeamId) && groupTeamIds.has(m.awayTeamId),
+    );
+    if (groupMatches.length === 0 || !groupMatches.every(m => m.status === 'completed')) {
+      return res.status(400).json({ error: `All matches in Group ${groupName} must be completed before confirming` });
     }
 
-    const existing: KnockoutConfig = (tournament.knockoutConfig as KnockoutConfig | null) ?? {
-      firstRound: 'round_of_16',
-      hasBronzeFinal: false,
-      directQualifiers: 2,
-      luckyLosers: 0,
-      bracketSlots: {},
+    const existing: KnockoutConfig = (tournament.knockoutConfig as KnockoutConfig | null) ?? { ...DEFAULT_KNOCKOUT_CONFIG };
+    const updatedStandings = { ...(existing.confirmedGroupStandings ?? {}), [groupName]: standings };
+
+    // If the overall lock was already set (lucky losers confirmed), re-open the LL lock
+    // because the group change may affect which teams are LL candidates.
+    const wasFinallyLocked = existing.groupStandingsLocked === true;
+
+    const updated: KnockoutConfig = {
+      ...existing,
+      confirmedGroupStandings: updatedStandings,
+      ...(wasFinallyLocked && { groupStandingsLocked: false, confirmedLuckyLosers: undefined }),
     };
+
+    await db.update(tournaments).set({ knockoutConfig: updated }).where(eq(tournaments.id, tournamentId));
+
+    // Ensure knockout match shells exist before filling slots
+    await ensureKnockoutShellExists(tournamentId);
+
+    // If LL lock was cleared, also wipe LL team slots
+    if (wasFinallyLocked) {
+      await applyLuckyLoserSlotsToKnockout(tournamentId, null, existing);
+    }
+
+    // Fill direct qualifier slots for this group
+    await applyGroupSlotsToKnockout(tournamentId, groupName, standings, updated);
+
+    await recalculateAllScoresForTournament(tournamentId);
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('Confirm group error:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+tournamentsRouter.post('/:id/reopen-group/:groupName', requireAdmin, async (req, res) => {
+  try {
+    const { id: tournamentId, groupName } = req.params;
+
+    const [tournament] = await db.select().from(tournaments).where(eq(tournaments.id, tournamentId)).limit(1);
+    if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
+
+    const existing: KnockoutConfig = (tournament.knockoutConfig as KnockoutConfig | null) ?? { ...DEFAULT_KNOCKOUT_CONFIG };
+    const updatedStandings = { ...(existing.confirmedGroupStandings ?? {}) };
+    delete updatedStandings[groupName];
+
+    const wasFinallyLocked = existing.groupStandingsLocked === true;
+
+    const updated: KnockoutConfig = {
+      ...existing,
+      confirmedGroupStandings: Object.keys(updatedStandings).length > 0 ? updatedStandings : undefined,
+      ...(wasFinallyLocked && { groupStandingsLocked: false, confirmedLuckyLosers: undefined }),
+    };
+
+    await db.update(tournaments).set({ knockoutConfig: updated }).where(eq(tournaments.id, tournamentId));
+
+    // Clear direct qualifier slots for this group in knockout matches
+    await applyGroupSlotsToKnockout(tournamentId, groupName, null, existing);
+
+    // If LL lock was cleared, also wipe LL team slots
+    if (wasFinallyLocked) {
+      await applyLuckyLoserSlotsToKnockout(tournamentId, null, existing);
+    }
+
+    await recalculateAllScoresForTournament(tournamentId);
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('Reopen group error:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── Lucky loser confirmation (all groups must already be confirmed) ───────────
+
+tournamentsRouter.post('/:id/confirm-group-standings', requireAdmin, async (req, res) => {
+  try {
+    const tournamentId = req.params.id;
+    const { luckyLosers } = req.body as { luckyLosers: string[] };
+
+    if (!Array.isArray(luckyLosers)) {
+      return res.status(400).json({ error: 'luckyLosers must be an array' });
+    }
+
+    const [tournament] = await db.select().from(tournaments).where(eq(tournaments.id, tournamentId)).limit(1);
+    if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
+
+    const existing: KnockoutConfig = (tournament.knockoutConfig as KnockoutConfig | null) ?? { ...DEFAULT_KNOCKOUT_CONFIG };
+
+    // All groups must be confirmed before finalising lucky losers
+    const allGroups = await db.select({ name: groups.name }).from(groups).where(eq(groups.tournamentId, tournamentId));
+    const confirmedGroupStandings = existing.confirmedGroupStandings ?? {};
+    const unconfirmed = allGroups.filter(g => !confirmedGroupStandings[g.name]);
+    if (unconfirmed.length > 0) {
+      return res.status(400).json({
+        error: `Groups must be confirmed before finalising lucky losers: ${unconfirmed.map(g => g.name).join(', ')}`,
+      });
+    }
 
     const updated: KnockoutConfig = {
       ...existing,
       groupStandingsLocked: true,
-      confirmedGroupStandings: groupStandings,
       confirmedLuckyLosers: luckyLosers,
     };
 
     await db.update(tournaments).set({ knockoutConfig: updated }).where(eq(tournaments.id, tournamentId));
 
-    // Regenerate first-round knockout using the confirmed standings
-    await generateFirstRoundKnockout(tournamentId);
+    // Fill lucky loser slots
+    await applyLuckyLoserSlotsToKnockout(tournamentId, luckyLosers, updated);
 
-    // Trigger score recalculation so group position points are awarded
     await recalculateAllScoresForTournament(tournamentId);
 
     return res.json({ ok: true });
   } catch (err) {
-    console.error('Confirm group standings error:', err);
+    console.error('Confirm lucky losers error:', err);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -765,29 +1033,25 @@ tournamentsRouter.post('/:id/reopen-group-standings', requireAdmin, async (req, 
     const [tournament] = await db.select().from(tournaments).where(eq(tournaments.id, tournamentId)).limit(1);
     if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
 
-    const existing: KnockoutConfig = (tournament.knockoutConfig as KnockoutConfig | null) ?? {
-      firstRound: 'round_of_16',
-      hasBronzeFinal: false,
-      directQualifiers: 2,
-      luckyLosers: 0,
-      bracketSlots: {},
-    };
+    const existing: KnockoutConfig = (tournament.knockoutConfig as KnockoutConfig | null) ?? { ...DEFAULT_KNOCKOUT_CONFIG };
 
+    // Only clear the lucky loser lock — individual group confirmations remain intact
     const updated: KnockoutConfig = {
       ...existing,
       groupStandingsLocked: false,
-      confirmedGroupStandings: undefined,
       confirmedLuckyLosers: undefined,
     };
 
     await db.update(tournaments).set({ knockoutConfig: updated }).where(eq(tournaments.id, tournamentId));
 
-    // Recalculate scores — group position points will be zeroed since standings are no longer locked
+    // Clear lucky loser team slots from knockout matches
+    await applyLuckyLoserSlotsToKnockout(tournamentId, null, existing);
+
     await recalculateAllScoresForTournament(tournamentId);
 
     return res.json({ ok: true });
   } catch (err) {
-    console.error('Reopen group standings error:', err);
+    console.error('Reopen lucky losers error:', err);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
