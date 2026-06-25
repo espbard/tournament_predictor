@@ -127,6 +127,13 @@
       "when": 1750406400000,
       "tag": "0020_user_icon_color",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1750492800000,
+      "tag": "0021_fix_scoring_config_defaults",
+      "breakpoints": true
     }
   ]
 }
