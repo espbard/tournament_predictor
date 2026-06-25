@@ -271,6 +271,8 @@ function FocusedMatchCard({
   editOverride,
   teamPageCompetitionId,
   teamPageUserId,
+  homeSlotLabel,
+  awaySlotLabel,
 }: {
   matchKey: string;
   homeTeam: TeamStat | null;
@@ -286,6 +288,8 @@ function FocusedMatchCard({
   editOverride?: boolean;
   teamPageCompetitionId?: string;
   teamPageUserId?: string;
+  homeSlotLabel?: string;
+  awaySlotLabel?: string;
 }) {
   const [homeStr, setHomeStr] = useState('');
   const [awayStr, setAwayStr] = useState('');
@@ -459,7 +463,7 @@ function FocusedMatchCard({
   const isDisplayAwayProgressing = (isFlipped ? predHomeProgresses : predAwayProgresses) && !isDisplayAwayChampion;
 
   // Highlight the team the actual result has progressing on a drawn scoreline.
-  const actualIsDraw = !!actualMatch && actualMatch.homeScore === actualMatch.awayScore;
+  const actualIsDraw = !!actualMatch && isCompleted && actualMatch.homeScore !== null && actualMatch.awayScore !== null && actualMatch.homeScore === actualMatch.awayScore;
   const actualHomeProgresses = actualIsDraw && actualMatch!.progressingTeamId === actualMatch!.homeTeamId;
   const actualAwayProgresses = actualIsDraw && actualMatch!.progressingTeamId === actualMatch!.awayTeamId;
 
@@ -656,11 +660,18 @@ function FocusedMatchCard({
       )}
 
       {/* ── Actual result card ─────────────────────────────── */}
-      {isCompleted && actualMatch && (
+      {actualMatch && (
         <div>
-          <p className="text-xs text-muted-foreground text-center mb-1.5 font-medium">
-            {t('knockoutContent.result')}
-          </p>
+          <div className="text-center mb-1.5">
+            <p className="text-xs text-muted-foreground font-medium">
+              {isCompleted ? t('knockoutContent.result') : 'Actual match'}
+            </p>
+            {actualMatch.scheduledAt && (
+              <p className="text-[11px] text-muted-foreground">
+                {new Date(actualMatch.scheduledAt).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+              </p>
+            )}
+          </div>
           <div className="rounded-xl border-2 bg-card shadow-sm overflow-hidden">
             {/* Home row */}
             <div className={`flex items-center gap-3 px-4 py-3.5 ${actualHomeProgresses ? goldenBorderClass + ' rounded-t-xl' : ''}`}>
@@ -669,11 +680,11 @@ function FocusedMatchCard({
               ) : (
                 <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
               )}
-              <span className={`flex-1 text-sm truncate ${(actualMatch.homeScore ?? 0) > (actualMatch.awayScore ?? 0) ? 'font-semibold' : 'font-medium'}`}>
-                {tn(actualMatch.homeTeamName)}
+              <span className={`flex-1 text-sm truncate ${isCompleted && (actualMatch.homeScore ?? 0) > (actualMatch.awayScore ?? 0) ? 'font-semibold' : 'font-medium'} ${!actualMatch.homeTeamName ? 'text-muted-foreground italic' : ''}`}>
+                {actualMatch.homeTeamName ? tn(actualMatch.homeTeamName) : (homeSlotLabel ?? 'TBD')}
               </span>
               <span className="w-11 h-9 flex items-center justify-center text-xl font-bold flex-shrink-0 tabular-nums">
-                {actualMatch.homeScore}
+                {actualMatch.homeScore ?? '—'}
               </span>
             </div>
             <div className="h-px bg-border" />
@@ -684,15 +695,15 @@ function FocusedMatchCard({
               ) : (
                 <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
               )}
-              <span className={`flex-1 text-sm truncate ${(actualMatch.awayScore ?? 0) > (actualMatch.homeScore ?? 0) ? 'font-semibold' : 'font-medium'}`}>
-                {tn(actualMatch.awayTeamName)}
+              <span className={`flex-1 text-sm truncate ${isCompleted && (actualMatch.awayScore ?? 0) > (actualMatch.homeScore ?? 0) ? 'font-semibold' : 'font-medium'} ${!actualMatch.awayTeamName ? 'text-muted-foreground italic' : ''}`}>
+                {actualMatch.awayTeamName ? tn(actualMatch.awayTeamName) : (awaySlotLabel ?? 'TBD')}
               </span>
               <span className="w-11 h-9 flex items-center justify-center text-xl font-bold flex-shrink-0 tabular-nums">
-                {actualMatch.awayScore}
+                {actualMatch.awayScore ?? '—'}
               </span>
             </div>
-            {/* Extra time / penalties winner */}
-            {actualMatch.homeScore === actualMatch.awayScore && actualMatch.progressingTeamId && (
+            {/* Extra time / penalties winner - only when completed */}
+            {isCompleted && actualMatch.homeScore === actualMatch.awayScore && actualMatch.progressingTeamId && (
               <>
                 <div className="h-px bg-border" />
                 <p className="px-4 py-2 text-xs text-muted-foreground text-center">
@@ -704,7 +715,7 @@ function FocusedMatchCard({
             )}
           </div>
           {/* Points breakdown */}
-          {pointsInfo !== null && (
+          {isCompleted && pointsInfo !== null && (
             <div className="mt-1.5 flex flex-wrap justify-center items-center gap-x-2 gap-y-0.5 text-xs">
               <span className={`font-semibold ${pointsInfo.total > 0 ? 'text-green-700 dark:text-green-400' : 'text-muted-foreground'}`}>
                 {pointsInfo.total > 0 ? `+${pointsInfo.total} pts` : '0 pts'}
@@ -1022,6 +1033,8 @@ function FocusedBracketView({
               editOverride={editOverride}
               teamPageCompetitionId={teamPageCompetitionId}
               teamPageUserId={teamPageUserId}
+              homeSlotLabel={current.round === firstRound && !current.isBronze ? knockoutConfig.bracketSlots[`m${current.matchIdxInRound + 1}_home`] : undefined}
+              awaySlotLabel={current.round === firstRound && !current.isBronze ? knockoutConfig.bracketSlots[`m${current.matchIdxInRound + 1}_away`] : undefined}
             />
             <div className="mt-3 flex sm:hidden items-center justify-between">
               <button
