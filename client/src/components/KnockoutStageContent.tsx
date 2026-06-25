@@ -1176,10 +1176,10 @@ function KnockoutBracketVisualizer({
   const mainH = isSingleMatch
     ? firstRoundDims.cardH
     : halfCount * (firstRoundDims.cardH + V_ROW_GAP) - V_ROW_GAP;
-  const bronzeGap = V_ROW_GAP * 5;
+  const bronzeGap = 12;
 
   // Final card sits above the main bracket; space reserved = card height + connector gap
-  const topOffset = isSingleMatch ? 0 : FINAL_HCARD_H + 20;
+  const topOffset = isSingleMatch ? 0 : FINAL_HCARD_H + 10;
   const bracketBodyH = isSingleMatch ? FINAL_HCARD_H : topOffset + mainH;
   const totalH = bracketBodyH + (hasBronzeFinal ? bronzeGap + BRONZE_HCARD_H : 0);
 
@@ -1391,23 +1391,11 @@ function KnockoutBracketVisualizer({
                   });
                 })}
                 {/* Dotted lines: left SF bottom → bronze final top, right SF bottom → bronze final top */}
-                {hasBronzeFinal && maxRoundIdx >= 1 && (() => {
-                  const sfDims = vizRoundDims(1, maxRoundIdx);
-                  const sfBottomY = topOffset + yCenter['0_0'] + sfDims.cardH / 2;
-                  const bronzeTopY = bracketBodyH + bronzeGap;
-                  const leftSFCenterX = cardLeftX_left(1) + V_CARD_W / 2;
-                  const rightSFCenterX = cardLeftX_right(1) + V_CARD_W / 2;
-                  return (
-                    <>
-                      <path key="bronze_left"
-                        d={`M ${leftSFCenterX} ${sfBottomY} L ${finalCenterX} ${bronzeTopY}`}
-                        fill="none" stroke="hsl(var(--border))" strokeWidth="1" strokeDasharray="3 2" />
-                      <path key="bronze_right"
-                        d={`M ${rightSFCenterX} ${sfBottomY} L ${finalCenterX} ${bronzeTopY}`}
-                        fill="none" stroke="hsl(var(--border))" strokeWidth="1" strokeDasharray="3 2" />
-                    </>
-                  );
-                })()}
+                {hasBronzeFinal && maxRoundIdx >= 1 && (
+                  <path key="bronze_vert"
+                    d={`M ${finalCenterX} ${topOffset + yCenter['0_0']} V ${bracketBodyH + bronzeGap}`}
+                    fill="none" stroke="hsl(var(--border))" strokeWidth="1" strokeDasharray="3 2" />
+                )}
               </>
             )}
           </svg>
