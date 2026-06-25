@@ -1080,13 +1080,6 @@ const BRONZE_HCARD_H = BRONZE_ICON + BRONZE_HPAD * 2; // 29px
 const BRONZE_HSLOT_W = BRONZE_ICON + BRONZE_HPAD * 2;  // 29px per team slot
 const BRONZE_HCARD_W = BRONZE_HSLOT_W * 2 + 1;          // 59px total
 
-const VIZ_SHORT_LABELS: Record<KnockoutFirstRound, string> = {
-  round_of_32: 'R32',
-  round_of_16: 'R16',
-  quarter_final: 'QF',
-  semi_final: 'SF',
-  final: 'F',
-};
 
 type VizTeam = { imageUrl: string | null; name: string | null };
 
@@ -1304,13 +1297,13 @@ function KnockoutBracketVisualizer({
   const BORDER = 'hsl(var(--border))';
 
   return (
-    <div className="overflow-x-auto">
-      <div style={{ width: totalW, minWidth: totalW }}>
+    <div className="flex justify-center">
+      <div style={{ width: totalW }}>
         {/* Round labels */}
         <div style={{ height: 14, position: 'relative', marginBottom: 3 }}>
           {!isSingleMatch && Array.from({ length: maxRoundIdx }, (_, idx) => {
             const R = maxRoundIdx - idx;
-            const label = VIZ_SHORT_LABELS[reversedRounds[R]];
+            const label = t(`knockoutContent.vizRoundLabels.${reversedRounds[R]}`);
             const leftX = idx * V_COL_W + V_COL_W / 2;
             const rightX = (2 * maxRoundIdx - idx) * V_COL_W + V_COL_W / 2;
             return [
@@ -1321,7 +1314,7 @@ function KnockoutBracketVisualizer({
             ];
           }).flat()}
           <span style={{ position: 'absolute', left: finalCenterX, transform: 'translateX(-50%)', fontSize: 8 }}
-            className="text-muted-foreground font-semibold whitespace-nowrap leading-none">{VIZ_SHORT_LABELS[reversedRounds[0]]}</span>
+            className="text-muted-foreground font-semibold whitespace-nowrap leading-none">{t(`knockoutContent.vizRoundLabels.${reversedRounds[0]}`)}</span>
         </div>
 
         {/* Bracket area */}

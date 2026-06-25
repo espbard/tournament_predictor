@@ -393,6 +393,13 @@ const translations = {
       predictionFlipped: 'Your prediction was adjusted because one or more of the teams ended up on opposite side of the fixture.',
       predictionsLocked: 'Knockout predictions are locked — the tournament has started.',
       bracketOverview: 'Bracket',
+      vizRoundLabels: {
+        round_of_32: 'R32',
+        round_of_16: 'R16',
+        quarter_final: 'QF',
+        semi_final: 'SF',
+        final: 'F',
+      },
     },
     stages: {
       group: 'Group Stage',
@@ -870,6 +877,13 @@ const translations = {
       predictionFlipped: 'Tipset ditt ble justert fordi lagene endte opp på motsatte sider av kampen.',
       predictionsLocked: 'Sluttspill-tips er låst – turneringen har startet.',
       bracketOverview: 'Bracket',
+      vizRoundLabels: {
+        round_of_32: 'R32',
+        round_of_16: 'R16',
+        quarter_final: 'KF',
+        semi_final: 'SF',
+        final: 'F',
+      },
     },
     stages: {
       group: 'Gruppespill',
@@ -1346,6 +1360,13 @@ const translations = {
       predictionFlipped: 'Dein Tipp wurde angepasst weil eines der Teams auf der anderen Seite gelandet ist.',
       predictionsLocked: 'K.o.-Tipps sind gesperrt — das Turnier hat begonnen.',
       bracketOverview: 'Bracket',
+      vizRoundLabels: {
+        round_of_32: 'R32',
+        round_of_16: 'R16',
+        quarter_final: 'VF',
+        semi_final: 'HF',
+        final: 'F',
+      },
     },
     stages: {
       group: 'Gruppenphase',
