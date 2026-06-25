@@ -15,6 +15,7 @@ import { imagesRouter } from './routes/images';
 import { competitionsRouter } from './routes/competitions';
 import { settingsRouter } from './routes/settings';
 import { feedbackRouter } from './routes/feedback';
+import { recalculateAllScoresForTournament } from './lib/scoringTrigger';
 
 const app = express();
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
@@ -97,6 +98,30 @@ async function start() {
     )
   `);
   console.log('Migrations complete.');
+
+  // Defensive: fix any competitions still using correct_group_position=2 (old default).
+  // Updates the stored config to 1 and triggers a full recalculation so scores are
+  // recomputed from scratch with the correct value rather than relying on a halving approximation.
+  try {
+    const staleComps = await db
+      .select({ id: competitions.id, tournamentId: competitions.tournamentId })
+      .from(competitions)
+      .where(sql`(${competitions.scoringConfig}->>'correct_group_position')::int = 2`);
+    if (staleComps.length > 0) {
+      await db.execute(sql`
+        UPDATE competitions
+        SET scoring_config = (scoring_config::jsonb || '{"correct_group_position": 1}'::jsonb)::json
+        WHERE (scoring_config->>'correct_group_position')::int = 2
+      `);
+      const tournamentIds = [...new Set(staleComps.map(c => c.tournamentId))];
+      for (const tid of tournamentIds) {
+        await recalculateAllScoresForTournament(tid);
+      }
+      console.log(`Fixed correct_group_position (2→1) and recalculated scores for ${tournamentIds.length} tournament(s).`);
+    }
+  } catch (err) {
+    console.warn('correct_group_position fix skipped:', err);
+  }
 
   // Seed icon colors for any users that don't have one yet
   try {
