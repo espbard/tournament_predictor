@@ -134,6 +134,13 @@
       "when": 1750492800000,
       "tag": "0021_fix_scoring_config_defaults",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1750579200000,
+      "tag": "0022_knockout_bracket_ids",
+      "breakpoints": true
     }
   ]
 }

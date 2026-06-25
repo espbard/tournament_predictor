@@ -627,6 +627,12 @@ function FocusedAdminResults({
     }
     for (const [, ms] of map) {
       ms.sort((a, b) => {
+        if (a.bracketIndex !== null && a.bracketIndex !== undefined &&
+            b.bracketIndex !== null && b.bracketIndex !== undefined) {
+          return a.bracketIndex - b.bracketIndex;
+        }
+        if (a.bracketIndex !== null && a.bracketIndex !== undefined) return -1;
+        if (b.bracketIndex !== null && b.bracketIndex !== undefined) return 1;
         if (!a.scheduledAt && !b.scheduledAt) return 0;
         if (!a.scheduledAt) return 1;
         if (!b.scheduledAt) return -1;

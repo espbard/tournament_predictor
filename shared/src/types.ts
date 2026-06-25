@@ -61,6 +61,8 @@ export interface Match {
   homeScore: number | null;
   awayScore: number | null;
   progressingTeamId: string | null;
+  bracketIndex: number | null;
+  nextMatchId: string | null;
 }
 
 export interface ScoringConfig {
