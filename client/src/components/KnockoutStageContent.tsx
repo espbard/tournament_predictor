@@ -1543,16 +1543,15 @@ function KnockoutBracketVisualizer({
           </span>
           {(() => {
             const m = actualMatchMap[`${reversedRounds[0]}_0`];
-            const predicted = predictedMatchTeams?.['0_0'];
             const actualHome = m?.homeTeamId ? { imageUrl: m.homeTeamImageUrl, name: m.homeTeamName } : null;
             const actualAway = m?.awayTeamId ? { imageUrl: m.awayTeamImageUrl, name: m.awayTeamName } : null;
-            const home = actualHome ?? predicted?.home ?? null;
-            const away = actualAway ?? predicted?.away ?? null;
+            const home = actualHome;
+            const away = actualAway;
             const homeProgressed = !!m?.progressingTeamId && m.progressingTeamId === m.homeTeamId;
             const awayProgressed = !!m?.progressingTeamId && m.progressingTeamId === m.awayTeamId;
             const finalPredKey = `${reversedRounds[0]}_0`;
             return renderHorizCard('final', finalHCardLeft, finalTop, home, away, FINAL_ICON, FINAL_HSLOT_W, FINAL_HCARD_H,
-              { focused: finalPredKey === focusedPredKey, homeProgressed, awayProgressed, homeFallback: !actualHome && !!home, awayFallback: !actualAway && !!away, predKey: finalPredKey });
+              { focused: finalPredKey === focusedPredKey, homeProgressed, awayProgressed, predKey: finalPredKey });
           })()}
 
           {/* Right side match cards */}
@@ -1580,13 +1579,10 @@ function KnockoutBracketVisualizer({
                 {t('knockoutContent.bronzeFinal')}
               </span>
               {(() => {
-                const predicted = predictedMatchTeams?.['bronze_final'];
                 const actualHome = bronzeMatch?.homeTeamId ? { imageUrl: bronzeMatch.homeTeamImageUrl, name: bronzeMatch.homeTeamName } : null;
                 const actualAway = bronzeMatch?.awayTeamId ? { imageUrl: bronzeMatch.awayTeamImageUrl, name: bronzeMatch.awayTeamName } : null;
-                const home = actualHome ?? predicted?.home ?? null;
-                const away = actualAway ?? predicted?.away ?? null;
-                return renderHorizCard('bronze', bronzeHCardLeft, bronzeTop, home, away,
-                  BRONZE_ICON, BRONZE_HSLOT_W, BRONZE_HCARD_H, { dashed: true, focused: focusedPredKey === 'bronze_final_0', homeFallback: !actualHome && !!home, awayFallback: !actualAway && !!away, predKey: 'bronze_final_0' });
+                return renderHorizCard('bronze', bronzeHCardLeft, bronzeTop, actualHome, actualAway,
+                  BRONZE_ICON, BRONZE_HSLOT_W, BRONZE_HCARD_H, { dashed: true, focused: focusedPredKey === 'bronze_final_0', predKey: 'bronze_final_0' });
               })()}
             </>
           )}
