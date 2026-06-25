@@ -827,8 +827,16 @@ function FocusedBracketView({
         });
       }
     });
+    list.sort((a, b) => {
+      const dateA = actualMatchMap[a.predKey]?.scheduledAt;
+      const dateB = actualMatchMap[b.predKey]?.scheduledAt;
+      if (!dateA && !dateB) return 0;
+      if (!dateA) return 1;
+      if (!dateB) return -1;
+      return new Date(dateA).getTime() - new Date(dateB).getTime();
+    });
     return list;
-  }, [chronoRounds, maxRoundIdx, hasBronzeFinal]);
+  }, [chronoRounds, maxRoundIdx, hasBronzeFinal, actualMatchMap]);
 
   const { t } = useT();
   const getRoundLabel = (round: KnockoutFirstRound) => t(`knockout.rounds.${round}` as any) || ROUND_LABELS[round] || round;
