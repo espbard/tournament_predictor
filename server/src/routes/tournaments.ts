@@ -1323,9 +1323,10 @@ tournamentsRouter.post('/:id/clear-knockout', requireAdmin, async (req, res) => 
 });
 
 /**
- * Re-populates first-round knockout match slots with the teams derived from current
- * group standings / lucky-loser config, WITHOUT deleting the match shells (so scheduled
- * dates, bracketIndex, nextMatchId and user bracketPredictions are untouched).
+ * Re-populates first-round knockout match slots using ONLY confirmed group standings.
+ * Slots whose group has not yet been confirmed are left empty (null).
+ * Match shells are not deleted, so scheduled dates, bracketIndex, nextMatchId and
+ * user bracketPredictions are all untouched.
  * Teams in subsequent rounds are cleared so they can be re-filled as results come in.
  */
 tournamentsRouter.post('/:id/reallocate-knockout', requireAdmin, async (req, res) => {
@@ -1337,77 +1338,23 @@ tournamentsRouter.post('/:id/reallocate-knockout', requireAdmin, async (req, res
     const cfg = tournament.knockoutConfig as KnockoutConfig | null;
     if (!cfg) return res.status(400).json({ error: 'No knockout config' });
 
-    const { firstRound, bracketSlots, directQualifiers, luckyLosers } = cfg;
-    const groupDisciplinaryChoices = cfg.groupDisciplinaryChoices ?? {};
-    const luckyLoserDisciplinaryChoices = cfg.luckyLoserDisciplinaryChoices ?? {};
+    const { firstRound, bracketSlots, luckyLosers } = cfg;
     const matchCount = FIRST_ROUND_MATCH_COUNTS[firstRound] ?? 0;
     if (matchCount === 0) return res.status(400).json({ error: 'No first-round matches configured' });
 
-    // Build teamId → groupName map
-    const teamRows = await db.select({ id: teams.id, groupId: teams.groupId }).from(teams).where(eq(teams.tournamentId, tournamentId));
-    const groupRows = await db.select().from(groups).where(eq(groups.tournamentId, tournamentId));
-    const groupNameMap = new Map(groupRows.map(g => [g.id, g.name]));
-    const teamGroupMap = new Map<string, string>();
-    for (const t of teamRows) {
-      if (t.groupId) {
-        const gName = groupNameMap.get(t.groupId);
-        if (gName) teamGroupMap.set(t.id, gName);
-      }
-    }
-
-    // Compute standings (use confirmed locked standings when available)
-    const allGroupMatches = await db.select().from(matches).where(
-      and(eq(matches.tournamentId, tournamentId), eq(matches.stage, 'group'))
-    );
-    let standings: Map<string, TeamStat[]>;
-    if (cfg.groupStandingsLocked && cfg.confirmedGroupStandings) {
-      standings = new Map(
-        Object.entries(cfg.confirmedGroupStandings).map(([groupName, teamIds]) => [
-          groupName,
-          teamIds.map(id => ({ teamId: id, points: 0, gd: 0, gf: 0 })),
-        ]),
-      );
-    } else {
-      standings = computeGroupStandings(
-        allGroupMatches.filter(m => m.status === 'completed'),
-        teamGroupMap,
-        groupDisciplinaryChoices,
-      );
-    }
+    // Only use per-group confirmed standings — if a group hasn't been confirmed, its slots stay null
+    const confirmedGroupStandings = cfg.confirmedGroupStandings ?? {};
 
     function qualifierToTeamId(label: string): string | null {
       const m = label.match(/^(\d+)([A-Z])$/);
       if (!m) return null;
       const pos = parseInt(m[1]) - 1;
-      const gs = standings.get(m[2]);
-      return gs && gs.length > pos ? gs[pos].teamId : null;
+      const confirmedTeamIds = confirmedGroupStandings[m[2]];
+      return confirmedTeamIds && confirmedTeamIds.length > pos ? confirmedTeamIds[pos] : null;
     }
 
-    // Collect lucky losers
-    let selectedLuckyLosers: string[];
-    if (cfg.groupStandingsLocked && cfg.confirmedLuckyLosers) {
-      selectedLuckyLosers = cfg.confirmedLuckyLosers.slice(0, luckyLosers);
-    } else {
-      const candidates: TeamStat[] = [];
-      for (const [, gs] of standings) {
-        if (gs.length > directQualifiers) candidates.push(gs[directQualifiers]);
-      }
-      candidates.sort((a, b) => {
-        if (b.points !== a.points) return b.points - a.points;
-        if (b.gd !== a.gd) return b.gd - a.gd;
-        if (b.gf !== a.gf) return b.gf - a.gf;
-        const tied = candidates.filter(t => t.points === a.points && t.gd === a.gd && t.gf === a.gf);
-        const key = [...tied.map(t => t.teamId)].sort().join('|');
-        const ranking = luckyLoserDisciplinaryChoices[key];
-        if (ranking) {
-          const da = ranking.indexOf(a.teamId);
-          const db = ranking.indexOf(b.teamId);
-          if (da !== -1 && db !== -1 && da !== db) return da - db;
-        }
-        return a.teamId.localeCompare(b.teamId);
-      });
-      selectedLuckyLosers = candidates.slice(0, luckyLosers).map(t => t.teamId);
-    }
+    // Lucky losers: only use the confirmed list; if not confirmed yet, leave those slots empty
+    const selectedLuckyLosers: string[] = (cfg.confirmedLuckyLosers ?? []).slice(0, luckyLosers);
 
     const emptySlots: string[] = [];
     for (let i = 1; i <= matchCount; i++) {
