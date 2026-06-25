@@ -680,9 +680,14 @@ function FocusedMatchCard({
               ) : (
                 <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
               )}
-              <span className={`flex-1 text-sm truncate ${isCompleted && (actualMatch.homeScore ?? 0) > (actualMatch.awayScore ?? 0) ? 'font-semibold' : 'font-medium'} ${!actualMatch.homeTeamName ? 'text-muted-foreground italic' : ''}`}>
-                {actualMatch.homeTeamName ? tn(actualMatch.homeTeamName) : (homeSlotLabel ?? 'TBD')}
-              </span>
+              <div className="flex-1 min-w-0">
+                <span className={`text-sm truncate block ${isCompleted && (actualMatch.homeScore ?? 0) > (actualMatch.awayScore ?? 0) ? 'font-semibold' : 'font-medium'} ${!actualMatch.homeTeamName ? 'text-muted-foreground italic' : ''}`}>
+                  {actualMatch.homeTeamName ? tn(actualMatch.homeTeamName) : (homeSlotLabel ?? 'TBD')}
+                </span>
+                {!actualMatch.homeTeamName && (
+                  <span className="text-[10px] text-muted-foreground/60 leading-none">Not confirmed</span>
+                )}
+              </div>
               <span className="w-11 h-9 flex items-center justify-center text-xl font-bold flex-shrink-0 tabular-nums">
                 {actualMatch.homeScore ?? '—'}
               </span>
@@ -695,9 +700,14 @@ function FocusedMatchCard({
               ) : (
                 <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
               )}
-              <span className={`flex-1 text-sm truncate ${isCompleted && (actualMatch.awayScore ?? 0) > (actualMatch.homeScore ?? 0) ? 'font-semibold' : 'font-medium'} ${!actualMatch.awayTeamName ? 'text-muted-foreground italic' : ''}`}>
-                {actualMatch.awayTeamName ? tn(actualMatch.awayTeamName) : (awaySlotLabel ?? 'TBD')}
-              </span>
+              <div className="flex-1 min-w-0">
+                <span className={`text-sm truncate block ${isCompleted && (actualMatch.awayScore ?? 0) > (actualMatch.homeScore ?? 0) ? 'font-semibold' : 'font-medium'} ${!actualMatch.awayTeamName ? 'text-muted-foreground italic' : ''}`}>
+                  {actualMatch.awayTeamName ? tn(actualMatch.awayTeamName) : (awaySlotLabel ?? 'TBD')}
+                </span>
+                {!actualMatch.awayTeamName && (
+                  <span className="text-[10px] text-muted-foreground/60 leading-none">Not confirmed</span>
+                )}
+              </div>
               <span className="w-11 h-9 flex items-center justify-center text-xl font-bold flex-shrink-0 tabular-nums">
                 {actualMatch.awayScore ?? '—'}
               </span>
@@ -848,9 +858,14 @@ function FocusedBracketView({
   const [animKey, setAnimKey] = useState(0);
   const initedRef = useRef(false);
 
+  const allMatchesRef = useRef(allMatches);
+  allMatchesRef.current = allMatches;
+  const currentIdxRef = useRef(currentIdx);
+  currentIdxRef.current = currentIdx;
+
   useEffect(() => {
-    onFocusedKeyChange?.(allMatches[currentIdx]?.predKey ?? '');
-  }, [currentIdx, allMatches, onFocusedKeyChange]);
+    onFocusedKeyChange?.(allMatchesRef.current[currentIdx]?.predKey ?? '');
+  }, [currentIdx, onFocusedKeyChange]);
 
   useEffect(() => {
     if (initedRef.current || !predsLoaded) return;
@@ -859,9 +874,12 @@ function FocusedBracketView({
 
   useEffect(() => {
     if (!externalFocusPredKey) return;
-    const idx = allMatches.findIndex(m => m.predKey === externalFocusPredKey);
-    if (idx !== -1 && idx !== currentIdx) goTo(idx);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    const idx = allMatchesRef.current.findIndex(m => m.predKey === externalFocusPredKey);
+    if (idx === -1 || idx === currentIdxRef.current) return;
+    const dir = idx > currentIdxRef.current ? 'fromRight' : 'fromLeft';
+    setSlideDir(dir);
+    setAnimKey(k => k + 1);
+    setCurrentIdx(idx);
   }, [externalFocusPredKey]);
 
   function goTo(idx: number) {
@@ -1293,7 +1311,7 @@ function KnockoutBracketVisualizer({
   function getTeams(side: 'left' | 'right', R: number, localI: number): { home: VizTeam | null; away: VizTeam | null; homeFallback: boolean; awayFallback: boolean } {
     const actualI = side === 'right' ? Math.pow(2, R - 1) + localI : localI;
     const m = actualMatchMap[`${reversedRounds[R]}_${actualI}`];
-    const predicted = predictedMatchTeams?.[`${R}_${actualI}`];
+    const predicted = R === maxRoundIdx ? predictedMatchTeams?.[`${R}_${actualI}`] : null;
     const actualHome = m?.homeTeamId ? { imageUrl: m.homeTeamImageUrl, name: m.homeTeamName } : null;
     const actualAway = m?.awayTeamId ? { imageUrl: m.awayTeamImageUrl, name: m.awayTeamName } : null;
     return {
