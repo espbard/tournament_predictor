@@ -1176,12 +1176,30 @@ function KnockoutBracketVisualizer({
   const mainH = isSingleMatch
     ? firstRoundDims.cardH
     : halfCount * (firstRoundDims.cardH + V_ROW_GAP) - V_ROW_GAP;
-  const bronzeGap = 12;
 
-  // Final card sits above the main bracket; space reserved = card height + connector gap
-  const topOffset = isSingleMatch ? 0 : FINAL_HCARD_H + 10;
-  const bracketBodyH = isSingleMatch ? FINAL_HCARD_H : topOffset + mainH;
-  const totalH = bracketBodyH + (hasBronzeFinal ? bronzeGap + BRONZE_HCARD_H : 0);
+  // Anchor Final and Bronze relative to the SF center so they stay visually adjacent
+  // regardless of how tall the overall bracket is.
+  const sfGap = 10; // px between Final card bottom and SF center; same below SF center to bronze
+  const bronzeCardGap = 10; // px between SF card bottom and bronze card top
+  const sfDims = maxRoundIdx >= 1 ? vizRoundDims(1, maxRoundIdx) : firstRoundDims;
+  const sfCenterInGrid = isSingleMatch ? firstRoundDims.cardH / 2 : (yCenter['0_0'] ?? firstRoundDims.cardH / 2);
+
+  // topOffset shifts the bracket grid down just enough so the Final card (above the SF) stays at y≥0
+  const topOffset = isSingleMatch ? 0 : Math.max(0, FINAL_HCARD_H + sfGap - sfCenterInGrid);
+
+  // Absolute Y of the SF center within the bracket area div
+  const sfAbsCenterY = isSingleMatch ? firstRoundDims.cardH / 2 : topOffset + sfCenterInGrid;
+
+  // Final card: just above SF center
+  const finalTop = isSingleMatch ? 0 : sfAbsCenterY - FINAL_HCARD_H - sfGap;
+
+  // Bronze card: just below the SF card
+  const bronzeTop = sfAbsCenterY + sfDims.cardH / 2 + bronzeCardGap;
+
+  const bracketCardsBottom = topOffset + mainH; // bottom edge of the last first-round card
+  const totalH = hasBronzeFinal
+    ? Math.max(bracketCardsBottom, bronzeTop + BRONZE_HCARD_H) + 2
+    : bracketCardsBottom;
 
   // (2*maxRoundIdx + 1) columns: left side + center (final) + right side
   const totalW = isSingleMatch ? FINAL_HCARD_W : (2 * maxRoundIdx + 1) * V_COL_W;
@@ -1191,7 +1209,7 @@ function KnockoutBracketVisualizer({
   // Right side: R=1 at col maxRoundIdx+1, R=maxRoundIdx at col 2*maxRoundIdx
   const cardLeftX_right = (R: number) => (maxRoundIdx + R) * V_COL_W + V_HPAD;
 
-  // Horizontal final card: centered on bracket, sitting at y=0 in bracket area
+  // Horizontal final card: centered on bracket
   const finalCenterX = isSingleMatch ? FINAL_HCARD_W / 2 : maxRoundIdx * V_COL_W + V_COL_W / 2;
   const finalHCardLeft = finalCenterX - FINAL_HCARD_W / 2;
   const bronzeHCardLeft = finalCenterX - BRONZE_HCARD_W / 2;
@@ -1312,7 +1330,7 @@ function KnockoutBracketVisualizer({
           <svg
             style={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'visible' }}
             width={totalW}
-            height={bracketBodyH}
+            height={totalH}
           >
             {!isSingleMatch && (
               <>
@@ -1348,18 +1366,17 @@ function KnockoutBracketVisualizer({
                   const leftGold = getProgressedSlot(1, 'left', 0) !== null;
                   const rightGold = getProgressedSlot(1, 'right', 0) !== null;
                   const anyGold = leftGold || rightGold;
-                  const sfCenterY = topOffset + yCenter['0_0'];
                   return (
                     <>
                       <path key="Lc_sf_final" fill="none" strokeWidth={leftGold ? 1.5 : 1}
                         stroke={leftGold ? GOLD : BORDER}
-                        d={`M ${cardLeftX_left(1) + V_CARD_W} ${sfCenterY} H ${finalCenterX}`} />
+                        d={`M ${cardLeftX_left(1) + V_CARD_W} ${sfAbsCenterY} H ${finalCenterX}`} />
                       <path key="Rc_sf_final" fill="none" strokeWidth={rightGold ? 1.5 : 1}
                         stroke={rightGold ? GOLD : BORDER}
-                        d={`M ${cardLeftX_right(1)} ${sfCenterY} H ${finalCenterX}`} />
+                        d={`M ${cardLeftX_right(1)} ${sfAbsCenterY} H ${finalCenterX}`} />
                       <path key="vert_sf_final" fill="none" strokeWidth={anyGold ? 1.5 : 1}
                         stroke={anyGold ? GOLD : BORDER}
-                        d={`M ${finalCenterX} ${sfCenterY} V ${FINAL_HCARD_H}`} />
+                        d={`M ${finalCenterX} ${sfAbsCenterY} V ${finalTop + FINAL_HCARD_H}`} />
                     </>
                   );
                 })()}
@@ -1393,7 +1410,7 @@ function KnockoutBracketVisualizer({
                 {/* Dotted lines: left SF bottom → bronze final top, right SF bottom → bronze final top */}
                 {hasBronzeFinal && maxRoundIdx >= 1 && (
                   <path key="bronze_vert"
-                    d={`M ${finalCenterX} ${topOffset + yCenter['0_0']} V ${bracketBodyH + bronzeGap}`}
+                    d={`M ${finalCenterX} ${sfAbsCenterY} V ${bronzeTop}`}
                     fill="none" stroke="hsl(var(--border))" strokeWidth="1" strokeDasharray="3 2" />
                 )}
               </>
@@ -1420,7 +1437,7 @@ function KnockoutBracketVisualizer({
             const m = actualMatchMap[`${reversedRounds[0]}_0`];
             const home = m?.homeTeamId ? { imageUrl: m.homeTeamImageUrl, name: m.homeTeamName } : null;
             const away = m?.awayTeamId ? { imageUrl: m.awayTeamImageUrl, name: m.awayTeamName } : null;
-            return renderHorizCard('final', finalHCardLeft, 0, home, away, FINAL_ICON, FINAL_HSLOT_W, FINAL_HCARD_H,
+            return renderHorizCard('final', finalHCardLeft, finalTop, home, away, FINAL_ICON, FINAL_HSLOT_W, FINAL_HCARD_H,
               { focused: `${reversedRounds[0]}_0` === focusedPredKey });
           })()}
 
@@ -1443,12 +1460,12 @@ function KnockoutBracketVisualizer({
           {hasBronzeFinal && (
             <>
               <span
-                style={{ position: 'absolute', left: finalCenterX, top: bracketBodyH + bronzeGap / 2 - 6, transform: 'translateX(-50%)', fontSize: 8 }}
+                style={{ position: 'absolute', left: finalCenterX, top: sfAbsCenterY + sfDims.cardH / 2 + bronzeCardGap / 2 - 4, transform: 'translateX(-50%)', fontSize: 8 }}
                 className="text-muted-foreground font-semibold whitespace-nowrap leading-none"
               >
                 3rd
               </span>
-              {renderHorizCard('bronze', bronzeHCardLeft, bracketBodyH + bronzeGap,
+              {renderHorizCard('bronze', bronzeHCardLeft, bronzeTop,
                 bronzeMatch?.homeTeamId ? { imageUrl: bronzeMatch.homeTeamImageUrl, name: bronzeMatch.homeTeamName } : null,
                 bronzeMatch?.awayTeamId ? { imageUrl: bronzeMatch.awayTeamImageUrl, name: bronzeMatch.awayTeamName } : null,
                 BRONZE_ICON, BRONZE_HSLOT_W, BRONZE_HCARD_H, { dashed: true, focused: focusedPredKey === 'bronze_final_0' })}
