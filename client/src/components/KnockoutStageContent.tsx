@@ -273,6 +273,8 @@ function FocusedMatchCard({
   teamPageUserId,
   homeSlotLabel,
   awaySlotLabel,
+  homeFallbackTeam,
+  awayFallbackTeam,
 }: {
   matchKey: string;
   homeTeam: TeamStat | null;
@@ -290,6 +292,8 @@ function FocusedMatchCard({
   teamPageUserId?: string;
   homeSlotLabel?: string;
   awaySlotLabel?: string;
+  homeFallbackTeam?: TeamStat | null;
+  awayFallbackTeam?: TeamStat | null;
 }) {
   const [homeStr, setHomeStr] = useState('');
   const [awayStr, setAwayStr] = useState('');
@@ -677,14 +681,16 @@ function FocusedMatchCard({
             <div className={`flex items-center gap-3 px-4 py-3.5 ${actualHomeProgresses ? goldenBorderClass + ' rounded-t-xl' : ''}`}>
               {actualMatch.homeTeamImageUrl ? (
                 <img src={actualMatch.homeTeamImageUrl} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0" />
+              ) : homeFallbackTeam?.imageUrl ? (
+                <img src={homeFallbackTeam.imageUrl} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0 opacity-40" />
               ) : (
                 <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
               )}
               <div className="flex-1 min-w-0">
                 <span className={`text-sm truncate block ${isCompleted && (actualMatch.homeScore ?? 0) > (actualMatch.awayScore ?? 0) ? 'font-semibold' : 'font-medium'} ${!actualMatch.homeTeamName ? 'text-muted-foreground italic' : ''}`}>
-                  {actualMatch.homeTeamName ? tn(actualMatch.homeTeamName) : (homeSlotLabel ?? 'TBD')}
+                  {actualMatch.homeTeamName ? tn(actualMatch.homeTeamName) : homeFallbackTeam ? tn(homeFallbackTeam.teamName) : (homeSlotLabel ?? 'TBD')}
                 </span>
-                {!actualMatch.homeTeamName && (
+                {!actualMatch.homeTeamName && homeFallbackTeam && (
                   <span className="text-[10px] text-muted-foreground/60 leading-none">Not confirmed</span>
                 )}
               </div>
@@ -697,14 +703,16 @@ function FocusedMatchCard({
             <div className={`flex items-center gap-3 px-4 py-3.5 ${actualAwayProgresses ? goldenBorderClass : ''}`}>
               {actualMatch.awayTeamImageUrl ? (
                 <img src={actualMatch.awayTeamImageUrl} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0" />
+              ) : awayFallbackTeam?.imageUrl ? (
+                <img src={awayFallbackTeam.imageUrl} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0 opacity-40" />
               ) : (
                 <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
               )}
               <div className="flex-1 min-w-0">
                 <span className={`text-sm truncate block ${isCompleted && (actualMatch.awayScore ?? 0) > (actualMatch.homeScore ?? 0) ? 'font-semibold' : 'font-medium'} ${!actualMatch.awayTeamName ? 'text-muted-foreground italic' : ''}`}>
-                  {actualMatch.awayTeamName ? tn(actualMatch.awayTeamName) : (awaySlotLabel ?? 'TBD')}
+                  {actualMatch.awayTeamName ? tn(actualMatch.awayTeamName) : awayFallbackTeam ? tn(awayFallbackTeam.teamName) : (awaySlotLabel ?? 'TBD')}
                 </span>
-                {!actualMatch.awayTeamName && (
+                {!actualMatch.awayTeamName && awayFallbackTeam && (
                   <span className="text-[10px] text-muted-foreground/60 leading-none">Not confirmed</span>
                 )}
               </div>
@@ -1070,6 +1078,8 @@ function FocusedBracketView({
               teamPageUserId={teamPageUserId}
               homeSlotLabel={current.round === firstRound && !current.isBronze ? knockoutConfig.bracketSlots[`m${current.matchIdxInRound + 1}_home`] : undefined}
               awaySlotLabel={current.round === firstRound && !current.isBronze ? knockoutConfig.bracketSlots[`m${current.matchIdxInRound + 1}_away`] : undefined}
+              homeFallbackTeam={current.round === firstRound && !current.isBronze ? (resolvedSlots[`m${current.matchIdxInRound + 1}_home`] ?? null) : null}
+              awayFallbackTeam={current.round === firstRound && !current.isBronze ? (resolvedSlots[`m${current.matchIdxInRound + 1}_away`] ?? null) : null}
             />
             <div className="mt-3 flex sm:hidden items-center justify-between">
               <button
