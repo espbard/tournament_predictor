@@ -930,6 +930,11 @@ export function TournamentKnockoutTabContent({ tournamentId }: { tournamentId: s
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['matches', tournamentId] }),
   });
 
+  const reallocateKnockoutMutation = useMutation({
+    mutationFn: () => api.post(`/tournaments/${tournamentId}/reallocate-knockout`, {}),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['matches', tournamentId] }),
+  });
+
   const sortedGroups = useMemo(
     () => [...groupList].sort((a: Group, b: Group) => a.name.localeCompare(b.name)),
     [groupList]
@@ -1019,6 +1024,17 @@ export function TournamentKnockoutTabContent({ tournamentId }: { tournamentId: s
             className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
           >
             {clearKnockoutMutation.isPending ? t('knockout.clearing') : t('knockout.clearResults')}
+          </button>
+          <button
+            onClick={() => {
+              if (confirm('Re-allocate teams to their bracket slots based on current group standings? This will update first-round match assignments and clear teams from later rounds. User bracket predictions are not affected.')) {
+                reallocateKnockoutMutation.mutate();
+              }
+            }}
+            disabled={reallocateKnockoutMutation.isPending}
+            className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
+          >
+            {reallocateKnockoutMutation.isPending ? 'Re-allocating…' : 'Re-allocate Teams'}
           </button>
         </div>
       )}

@@ -1322,6 +1322,154 @@ tournamentsRouter.post('/:id/clear-knockout', requireAdmin, async (req, res) => 
   }
 });
 
+/**
+ * Re-populates first-round knockout match slots with the teams derived from current
+ * group standings / lucky-loser config, WITHOUT deleting the match shells (so scheduled
+ * dates, bracketIndex, nextMatchId and user bracketPredictions are untouched).
+ * Teams in subsequent rounds are cleared so they can be re-filled as results come in.
+ */
+tournamentsRouter.post('/:id/reallocate-knockout', requireAdmin, async (req, res) => {
+  try {
+    const tournamentId = req.params.id;
+    const [tournament] = await db.select().from(tournaments).where(eq(tournaments.id, tournamentId)).limit(1);
+    if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
+
+    const cfg = tournament.knockoutConfig as KnockoutConfig | null;
+    if (!cfg) return res.status(400).json({ error: 'No knockout config' });
+
+    const { firstRound, bracketSlots, directQualifiers, luckyLosers } = cfg;
+    const groupDisciplinaryChoices = cfg.groupDisciplinaryChoices ?? {};
+    const luckyLoserDisciplinaryChoices = cfg.luckyLoserDisciplinaryChoices ?? {};
+    const matchCount = FIRST_ROUND_MATCH_COUNTS[firstRound] ?? 0;
+    if (matchCount === 0) return res.status(400).json({ error: 'No first-round matches configured' });
+
+    // Build teamId → groupName map
+    const teamRows = await db.select({ id: teams.id, groupId: teams.groupId }).from(teams).where(eq(teams.tournamentId, tournamentId));
+    const groupRows = await db.select().from(groups).where(eq(groups.tournamentId, tournamentId));
+    const groupNameMap = new Map(groupRows.map(g => [g.id, g.name]));
+    const teamGroupMap = new Map<string, string>();
+    for (const t of teamRows) {
+      if (t.groupId) {
+        const gName = groupNameMap.get(t.groupId);
+        if (gName) teamGroupMap.set(t.id, gName);
+      }
+    }
+
+    // Compute standings (use confirmed locked standings when available)
+    const allGroupMatches = await db.select().from(matches).where(
+      and(eq(matches.tournamentId, tournamentId), eq(matches.stage, 'group'))
+    );
+    let standings: Map<string, TeamStat[]>;
+    if (cfg.groupStandingsLocked && cfg.confirmedGroupStandings) {
+      standings = new Map(
+        Object.entries(cfg.confirmedGroupStandings).map(([groupName, teamIds]) => [
+          groupName,
+          teamIds.map(id => ({ teamId: id, points: 0, gd: 0, gf: 0 })),
+        ]),
+      );
+    } else {
+      standings = computeGroupStandings(
+        allGroupMatches.filter(m => m.status === 'completed'),
+        teamGroupMap,
+        groupDisciplinaryChoices,
+      );
+    }
+
+    function qualifierToTeamId(label: string): string | null {
+      const m = label.match(/^(\d+)([A-Z])$/);
+      if (!m) return null;
+      const pos = parseInt(m[1]) - 1;
+      const gs = standings.get(m[2]);
+      return gs && gs.length > pos ? gs[pos].teamId : null;
+    }
+
+    // Collect lucky losers
+    let selectedLuckyLosers: string[];
+    if (cfg.groupStandingsLocked && cfg.confirmedLuckyLosers) {
+      selectedLuckyLosers = cfg.confirmedLuckyLosers.slice(0, luckyLosers);
+    } else {
+      const candidates: TeamStat[] = [];
+      for (const [, gs] of standings) {
+        if (gs.length > directQualifiers) candidates.push(gs[directQualifiers]);
+      }
+      candidates.sort((a, b) => {
+        if (b.points !== a.points) return b.points - a.points;
+        if (b.gd !== a.gd) return b.gd - a.gd;
+        if (b.gf !== a.gf) return b.gf - a.gf;
+        const tied = candidates.filter(t => t.points === a.points && t.gd === a.gd && t.gf === a.gf);
+        const key = [...tied.map(t => t.teamId)].sort().join('|');
+        const ranking = luckyLoserDisciplinaryChoices[key];
+        if (ranking) {
+          const da = ranking.indexOf(a.teamId);
+          const db = ranking.indexOf(b.teamId);
+          if (da !== -1 && db !== -1 && da !== db) return da - db;
+        }
+        return a.teamId.localeCompare(b.teamId);
+      });
+      selectedLuckyLosers = candidates.slice(0, luckyLosers).map(t => t.teamId);
+    }
+
+    const emptySlots: string[] = [];
+    for (let i = 1; i <= matchCount; i++) {
+      if (!bracketSlots[`m${i}_home`]) emptySlots.push(`m${i}_home`);
+      if (!bracketSlots[`m${i}_away`]) emptySlots.push(`m${i}_away`);
+    }
+    const luckyLoserSlotMap = new Map<string, string>();
+    for (let i = 0; i < Math.min(emptySlots.length, selectedLuckyLosers.length); i++) {
+      luckyLoserSlotMap.set(emptySlots[i], selectedLuckyLosers[i]);
+    }
+
+    // Fetch and sort first-round matches by bracketIndex
+    const firstRoundMatchesRaw = await db
+      .select({ id: matches.id, bracketIndex: matches.bracketIndex, scheduledAt: matches.scheduledAt })
+      .from(matches)
+      .where(and(eq(matches.tournamentId, tournamentId), eq(matches.stage, firstRound)));
+
+    const firstRoundMatches = firstRoundMatchesRaw.sort((a, b) => {
+      if (a.bracketIndex !== null && b.bracketIndex !== null) return a.bracketIndex - b.bracketIndex;
+      if (a.bracketIndex !== null) return -1;
+      if (b.bracketIndex !== null) return 1;
+      if (!a.scheduledAt && !b.scheduledAt) return 0;
+      if (!a.scheduledAt) return 1;
+      if (!b.scheduledAt) return -1;
+      return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
+    });
+
+    // Update team assignments in first-round matches
+    for (let i = 1; i <= matchCount; i++) {
+      const m = firstRoundMatches[i - 1];
+      if (!m) continue;
+      const homeSlotId = `m${i}_home`;
+      const awaySlotId = `m${i}_away`;
+      const homeTeamId = bracketSlots[homeSlotId]
+        ? qualifierToTeamId(bracketSlots[homeSlotId])
+        : (luckyLoserSlotMap.get(homeSlotId) ?? null);
+      const awayTeamId = bracketSlots[awaySlotId]
+        ? qualifierToTeamId(bracketSlots[awaySlotId])
+        : (luckyLoserSlotMap.get(awaySlotId) ?? null);
+      await db.update(matches).set({ homeTeamId: homeTeamId ?? null, awayTeamId: awayTeamId ?? null }).where(eq(matches.id, m.id));
+    }
+
+    // Clear team assignments from all subsequent rounds (they'll be re-filled from results)
+    const BRACKET_STAGE_ORDER_LOCAL = ['round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'final'] as const;
+    const firstRoundStageIdx = BRACKET_STAGE_ORDER_LOCAL.indexOf(firstRound as typeof BRACKET_STAGE_ORDER_LOCAL[number]);
+    const stagesToClear = [
+      ...BRACKET_STAGE_ORDER_LOCAL.slice(firstRoundStageIdx + 1),
+      ...(cfg.hasBronzeFinal ? ['bronze_final' as const] : []),
+    ];
+    if (stagesToClear.length > 0) {
+      await db.update(matches)
+        .set({ homeTeamId: null, awayTeamId: null })
+        .where(and(eq(matches.tournamentId, tournamentId), inArray(matches.stage, stagesToClear)));
+    }
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 tournamentsRouter.delete('/:id/groups/:groupId', requireAdmin, async (req, res) => {
   try {
     const [deleted] = await db
