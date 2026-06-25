@@ -1253,9 +1253,9 @@ function KnockoutBracketVisualizer({
     key: string, left: number, top: number,
     home: VizTeam | null, away: VizTeam | null,
     iconSize: number, slotW: number, cardH: number,
-    opts?: { dashed?: boolean; focused?: boolean },
+    opts?: { dashed?: boolean; focused?: boolean; homeProgressed?: boolean; awayProgressed?: boolean },
   ) {
-    const { dashed = false, focused = false } = opts ?? {};
+    const { dashed = false, focused = false, homeProgressed = false, awayProgressed = false } = opts ?? {};
     const cardW = slotW * 2 + 1;
     const focusStyle = focused ? { outline: '1.5px dashed #eab308', outlineOffset: '2px' } : {};
     return (
@@ -1264,11 +1264,11 @@ function KnockoutBracketVisualizer({
         style={{ position: 'absolute', left, top, width: cardW, height: cardH, ...focusStyle }}
         className={`rounded-sm border${dashed ? ' border-dashed' : ''} bg-card overflow-hidden flex flex-row`}
       >
-        <div style={{ width: slotW, height: cardH }} className="flex items-center justify-center flex-shrink-0">
+        <div style={{ width: slotW, height: cardH, boxShadow: homeProgressed ? 'inset 0 0 0 1.5px #eab308' : undefined }} className="flex items-center justify-center flex-shrink-0">
           <VizTeamIcon team={home} size={iconSize} />
         </div>
         <div className="bg-border flex-shrink-0" style={{ width: 1 }} />
-        <div style={{ width: slotW, height: cardH }} className="flex items-center justify-center flex-shrink-0">
+        <div style={{ width: slotW, height: cardH, boxShadow: awayProgressed ? 'inset 0 0 0 1.5px #eab308' : undefined }} className="flex items-center justify-center flex-shrink-0">
           <VizTeamIcon team={away} size={iconSize} />
         </div>
       </div>
@@ -1443,8 +1443,10 @@ function KnockoutBracketVisualizer({
             const m = actualMatchMap[`${reversedRounds[0]}_0`];
             const home = m?.homeTeamId ? { imageUrl: m.homeTeamImageUrl, name: m.homeTeamName } : null;
             const away = m?.awayTeamId ? { imageUrl: m.awayTeamImageUrl, name: m.awayTeamName } : null;
+            const homeProgressed = !!m?.progressingTeamId && m.progressingTeamId === m.homeTeamId;
+            const awayProgressed = !!m?.progressingTeamId && m.progressingTeamId === m.awayTeamId;
             return renderHorizCard('final', finalHCardLeft, finalTop, home, away, FINAL_ICON, FINAL_HSLOT_W, FINAL_HCARD_H,
-              { focused: `${reversedRounds[0]}_0` === focusedPredKey });
+              { focused: `${reversedRounds[0]}_0` === focusedPredKey, homeProgressed, awayProgressed });
           })()}
 
           {/* Right side match cards */}
