@@ -283,7 +283,7 @@ export default function UserPredictionsPage() {
 
   const displayActualGroupStandings = useMemo(() => {
     const confirmed = tournament?.knockoutConfig?.confirmedGroupStandings;
-    if (!tournament?.knockoutConfig?.groupStandingsLocked || !confirmed) return actualGroupStandings;
+    if (!confirmed || Object.keys(confirmed).length === 0) return actualGroupStandings;
     const result = new Map(actualGroupStandings);
     for (const [groupName, confirmedOrder] of Object.entries(confirmed)) {
       const teams = actualGroupStandings.get(groupName);
@@ -294,7 +294,7 @@ export default function UserPredictionsPage() {
       result.set(groupName, reordered);
     }
     return result;
-  }, [actualGroupStandings, tournament?.knockoutConfig?.groupStandingsLocked, tournament?.knockoutConfig?.confirmedGroupStandings]);
+  }, [actualGroupStandings, tournament?.knockoutConfig?.confirmedGroupStandings]);
 
   const actualQualifyingThirdPlaceIds = useMemo(() => {
     const luckyLosers = tournament?.knockoutConfig?.luckyLosers ?? 0;
@@ -774,7 +774,7 @@ export default function UserPredictionsPage() {
                                 {teams.map((tm, i) => {
                                   const counts = completedGroupMatchCounts.get(groupName);
                                   const groupComplete = counts && counts.total > 0 && counts.completed === counts.total;
-                                  const positionCorrect = groupComplete && actualTeams[i]?.teamId === tm.teamId;
+                                  const positionCorrect = Boolean(tournament?.knockoutConfig?.confirmedGroupStandings?.[groupName]) && actualTeams[i]?.teamId === tm.teamId;
                                   const effectiveDQ = Math.min(directQualifiers, teams.length - 1);
                                   return (
                                     <tr key={tm.teamId} className={
