@@ -239,7 +239,7 @@ export default function UserPredictionsPage() {
     return scheduledGroupMatches.every(m => !!predMap[m.id]);
   }, [scheduledGroupMatches, predMap]);
 
-  const { actualGroupStandings, completedGroupMatchCounts } = useMemo(() => {
+  const { actualGroupStandings } = useMemo(() => {
     const groupMatches = matchList.filter(m => m.stage === 'group');
     const teamMap = new Map<string, TeamStat>();
     const matchCounts = new Map<string, { total: number; completed: number }>();
@@ -278,7 +278,7 @@ export default function UserPredictionsPage() {
       const sortedIds = sortGroupTeams(stats, results, {}).map(s => s.teamId);
       teams.sort((a, b) => sortedIds.indexOf(a.teamId) - sortedIds.indexOf(b.teamId));
     }
-    return { actualGroupStandings: byGroup, completedGroupMatchCounts: matchCounts };
+    return { actualGroupStandings: byGroup };
   }, [matchList]);
 
   const displayActualGroupStandings = useMemo(() => {
@@ -772,8 +772,6 @@ export default function UserPredictionsPage() {
                               </thead>
                               <tbody className="divide-y">
                                 {teams.map((tm, i) => {
-                                  const counts = completedGroupMatchCounts.get(groupName);
-                                  const groupComplete = counts && counts.total > 0 && counts.completed === counts.total;
                                   const positionCorrect = Boolean(tournament?.knockoutConfig?.confirmedGroupStandings?.[groupName]) && actualTeams[i]?.teamId === tm.teamId;
                                   const effectiveDQ = Math.min(directQualifiers, teams.length - 1);
                                   return (

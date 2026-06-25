@@ -366,7 +366,7 @@ export default function CompetitionDetailPage() {
   }, [matchList, localEdits, predMap, groupDisciplinaryChoices]);
 
   // Actual standings from completed matches only — used to detect correct group position predictions
-  const { actualGroupStandings, completedGroupMatchCounts } = useMemo(() => {
+  const { actualGroupStandings } = useMemo(() => {
     const groupMatches = matchList.filter(m => m.stage === 'group');
     const teamMap = new Map<string, TeamStat>();
     const matchCounts = new Map<string, { total: number; completed: number }>();
@@ -410,7 +410,7 @@ export default function CompetitionDetailPage() {
       teams.sort((a, b) => sortedIds.indexOf(a.teamId) - sortedIds.indexOf(b.teamId));
     }
 
-    return { actualGroupStandings: byGroup, completedGroupMatchCounts: matchCounts };
+    return { actualGroupStandings: byGroup };
   }, [matchList]);
 
   const matchesByDate = useMemo(() => {
@@ -1215,8 +1215,6 @@ export default function CompetitionDetailPage() {
                             </thead>
                             <tbody className="divide-y">
                               {teams.map((tm, i) => {
-                                const counts = completedGroupMatchCounts.get(groupName);
-                                const groupComplete = counts && counts.total > 0 && counts.completed === counts.total;
                                 const actualTeams = displayActualGroupStandings.get(groupName) ?? [];
                                 const positionCorrect = Boolean(tournament?.knockoutConfig?.confirmedGroupStandings?.[groupName]) && actualTeams[i]?.teamId === tm.teamId;
                                 const effectiveDQ = Math.min(directQualifiers, teams.length - 1);
@@ -1354,8 +1352,6 @@ export default function CompetitionDetailPage() {
                               </thead>
                               <tbody className="divide-y">
                                 {teams.map((tm, i) => {
-                                  const counts = completedGroupMatchCounts.get(groupName);
-                                  const groupComplete = counts && counts.total > 0 && counts.completed === counts.total;
                                   const positionCorrect = Boolean(tournament?.knockoutConfig?.confirmedGroupStandings?.[groupName]) && actualTeams[i]?.teamId === tm.teamId;
                                   const effectiveDQ = Math.min(directQualifiers, teams.length - 1);
                                   return (
