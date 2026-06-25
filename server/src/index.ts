@@ -73,6 +73,9 @@ async function start() {
   await db.execute(sql`ALTER TABLE competitions ADD COLUMN IF NOT EXISTS "allow_late_additions" boolean NOT NULL DEFAULT true`);
   // Defensive: ensure icon_color column exists regardless of migration state
   await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS "icon_color" text`);
+  // Defensive: ensure bracket_index and next_match_id columns exist regardless of migration state
+  await db.execute(sql`ALTER TABLE matches ADD COLUMN IF NOT EXISTS "bracket_index" integer`);
+  await db.execute(sql`ALTER TABLE matches ADD COLUMN IF NOT EXISTS "next_match_id" text REFERENCES matches(id) ON DELETE SET NULL`);
   // Defensive: ensure feedback table and enums exist regardless of migration state
   await db.execute(sql`DO $$ BEGIN CREATE TYPE "feedback_type" AS ENUM ('feature_request', 'improvement', 'bug'); EXCEPTION WHEN duplicate_object THEN null; END $$`);
   await db.execute(sql`DO $$ BEGIN CREATE TYPE "feedback_status" AS ENUM ('pending', 'will_do', 'implemented', 'fixed', 'wont_do'); EXCEPTION WHEN duplicate_object THEN null; END $$`);
