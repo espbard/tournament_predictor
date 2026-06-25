@@ -87,7 +87,7 @@ async function start() {
                ORDER BY scheduled_at NULLS LAST, id
              ) - 1 AS bi
       FROM matches
-      WHERE stage IN ('round_of_32','round_of_16','quarter_final','semi_final','bronze_final','final')
+      WHERE stage::text IN ('round_of_32','round_of_16','quarter_final','semi_final','bronze_final','final')
         AND bracket_index IS NULL
     )
     UPDATE matches SET bracket_index = ranked.bi FROM ranked WHERE matches.id = ranked.id
@@ -101,7 +101,7 @@ async function start() {
       FROM matches cm
       JOIN matches nm ON (
         nm.tournament_id = cm.tournament_id
-        AND nm.stage = CASE cm.stage
+        AND nm.stage::text = CASE cm.stage::text
           WHEN 'round_of_32'  THEN 'round_of_16'
           WHEN 'round_of_16'  THEN 'quarter_final'
           WHEN 'quarter_final' THEN 'semi_final'
@@ -109,7 +109,7 @@ async function start() {
         END
         AND nm.bracket_index = (cm.bracket_index / 2)
       )
-      WHERE cm.stage IN ('round_of_32','round_of_16','quarter_final','semi_final')
+      WHERE cm.stage::text IN ('round_of_32','round_of_16','quarter_final','semi_final')
         AND cm.bracket_index IS NOT NULL
         AND cm.next_match_id IS NULL
     )
