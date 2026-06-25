@@ -1179,8 +1179,8 @@ function KnockoutBracketVisualizer({
 
   // Anchor Final and Bronze relative to the SF center so they stay visually adjacent
   // regardless of how tall the overall bracket is.
-  const sfGap = 16; // px between Final card bottom and SF center; same below SF center to bronze
-  const bronzeCardGap = 16; // px between SF card bottom and bronze card top
+  const sfGap = 26; // px between Final card bottom and SF center
+  const bronzeCardGap = 26; // px between SF card bottom and bronze card top
   const sfDims = maxRoundIdx >= 1 ? vizRoundDims(1, maxRoundIdx) : firstRoundDims;
   const sfCenterInGrid = isSingleMatch ? firstRoundDims.cardH / 2 : (yCenter['0_0'] ?? firstRoundDims.cardH / 2);
 
@@ -1432,7 +1432,13 @@ function KnockoutBracketVisualizer({
             });
           })}
 
-          {/* Final card (horizontal, icons side-by-side, at top of bracket area) */}
+          {/* Final label + card */}
+          <span
+            style={{ position: 'absolute', left: finalCenterX, top: finalTop - 11, transform: 'translateX(-50%)', fontSize: 8 }}
+            className="text-muted-foreground font-semibold whitespace-nowrap leading-none"
+          >
+            Final
+          </span>
           {(() => {
             const m = actualMatchMap[`${reversedRounds[0]}_0`];
             const home = m?.homeTeamId ? { imageUrl: m.homeTeamImageUrl, name: m.homeTeamName } : null;
