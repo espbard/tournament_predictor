@@ -276,6 +276,12 @@ function BracketVisualization({
 
 // ── Admin focused results ──────────────────────────────────────────────────────
 
+function toLocalDatetimeStr(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 interface FlatAdminMatch {
   stage: string;
   match: MatchWithTeams | null;
@@ -290,21 +296,26 @@ function FocusedAdminMatchCard({
   queuedScore,
   homeSlotLabel,
   awaySlotLabel,
+  onSaveScheduledAt,
 }: {
   match: MatchWithTeams | null;
   onQueue: (home: number, away: number, progressingTeamId: string | null) => void;
   queuedScore?: { home: number; away: number; progressingTeamId: string | null } | null;
   homeSlotLabel?: string;
   awaySlotLabel?: string;
+  onSaveScheduledAt?: (scheduledAt: string | null) => void;
 }) {
   const [homeStr, setHomeStr] = useState('');
   const [awayStr, setAwayStr] = useState('');
   const [selectedWinnerId, setSelectedWinnerId] = useState<string | null>(null);
+  const [editingSchedule, setEditingSchedule] = useState(false);
+  const [scheduledAtStr, setScheduledAtStr] = useState('');
   const prevMatchIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (match?.id !== prevMatchIdRef.current) {
       prevMatchIdRef.current = match?.id ?? null;
+      setEditingSchedule(false);
       if (queuedScore) {
         setHomeStr(String(queuedScore.home));
         setAwayStr(String(queuedScore.away));
@@ -357,6 +368,12 @@ function FocusedAdminMatchCard({
   const adminHomeIsFirst = !isQueued;
   // Away row is last only when there's no tiebreaker section below it.
   const adminAwayIsLast = !showTiebreaker;
+
+  function handleSaveSchedule() {
+    if (!onSaveScheduledAt) return;
+    onSaveScheduledAt(scheduledAtStr ? new Date(scheduledAtStr).toISOString() : null);
+    setEditingSchedule(false);
+  }
 
   function tryAutoQueue(hStr: string, aStr: string, winnerId: string | null) {
     const h = hStr === '' ? null : parseInt(hStr, 10);
@@ -521,6 +538,55 @@ function FocusedAdminMatchCard({
       {isDrawEntry && !selectedWinnerId && hasTeams && (
         <p className="text-[11px] text-muted-foreground text-center px-4 pb-3">{t('knockout.selectToStage')}</p>
       )}
+
+      {/* Schedule editor */}
+      {onSaveScheduledAt && (
+        <>
+          <div className="h-px bg-border" />
+          {!editingSchedule ? (
+            <div className="flex items-center gap-2 px-4 py-2">
+              <span className="text-xs text-muted-foreground flex-1 truncate">
+                {match.scheduledAt
+                  ? new Date(match.scheduledAt).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                  : 'No date set'}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setScheduledAtStr(match.scheduledAt ? toLocalDatetimeStr(match.scheduledAt) : '');
+                  setEditingSchedule(true);
+                }}
+                className="text-xs text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded hover:bg-muted shrink-0"
+              >
+                ✎ Edit
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 px-3 py-2">
+              <input
+                type="datetime-local"
+                value={scheduledAtStr}
+                onChange={e => setScheduledAtStr(e.target.value)}
+                className="flex-1 min-w-0 text-xs rounded border px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              <button
+                type="button"
+                onClick={handleSaveSchedule}
+                className="shrink-0 text-xs px-2 py-1.5 rounded bg-primary text-primary-foreground hover:bg-primary/90"
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditingSchedule(false)}
+                className="shrink-0 text-xs text-muted-foreground hover:text-foreground"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -605,6 +671,14 @@ function FocusedAdminResults({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['matches', tournamentId] });
       setPendingResults({});
+    },
+  });
+
+  const scheduleMatchMutation = useMutation({
+    mutationFn: ({ matchId, scheduledAt }: { matchId: string; scheduledAt: string | null }) =>
+      api.patch<Match>(`/matches/${matchId}`, { scheduledAt }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['matches', tournamentId] });
     },
   });
 
@@ -741,6 +815,7 @@ function FocusedAdminResults({
               queuedScore={currentMatch?.id ? pendingResults[currentMatch.id] ?? null : null}
               homeSlotLabel={current.stage === firstRound ? (bracketSlots[`m${current.matchIdxInRound + 1}_home`] ?? luckyLoserLabels[`m${current.matchIdxInRound + 1}_home`]) : undefined}
               awaySlotLabel={current.stage === firstRound ? (bracketSlots[`m${current.matchIdxInRound + 1}_away`] ?? luckyLoserLabels[`m${current.matchIdxInRound + 1}_away`]) : undefined}
+              onSaveScheduledAt={currentMatch ? (scheduledAt) => scheduleMatchMutation.mutate({ matchId: currentMatch.id, scheduledAt }) : undefined}
             />
             <div className="mt-3 flex sm:hidden items-center justify-between">
               <button
