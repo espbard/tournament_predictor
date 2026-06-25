@@ -1062,23 +1062,23 @@ function FocusedBracketView({
 // ── Knockout Bracket Visualizer ───────────────────────────────────────────────
 
 const V_ROW_GAP = 3;
-const V_CARD_W = 24;  // wider to accommodate progressive icon sizes
+const V_CARD_W = 23;
 const V_HPAD = 7;
-const V_COL_W = V_CARD_W + V_HPAD * 2; // 38px per column
+const V_COL_W = V_CARD_W + V_HPAD * 2; // 37px per column
 
 // Horizontal final card (icons side-by-side, much larger)
-const FINAL_ICON = 30;
+const FINAL_ICON = 29;
 const FINAL_HPAD = 5;
-const FINAL_HCARD_H = FINAL_ICON + FINAL_HPAD * 2; // 40px
-const FINAL_HSLOT_W = FINAL_ICON + FINAL_HPAD * 2;  // 40px per team slot
-const FINAL_HCARD_W = FINAL_HSLOT_W * 2 + 1;         // 81px total
+const FINAL_HCARD_H = FINAL_ICON + FINAL_HPAD * 2; // 39px
+const FINAL_HSLOT_W = FINAL_ICON + FINAL_HPAD * 2;  // 39px per team slot
+const FINAL_HCARD_W = FINAL_HSLOT_W * 2 + 1;         // 79px total
 
 // Horizontal bronze final card (smaller, also side-by-side)
-const BRONZE_ICON = 22;
+const BRONZE_ICON = 21;
 const BRONZE_HPAD = 4;
-const BRONZE_HCARD_H = BRONZE_ICON + BRONZE_HPAD * 2; // 30px
-const BRONZE_HSLOT_W = BRONZE_ICON + BRONZE_HPAD * 2;  // 30px per team slot
-const BRONZE_HCARD_W = BRONZE_HSLOT_W * 2 + 1;          // 61px total
+const BRONZE_HCARD_H = BRONZE_ICON + BRONZE_HPAD * 2; // 29px
+const BRONZE_HSLOT_W = BRONZE_ICON + BRONZE_HPAD * 2;  // 29px per team slot
+const BRONZE_HCARD_W = BRONZE_HSLOT_W * 2 + 1;          // 59px total
 
 const VIZ_SHORT_LABELS: Record<KnockoutFirstRound, string> = {
   round_of_32: 'R32',
@@ -1093,7 +1093,7 @@ type VizTeam = { imageUrl: string | null; name: string | null };
 // Icon and card height scale progressively toward the final.
 // R=0=final (largest), R=maxRoundIdx=first round (smallest).
 function vizRoundDims(R: number, maxRoundIdx: number): { icon: number; slot: number; cardH: number } {
-  const icon = 18 + (maxRoundIdx - R); // base 18px at first round, +1 per round toward final
+  const icon = 17 + (maxRoundIdx - R); // base 17px at first round, +1 per round toward final
   const extraSlot = R === 0 ? 2 : 0;  // final card gets 4px extra height (2px per slot)
   const slot = icon + 4 + extraSlot;
   return { icon, slot, cardH: slot * 2 + 1 };
