@@ -288,6 +288,7 @@ interface FlatAdminMatch {
   isBronze: boolean;
   matchIdxInRound: number;
   matchCountInRound: number;
+  bracketPositionIdx: number;
 }
 
 function FocusedAdminMatchCard({
@@ -400,6 +401,13 @@ function FocusedAdminMatchCard({
       {isQueued && (
         <div className="px-4 py-1.5 bg-amber-100/60 dark:bg-amber-900/30 text-[11px] font-medium text-amber-800 dark:text-amber-300 text-center tracking-wide">
           {t('knockout.stagedPending')}
+        </div>
+      )}
+
+      {/* Date/time */}
+      {match.scheduledAt && (
+        <div className="px-4 py-1.5 text-[11px] text-muted-foreground text-center bg-muted/30">
+          {new Date(match.scheduledAt).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
         </div>
       )}
 
@@ -545,18 +553,16 @@ function FocusedAdminMatchCard({
           <div className="h-px bg-border" />
           {!editingSchedule ? (
             <div className="flex items-center gap-2 px-4 py-2">
-              <span className="text-xs text-muted-foreground flex-1 truncate">
-                {match.scheduledAt
-                  ? new Date(match.scheduledAt).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-                  : 'No date set'}
-              </span>
+              {!match.scheduledAt && (
+                <span className="text-xs text-muted-foreground flex-1">No date set</span>
+              )}
               <button
                 type="button"
                 onClick={() => {
                   setScheduledAtStr(match.scheduledAt ? toLocalDatetimeStr(match.scheduledAt) : '');
                   setEditingSchedule(true);
                 }}
-                className="text-xs text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded hover:bg-muted shrink-0"
+                className="text-xs text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded hover:bg-muted shrink-0 ml-auto"
               >
                 ✎ Edit
               </button>
@@ -645,13 +651,21 @@ function FocusedAdminResults({
   const allFlatMatches = useMemo<FlatAdminMatch[]>(() => {
     const list: FlatAdminMatch[] = [];
     for (const stage of stages) {
-      const stageMs = matchesByStage.get(stage) ?? [];
+      const stageMs = matchesByStage.get(stage) ?? []; // bracket-index order; index = bracketPositionIdx
       if (stage === 'final' && hasBronzeFinal) {
         const bronzeMs = matchesByStage.get('bronze_final') ?? [];
-        list.push({ stage: 'bronze_final', match: bronzeMs[0] ?? null, isBronze: true, matchIdxInRound: 0, matchCountInRound: 1 });
+        list.push({ stage: 'bronze_final', match: bronzeMs[0] ?? null, isBronze: true, matchIdxInRound: 0, matchCountInRound: 1, bracketPositionIdx: 0 });
       }
-      for (let i = 0; i < stageMs.length; i++) {
-        list.push({ stage, match: stageMs[i] ?? null, isBronze: false, matchIdxInRound: i, matchCountInRound: stageMs.length });
+      // Sort by date for display order; bracket position (for slot labels) tracked separately
+      const displayOrder = [...stageMs].sort((a, b) => {
+        if (!a.scheduledAt && !b.scheduledAt) return 0;
+        if (!a.scheduledAt) return 1;
+        if (!b.scheduledAt) return -1;
+        return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
+      });
+      for (let i = 0; i < displayOrder.length; i++) {
+        const m = displayOrder[i];
+        list.push({ stage, match: m, isBronze: false, matchIdxInRound: i, matchCountInRound: stageMs.length, bracketPositionIdx: stageMs.indexOf(m) });
       }
     }
     return list;
@@ -819,8 +833,8 @@ function FocusedAdminResults({
                 if (currentMatch) queueResult(currentMatch.id, home, away, progressingTeamId);
               }}
               queuedScore={currentMatch?.id ? pendingResults[currentMatch.id] ?? null : null}
-              homeSlotLabel={current.stage === firstRound ? (bracketSlots[`m${current.matchIdxInRound + 1}_home`] ?? luckyLoserLabels[`m${current.matchIdxInRound + 1}_home`]) : undefined}
-              awaySlotLabel={current.stage === firstRound ? (bracketSlots[`m${current.matchIdxInRound + 1}_away`] ?? luckyLoserLabels[`m${current.matchIdxInRound + 1}_away`]) : undefined}
+              homeSlotLabel={current.stage === firstRound ? (bracketSlots[`m${current.bracketPositionIdx + 1}_home`] ?? luckyLoserLabels[`m${current.bracketPositionIdx + 1}_home`]) : undefined}
+              awaySlotLabel={current.stage === firstRound ? (bracketSlots[`m${current.bracketPositionIdx + 1}_away`] ?? luckyLoserLabels[`m${current.bracketPositionIdx + 1}_away`]) : undefined}
               onSaveScheduledAt={currentMatch ? (scheduledAt) => scheduleMatchMutation.mutate({ matchId: currentMatch.id, scheduledAt }) : undefined}
             />
             <div className="mt-3 flex sm:hidden items-center justify-between">
