@@ -1257,11 +1257,11 @@ function KnockoutBracketVisualizer({
         style={{ position: 'absolute', left, top, width: cardW, height: cardH, ...focusStyle }}
         className={`rounded-sm border${dashed ? ' border-dashed' : ''} bg-card overflow-hidden flex flex-row`}
       >
-        <div style={{ width: slotW, height: cardH, boxShadow: homeProgressed ? 'inset 0 0 0 1.5px #eab308' : undefined }} className="flex items-center justify-center flex-shrink-0">
+        <div style={{ width: slotW, height: cardH, background: homeProgressed ? 'radial-gradient(circle, rgba(234,179,8,0.35) 0%, transparent 75%)' : undefined }} className="flex items-center justify-center flex-shrink-0">
           <VizTeamIcon team={home} size={iconSize} />
         </div>
         <div className="bg-border flex-shrink-0" style={{ width: 1 }} />
-        <div style={{ width: slotW, height: cardH, boxShadow: awayProgressed ? 'inset 0 0 0 1.5px #eab308' : undefined }} className="flex items-center justify-center flex-shrink-0">
+        <div style={{ width: slotW, height: cardH, background: awayProgressed ? 'radial-gradient(circle, rgba(234,179,8,0.35) 0%, transparent 75%)' : undefined }} className="flex items-center justify-center flex-shrink-0">
           <VizTeamIcon team={away} size={iconSize} />
         </div>
       </div>
