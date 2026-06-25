@@ -682,6 +682,19 @@ function FocusedAdminResults({
 
   const [pendingResults, setPendingResults] = useState<Record<string, { home: number; away: number; progressingTeamId: string | null }>>({});
 
+  // After a date save the display re-sorts; track the saved match ID so we can
+  // navigate back to the same match once allFlatMatches recomputes.
+  const pendingNavigationMatchIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!pendingNavigationMatchIdRef.current) return;
+    const targetId = pendingNavigationMatchIdRef.current;
+    const newIdx = allFlatMatches.findIndex(m => m.match?.id === targetId);
+    if (newIdx !== -1) {
+      pendingNavigationMatchIdRef.current = null;
+      setCurrentIdx(newIdx);
+    }
+  }, [allFlatMatches]);
+
   const confirmResultsMutation = useMutation({
     mutationFn: async () => {
       for (const [matchId, { home, away, progressingTeamId }] of Object.entries(pendingResults)) {
@@ -697,7 +710,8 @@ function FocusedAdminResults({
   const scheduleMatchMutation = useMutation({
     mutationFn: ({ matchId, scheduledAt }: { matchId: string; scheduledAt: string | null }) =>
       api.patch<Match>(`/matches/${matchId}`, { scheduledAt }),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
+      pendingNavigationMatchIdRef.current = variables.matchId;
       queryClient.invalidateQueries({ queryKey: ['matches', tournamentId] });
     },
   });

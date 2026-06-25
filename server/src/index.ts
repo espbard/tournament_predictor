@@ -76,6 +76,45 @@ async function start() {
   // Defensive: ensure bracket_index and next_match_id columns exist regardless of migration state
   await db.execute(sql`ALTER TABLE matches ADD COLUMN IF NOT EXISTS "bracket_index" integer`);
   await db.execute(sql`ALTER TABLE matches ADD COLUMN IF NOT EXISTS "next_match_id" text REFERENCES matches(id) ON DELETE SET NULL`);
+
+  // Backfill bracket_index for any knockout matches that still have it NULL (legacy rows created
+  // before this column existed). Use current date order as the stable initial assignment.
+  await db.execute(sql`
+    WITH ranked AS (
+      SELECT id,
+             ROW_NUMBER() OVER (
+               PARTITION BY tournament_id, stage
+               ORDER BY scheduled_at NULLS LAST, id
+             ) - 1 AS bi
+      FROM matches
+      WHERE stage IN ('round_of_32','round_of_16','quarter_final','semi_final','bronze_final','final')
+        AND bracket_index IS NULL
+    )
+    UPDATE matches SET bracket_index = ranked.bi FROM ranked WHERE matches.id = ranked.id
+  `);
+
+  // Backfill next_match_id for any knockout matches that still have it NULL.
+  // Requires bracket_index to already be populated (runs after the above backfill).
+  await db.execute(sql`
+    WITH pairs AS (
+      SELECT cm.id AS current_id, nm.id AS next_id
+      FROM matches cm
+      JOIN matches nm ON (
+        nm.tournament_id = cm.tournament_id
+        AND nm.stage = CASE cm.stage
+          WHEN 'round_of_32'  THEN 'round_of_16'
+          WHEN 'round_of_16'  THEN 'quarter_final'
+          WHEN 'quarter_final' THEN 'semi_final'
+          WHEN 'semi_final'   THEN 'final'
+        END
+        AND nm.bracket_index = (cm.bracket_index / 2)
+      )
+      WHERE cm.stage IN ('round_of_32','round_of_16','quarter_final','semi_final')
+        AND cm.bracket_index IS NOT NULL
+        AND cm.next_match_id IS NULL
+    )
+    UPDATE matches SET next_match_id = pairs.next_id FROM pairs WHERE matches.id = pairs.current_id
+  `);
   // Defensive: ensure feedback table and enums exist regardless of migration state
   await db.execute(sql`DO $$ BEGIN CREATE TYPE "feedback_type" AS ENUM ('feature_request', 'improvement', 'bug'); EXCEPTION WHEN duplicate_object THEN null; END $$`);
   await db.execute(sql`DO $$ BEGIN CREATE TYPE "feedback_status" AS ENUM ('pending', 'will_do', 'implemented', 'fixed', 'wont_do'); EXCEPTION WHEN duplicate_object THEN null; END $$`);
