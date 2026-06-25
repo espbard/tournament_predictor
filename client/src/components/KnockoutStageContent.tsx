@@ -1179,8 +1179,8 @@ function KnockoutBracketVisualizer({
 
   // Anchor Final and Bronze relative to the SF center so they stay visually adjacent
   // regardless of how tall the overall bracket is.
-  const sfGap = 10; // px between Final card bottom and SF center; same below SF center to bronze
-  const bronzeCardGap = 10; // px between SF card bottom and bronze card top
+  const sfGap = 16; // px between Final card bottom and SF center; same below SF center to bronze
+  const bronzeCardGap = 16; // px between SF card bottom and bronze card top
   const sfDims = maxRoundIdx >= 1 ? vizRoundDims(1, maxRoundIdx) : firstRoundDims;
   const sfCenterInGrid = isSingleMatch ? firstRoundDims.cardH / 2 : (yCenter['0_0'] ?? firstRoundDims.cardH / 2);
 
