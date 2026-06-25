@@ -733,7 +733,7 @@ function FocusedAdminResults({
   const currentMatch = current.match;
   const isCompleted = currentMatch?.status === 'completed';
   const hasTbdTeams = !currentMatch?.homeTeamId || !currentMatch?.awayTeamId;
-  const canGoNext = currentIdx < allFlatMatches.length - 1 && (isCompleted || hasTbdTeams || (currentMatch?.id ? !!pendingResults[currentMatch.id] : false));
+  const canGoNext = currentIdx < allFlatMatches.length - 1;
   const canGoPrev = currentIdx > 0;
   const pendingCount = Object.keys(pendingResults).length;
 
