@@ -1138,6 +1138,7 @@ function KnockoutBracketVisualizer({
   actualMatchMap: Record<string, MatchWithTeams>;
   focusedPredKey?: string;
 }) {
+  const { t } = useT();
   const { firstRound, hasBronzeFinal } = knockoutConfig;
   const startIdx = ROUND_ORDER.indexOf(firstRound);
   const chronoRounds = ROUND_ORDER.slice(startIdx);
@@ -1304,7 +1305,7 @@ function KnockoutBracketVisualizer({
   const BORDER = 'hsl(var(--border))';
 
   return (
-    <div className="overflow-x-auto -mx-4 px-4">
+    <div className="overflow-x-auto">
       <div style={{ width: totalW, minWidth: totalW }}>
         {/* Round labels */}
         <div style={{ height: 14, position: 'relative', marginBottom: 3 }}>
@@ -1321,7 +1322,7 @@ function KnockoutBracketVisualizer({
             ];
           }).flat()}
           <span style={{ position: 'absolute', left: finalCenterX, transform: 'translateX(-50%)', fontSize: 8 }}
-            className="text-muted-foreground font-semibold whitespace-nowrap leading-none">F</span>
+            className="text-muted-foreground font-semibold whitespace-nowrap leading-none">{VIZ_SHORT_LABELS[reversedRounds[0]]}</span>
         </div>
 
         {/* Bracket area */}
@@ -1437,7 +1438,7 @@ function KnockoutBracketVisualizer({
             style={{ position: 'absolute', left: finalCenterX, top: finalTop - 11, transform: 'translateX(-50%)', fontSize: 8 }}
             className="text-muted-foreground font-semibold whitespace-nowrap leading-none"
           >
-            Final
+            {t('stages.final')}
           </span>
           {(() => {
             const m = actualMatchMap[`${reversedRounds[0]}_0`];
@@ -1469,7 +1470,7 @@ function KnockoutBracketVisualizer({
                 style={{ position: 'absolute', left: finalCenterX, top: bronzeTop + BRONZE_HCARD_H + 4, transform: 'translateX(-50%)', fontSize: 8 }}
                 className="text-muted-foreground font-semibold whitespace-nowrap leading-none"
               >
-                Bronze Final
+                {t('knockoutContent.bronzeFinal')}
               </span>
               {renderHorizCard('bronze', bronzeHCardLeft, bronzeTop,
                 bronzeMatch?.homeTeamId ? { imageUrl: bronzeMatch.homeTeamImageUrl, name: bronzeMatch.homeTeamName } : null,
