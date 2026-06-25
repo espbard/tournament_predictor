@@ -288,10 +288,14 @@ function FocusedAdminMatchCard({
   match,
   onQueue,
   queuedScore,
+  homeSlotLabel,
+  awaySlotLabel,
 }: {
   match: MatchWithTeams | null;
   onQueue: (home: number, away: number, progressingTeamId: string | null) => void;
   queuedScore?: { home: number; away: number; progressingTeamId: string | null } | null;
+  homeSlotLabel?: string;
+  awaySlotLabel?: string;
 }) {
   const [homeStr, setHomeStr] = useState('');
   const [awayStr, setAwayStr] = useState('');
@@ -389,7 +393,7 @@ function FocusedAdminMatchCard({
           : <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
         }
         <span className={`flex-1 text-sm truncate ${match.homeTeamName ? (homeWins ? 'font-semibold' : 'font-medium') : 'text-muted-foreground italic'}`}>
-          {tn(match.homeTeamName) || 'TBD'}
+          {tn(match.homeTeamName) || homeSlotLabel || 'TBD'}
         </span>
         <div className="flex items-center gap-0.5 flex-shrink-0">
           <button
@@ -439,7 +443,7 @@ function FocusedAdminMatchCard({
           : <div className="h-7 w-7 rounded-full bg-muted flex-shrink-0" />
         }
         <span className={`flex-1 text-sm truncate ${match.awayTeamName ? (awayWins ? 'font-semibold' : 'font-medium') : 'text-muted-foreground italic'}`}>
-          {tn(match.awayTeamName) || 'TBD'}
+          {tn(match.awayTeamName) || awaySlotLabel || 'TBD'}
         </span>
         <div className="flex items-center gap-0.5 flex-shrink-0">
           <button
@@ -526,11 +530,15 @@ function FocusedAdminResults({
   knockoutMatches,
   firstRound,
   hasBronzeFinal,
+  bracketSlots,
+  luckyLoserLabels,
 }: {
   tournamentId: string;
   knockoutMatches: MatchWithTeams[];
   firstRound: KnockoutFirstRound;
   hasBronzeFinal: boolean;
+  bracketSlots: Record<string, string>;
+  luckyLoserLabels: Record<string, string>;
 }) {
   const queryClient = useQueryClient();
   const { t } = useT();
@@ -731,6 +739,8 @@ function FocusedAdminResults({
                 if (currentMatch) queueResult(currentMatch.id, home, away, progressingTeamId);
               }}
               queuedScore={currentMatch?.id ? pendingResults[currentMatch.id] ?? null : null}
+              homeSlotLabel={current.stage === firstRound ? (bracketSlots[`m${current.matchIdxInRound + 1}_home`] ?? luckyLoserLabels[`m${current.matchIdxInRound + 1}_home`]) : undefined}
+              awaySlotLabel={current.stage === firstRound ? (bracketSlots[`m${current.matchIdxInRound + 1}_away`] ?? luckyLoserLabels[`m${current.matchIdxInRound + 1}_away`]) : undefined}
             />
             <div className="mt-3 flex sm:hidden items-center justify-between">
               <button
@@ -1075,6 +1085,8 @@ export function TournamentKnockoutTabContent({ tournamentId }: { tournamentId: s
             knockoutMatches={knockoutMatches}
             firstRound={firstRound}
             hasBronzeFinal={hasBronzeFinal}
+            bracketSlots={bracketSlots}
+            luckyLoserLabels={luckyLoserLabels}
           />
         )}
       </section>
