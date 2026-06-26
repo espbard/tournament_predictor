@@ -228,7 +228,7 @@ export default function UserStatCard({ competitionId, data, onMatchClick, onLead
       style={{ color: textColor, borderColor }}
     >
       {image}
-      <div className="px-4 py-3" style={{ borderBottom: `1px solid ${borderColor}` }}>
+      <div className="px-4 pt-3 pb-1">
         <h3 className="text-lg font-bold uppercase tracking-wide text-center" style={{ color: titleColor }}>
           {title}
         </h3>

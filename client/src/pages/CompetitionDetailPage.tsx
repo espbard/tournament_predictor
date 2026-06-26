@@ -2660,7 +2660,7 @@ export default function CompetitionDetailPage() {
       )}
 
       {activeTab === 'userStats' && (
-        <div className="space-y-6">
+        <div className="space-y-6 px-4 sm:px-0">
           {userStats.map((stat, i) => {
             const cardEl = (
               <UserStatCard
