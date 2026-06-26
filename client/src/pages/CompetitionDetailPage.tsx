@@ -1521,6 +1521,126 @@ export default function CompetitionDetailPage() {
                 )}
               </div>
 
+              {/* Lucky Losers Table */}
+              {(tournament?.knockoutConfig?.luckyLosers ?? 0) > 0 && (() => {
+                const numLL = tournament!.knockoutConfig!.luckyLosers!;
+
+                const sortedPredLL = groupStandings
+                  .filter(([, teams]) => teams.length > directQualifiers)
+                  .map(([groupName, teams]) => ({ groupName, tm: teams[directQualifiers] }))
+                  .sort((a, b) => {
+                    const pa = a.tm.W * 3 + a.tm.D, pb = b.tm.W * 3 + b.tm.D;
+                    if (pb !== pa) return pb - pa;
+                    const gda = a.tm.GF - a.tm.GA, gdb = b.tm.GF - b.tm.GA;
+                    if (gdb !== gda) return gdb - gda;
+                    return b.tm.GF - a.tm.GF;
+                  });
+
+                const sortedActualLL = [...displayActualGroupStandings.entries()]
+                  .sort(([a], [b]) => a.localeCompare(b))
+                  .filter(([, teams]) => teams.length > directQualifiers)
+                  .map(([groupName, teams]) => ({ groupName, tm: teams[directQualifiers] }))
+                  .sort((a, b) => {
+                    const pa = a.tm.W * 3 + a.tm.D, pb = b.tm.W * 3 + b.tm.D;
+                    if (pb !== pa) return pb - pa;
+                    const gda = a.tm.GF - a.tm.GA, gdb = b.tm.GF - b.tm.GA;
+                    if (gdb !== gda) return gdb - gda;
+                    return b.tm.GF - a.tm.GF;
+                  });
+
+                if (sortedPredLL.length === 0) return null;
+
+                const llTableHeaders = (
+                  <tr className="border-b text-muted-foreground">
+                    <th className="pl-3 py-1.5 text-left w-6">#</th>
+                    <th className="py-1.5 text-left">{t('groupTable.team')}</th>
+                    <th className="py-1.5 text-left">{t('common.group')}</th>
+                    <th className="py-1.5 text-center w-6">{t('groupTable.played')}</th>
+                    <th className="py-1.5 text-center w-6">{t('groupTable.won')}</th>
+                    <th className="py-1.5 text-center w-6">{t('groupTable.drawn')}</th>
+                    <th className="py-1.5 text-center w-6">{t('groupTable.lost')}</th>
+                    <th className="py-1.5 text-center w-8">{t('groupTable.gd')}</th>
+                    <th className="py-1.5 text-center w-8">{t('groupTable.gf')}</th>
+                    <th className="py-1.5 text-center w-8 font-bold text-foreground">{t('groupTable.pts')}</th>
+                  </tr>
+                );
+
+                const renderRow = (groupName: string, tm: TeamStat, i: number) => (
+                  <tr key={tm.teamId} className={i < numLL ? 'bg-green-50 dark:bg-green-950/30' : ''}>
+                    <td className="pl-3 py-1.5 text-muted-foreground">{i + 1}</td>
+                    <td className="py-1.5 pr-2">
+                      <div className="flex items-center gap-1.5">
+                        {tm.imageUrl ? <img src={tm.imageUrl} alt="" className="h-4 w-4 rounded-full object-cover flex-shrink-0" /> : <div className="h-4 w-4 rounded-full bg-muted flex-shrink-0" />}
+                        <Link to={`/competitions/${id}/team/${tm.teamId}`} className="truncate hover:underline">{tn(tm.teamName)}</Link>
+                      </div>
+                    </td>
+                    <td className="py-1.5 text-center text-muted-foreground">{groupName}</td>
+                    <td className="py-1.5 text-center text-muted-foreground">{tm.P}</td>
+                    <td className="py-1.5 text-center text-muted-foreground">{tm.W}</td>
+                    <td className="py-1.5 text-center text-muted-foreground">{tm.D}</td>
+                    <td className="py-1.5 text-center text-muted-foreground">{tm.L}</td>
+                    <td className="py-1.5 text-center text-muted-foreground">{tm.GF - tm.GA > 0 ? `+${tm.GF - tm.GA}` : tm.GF - tm.GA}</td>
+                    <td className="py-1.5 text-center text-muted-foreground">{tm.GF}</td>
+                    <td className="py-1.5 text-center font-bold">{tm.W * 3 + tm.D}</td>
+                  </tr>
+                );
+
+                return (
+                  <div className="space-y-3">
+                    <h3 className="text-sm font-semibold">{t('competitionDetail.tables.luckyLosersTable')}</h3>
+                    {tournament?.status === 'upcoming' ? (
+                      <div className="rounded-lg border dark:bg-white/5 p-2">
+                        <table className="w-full text-xs">
+                          <thead>{llTableHeaders}</thead>
+                          <tbody className="divide-y">
+                            {sortedPredLL.map(({ groupName, tm }, i) => renderRow(groupName, tm, i))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="hidden sm:grid sm:grid-cols-2 sm:gap-x-6">
+                          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground border-b pb-1.5">
+                            {t('competitionDetail.tables.yourPredictions')}
+                          </h3>
+                          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground border-b pb-1.5">
+                            {t('competitionDetail.tables.actualResults')}
+                          </h3>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+                          <div className="min-w-0">
+                            <div className="sm:hidden text-xs font-medium rounded px-1.5 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 inline-block mb-1">
+                              {t('competitionDetail.tables.labelPredicted')}
+                            </div>
+                            <div className="rounded-lg border dark:bg-white/5 p-2">
+                              <table className="w-full text-xs">
+                                <thead>{llTableHeaders}</thead>
+                                <tbody className="divide-y">
+                                  {sortedPredLL.map(({ groupName, tm }, i) => renderRow(groupName, tm, i))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                          <div className="min-w-0">
+                            <div className="sm:hidden text-xs font-medium rounded px-1.5 py-0.5 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 inline-block mb-1">
+                              {t('competitionDetail.tables.labelActual')}
+                            </div>
+                            <div className="rounded-lg border dark:bg-white/5 p-2">
+                              <table className="w-full text-xs">
+                                <thead>{llTableHeaders}</thead>
+                                <tbody className="divide-y">
+                                  {sortedActualLL.map(({ groupName, tm }, i) => renderRow(groupName, tm, i))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               {/* Lucky loser tiebreakers */}
               {allGroupFilled && luckyLoserDisciplinaryTies.length > 0 && (
                 <div className="space-y-3">
