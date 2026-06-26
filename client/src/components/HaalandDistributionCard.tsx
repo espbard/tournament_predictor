@@ -26,15 +26,13 @@ export default function HaalandDistributionCard({ data }: Props) {
 
   if (!data.distributionData?.length) return null;
 
-  const renderTooltip = ({
-    active,
-    payload,
-    label,
-  }: {
-    active?: boolean;
-    payload?: Array<{ value?: number }>;
-    label?: number;
-  }) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const renderTooltip = (props: any) => {
+    const { active, payload, label } = props as {
+      active?: boolean;
+      payload?: ReadonlyArray<{ value?: number }>;
+      label?: number;
+    };
     if (!active || !payload?.length) return null;
     const count = payload[0].value ?? 0;
     return (
