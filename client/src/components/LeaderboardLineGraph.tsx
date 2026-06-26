@@ -10,8 +10,15 @@ const COLORS = [
 ];
 
 const ICON_R = 8;
-const ZOOM_WINDOW = 25;
 const TOOLTIP_MAX = 6;
+const MIN_WINDOW = 5;
+const ZOOM_STEP = 5;
+const ANIMATION_MS = 300;
+
+// Ease-in-out cubic
+function ease(t: number) {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
 
 interface FrozenEntry {
   userId: string;
@@ -49,7 +56,6 @@ export default function LeaderboardLineGraph({ data }: Props) {
   // After a dismiss, suppress Recharts' own hover tooltip until the next chart interaction.
   // On mobile, Recharts never fires mouseleave on tap-away so active stays true internally.
   const [suppressTooltip, setSuppressTooltip] = useState(false);
-  const [isZoomedIn, setIsZoomedIn] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const matchCount = data.matches.length;
@@ -71,22 +77,58 @@ export default function LeaderboardLineGraph({ data }: Props) {
     })(),
   ];
 
-  // Slice to last ZOOM_WINDOW real data points + sentinel when zoomed in
-  const displayData = isZoomedIn
-    ? chartData.slice(Math.max(0, matchCount - ZOOM_WINDOW))
-    : chartData;
+  // Sentinel is always the last point in chartData (used for end-of-line avatars)
+  const sentinelIndex = chartData.length - 1;
 
-  const sentinelIndex = displayData.length - 1;
+  // --- Zoom state & animation ---
+  const initialWindow = Math.min(25, matchCount);
+  const [windowSize, setWindowSize] = useState(initialWindow);
 
-  // Compute Y-axis minimum: lowest visible value in the current window minus 5
-  const visibleRealData = displayData.filter(d => (d.matchIndex as number) <= matchCount);
-  const allVisibleValues = visibleRealData.flatMap(d =>
+  // animXMin: the left edge of the X-axis domain, animated smoothly
+  const animXMinRef = useRef(Math.max(1, matchCount - initialWindow + 1));
+  const [animXMin, setAnimXMin] = useState(animXMinRef.current);
+  const rafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const clampedWindow = Math.min(windowSize, matchCount);
+    const targetXMin = matchCount > 0 ? Math.max(1, matchCount - clampedWindow + 1) : 1;
+    const fromXMin = animXMinRef.current;
+
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    const startTime = performance.now();
+
+    const tick = (now: number) => {
+      const elapsed = now - startTime;
+      const t = Math.min(elapsed / ANIMATION_MS, 1);
+      const current = fromXMin + (targetXMin - fromXMin) * ease(t);
+      animXMinRef.current = current;
+      setAnimXMin(current);
+      if (t < 1) rafRef.current = requestAnimationFrame(tick);
+    };
+
+    rafRef.current = requestAnimationFrame(tick);
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, [windowSize, matchCount]);
+
+  // Y-axis minimum: derived from the currently animated X window so it also animates
+  const visibleInWindow = chartData.filter(d => {
+    const idx = d.matchIndex as number;
+    return idx >= Math.ceil(animXMin) && idx <= matchCount;
+  });
+  const allVisibleValues = visibleInWindow.flatMap(d =>
     data.users
       .filter(u => !hiddenUsers.has(u.userId))
       .map(u => (d[u.userId] as number) ?? 0),
   );
-  const minVisibleValue = allVisibleValues.length > 0 ? Math.min(...allVisibleValues) : 0;
-  const yDomainMin: number | string = isZoomedIn ? Math.max(0, minVisibleValue - 5) : 0;
+  const minVisible = allVisibleValues.length > 0 ? Math.min(...allVisibleValues) : 0;
+  // When fully zoomed out (xMin at 1), start Y at 0; otherwise start 5 below min
+  const yDomainMin = animXMin <= 1.01 ? 0 : Math.max(0, minVisible - 5);
+
+  const canZoomIn = windowSize > MIN_WINDOW;
+  const canZoomOut = windowSize < matchCount;
+
+  const zoomIn = () => setWindowSize(prev => Math.max(MIN_WINDOW, prev - ZOOM_STEP));
+  const zoomOut = () => setWindowSize(prev => Math.min(matchCount, prev + ZOOM_STEP));
 
   const toggleUser = (userId: string) => {
     setHiddenUsers(prev => {
@@ -113,7 +155,7 @@ export default function LeaderboardLineGraph({ data }: Props) {
     const matchIndex = state.activeLabel as number;
     if (matchIndex > matchCount) return;
 
-    const matchLabel = (displayData.find(d => d.matchIndex === matchIndex)?.matchLabel as string) ?? String(matchIndex);
+    const matchLabel = (chartData[matchIndex - 1]?.matchLabel as string) ?? String(matchIndex);
     const entries: FrozenEntry[] = state.activePayload
       .filter(p => !hiddenUsers.has(p.dataKey as string))
       .map(p => ({
@@ -123,7 +165,7 @@ export default function LeaderboardLineGraph({ data }: Props) {
       }))
       .sort((a, b) => b.value - a.value);
     setFrozenTooltip({ matchLabel, entries });
-  }, [displayData, hiddenUsers, matchCount]);
+  }, [chartData, hiddenUsers, matchCount]);
 
   useEffect(() => {
     // Use pointerdown in capture phase so:
@@ -155,7 +197,7 @@ export default function LeaderboardLineGraph({ data }: Props) {
 
     const matchIndex = label as number;
     if (!active || !payload?.length || matchIndex > matchCount) return null;
-    const matchLabel = (displayData.find(d => d.matchIndex === matchIndex)?.matchLabel as string) ?? String(matchIndex);
+    const matchLabel = (chartData[matchIndex - 1]?.matchLabel as string) ?? String(matchIndex);
     const sorted = [...payload]
       .filter(p => !hiddenUsers.has(p.dataKey as string))
       .sort((a, b) => (b.value as number) - (a.value as number));
@@ -204,16 +246,29 @@ export default function LeaderboardLineGraph({ data }: Props) {
           </div>
         )}
 
-        <button
-          onClick={() => setIsZoomedIn(prev => !prev)}
-          className="absolute top-1 right-1 z-10 p-1.5 rounded-md bg-background/80 border shadow-sm hover:bg-accent transition-colors"
-          title={isZoomedIn ? 'Show full graph' : 'Zoom to last 25 rounds'}
-        >
-          {isZoomedIn ? <ZoomOut size={16} /> : <ZoomIn size={16} />}
-        </button>
+        {/* Zoom buttons — top right */}
+        <div className="absolute top-1 right-1 z-10 flex gap-1">
+          <button
+            onClick={zoomIn}
+            disabled={!canZoomIn}
+            className="p-1.5 rounded-md bg-background/80 border shadow-sm hover:bg-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            title="Zoom in (5 fewer rounds)"
+          >
+            <ZoomIn size={16} />
+          </button>
+          <button
+            onClick={zoomOut}
+            disabled={!canZoomOut}
+            className="p-1.5 rounded-md bg-background/80 border shadow-sm hover:bg-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            title="Zoom out (5 more rounds)"
+          >
+            <ZoomOut size={16} />
+          </button>
+        </div>
+
         <ResponsiveContainer width="100%" height={isMobile ? 420 : 280}>
           <LineChart
-            data={displayData}
+            data={chartData}
             margin={{ top: 5, right: ICON_R + 12, bottom: 5, left: -10 }}
             onClick={handleChartClick}
             onMouseMove={() => setSuppressTooltip(false)}
@@ -221,6 +276,8 @@ export default function LeaderboardLineGraph({ data }: Props) {
             <CartesianGrid strokeDasharray="3 3" stroke="currentColor" strokeOpacity={0.1} />
             <XAxis
               dataKey="matchIndex"
+              type="number"
+              domain={[animXMin, matchCount + 1]}
               tick={{ fontSize: 10 }}
               tickLine={false}
               allowDecimals={false}
@@ -243,6 +300,7 @@ export default function LeaderboardLineGraph({ data }: Props) {
                   dataKey={u.userId}
                   stroke={color}
                   strokeWidth={2}
+                  isAnimationActive={false}
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   dot={(props: any) => {
                     const { cx, cy, index } = props as { cx?: number; cy?: number; index?: number };
