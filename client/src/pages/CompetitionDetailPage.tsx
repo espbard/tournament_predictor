@@ -2660,7 +2660,7 @@ export default function CompetitionDetailPage() {
       )}
 
       {activeTab === 'userStats' && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 items-start px-4 sm:px-0">
+        <div className="flex flex-wrap gap-6 px-4 sm:px-0">
           {userStats.map((stat, i) => {
             const cardEl = (
               <UserStatCard
@@ -2673,13 +2673,13 @@ export default function CompetitionDetailPage() {
             );
             if (stat.distributionData?.length) {
               return (
-                <div key={stat.id} className="flex flex-col gap-2">
+                <div key={stat.id} className="flex flex-col gap-2 w-full sm:w-[calc(50%-12px)] lg:w-[calc(33.333%-16px)]">
                   {cardEl}
                   <HaalandDistributionCard data={stat} />
                 </div>
               );
             }
-            return <div key={stat.id}>{cardEl}</div>;
+            return <div key={stat.id} className="w-full sm:w-[calc(50%-12px)] lg:w-[calc(33.333%-16px)]">{cardEl}</div>;
           })}
         </div>
       )}
