@@ -2646,6 +2646,13 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           .filter(p => p.goals === minGoals)
           .sort((a, b) => a.username.localeCompare(b.username));
 
+        const goalCountMap = new Map<number, number>();
+        for (const p of haalandPredictions) goalCountMap.set(p.goals, (goalCountMap.get(p.goals) ?? 0) + 1);
+        const distributionData: { value: number; count: number }[] = [];
+        for (let v = minGoals; v <= maxGoals; v++) distributionData.push({ value: v, count: goalCountMap.get(v) ?? 0 });
+
+        const haalandActualGoals = (haalandPlayer && haalandPlayer.gamesPlayed >= 1) ? haalandPlayer.goalsScored : null;
+
         brautometerCard = {
           id: 'brautometer',
           title: lang === 'no' ? 'Brautometeret' : lang === 'de' ? 'Der Brautometer' : 'The Brautometer',
@@ -2658,11 +2665,13 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           subjects: mostFaithGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor ?? null })),
           linkType: 'userBonus',
           iconImageUrl: '/haaland.jpg',
+          distributionData,
+          distributionActualValue: haalandActualGoals,
         };
 
-        if (haalandPlayer && haalandPlayer.gamesPlayed >= 1) {
-          const goals = haalandPlayer.goalsScored;
-          const games = haalandPlayer.gamesPlayed;
+        if (haalandActualGoals !== null) {
+          const goals = haalandActualGoals;
+          const games = haalandPlayer!.gamesPlayed;
           brautometerCard.statistic +=
             lang === 'no'
               ? ` Haaland har så langt scoret ${goals} ${goals === 1 ? 'mål' : 'mål'} på ${games} ${games === 1 ? 'kamp' : 'kamper'}.`
