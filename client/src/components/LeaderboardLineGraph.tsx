@@ -220,7 +220,7 @@ export default function LeaderboardLineGraph({ data }: Props) {
                 />
                 <span
                   style={{ color: isHidden ? undefined : u.color }}
-                  className={isHidden ? 'text-muted-foreground line-through' : 'font-medium'}
+                  className={isHidden ? 'text-muted-foreground' : 'font-medium'}
                 >
                   {u.username}
                 </span>
@@ -330,8 +330,28 @@ export default function LeaderboardLineGraph({ data }: Props) {
         </ResponsiveContainer>
       </div>
 
-      <div className="flex mt-3 text-xs justify-end">
-        <label className="flex items-center gap-1.5 cursor-pointer select-none text-muted-foreground">
+      <div className="flex flex-wrap gap-x-4 gap-y-2 mt-3 text-xs items-center">
+        {data.users.map((u, i) => {
+          const color = COLORS[i % COLORS.length];
+          const isHidden = hiddenUsers.has(u.userId);
+          return (
+            <label key={u.userId} className="flex items-center gap-1.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={!isHidden}
+                onChange={() => toggleUser(u.userId)}
+                style={{ accentColor: color }}
+              />
+              <span
+                style={{ color: isHidden ? undefined : color }}
+                className={isHidden ? 'text-muted-foreground' : 'font-medium'}
+              >
+                {u.username}
+              </span>
+            </label>
+          );
+        })}
+        <label className="flex items-center gap-1.5 cursor-pointer select-none text-muted-foreground ml-auto">
           <input
             type="checkbox"
             checked={hiddenUsers.size === 0}
