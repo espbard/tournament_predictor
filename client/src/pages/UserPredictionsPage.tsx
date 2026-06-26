@@ -9,7 +9,7 @@ import BackButton from '@/components/BackButton';
 import { UserAvatar } from '@/components/UserAvatar';
 import { useT } from '@/lib/useT';
 import { useTeamName } from '@/lib/teamTranslations';
-import { sortGroupTeams, findGroupDisciplinaryTies, findLuckyLoserDisciplinaryTies, makeDisciplinaryKey, type MatchResult, type DisciplinaryChoices } from '@/lib/tiebreakers';
+import { sortGroupTeams, sortLuckyLosers, findGroupDisciplinaryTies, findLuckyLoserDisciplinaryTies, makeDisciplinaryKey, type MatchResult, type TeamTiebreakerStat, type DisciplinaryChoices } from '@/lib/tiebreakers';
 import type { Competition, Tournament, Prediction, MatchStage } from '@tournament-predictor/shared';
 
 interface MatchWithTeams {
@@ -401,18 +401,23 @@ export default function UserPredictionsPage() {
 
   type LLCandidate = { groupName: string; tm: TeamStat };
 
-  const sortedPredLLCandidates: LLCandidate[] = numLuckyLosers > 0
-    ? groupStandings
-        .filter(([, teams]) => teams.length > directQualifiers)
-        .map(([groupName, teams]) => ({ groupName, tm: teams[directQualifiers] }))
-        .sort((a, b) => {
-          const pa = a.tm.W * 3 + a.tm.D, pb = b.tm.W * 3 + b.tm.D;
-          if (pb !== pa) return pb - pa;
-          const gda = a.tm.GF - a.tm.GA, gdb = b.tm.GF - b.tm.GA;
-          if (gdb !== gda) return gdb - gda;
-          return b.tm.GF - a.tm.GF;
-        })
-    : [];
+  const sortedPredLLCandidates: LLCandidate[] = (() => {
+    if (numLuckyLosers <= 0) return [];
+    const candidates = groupStandings
+      .filter(([, teams]) => teams.length > directQualifiers)
+      .map(([groupName, teams]) => ({ groupName, tm: teams[directQualifiers] }));
+    const candidateMap = new Map(candidates.map(c => [c.tm.teamId, c]));
+    const tbStats: TeamTiebreakerStat[] = candidates.map(({ tm }) => ({
+      teamId: tm.teamId,
+      points: tm.W * 3 + tm.D,
+      gd: tm.GF - tm.GA,
+      gf: tm.GF,
+    }));
+    const llChoices = (userTiebreakerChoices?.luckyLoserChoices ?? {}) as DisciplinaryChoices;
+    return sortLuckyLosers(tbStats, llChoices)
+      .map(stat => candidateMap.get(stat.teamId)!)
+      .filter(Boolean);
+  })();
 
   const sortedActualLLCandidates: LLCandidate[] = numLuckyLosers > 0
     ? [...displayActualGroupStandings.entries()]
