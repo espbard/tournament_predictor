@@ -1156,13 +1156,12 @@ export default function TournamentDetailPage() {
                   )}
 
                   <div className="rounded-lg border overflow-hidden">
-                    <table className="w-full text-sm">
+                    <table className="w-full text-sm table-fixed">
                       <thead>
                         <tr className="border-b text-xs text-muted-foreground bg-muted/30">
                           <th className="w-1 py-1.5" />
                           <th className="px-3 py-1.5 text-left w-6">#</th>
                           <th className="px-3 py-1.5 text-left">{t('groupTable.team')}</th>
-                          <th className="px-3 py-1.5 text-left">{t('common.group')}</th>
                           <th className="px-2 py-1.5 text-center w-8">{t('groupTable.played')}</th>
                           <th className="px-2 py-1.5 text-center w-8">{t('groupTable.won')}</th>
                           <th className="px-2 py-1.5 text-center w-8">{t('groupTable.drawn')}</th>
@@ -1170,6 +1169,7 @@ export default function TournamentDetailPage() {
                           <th className="px-2 py-1.5 text-center w-8">{t('groupTable.gd')}</th>
                           <th className="px-2 py-1.5 text-center w-8">{t('groupTable.gf')}</th>
                           <th className="px-2 py-1.5 text-center w-10 font-bold">{t('groupTable.pts')}</th>
+                          <th className="px-2 py-1.5 text-center w-10">Grp</th>
                           {isInteractive && <th className="w-16" />}
                         </tr>
                       </thead>
@@ -1180,8 +1180,8 @@ export default function TournamentDetailPage() {
                             <tr key={teamId} className={`border-b last:border-0 hover:bg-muted/20 ${isQualifying ? 'bg-green-500/5' : ''}`}>
                               <td className={`w-1 ${isQualifying ? 'bg-green-500' : 'bg-transparent'}`} />
                               <td className="px-3 py-2 text-muted-foreground text-xs">{i + 1}</td>
-                              <td className="px-3 py-2">
-                                <span className="flex items-center gap-2">
+                              <td className="px-3 py-2 overflow-hidden">
+                                <span className="flex items-center gap-2 min-w-0">
                                   {row.team.imageUrl ? (
                                     <img src={row.team.imageUrl} alt={row.team.name} className="h-5 w-5 rounded-sm object-cover flex-shrink-0" />
                                   ) : (
@@ -1190,7 +1190,6 @@ export default function TournamentDetailPage() {
                                   <span className="truncate">{row.team.name}</span>
                                 </span>
                               </td>
-                              <td className="px-3 py-2 text-muted-foreground text-xs">{group.name}</td>
                               <td className="px-2 py-2 text-center tabular-nums">{row.mp}</td>
                               <td className="px-2 py-2 text-center tabular-nums">{row.w}</td>
                               <td className="px-2 py-2 text-center tabular-nums">{row.d}</td>
@@ -1198,6 +1197,7 @@ export default function TournamentDetailPage() {
                               <td className="px-2 py-2 text-center tabular-nums">{row.gd > 0 ? `+${row.gd}` : row.gd}</td>
                               <td className="px-2 py-2 text-center tabular-nums">{row.gf}</td>
                               <td className="px-2 py-2 text-center tabular-nums font-bold">{row.pts}</td>
+                              <td className="px-2 py-2 text-center text-muted-foreground text-xs">{group.name}</td>
                               {isInteractive && (
                                 <td className="px-1 py-1.5">
                                   <div className="flex gap-0.5 justify-end">

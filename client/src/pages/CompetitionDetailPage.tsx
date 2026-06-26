@@ -1525,7 +1525,6 @@ export default function CompetitionDetailPage() {
                   <tr className="border-b text-muted-foreground">
                     <th className="pl-3 py-1.5 text-left w-6">#</th>
                     <th className="py-1.5 text-left">{t('groupTable.team')}</th>
-                    <th className="py-1.5 text-left">{t('common.group')}</th>
                     <th className="py-1.5 text-center w-6">{t('groupTable.played')}</th>
                     <th className="py-1.5 text-center w-6">{t('groupTable.won')}</th>
                     <th className="py-1.5 text-center w-6">{t('groupTable.drawn')}</th>
@@ -1533,19 +1532,19 @@ export default function CompetitionDetailPage() {
                     <th className="py-1.5 text-center w-8">{t('groupTable.gd')}</th>
                     <th className="py-1.5 text-center w-8">{t('groupTable.gf')}</th>
                     <th className="py-1.5 text-center w-8 font-bold text-foreground">{t('groupTable.pts')}</th>
+                    <th className="py-1.5 text-center w-8">Grp</th>
                   </tr>
                 );
 
                 const renderRow = (groupName: string, tm: TeamStat, i: number) => (
                   <tr key={tm.teamId} className={i < numLL ? 'bg-green-50 dark:bg-green-950/30' : ''}>
                     <td className="pl-3 py-1.5 text-muted-foreground">{i + 1}</td>
-                    <td className="py-1.5 pr-2">
-                      <div className="flex items-center gap-1.5">
+                    <td className="py-1.5 pr-2 overflow-hidden">
+                      <div className="flex items-center gap-1.5 min-w-0">
                         {tm.imageUrl ? <img src={tm.imageUrl} alt="" className="h-4 w-4 rounded-full object-cover flex-shrink-0" /> : <div className="h-4 w-4 rounded-full bg-muted flex-shrink-0" />}
                         <Link to={`/competitions/${id}/team/${tm.teamId}`} className="truncate hover:underline">{tn(tm.teamName)}</Link>
                       </div>
                     </td>
-                    <td className="py-1.5 text-center text-muted-foreground">{groupName}</td>
                     <td className="py-1.5 text-center text-muted-foreground">{tm.P}</td>
                     <td className="py-1.5 text-center text-muted-foreground">{tm.W}</td>
                     <td className="py-1.5 text-center text-muted-foreground">{tm.D}</td>
@@ -1553,6 +1552,7 @@ export default function CompetitionDetailPage() {
                     <td className="py-1.5 text-center text-muted-foreground">{tm.GF - tm.GA > 0 ? `+${tm.GF - tm.GA}` : tm.GF - tm.GA}</td>
                     <td className="py-1.5 text-center text-muted-foreground">{tm.GF}</td>
                     <td className="py-1.5 text-center font-bold">{tm.W * 3 + tm.D}</td>
+                    <td className="py-1.5 text-center text-muted-foreground">{groupName}</td>
                   </tr>
                 );
 
@@ -1561,7 +1561,7 @@ export default function CompetitionDetailPage() {
                     <h3 className="text-sm font-semibold">{t('competitionDetail.tables.luckyLosersTable')}</h3>
                     {tournament?.status === 'upcoming' ? (
                       <div className="rounded-lg border dark:bg-white/5 p-2">
-                        <table className="w-full text-xs">
+                        <table className="w-full text-xs table-fixed">
                           <thead>{llTableHeaders}</thead>
                           <tbody className="divide-y">
                             {sortedPredLL.map(({ groupName, tm }, i) => renderRow(groupName, tm, i))}
@@ -1584,7 +1584,7 @@ export default function CompetitionDetailPage() {
                               {t('competitionDetail.tables.labelPredicted')}
                             </div>
                             <div className="rounded-lg border dark:bg-white/5 p-2">
-                              <table className="w-full text-xs">
+                              <table className="w-full text-xs table-fixed">
                                 <thead>{llTableHeaders}</thead>
                                 <tbody className="divide-y">
                                   {sortedPredLL.map(({ groupName, tm }, i) => renderRow(groupName, tm, i))}
@@ -1597,7 +1597,7 @@ export default function CompetitionDetailPage() {
                               {t('competitionDetail.tables.labelActual')}
                             </div>
                             <div className="rounded-lg border dark:bg-white/5 p-2">
-                              <table className="w-full text-xs">
+                              <table className="w-full text-xs table-fixed">
                                 <thead>{llTableHeaders}</thead>
                                 <tbody className="divide-y">
                                   {sortedActualLL.map(({ groupName, tm }, i) => renderRow(groupName, tm, i))}
