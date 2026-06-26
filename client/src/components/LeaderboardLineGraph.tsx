@@ -183,7 +183,6 @@ export default function LeaderboardLineGraph({ data }: Props) {
     return () => document.removeEventListener('pointerdown', dismiss, true);
   }, []);
 
-  // Hover tooltip only — frozen tooltip is rendered as a separate pinned overlay
   const renderTooltip = ({
     active,
     payload,
@@ -193,7 +192,31 @@ export default function LeaderboardLineGraph({ data }: Props) {
     payload?: ReadonlyArray<{ dataKey?: unknown; value?: unknown; stroke?: unknown }>;
     label?: unknown;
   }) => {
-    if (frozenTooltip || suppressTooltip) return null;
+    if (suppressTooltip) return null;
+
+    // Frozen tooltip: render here so Recharts' position prop can pin it top-left.
+    // Returning content from inside renderTooltip (rather than a separate absolute div)
+    // is the only way to prevent Recharts from repositioning the wrapper near the active point.
+    if (frozenTooltip) {
+      return (
+        <div className="rounded-lg border bg-background p-2 text-xs shadow-md min-w-[120px]">
+          <p className="font-semibold mb-1 text-foreground">{frozenTooltip.matchLabel}</p>
+          {frozenTooltip.entries.slice(0, TOOLTIP_MAX).map(entry => {
+            const u = data.users.find(u => u.userId === entry.userId);
+            return (
+              <div key={entry.userId} className="flex items-center gap-1.5 py-0.5">
+                <span style={{ color: entry.stroke }}>■</span>
+                <span className="text-muted-foreground flex-1">{u?.username ?? entry.userId}</span>
+                <span className="font-bold text-foreground">{entry.value}</span>
+              </div>
+            );
+          })}
+          {frozenTooltip.entries.length > TOOLTIP_MAX && (
+            <div className="text-muted-foreground py-0.5 pl-4">...</div>
+          )}
+        </div>
+      );
+    }
 
     const matchIndex = label as number;
     if (!active || !payload?.length || matchIndex > matchCount) return null;
@@ -226,26 +249,6 @@ export default function LeaderboardLineGraph({ data }: Props) {
   return (
     <div ref={containerRef}>
       <div className="relative">
-        {/* Frozen click tooltip — pinned top-left of chart */}
-        {frozenTooltip && (
-          <div className="absolute top-1 left-1 z-10 rounded-lg border bg-background p-2 text-xs shadow-md min-w-[120px]">
-            <p className="font-semibold mb-1 text-foreground">{frozenTooltip.matchLabel}</p>
-            {frozenTooltip.entries.slice(0, TOOLTIP_MAX).map(entry => {
-              const u = data.users.find(u => u.userId === entry.userId);
-              return (
-                <div key={entry.userId} className="flex items-center gap-1.5 py-0.5">
-                  <span style={{ color: entry.stroke }}>■</span>
-                  <span className="text-muted-foreground flex-1">{u?.username ?? entry.userId}</span>
-                  <span className="font-bold text-foreground">{entry.value}</span>
-                </div>
-              );
-            })}
-            {frozenTooltip.entries.length > TOOLTIP_MAX && (
-              <div className="text-muted-foreground py-0.5 pl-4">...</div>
-            )}
-          </div>
-        )}
-
         {/* Zoom buttons — top right */}
         <div className="absolute top-1 right-1 z-10 flex gap-1">
           <button
@@ -290,7 +293,12 @@ export default function LeaderboardLineGraph({ data }: Props) {
               axisLine={false}
               width={32}
             />
-            <Tooltip content={renderTooltip} />
+            <Tooltip
+              content={renderTooltip}
+              position={frozenTooltip ? { x: 4, y: 4 } : undefined}
+              isAnimationActive={false}
+              wrapperStyle={frozenTooltip ? { visibility: 'visible', pointerEvents: 'none' } : undefined}
+            />
             {data.users.map((u, i) => {
               const color = COLORS[i % COLORS.length];
               return (
