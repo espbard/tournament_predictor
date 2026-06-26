@@ -2209,30 +2209,17 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
             ? `${tiedNames[0]} ${andWord} ${tiedNames[1]}`
             : `${tiedNames.slice(0, -1).join(', ')}, ${andWord} ${tiedNames[tiedNames.length - 1]}`;
 
-        const perTeam = tiedForFirst.map(([teamId, predictors]) => {
-          const sorted = [...predictors].sort((a, b) => a.username.localeCompare(b.username));
-          return { teamId, name: teamName(teamId), userList: formatUserList(sorted.map(u => u.username), lang), count: predictors.length };
-        });
-
         const bothAll = lang === 'no'
           ? (tiedForFirst.length === 2 ? 'begge' : 'alle')
           : lang === 'de'
             ? (tiedForFirst.length === 2 ? 'beide' : 'alle')
             : (tiedForFirst.length === 2 ? 'both' : 'all');
 
-        if (lang === 'no') {
-          const intro = `${teamsString} er ${bothAll} de mest tippede vinnerne med **${topCount}** ${topCount === 1 ? 'spiller' : 'spillere'} hver!`;
-          const details = perTeam.map(d => `${d.userList} har tippet **${d.name}**`).join(', mens ') + '.';
-          statistic = `${intro} ${details}`;
-        } else if (lang === 'de') {
-          const intro = `${teamsString} sind ${bothAll} die meistgetippten Turniersieger mit jeweils **${topCount}** ${topCount === 1 ? 'Spieler' : 'Spielern'}!`;
-          const details = perTeam.map(d => `${d.userList} ${d.count === 1 ? 'hat' : 'haben'} auf **${d.name}** getippt`).join(', während ') + '.';
-          statistic = `${intro} ${details}`;
-        } else {
-          const intro = `${teamsString} are ${bothAll} tied as the most predicted winners with **${topCount}** prediction${topCount === 1 ? '' : 's'} each!`;
-          const details = perTeam.map(d => `${d.userList} predicted **${d.name}**`).join(', while ') + ' to win the tournament.';
-          statistic = `${intro} ${details}`;
-        }
+        statistic = lang === 'no'
+          ? `${teamsString} er ${bothAll} de mest tippede vinnerne med **${topCount}** ${topCount === 1 ? 'spiller' : 'spillere'} hver!`
+          : lang === 'de'
+            ? `${teamsString} sind ${bothAll} die meistgetippten Turniersieger mit jeweils **${topCount}** ${topCount === 1 ? 'Spieler' : 'Spielern'}!`
+            : `${teamsString} are ${bothAll} tied as the most predicted winners with **${topCount}** prediction${topCount === 1 ? '' : 's'} each!`;
 
         cardSubjects = tiedForFirst.map(([teamId]) => ({
           type: 'team' as const,
