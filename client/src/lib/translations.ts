@@ -156,6 +156,7 @@ const translations = {
         predictionsFilled: '{{filled}} / {{total}} predictions filled — tables update as you predict.',
         qualifying: 'Qualifying',
         luckyLoser: 'Lucky loser (best 3rd place)',
+        luckyLosersTable: 'Lucky Losers',
         tiebreakerChosen: 'Progressed via tiebreaker decision',
         disciplinaryTiebreaker: 'Disciplinary tiebreaker',
         luckyLoserTiebreakers: 'Lucky Loser Tiebreakers',
@@ -301,6 +302,7 @@ const translations = {
         noTeamsInGroup: 'No teams in this group',
         directQualifier: 'Direct qualifier',
         luckyLoser: 'Lucky loser',
+        luckyLosersTable: 'Lucky Losers',
         tiebreakerResolution: 'Tiebreaker Resolution',
         tiebreakerDesc:
           'These teams are equal on all objective criteria. Set the order manually — position 1 ranks highest.',
@@ -641,6 +643,7 @@ const translations = {
         predictionsFilled: '{{filled}} / {{total}} tips fylt ut — tabellene oppdateres etter hvert som du tipper.',
         qualifying: 'Kvalifiserer',
         luckyLoser: 'Lucky loser (beste tredjeplass)',
+        luckyLosersTable: 'Lucky Losers',
         tiebreakerChosen: 'Gikk videre via avgjørelse',
         disciplinaryTiebreaker: 'Disiplinær avgjørelse',
         luckyLoserTiebreakers: 'Lucky Loser-avgjørere',
@@ -785,6 +788,7 @@ const translations = {
         noTeamsInGroup: 'Ingen lag i denne gruppen',
         directQualifier: 'Direkte kvalifisert',
         luckyLoser: 'Lucky loser',
+        luckyLosersTable: 'Lucky Losers',
         tiebreakerResolution: 'Avgjørereløsning',
         tiebreakerDesc:
           'Disse lagene er like på alle objektive kriterier. Sett rekkefølgen manuelt – posisjon 1 rangerer høyest.',
@@ -1124,6 +1128,7 @@ const translations = {
         predictionsFilled: '{{filled}} / {{total}} Tipps ausgefüllt — Tabellen aktualisieren sich beim Tippen.',
         qualifying: 'Qualifiziert',
         luckyLoser: 'Glücklicher Verlierer (bester Dritter)',
+        luckyLosersTable: 'Glückliche Verlierer',
         tiebreakerChosen: 'Weitergekommen durch Entscheidung',
         disciplinaryTiebreaker: 'Disziplinarische Entscheidung',
         luckyLoserTiebreakers: 'Glücklicher-Verlierer-Entscheider',
@@ -1268,6 +1273,7 @@ const translations = {
         noTeamsInGroup: 'Keine Mannschaften in dieser Gruppe',
         directQualifier: 'Direkt qualifiziert',
         luckyLoser: 'Glücklicher Verlierer',
+        luckyLosersTable: 'Glückliche Verlierer',
         tiebreakerResolution: 'Entscheiderfindung',
         tiebreakerDesc:
           'Diese Mannschaften sind in allen objektiven Kriterien gleich. Setzt die Reihenfolge manuell — Position 1 ist die höchste.',

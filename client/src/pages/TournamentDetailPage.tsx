@@ -21,12 +21,6 @@ import BonusQuestionsTab from './BonusQuestionsTab';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { TournamentKnockoutTabContent } from './TournamentKnockoutPage';
 import type { Tournament, Team, Match, MatchStage, Group, Player } from '@tournament-predictor/shared';
-import {
-  sortGroupTeams,
-  sortLuckyLosers,
-  type MatchResult as TbMatchResult,
-  type TeamTiebreakerStat,
-} from '@/lib/tiebreakers';
 
 type MatchWithTeams = Match & {
   homeTeamName: string | null;
@@ -663,11 +657,8 @@ export default function TournamentDetailPage() {
     team: Team;
     mp: number; w: number; d: number; l: number;
     gf: number; ga: number; gd: number; pts: number;
-    stat: TeamTiebreakerStat;
   };
 
-  const gdChoices: Record<string, string[]> = tournament.knockoutConfig?.groupDisciplinaryChoices ?? {};
-  const llChoices: Record<string, string[]> = tournament.knockoutConfig?.luckyLoserDisciplinaryChoices ?? {};
   const directQualifiers = tournament.knockoutConfig?.directQualifiers ?? 2;
   const numLuckyLosers = tournament.knockoutConfig?.luckyLosers ?? 0;
 
@@ -675,7 +666,6 @@ export default function TournamentDetailPage() {
     const teamsInGroup = teamsByGroup.get(group.id) ?? [];
     const groupTeamIds = new Set(teamsInGroup.map(t => t.id));
     const statMap = new Map<string, { mp: number; w: number; d: number; l: number; gf: number; ga: number; gd: number; pts: number }>();
-    const matchResultsList: TbMatchResult[] = [];
 
     for (const team of teamsInGroup) {
       statMap.set(team.id, { mp: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, gd: 0, pts: 0 });
@@ -690,7 +680,6 @@ export default function TournamentDetailPage() {
         hS = match.homeScore; aS = match.awayScore;
       }
       if (hS === null || aS === null) continue;
-      matchResultsList.push({ homeTeamId: match.homeTeamId, awayTeamId: match.awayTeamId, homeScore: hS, awayScore: aS });
       const home = statMap.get(match.homeTeamId)!;
       const away = statMap.get(match.awayTeamId)!;
       home.mp++; away.mp++;
@@ -703,25 +692,30 @@ export default function TournamentDetailPage() {
       away.gd = away.gf - away.ga;
     }
 
-    const tbStats: TeamTiebreakerStat[] = teamsInGroup.map(t => {
-      const s = statMap.get(t.id) ?? { pts: 0, gd: 0, gf: 0 };
-      return { teamId: t.id, points: s.pts, gd: s.gd, gf: s.gf };
-    });
-    const sorted = sortGroupTeams(tbStats, matchResultsList, gdChoices);
-    const rows: FullRow[] = sorted.map(stat => {
-      const s = statMap.get(stat.teamId)!;
-      const team = teamsInGroup.find(t => t.id === stat.teamId)!;
-      return { team, ...s, stat };
-    });
+    const rows: FullRow[] = teamsInGroup
+      .map(team => {
+        const s = statMap.get(team.id) ?? { mp: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, gd: 0, pts: 0 };
+        return { team, ...s };
+      })
+      .sort((a, b) => {
+        if (b.pts !== a.pts) return b.pts - a.pts;
+        if (b.gd !== a.gd) return b.gd - a.gd;
+        return b.gf - a.gf;
+      });
 
-    return { group, rows, matchResults: matchResultsList };
+    return { group, rows };
   });
 
-  const llCandidates: TeamTiebreakerStat[] = groupStandingData
-    .map(gd => gd.rows[directQualifiers]?.stat)
-    .filter((s): s is TeamTiebreakerStat => s !== undefined);
-  const sortedLL = sortLuckyLosers(llCandidates, llChoices);
-  const luckyLoserIds = new Set(sortedLL.slice(0, numLuckyLosers).map(s => s.teamId));
+  // Lucky loser candidates from computed standings (for pre-confirmation visualization)
+  const sortedLL = groupStandingData
+    .map(gd => gd.rows[directQualifiers])
+    .filter((r): r is FullRow => r !== undefined)
+    .sort((a, b) => {
+      if (b.pts !== a.pts) return b.pts - a.pts;
+      if (b.gd !== a.gd) return b.gd - a.gd;
+      return b.gf - a.gf;
+    });
+  const luckyLoserIds = new Set(sortedLL.slice(0, numLuckyLosers).map(r => r.team.id));
 
   // Group standings confirmation
   const groupStandingsLocked = tournament.knockoutConfig?.groupStandingsLocked ?? false;
@@ -744,16 +738,40 @@ export default function TournamentDetailPage() {
     groupList.every(g => Boolean(confirmedGroupStandings[g.name]));
 
   // When a group is confirmed, reorder display rows to match the confirmed order
-  const displayGroupStandingData = groupStandingData.map(({ group, rows, matchResults }) => {
+  const displayGroupStandingData = groupStandingData.map(({ group, rows }) => {
     const confirmed = confirmedGroupStandings[group.name];
     if (confirmed) {
       const reordered = confirmed
         .map(teamId => rows.find(r => r.team.id === teamId))
         .filter((r): r is FullRow => r !== undefined);
-      return { group, rows: reordered, matchResults };
+      return { group, rows: reordered };
     }
-    return { group, rows, matchResults };
+    return { group, rows };
   });
+
+  // Build a fast teamId→row lookup across all groups
+  const teamRowMap = new Map<string, FullRow>();
+  for (const { rows } of groupStandingData) {
+    for (const row of rows) teamRowMap.set(row.team.id, row);
+  }
+
+  // When all groups confirmed: LL candidates come from confirmed standings, sorted by pts→gd→gf
+  const confirmedLLCandidateIds: string[] = groupStandingData.flatMap(({ group }) => {
+    const confirmedOrder = confirmedGroupStandings[group.name];
+    if (!confirmedOrder) return [];
+    const effectiveDQ = Math.min(directQualifiers, confirmedOrder.length - 1);
+    const id = confirmedOrder[effectiveDQ];
+    return id ? [id] : [];
+  });
+  const defaultLLOrder = [...confirmedLLCandidateIds].sort((a, b) => {
+    const ra = teamRowMap.get(a);
+    const rb = teamRowMap.get(b);
+    if (!ra || !rb) return 0;
+    if (rb.pts !== ra.pts) return rb.pts - ra.pts;
+    if (rb.gd !== ra.gd) return rb.gd - ra.gd;
+    return rb.gf - ra.gf;
+  });
+  const llDisplayOrder = overrideLuckyLosers ?? defaultLLOrder;
 
   // Group matches by calendar date for display — group stage only (knockout shown in Knockout tab)
   const groupStageMatches = matchList.filter(m => m.stage === 'group');
@@ -1085,6 +1103,161 @@ export default function TournamentDetailPage() {
               )}
             </div>
 
+            {/* Lucky Losers Table — visualization or interactive reordering when all groups confirmed */}
+            {numLuckyLosers > 0 && (() => {
+              // Build map: teamId → { group, row } for LL candidates
+              const llRowMap = new Map<string, { group: typeof groupList[0]; row: FullRow }>();
+              if (allGroupsConfirmed) {
+                for (const { group, rows } of groupStandingData) {
+                  const confirmedOrder = confirmedGroupStandings[group.name];
+                  if (!confirmedOrder) continue;
+                  const effectiveDQ = Math.min(directQualifiers, confirmedOrder.length - 1);
+                  const llTeamId = confirmedOrder[effectiveDQ];
+                  if (!llTeamId) continue;
+                  const llRow = rows.find(r => r.team.id === llTeamId);
+                  if (llRow) llRowMap.set(llTeamId, { group, row: llRow });
+                }
+              } else {
+                for (const { group, rows } of groupStandingData) {
+                  const llRow = rows[directQualifiers];
+                  if (llRow) llRowMap.set(llRow.team.id, { group, row: llRow });
+                }
+              }
+
+              if (llRowMap.size === 0) return null;
+
+              // Determine display order
+              const displayIds = allGroupsConfirmed ? llDisplayOrder : sortedLL.map(r => r.team.id).filter(id => llRowMap.has(id));
+
+              const llTableRows = displayIds
+                .map(teamId => {
+                  const entry = llRowMap.get(teamId);
+                  return entry ? { teamId, ...entry } : null;
+                })
+                .filter((x): x is { teamId: string; group: typeof groupList[0]; row: FullRow } => x !== null);
+
+              if (llTableRows.length === 0) return null;
+
+              const isInteractive = isAdmin && allGroupsConfirmed && !groupStandingsLocked;
+
+              return (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold">{t('tournamentDetail.standings.luckyLosersTable')}</h3>
+                    {groupStandingsLocked && (
+                      <span className="rounded-full bg-green-500/10 px-2.5 py-1 text-xs font-medium text-green-600 dark:text-green-400">Locked</span>
+                    )}
+                  </div>
+
+                  {isInteractive && (
+                    <p className="text-xs text-muted-foreground">
+                      Use the arrows to re-order teams. The top {numLuckyLosers} will advance as lucky losers.
+                    </p>
+                  )}
+
+                  <div className="rounded-lg border overflow-hidden">
+                    <table className="w-full text-sm table-fixed">
+                      <thead>
+                        <tr className="border-b text-xs text-muted-foreground bg-muted/30">
+                          <th className="w-1 py-1.5" />
+                          <th className="px-3 py-1.5 text-left w-6">#</th>
+                          <th className="px-3 py-1.5 text-left">{t('groupTable.team')}</th>
+                          <th className="px-2 py-1.5 text-center w-8">{t('groupTable.played')}</th>
+                          <th className="px-2 py-1.5 text-center w-8">{t('groupTable.won')}</th>
+                          <th className="px-2 py-1.5 text-center w-8">{t('groupTable.drawn')}</th>
+                          <th className="px-2 py-1.5 text-center w-8">{t('groupTable.lost')}</th>
+                          <th className="px-2 py-1.5 text-center w-8">{t('groupTable.gd')}</th>
+                          <th className="px-2 py-1.5 text-center w-8">{t('groupTable.gf')}</th>
+                          <th className="px-2 py-1.5 text-center w-10 font-bold">{t('groupTable.pts')}</th>
+                          <th className="px-2 py-1.5 text-center w-10">Grp</th>
+                          {isInteractive && <th className="w-16" />}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {llTableRows.map(({ teamId, group, row }, i) => {
+                          const isQualifying = i < numLuckyLosers;
+                          return (
+                            <tr key={teamId} className={`border-b last:border-0 hover:bg-muted/20 ${isQualifying ? 'bg-green-500/5' : ''}`}>
+                              <td className={`w-1 ${isQualifying ? 'bg-green-500' : 'bg-transparent'}`} />
+                              <td className="px-3 py-2 text-muted-foreground text-xs">{i + 1}</td>
+                              <td className="px-3 py-2 overflow-hidden">
+                                <span className="flex items-center gap-2 min-w-0">
+                                  {row.team.imageUrl ? (
+                                    <img src={row.team.imageUrl} alt={row.team.name} className="h-5 w-5 rounded-sm object-cover flex-shrink-0" />
+                                  ) : (
+                                    <span className="h-5 w-5 rounded-sm bg-muted inline-block flex-shrink-0" />
+                                  )}
+                                  <span className="truncate">{row.team.name}</span>
+                                </span>
+                              </td>
+                              <td className="px-2 py-2 text-center tabular-nums">{row.mp}</td>
+                              <td className="px-2 py-2 text-center tabular-nums">{row.w}</td>
+                              <td className="px-2 py-2 text-center tabular-nums">{row.d}</td>
+                              <td className="px-2 py-2 text-center tabular-nums">{row.l}</td>
+                              <td className="px-2 py-2 text-center tabular-nums">{row.gd > 0 ? `+${row.gd}` : row.gd}</td>
+                              <td className="px-2 py-2 text-center tabular-nums">{row.gf}</td>
+                              <td className="px-2 py-2 text-center tabular-nums font-bold">{row.pts}</td>
+                              <td className="px-2 py-2 text-center text-muted-foreground text-xs">{group.name}</td>
+                              {isInteractive && (
+                                <td className="px-1 py-1.5">
+                                  <div className="flex gap-0.5 justify-end">
+                                    <button
+                                      type="button"
+                                      disabled={i === 0}
+                                      onClick={() => {
+                                        const next = [...displayIds];
+                                        [next[i - 1], next[i]] = [next[i], next[i - 1]];
+                                        setOverrideLuckyLosers(next);
+                                      }}
+                                      className="rounded px-1 py-0.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
+                                    >↑</button>
+                                    <button
+                                      type="button"
+                                      disabled={i === llTableRows.length - 1}
+                                      onClick={() => {
+                                        const next = [...displayIds];
+                                        [next[i], next[i + 1]] = [next[i + 1], next[i]];
+                                        setOverrideLuckyLosers(next);
+                                      }}
+                                      className="rounded px-1 py-0.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
+                                    >↓</button>
+                                  </div>
+                                </td>
+                              )}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {groupStandingsLocked && (
+                    <div className="flex items-center justify-between gap-4">
+                      <p className="text-xs text-muted-foreground">Lucky losers are locked. Points have been calculated.</p>
+                      <button
+                        type="button"
+                        disabled={reopenGroupStandingsMutation.isPending}
+                        onClick={() => reopenGroupStandingsMutation.mutate()}
+                        className="flex-shrink-0 rounded-md border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
+                      >
+                        {reopenGroupStandingsMutation.isPending ? 'Clearing…' : 'Re-open'}
+                      </button>
+                    </div>
+                  )}
+
+                  {isInteractive && (
+                    <button
+                      type="button"
+                      onClick={() => setShowLuckyLosersDialog(true)}
+                      className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                    >
+                      Confirm Lucky Losers
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
+
             {/* Per-group confirm/re-open — admin only */}
             {isAdmin && !hasPendingResults && groupList.some(g => groupMatchesDoneMap.get(g.name)) && (
               <div className="space-y-3">
@@ -1254,106 +1427,6 @@ export default function TournamentDetailPage() {
               </div>
             )}
 
-            {/* Lucky loser section — only shown when all groups confirmed and tournament has LLs */}
-            {isAdmin && numLuckyLosers > 0 && allGroupsConfirmed && (
-              <div className="rounded-lg border p-4 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold">
-                    {groupStandingsLocked ? 'Lucky Loser Selection Confirmed' : 'Lucky Loser Selection'}
-                  </h3>
-                  {groupStandingsLocked && (
-                    <span className="rounded-full bg-green-500/10 px-2.5 py-1 text-xs font-medium text-green-600 dark:text-green-400">
-                      Locked
-                    </span>
-                  )}
-                </div>
-
-                {groupStandingsLocked ? (
-                  <div className="flex items-center justify-between gap-4">
-                    <p className="text-xs text-muted-foreground">
-                      Lucky losers are locked. Points have been calculated.
-                    </p>
-                    <button
-                      type="button"
-                      disabled={reopenGroupStandingsMutation.isPending}
-                      onClick={() => reopenGroupStandingsMutation.mutate()}
-                      className="flex-shrink-0 rounded-md border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
-                    >
-                      {reopenGroupStandingsMutation.isPending ? 'Clearing…' : 'Re-open'}
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <p className="text-xs text-muted-foreground">
-                      Order the teams in the lucky loser spots. The top {numLuckyLosers} will advance.
-                    </p>
-                    {(() => {
-                      const llCandidateIds = groupStandingData
-                        .map(({ group, rows }) => {
-                          const order = confirmedGroupStandings[group.name] ?? rows.map(r => r.team.id);
-                          const effectiveDQ = Math.min(directQualifiers, order.length - 1);
-                          return order[effectiveDQ];
-                        })
-                        .filter((id): id is string => Boolean(id));
-                      const llList = overrideLuckyLosers ?? llCandidateIds;
-                      return (
-                        <div className="space-y-1.5">
-                          {llList.map((teamId, idx) => {
-                            const team = teams.find(t => t.id === teamId);
-                            if (!team) return null;
-                            const isSelected = idx < numLuckyLosers;
-                            return (
-                              <div
-                                key={teamId}
-                                className={`flex items-center gap-2 rounded-md border px-2.5 py-1.5 ${isSelected ? 'border-yellow-400/30 bg-yellow-400/5' : ''}`}
-                              >
-                                <span className="w-5 text-xs font-bold tabular-nums text-muted-foreground">{idx + 1}.</span>
-                                {isSelected && <span className="h-2 w-2 rounded-sm bg-yellow-400 flex-shrink-0" />}
-                                {team.imageUrl ? (
-                                  <img src={team.imageUrl} alt={team.name} className="h-5 w-5 rounded-sm object-cover flex-shrink-0" />
-                                ) : (
-                                  <span className="h-5 w-5 rounded-sm bg-muted inline-block flex-shrink-0" />
-                                )}
-                                <span className="flex-1 text-sm truncate">{team.name}</span>
-                                <div className="flex gap-0.5">
-                                  <button
-                                    type="button"
-                                    disabled={idx === 0}
-                                    onClick={() => {
-                                      const next = [...llList];
-                                      [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
-                                      setOverrideLuckyLosers(next);
-                                    }}
-                                    className="rounded px-1 py-0.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
-                                  >↑</button>
-                                  <button
-                                    type="button"
-                                    disabled={idx === llList.length - 1}
-                                    onClick={() => {
-                                      const next = [...llList];
-                                      [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
-                                      setOverrideLuckyLosers(next);
-                                    }}
-                                    className="rounded px-1 py-0.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
-                                  >↓</button>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      );
-                    })()}
-                    <button
-                      type="button"
-                      onClick={() => setShowLuckyLosersDialog(true)}
-                      className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-                    >
-                      Confirm Lucky Losers
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
           </>)}
         </section>
       )}
@@ -1416,14 +1489,7 @@ export default function TournamentDetailPage() {
               <button
                 type="button"
                 onClick={() => {
-                  const llCandidateIds = groupStandingData
-                    .map(({ group, rows }) => {
-                      const order = confirmedGroupStandings[group.name] ?? rows.map(r => r.team.id);
-                      const effectiveDQ = Math.min(directQualifiers, order.length - 1);
-                      return order[effectiveDQ];
-                    })
-                    .filter((id): id is string => Boolean(id));
-                  confirmGroupStandingsMutation.mutate({ luckyLosers: overrideLuckyLosers ?? llCandidateIds });
+                  confirmGroupStandingsMutation.mutate({ luckyLosers: llDisplayOrder });
                 }}
                 disabled={confirmGroupStandingsMutation.isPending}
                 className="flex-1 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
