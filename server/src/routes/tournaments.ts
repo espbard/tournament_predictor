@@ -1417,6 +1417,64 @@ tournamentsRouter.post('/:id/reallocate-knockout', requireAdmin, async (req, res
   }
 });
 
+/**
+ * Overwrites first-round knockout team assignments with an explicit mapping.
+ * Clears subsequent rounds so they can be re-filled from results.
+ */
+tournamentsRouter.post('/:id/overwrite-first-round', requireAdmin, async (req, res) => {
+  try {
+    const tournamentId = req.params.id;
+    const [tournament] = await db.select().from(tournaments).where(eq(tournaments.id, tournamentId)).limit(1);
+    if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
+
+    const cfg = tournament.knockoutConfig as KnockoutConfig | null;
+    if (!cfg) return res.status(400).json({ error: 'No knockout config' });
+
+    const payload = req.body as { matches?: Array<{ matchId: string; homeTeamId: string | null; awayTeamId: string | null }> };
+    if (!Array.isArray(payload?.matches)) return res.status(400).json({ error: 'matches array required' });
+
+    const { firstRound } = cfg;
+
+    // Fetch valid first-round match IDs for this tournament
+    const firstRoundMatchRows = await db
+      .select({ id: matches.id })
+      .from(matches)
+      .where(and(eq(matches.tournamentId, tournamentId), eq(matches.stage, firstRound)));
+    const validIds = new Set(firstRoundMatchRows.map(m => m.id));
+
+    for (const entry of payload.matches) {
+      if (!validIds.has(entry.matchId)) {
+        return res.status(400).json({ error: `Match ${entry.matchId} is not a first-round match for this tournament` });
+      }
+    }
+
+    // Apply team assignment updates
+    for (const entry of payload.matches) {
+      await db.update(matches)
+        .set({ homeTeamId: entry.homeTeamId ?? null, awayTeamId: entry.awayTeamId ?? null })
+        .where(eq(matches.id, entry.matchId));
+    }
+
+    // Clear subsequent rounds so they re-fill from results
+    const BRACKET_STAGE_ORDER_LOCAL = ['round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'final'] as const;
+    const firstRoundStageIdx = BRACKET_STAGE_ORDER_LOCAL.indexOf(firstRound as typeof BRACKET_STAGE_ORDER_LOCAL[number]);
+    const stagesToClear = [
+      ...BRACKET_STAGE_ORDER_LOCAL.slice(firstRoundStageIdx + 1),
+      ...(cfg.hasBronzeFinal ? ['bronze_final' as const] : []),
+    ];
+    if (stagesToClear.length > 0) {
+      await db.update(matches)
+        .set({ homeTeamId: null, awayTeamId: null })
+        .where(and(eq(matches.tournamentId, tournamentId), inArray(matches.stage, stagesToClear)));
+    }
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 tournamentsRouter.delete('/:id/groups/:groupId', requireAdmin, async (req, res) => {
   try {
     const [deleted] = await db
