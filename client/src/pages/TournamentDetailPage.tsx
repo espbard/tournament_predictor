@@ -1114,6 +1114,7 @@ export default function TournamentDetailPage() {
                           <th className="px-2 py-1.5 text-center w-8">{t('groupTable.drawn')}</th>
                           <th className="px-2 py-1.5 text-center w-8">{t('groupTable.lost')}</th>
                           <th className="px-2 py-1.5 text-center w-8">{t('groupTable.gd')}</th>
+                          <th className="px-2 py-1.5 text-center w-8">{t('groupTable.gf')}</th>
                           <th className="px-2 py-1.5 text-center w-10 font-bold">{t('groupTable.pts')}</th>
                         </tr>
                       </thead>
@@ -1140,6 +1141,7 @@ export default function TournamentDetailPage() {
                               <td className="px-2 py-2 text-center tabular-nums">{row.d}</td>
                               <td className="px-2 py-2 text-center tabular-nums">{row.l}</td>
                               <td className="px-2 py-2 text-center tabular-nums">{row.gd > 0 ? `+${row.gd}` : row.gd}</td>
+                              <td className="px-2 py-2 text-center tabular-nums">{row.gf}</td>
                               <td className="px-2 py-2 text-center tabular-nums font-bold">{row.pts}</td>
                             </tr>
                           );
