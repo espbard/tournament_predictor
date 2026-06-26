@@ -1130,7 +1130,7 @@ export default function TournamentDetailPage() {
 
               if (llTableRows.length === 0) return null;
 
-              const isInteractive = isAdmin; // allGroupsConfirmed guaranteed by outer condition
+              const isInteractive = isAdmin && !groupStandingsLocked;
 
               return (
                 <div className="space-y-3">
@@ -1243,7 +1243,7 @@ export default function TournamentDetailPage() {
                       onClick={() => setShowLuckyLosersDialog(true)}
                       className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
                     >
-                      {groupStandingsLocked ? 'Update Lucky Losers' : 'Confirm Lucky Losers'}
+                      Confirm Lucky Losers
                     </button>
                   )}
                 </div>
@@ -1468,11 +1468,9 @@ export default function TournamentDetailPage() {
       {showLuckyLosersDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="max-w-sm w-full rounded-lg border bg-card p-6 shadow-xl">
-            <h3 className="mb-2 text-base font-semibold">{groupStandingsLocked ? 'Update Lucky Losers?' : 'Confirm Lucky Losers?'}</h3>
+            <h3 className="mb-2 text-base font-semibold">Confirm Lucky Losers?</h3>
             <p className="mb-4 text-sm text-muted-foreground">
-              {groupStandingsLocked
-                ? 'This will update the lucky loser selection and recalculate points.'
-                : 'This will lock the lucky loser selection and place them in the knockout bracket.'}
+              This will lock the lucky loser selection and place them in the knockout bracket.
             </p>
             {confirmGroupStandingsMutation.isError && (
               <p className="mb-3 text-sm text-red-600">
