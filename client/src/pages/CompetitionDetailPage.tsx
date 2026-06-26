@@ -582,45 +582,11 @@ export default function CompetitionDetailPage() {
     const third = groupStandings
       .filter(([, teams]) => teams.length > directQualifiers)
       .map(([, teams]) => teams[directQualifiers]);
-
-    // Sort by natural criteria only (no disciplinary tiebreaker) so tied teams stay grouped together.
-    const sorted = [...third].sort((a, b) => {
-      const pa = a.W * 3 + a.D, pb = b.W * 3 + b.D;
-      if (pb !== pa) return pb - pa;
-      const ga = a.GF - a.GA, gb = b.GF - b.GA;
-      if (gb !== ga) return gb - ga;
-      return b.GF - a.GF;
-    });
-
-    const qualifying = new Set<string>();
-    let filled = 0;
-    let i = 0;
-    while (i < sorted.length && filled < luckyLosers) {
-      let j = i + 1;
-      while (
-        j < sorted.length &&
-        sorted[j].W * 3 + sorted[j].D === sorted[i].W * 3 + sorted[i].D &&
-        sorted[j].GF - sorted[j].GA === sorted[i].GF - sorted[i].GA &&
-        sorted[j].GF === sorted[i].GF
-      ) j++;
-      const bucket = sorted.slice(i, j);
-      const remaining = luckyLosers - filled;
-      if (bucket.length <= remaining) {
-        for (const tm of bucket) qualifying.add(tm.teamId);
-        filled += bucket.length;
-      } else {
-        // Tied bucket straddles the cutoff — highlight once enough teams are ranked to fill remaining slots.
-        const key = makeDisciplinaryKey(bucket.map(tm => tm.teamId));
-        const ranked = luckyLoserDisciplinaryChoices[key] ?? [];
-        if (ranked.length >= remaining) {
-          for (const id of ranked.slice(0, remaining)) qualifying.add(id);
-        }
-        filled += remaining;
-        break;
-      }
-      i = j;
-    }
-    return qualifying;
+    const stats: TeamTiebreakerStat[] = third.map(t => ({
+      teamId: t.teamId, points: t.W * 3 + t.D, gd: t.GF - t.GA, gf: t.GF,
+    }));
+    const sorted = sortLuckyLosers(stats, luckyLoserDisciplinaryChoices);
+    return new Set(sorted.slice(0, luckyLosers).map(s => s.teamId));
   }, [groupStandings, luckyLoserDisciplinaryChoices, tournament, directQualifiers]);
 
   const actualQualifyingThirdPlaceIds = useMemo(() => {
