@@ -1550,6 +1550,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     let jaViElskerCard: UserStatCardData | null = null;
     let traitorCard: UserStatCardData | null = null;
     let matchMadeInHeavenCard: UserStatCardData | null = null;
+    let audienceDarlingCard: UserStatCardData | null = null;
 
     if (kingGroup.length > 0) {
       const gameCount = kingGroup[0].streak;
@@ -2146,17 +2147,93 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       }
     }
 
+    // ── The Audience Darling: most predicted tournament winner ──
+    const audienceDarlingBpRows = await db
+      .select({ userId: bracketPredictions.userId, predictions: bracketPredictions.predictions })
+      .from(bracketPredictions)
+      .where(eq(bracketPredictions.competitionId, id));
+
+    const winnerPredsByTeam = new Map<string, { userId: string; username: string; imageUrl: string | null; iconColor: string | null }[]>();
+    for (const bp of audienceDarlingBpRows) {
+      if (activeStatUserIds && !activeStatUserIds.has(bp.userId)) continue;
+      if (!userInfo.has(bp.userId)) continue;
+      const preds = bp.predictions as BracketPredictions;
+      for (const [key, pred] of Object.entries(preds)) {
+        if (key.startsWith('final_') && pred.progressingTeamId) {
+          if (!winnerPredsByTeam.has(pred.progressingTeamId)) winnerPredsByTeam.set(pred.progressingTeamId, []);
+          const info = userInfo.get(bp.userId)!;
+          winnerPredsByTeam.get(pred.progressingTeamId)!.push({ userId: bp.userId, username: info.username, imageUrl: info.imageUrl, iconColor: info.iconColor });
+          break;
+        }
+      }
+    }
+
     const neededTeamIds = new Set<string>();
     for (const m of [bestPredictionMatch, worstPredictionMatch, unexpectedMatch, mostPredictableMatch, contrastMatch, swingAndAMissData]) {
       if (m?.homeTeamId) neededTeamIds.add(m.homeTeamId);
       if (m?.awayTeamId) neededTeamIds.add(m.awayTeamId);
     }
     for (const teamId of heavenTeamIds) neededTeamIds.add(teamId);
+    for (const teamId of winnerPredsByTeam.keys()) neededTeamIds.add(teamId);
     const teamRows =
       neededTeamIds.size > 0 ? await db.select().from(teams).where(inArray(teams.id, [...neededTeamIds])) : [];
     const teamNameMap = new Map(teamRows.map(t => [t.id, t.name]));
     const teamImageMap = new Map(teamRows.map(t => [t.id, t.imageUrl]));
     const teamName = (teamId: string | null) => (teamId ? teamNameMap.get(teamId) ?? 'Unknown' : 'Unknown');
+
+    if (winnerPredsByTeam.size > 0) {
+      const norwayId = norwayTeam?.id;
+      const sortedWinnerTeams = [...winnerPredsByTeam.entries()].sort((a, b) => {
+        const diff = b[1].length - a[1].length;
+        return diff !== 0 ? diff : teamName(a[0]).localeCompare(teamName(b[0]));
+      });
+
+      const topEntry = sortedWinnerTeams[0];
+      const isNorwayFirst = !!norwayId && topEntry[0] === norwayId;
+      const norwayCount = isNorwayFirst ? topEntry[1].length : 0;
+      const mainEntry = isNorwayFirst ? (sortedWinnerTeams[1] ?? topEntry) : topEntry;
+
+      const [mainTeamId, mainPredictors] = mainEntry;
+      const mainTeamDisplayName = teamName(mainTeamId);
+      const mainCount = mainPredictors.length;
+      const sortedMainPredictors = [...mainPredictors].sort((a, b) => a.username.localeCompare(b.username));
+      const mainUserList = formatUserList(sortedMainPredictors.map(u => u.username), lang);
+
+      let statistic = `**${mainTeamDisplayName}** is the most predicted winner! A total of **${mainCount}** ${mainCount === 1 ? 'user' : 'users'}: ${mainUserList} ${mainCount === 1 ? 'has' : 'have'} predicted that they will win the tournament.`;
+
+      if (isNorwayFirst && mainEntry !== topEntry) {
+        statistic += ` Except for Norway of course! **${norwayCount}** ${norwayCount === 1 ? 'person has' : 'people have'} predicted that Norway will win the whole thing!`;
+      }
+
+      const soloTeams = sortedWinnerTeams
+        .filter(([teamId, predictors]) => predictors.length === 1 && teamId !== mainTeamId && !(isNorwayFirst && teamId === norwayId))
+        .sort(([idA], [idB]) => teamName(idA).localeCompare(teamName(idB)));
+
+      if (soloTeams.length > 0) {
+        const soloClauses = soloTeams.map(([teamId, predictors]) =>
+          `**${predictors[0].username}** was the only player to predict **${teamName(teamId)}** to go all the way`
+        );
+        const andWord = lang === 'no' ? 'og' : lang === 'de' ? 'und' : 'and';
+        let soloText: string;
+        if (soloClauses.length === 1) {
+          soloText = `${soloClauses[0]}!`;
+        } else if (soloClauses.length === 2) {
+          soloText = `${soloClauses[0]}, ${andWord} ${soloClauses[1]}!`;
+        } else {
+          soloText = `${soloClauses.slice(0, -1).join(', ')}, ${andWord} ${soloClauses[soloClauses.length - 1]}!`;
+        }
+        statistic += ` Meanwhile, ${soloText}`;
+      }
+
+      audienceDarlingCard = {
+        id: 'audienceDarling',
+        title: 'The Audience Darling',
+        statistic,
+        subjects: [],
+        linkType: null,
+        iconImageUrl: teamImageMap.get(mainTeamId) ?? null,
+      };
+    }
 
     if (bestPredictionMatch) {
       const homeTeamName = teamName(bestPredictionMatch.homeTeamId);
@@ -2945,6 +3022,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       traitorCard,
       brautometerCard,
       matchMadeInHeavenCard,
+      audienceDarlingCard,
     ].filter((card): card is UserStatCardData => card !== null);
 
     res.json(cards);
