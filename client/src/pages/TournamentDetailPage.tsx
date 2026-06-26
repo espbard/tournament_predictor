@@ -769,7 +769,9 @@ export default function TournamentDetailPage() {
     if (rb.gd !== ra.gd) return rb.gd - ra.gd;
     return rb.gf - ra.gf;
   });
-  const llDisplayOrder = overrideLuckyLosers ?? defaultLLOrder;
+  const confirmedLuckyLosers = tournament.knockoutConfig?.confirmedLuckyLosers;
+  const llDisplayOrder = overrideLuckyLosers
+    ?? (groupStandingsLocked && confirmedLuckyLosers?.length ? confirmedLuckyLosers : defaultLLOrder);
 
   // Group matches by calendar date for display — group stage only (knockout shown in Knockout tab)
   const groupStageMatches = matchList.filter(m => m.stage === 'group');
