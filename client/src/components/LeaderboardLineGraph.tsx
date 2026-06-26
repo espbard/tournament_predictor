@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import type { LeaderboardProgressionResponse } from '@tournament-predictor/shared';
 import { useT } from '@/lib/useT';
+import { ZoomIn, ZoomOut } from 'lucide-react';
 
 const COLORS = [
   '#6366f1', '#f59e0b', '#10b981', '#ef4444', '#3b82f6',
@@ -9,7 +10,14 @@ const COLORS = [
 ];
 
 const ICON_R = 8;
-const MAX_ZOOM = 5;
+const TOOLTIP_MAX = 6;
+const MIN_WINDOW = 5;
+const ZOOM_STEP = 5;
+const ANIMATION_MS = 300;
+
+function ease(t: number) {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
 
 interface FrozenEntry {
   userId: string;
@@ -44,18 +52,10 @@ export default function LeaderboardLineGraph({ data }: Props) {
   const isMobile = useIsMobile();
   const [hiddenUsers, setHiddenUsers] = useState<Set<string>>(new Set());
   const [frozenTooltip, setFrozenTooltip] = useState<FrozenTooltip | null>(null);
-  // After a dismiss, suppress Recharts' own hover tooltip until the next chart interaction.
-  // On mobile, Recharts never fires mouseleave on tap-away so active stays true internally.
   const [suppressTooltip, setSuppressTooltip] = useState(false);
-  const [zoomLevel, setZoomLevel] = useState(1);
   const containerRef = useRef<HTMLDivElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const zoomLevelRef = useRef(1);
-  const pinchRef = useRef<{ initialDist: number; initialZoom: number } | null>(null);
-  zoomLevelRef.current = zoomLevel;
 
   const matchCount = data.matches.length;
-  const sentinelIndex = matchCount;
 
   const chartData = [
     ...data.matches.map((m, i) => {
@@ -65,14 +65,52 @@ export default function LeaderboardLineGraph({ data }: Props) {
     }),
     (() => {
       const last = data.matches[matchCount - 1];
-      const point: Record<string, string | number> = {
-        matchIndex: matchCount + 1,
-        matchLabel: '',
-      };
+      const point: Record<string, string | number> = { matchIndex: matchCount + 1, matchLabel: '' };
       for (const u of data.users) point[u.userId] = last?.cumulativePoints[u.userId] ?? 0;
       return point;
     })(),
   ];
+
+  // --- Zoom: animate windowSize, slice chartData ---
+  const [windowSize, setWindowSize] = useState(Math.min(25, matchCount));
+  const animWindowRef = useRef(Math.min(25, matchCount));
+  const [animWindow, setAnimWindow] = useState(Math.min(25, matchCount));
+  const rafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const from = animWindowRef.current;
+    const to = Math.min(windowSize, matchCount);
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    const start = performance.now();
+    const tick = (now: number) => {
+      const t = Math.min((now - start) / ANIMATION_MS, 1);
+      const current = from + (to - from) * ease(t);
+      animWindowRef.current = current;
+      setAnimWindow(current);
+      if (t < 1) rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, [windowSize, matchCount]);
+
+  // Slice to the animated window (rounded to whole matches)
+  const displayData = chartData.slice(Math.max(0, matchCount - Math.round(animWindow)));
+  const sentinelIndex = displayData.length - 1;
+
+  // Y-axis minimum from the currently displayed data
+  const visibleRealData = displayData.filter(d => (d.matchIndex as number) <= matchCount);
+  const allVisibleValues = visibleRealData.flatMap(d =>
+    data.users
+      .filter(u => !hiddenUsers.has(u.userId))
+      .map(u => (d[u.userId] as number) ?? 0),
+  );
+  const minVisible = allVisibleValues.length > 0 ? Math.min(...allVisibleValues) : 0;
+  const yDomainMin = Math.round(animWindow) >= matchCount ? 0 : Math.max(0, minVisible - 5);
+
+  const canZoomIn = windowSize > MIN_WINDOW;
+  const canZoomOut = windowSize < matchCount;
+  const zoomIn = () => setWindowSize(p => Math.max(MIN_WINDOW, p - ZOOM_STEP));
+  const zoomOut = () => setWindowSize(p => Math.min(matchCount, p + ZOOM_STEP));
 
   const toggleUser = (userId: string) => {
     setHiddenUsers(prev => {
@@ -92,14 +130,11 @@ export default function LeaderboardLineGraph({ data }: Props) {
     activePayload?: Array<{ dataKey?: unknown; value?: unknown; stroke?: unknown }>;
     activeLabel?: unknown;
   } | null) => {
-    // Any tap/click on the chart lifts the suppress so hover works again
     setSuppressTooltip(false);
-
     if (!state?.activePayload?.length) { setFrozenTooltip(null); return; }
     const matchIndex = state.activeLabel as number;
     if (matchIndex > matchCount) return;
-
-    const matchLabel = (chartData[matchIndex - 1]?.matchLabel as string) ?? String(matchIndex);
+    const matchLabel = (displayData.find(d => d.matchIndex === matchIndex)?.matchLabel as string) ?? String(matchIndex);
     const entries: FrozenEntry[] = state.activePayload
       .filter(p => !hiddenUsers.has(p.dataKey as string))
       .map(p => ({
@@ -109,17 +144,12 @@ export default function LeaderboardLineGraph({ data }: Props) {
       }))
       .sort((a, b) => b.value - a.value);
     setFrozenTooltip({ matchLabel, entries });
-  }, [chartData, hiddenUsers, matchCount]);
+  }, [displayData, hiddenUsers, matchCount]);
 
   useEffect(() => {
-    // Use pointerdown in capture phase so:
-    //  (a) it fires for both mouse and touch with a single listener
-    //  (b) capture phase runs before any stopPropagation in the DOM tree
     const dismiss = (e: PointerEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setFrozenTooltip(null);
-        // Also suppress Recharts' own hover tooltip — on mobile, active never goes
-        // false via mouseleave, so we must explicitly block the content render.
         setSuppressTooltip(true);
       }
     };
@@ -127,40 +157,8 @@ export default function LeaderboardLineGraph({ data }: Props) {
     return () => document.removeEventListener('pointerdown', dismiss, true);
   }, []);
 
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-
-    const onTouchStart = (e: TouchEvent) => {
-      if (e.touches.length === 2) {
-        const dx = e.touches[0].clientX - e.touches[1].clientX;
-        const dy = e.touches[0].clientY - e.touches[1].clientY;
-        pinchRef.current = { initialDist: Math.hypot(dx, dy), initialZoom: zoomLevelRef.current };
-      }
-    };
-
-    const onTouchMove = (e: TouchEvent) => {
-      if (e.touches.length === 2 && pinchRef.current) {
-        e.preventDefault();
-        const dx = e.touches[0].clientX - e.touches[1].clientX;
-        const dy = e.touches[0].clientY - e.touches[1].clientY;
-        const ratio = Math.hypot(dx, dy) / pinchRef.current.initialDist;
-        setZoomLevel(Math.max(1, Math.min(MAX_ZOOM, pinchRef.current.initialZoom * ratio)));
-      }
-    };
-
-    const onTouchEnd = () => { pinchRef.current = null; };
-
-    el.addEventListener('touchstart', onTouchStart, { passive: true });
-    el.addEventListener('touchmove', onTouchMove, { passive: false });
-    el.addEventListener('touchend', onTouchEnd, { passive: true });
-    return () => {
-      el.removeEventListener('touchstart', onTouchStart);
-      el.removeEventListener('touchmove', onTouchMove);
-      el.removeEventListener('touchend', onTouchEnd);
-    };
-  }, []);
-
+  // Hover tooltip only — the frozen tooltip is a separate absolutely-positioned div.
+  // Recharts' own wrapper is hidden via wrapperStyle when frozen so it can't drift.
   const renderTooltip = ({
     active,
     payload,
@@ -170,37 +168,19 @@ export default function LeaderboardLineGraph({ data }: Props) {
     payload?: ReadonlyArray<{ dataKey?: unknown; value?: unknown; stroke?: unknown }>;
     label?: unknown;
   }) => {
-    if (frozenTooltip) {
-      return (
-        <div className="rounded-lg border bg-background p-2 text-xs shadow-md min-w-[120px]">
-          <p className="font-semibold mb-1 text-foreground">{frozenTooltip.matchLabel}</p>
-          {frozenTooltip.entries.map(entry => {
-            const u = data.users.find(u => u.userId === entry.userId);
-            return (
-              <div key={entry.userId} className="flex items-center gap-1.5 py-0.5">
-                <span style={{ color: entry.stroke }}>■</span>
-                <span className="text-muted-foreground flex-1">{u?.username ?? entry.userId}</span>
-                <span className="font-bold text-foreground">{entry.value}</span>
-              </div>
-            );
-          })}
-        </div>
-      );
-    }
-
-    // Suppressed after an outside tap — return nothing even if Recharts says active
-    if (suppressTooltip) return null;
-
+    if (frozenTooltip || suppressTooltip) return null;
     const matchIndex = label as number;
     if (!active || !payload?.length || matchIndex > matchCount) return null;
-    const matchLabel = (chartData[matchIndex - 1]?.matchLabel as string) ?? String(matchIndex);
+    const matchLabel = (displayData.find(d => d.matchIndex === matchIndex)?.matchLabel as string) ?? String(matchIndex);
     const sorted = [...payload]
       .filter(p => !hiddenUsers.has(p.dataKey as string))
       .sort((a, b) => (b.value as number) - (a.value as number));
+    const visible = sorted.slice(0, TOOLTIP_MAX);
+    const hasMore = sorted.length > TOOLTIP_MAX;
     return (
       <div className="rounded-lg border bg-background p-2 text-xs shadow-md min-w-[120px]">
         <p className="font-semibold mb-1 text-foreground">{matchLabel}</p>
-        {sorted.map(p => {
+        {visible.map(p => {
           const u = data.users.find(u => u.userId === p.dataKey);
           const strokeColor = typeof p.stroke === 'string' ? p.stroke : undefined;
           const ptValue = typeof p.value === 'number' ? p.value : Number(p.value ?? 0);
@@ -212,108 +192,149 @@ export default function LeaderboardLineGraph({ data }: Props) {
             </div>
           );
         })}
+        {hasMore && <div className="text-muted-foreground py-0.5 pl-4">...</div>}
       </div>
     );
   };
 
-  const isZoomed = zoomLevel > 1.01;
-
   return (
     <div ref={containerRef}>
-      <div
-        ref={scrollRef}
-        style={{
-          overflowX: isZoomed ? 'auto' : 'hidden',
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          WebkitOverflowScrolling: 'touch' as any,
-          touchAction: isZoomed ? 'pan-x' : 'auto',
-        }}
-      >
-        <div style={{ width: `${Math.max(100, zoomLevel * 100)}%` }}>
+      <div className="relative">
+
+        {/* Frozen tooltip — pinned top-left as a plain div, completely outside Recharts */}
+        {frozenTooltip && (
+          <div className="absolute top-1 left-1 z-10 rounded-lg border bg-background p-2 text-xs shadow-md min-w-[120px] pointer-events-none">
+            <p className="font-semibold mb-1 text-foreground">{frozenTooltip.matchLabel}</p>
+            {frozenTooltip.entries.slice(0, TOOLTIP_MAX).map(entry => {
+              const u = data.users.find(u => u.userId === entry.userId);
+              return (
+                <div key={entry.userId} className="flex items-center gap-1.5 py-0.5">
+                  <span style={{ color: entry.stroke }}>■</span>
+                  <span className="text-muted-foreground flex-1">{u?.username ?? entry.userId}</span>
+                  <span className="font-bold text-foreground">{entry.value}</span>
+                </div>
+              );
+            })}
+            {frozenTooltip.entries.length > TOOLTIP_MAX && (
+              <div className="text-muted-foreground py-0.5 pl-4">...</div>
+            )}
+          </div>
+        )}
+
+        {/* Zoom buttons — top right */}
+        <div className="absolute top-1 right-1 z-10 flex gap-1">
+          <button
+            onClick={zoomIn}
+            disabled={!canZoomIn}
+            className="p-1.5 rounded-md bg-background/80 border shadow-sm hover:bg-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            title="Zoom in (5 fewer rounds)"
+          >
+            <ZoomIn size={16} />
+          </button>
+          <button
+            onClick={zoomOut}
+            disabled={!canZoomOut}
+            className="p-1.5 rounded-md bg-background/80 border shadow-sm hover:bg-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            title="Zoom out (5 more rounds)"
+          >
+            <ZoomOut size={16} />
+          </button>
+        </div>
+
         <ResponsiveContainer width="100%" height={isMobile ? 420 : 280}>
-        <LineChart
-          data={chartData}
-          margin={{ top: 5, right: ICON_R + 12, bottom: 5, left: -10 }}
-          onClick={handleChartClick}
-          onMouseMove={() => setSuppressTooltip(false)}
-        >
-          <CartesianGrid strokeDasharray="3 3" stroke="currentColor" strokeOpacity={0.1} />
-          <XAxis
-            dataKey="matchIndex"
-            tick={{ fontSize: 10 }}
-            tickLine={false}
-            allowDecimals={false}
-            tickFormatter={(v) => v === matchCount + 1 ? '' : String(v)}
-          />
-          <YAxis tick={{ fontSize: 10 }} tickLine={false} axisLine={false} width={32} />
-          <Tooltip
-            content={renderTooltip}
-            wrapperStyle={frozenTooltip ? { visibility: 'visible', pointerEvents: 'none' } : undefined}
-          />
-          {data.users.map((u, i) => {
-            const color = COLORS[i % COLORS.length];
-            return (
-              <Line
-                key={u.userId}
-                type="monotone"
-                dataKey={u.userId}
-                stroke={color}
-                strokeWidth={2}
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                dot={(props: any) => {
-                  const { cx, cy, index } = props as { cx?: number; cy?: number; index?: number };
-                  if (index !== sentinelIndex || cx == null || cy == null) return <g />;
-                  if (u.imageUrl) {
-                    const clipId = `uclip-${u.userId}`;
+          <LineChart
+            data={displayData}
+            margin={{ top: 5, right: ICON_R + 12, bottom: 5, left: -10 }}
+            onClick={handleChartClick}
+            onMouseMove={() => setSuppressTooltip(false)}
+          >
+            <CartesianGrid strokeDasharray="3 3" stroke="currentColor" strokeOpacity={0.1} />
+            <XAxis
+              dataKey="matchIndex"
+              tick={{ fontSize: 10 }}
+              tickLine={false}
+              allowDecimals={false}
+              tickFormatter={(v) => v === matchCount + 1 ? '' : String(v)}
+            />
+            <YAxis
+              domain={[yDomainMin, (dataMax: number) => Math.ceil(dataMax + Math.max(dataMax * 0.1, 5))]}
+              tick={{ fontSize: 10 }}
+              tickLine={false}
+              axisLine={false}
+              width={32}
+            />
+            {/*
+              wrapperStyle hides Recharts' own tooltip wrapper when frozen so it cannot
+              drift to the active point and fight with our pinned absolute div above.
+            */}
+            <Tooltip
+              content={renderTooltip}
+              wrapperStyle={frozenTooltip ? { display: 'none' } : undefined}
+            />
+            {data.users.map((u, i) => {
+              const color = COLORS[i % COLORS.length];
+              return (
+                <Line
+                  key={u.userId}
+                  type="monotone"
+                  dataKey={u.userId}
+                  stroke={color}
+                  strokeWidth={2}
+                  isAnimationActive={false}
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  dot={(props: any) => {
+                    const { cx, cy, index } = props as { cx?: number; cy?: number; index?: number };
+                    if (index !== sentinelIndex || cx == null || cy == null) return <g />;
+                    if (u.imageUrl) {
+                      const clipId = `uclip-${u.userId}`;
+                      return (
+                        <g key={`icon-${u.userId}`}>
+                          <defs>
+                            <clipPath id={clipId}>
+                              <circle cx={cx} cy={cy} r={ICON_R} />
+                            </clipPath>
+                          </defs>
+                          <circle cx={cx} cy={cy} r={ICON_R + 1} fill={color} />
+                          <image
+                            href={u.imageUrl}
+                            x={cx - ICON_R}
+                            y={cy - ICON_R}
+                            width={ICON_R * 2}
+                            height={ICON_R * 2}
+                            clipPath={`url(#${clipId})`}
+                          />
+                        </g>
+                      );
+                    }
                     return (
                       <g key={`icon-${u.userId}`}>
-                        <defs>
-                          <clipPath id={clipId}>
-                            <circle cx={cx} cy={cy} r={ICON_R} />
-                          </clipPath>
-                        </defs>
-                        <circle cx={cx} cy={cy} r={ICON_R + 1} fill={color} />
-                        <image
-                          href={u.imageUrl}
-                          x={cx - ICON_R}
-                          y={cy - ICON_R}
-                          width={ICON_R * 2}
-                          height={ICON_R * 2}
-                          clipPath={`url(#${clipId})`}
-                        />
+                        <circle cx={cx} cy={cy} r={ICON_R} fill={color} />
+                        <text
+                          x={cx}
+                          y={cy}
+                          textAnchor="middle"
+                          dominantBaseline="central"
+                          fontSize={8}
+                          fill="white"
+                          fontWeight="bold"
+                        >
+                          {u.username.charAt(0).toUpperCase()}
+                        </text>
                       </g>
                     );
-                  }
-                  return (
-                    <g key={`icon-${u.userId}`}>
-                      <circle cx={cx} cy={cy} r={ICON_R} fill={color} />
-                      <text
-                        x={cx}
-                        y={cy}
-                        textAnchor="middle"
-                        dominantBaseline="central"
-                        fontSize={8}
-                        fill="white"
-                        fontWeight="bold"
-                      >
-                        {u.username.charAt(0).toUpperCase()}
-                      </text>
-                    </g>
-                  );
-                }}
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                activeDot={(props: any) => {
-                  const { cx, cy, index, fill } = props as { cx?: number; cy?: number; index?: number; fill?: string };
-                  if (index === sentinelIndex || cx == null || cy == null) return <g />;
-                  return <circle key={`active-${u.userId}-${index}`} cx={cx} cy={cy} r={4} fill={fill ?? color} stroke="none" />;
-                }}
-                hide={hiddenUsers.has(u.userId)}
-              />
-            );
-          })}
-        </LineChart>
-      </ResponsiveContainer>
-      </div>
+                  }}
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  activeDot={(props: any) => {
+                    const { cx, cy, index, fill } = props as { cx?: number; cy?: number; index?: number; fill?: string };
+                    if (index === sentinelIndex || cx == null || cy == null) return <g />;
+                    return <circle key={`active-${u.userId}-${index}`} cx={cx} cy={cy} r={4} fill={fill ?? color} stroke="none" />;
+                  }}
+                  hide={hiddenUsers.has(u.userId)}
+                />
+              );
+            })}
+          </LineChart>
+        </ResponsiveContainer>
       </div>
 
       <div className="flex flex-wrap gap-x-4 gap-y-2 mt-3 text-xs items-center">
@@ -330,7 +351,7 @@ export default function LeaderboardLineGraph({ data }: Props) {
               />
               <span
                 style={{ color: isHidden ? undefined : color }}
-                className={isHidden ? 'text-muted-foreground line-through' : 'font-medium'}
+                className={isHidden ? 'text-muted-foreground' : 'font-medium'}
               >
                 {u.username}
               </span>
