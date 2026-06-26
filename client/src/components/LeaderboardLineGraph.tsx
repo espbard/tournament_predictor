@@ -11,7 +11,7 @@ const COLORS = [
 
 const ICON_R = 8;
 const ZOOM_WINDOW = 25;
-const LEGEND_MAX = 6;
+const TOOLTIP_MAX = 6;
 
 interface FrozenEntry {
   userId: string;
@@ -53,12 +53,6 @@ export default function LeaderboardLineGraph({ data }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   const matchCount = data.matches.length;
-
-  // Sort users by their latest cumulative points so the legend shows the top 6 by rank
-  const lastMatch = data.matches[matchCount - 1];
-  const legendUsers = [...data.users]
-    .map((u, i) => ({ ...u, color: COLORS[i % COLORS.length], currentPoints: lastMatch?.cumulativePoints[u.userId] ?? 0 }))
-    .sort((a, b) => b.currentPoints - a.currentPoints);
 
   const chartData = [
     ...data.matches.map((m, i) => {
@@ -147,6 +141,7 @@ export default function LeaderboardLineGraph({ data }: Props) {
     return () => document.removeEventListener('pointerdown', dismiss, true);
   }, []);
 
+  // Hover tooltip only — frozen tooltip is rendered as a separate pinned overlay
   const renderTooltip = ({
     active,
     payload,
@@ -156,26 +151,7 @@ export default function LeaderboardLineGraph({ data }: Props) {
     payload?: ReadonlyArray<{ dataKey?: unknown; value?: unknown; stroke?: unknown }>;
     label?: unknown;
   }) => {
-    if (frozenTooltip) {
-      return (
-        <div className="rounded-lg border bg-background p-2 text-xs shadow-md min-w-[120px]">
-          <p className="font-semibold mb-1 text-foreground">{frozenTooltip.matchLabel}</p>
-          {frozenTooltip.entries.map(entry => {
-            const u = data.users.find(u => u.userId === entry.userId);
-            return (
-              <div key={entry.userId} className="flex items-center gap-1.5 py-0.5">
-                <span style={{ color: entry.stroke }}>■</span>
-                <span className="text-muted-foreground flex-1">{u?.username ?? entry.userId}</span>
-                <span className="font-bold text-foreground">{entry.value}</span>
-              </div>
-            );
-          })}
-        </div>
-      );
-    }
-
-    // Suppressed after an outside tap — return nothing even if Recharts says active
-    if (suppressTooltip) return null;
+    if (frozenTooltip || suppressTooltip) return null;
 
     const matchIndex = label as number;
     if (!active || !payload?.length || matchIndex > matchCount) return null;
@@ -183,10 +159,12 @@ export default function LeaderboardLineGraph({ data }: Props) {
     const sorted = [...payload]
       .filter(p => !hiddenUsers.has(p.dataKey as string))
       .sort((a, b) => (b.value as number) - (a.value as number));
+    const visible = sorted.slice(0, TOOLTIP_MAX);
+    const hasMore = sorted.length > TOOLTIP_MAX;
     return (
       <div className="rounded-lg border bg-background p-2 text-xs shadow-md min-w-[120px]">
         <p className="font-semibold mb-1 text-foreground">{matchLabel}</p>
-        {sorted.map(p => {
+        {visible.map(p => {
           const u = data.users.find(u => u.userId === p.dataKey);
           const strokeColor = typeof p.stroke === 'string' ? p.stroke : undefined;
           const ptValue = typeof p.value === 'number' ? p.value : Number(p.value ?? 0);
@@ -198,6 +176,7 @@ export default function LeaderboardLineGraph({ data }: Props) {
             </div>
           );
         })}
+        {hasMore && <div className="text-muted-foreground py-0.5 pl-4">...</div>}
       </div>
     );
   };
@@ -205,32 +184,25 @@ export default function LeaderboardLineGraph({ data }: Props) {
   return (
     <div ref={containerRef}>
       <div className="relative">
-        {/* Legend overlay — top left, max LEGEND_MAX entries */}
-        <div className="absolute top-1 left-1 z-10 bg-background/80 border shadow-sm rounded-md p-1.5 text-[10px]">
-          {legendUsers.slice(0, LEGEND_MAX).map(u => {
-            const isHidden = hiddenUsers.has(u.userId);
-            return (
-              <label key={u.userId} className="flex items-center gap-1 cursor-pointer select-none py-0.5">
-                <input
-                  type="checkbox"
-                  checked={!isHidden}
-                  onChange={() => toggleUser(u.userId)}
-                  style={{ accentColor: u.color }}
-                  className="w-3 h-3 shrink-0"
-                />
-                <span
-                  style={{ color: isHidden ? undefined : u.color }}
-                  className={isHidden ? 'text-muted-foreground' : 'font-medium'}
-                >
-                  {u.username}
-                </span>
-              </label>
-            );
-          })}
-          {data.users.length > LEGEND_MAX && (
-            <div className="text-muted-foreground py-0.5 pl-4">...</div>
-          )}
-        </div>
+        {/* Frozen click tooltip — pinned top-left of chart */}
+        {frozenTooltip && (
+          <div className="absolute top-1 left-1 z-10 rounded-lg border bg-background p-2 text-xs shadow-md min-w-[120px]">
+            <p className="font-semibold mb-1 text-foreground">{frozenTooltip.matchLabel}</p>
+            {frozenTooltip.entries.slice(0, TOOLTIP_MAX).map(entry => {
+              const u = data.users.find(u => u.userId === entry.userId);
+              return (
+                <div key={entry.userId} className="flex items-center gap-1.5 py-0.5">
+                  <span style={{ color: entry.stroke }}>■</span>
+                  <span className="text-muted-foreground flex-1">{u?.username ?? entry.userId}</span>
+                  <span className="font-bold text-foreground">{entry.value}</span>
+                </div>
+              );
+            })}
+            {frozenTooltip.entries.length > TOOLTIP_MAX && (
+              <div className="text-muted-foreground py-0.5 pl-4">...</div>
+            )}
+          </div>
+        )}
 
         <button
           onClick={() => setIsZoomedIn(prev => !prev)}
@@ -261,10 +233,7 @@ export default function LeaderboardLineGraph({ data }: Props) {
               axisLine={false}
               width={32}
             />
-            <Tooltip
-              content={renderTooltip}
-              wrapperStyle={frozenTooltip ? { visibility: 'visible', pointerEvents: 'none' } : undefined}
-            />
+            <Tooltip content={renderTooltip} />
             {data.users.map((u, i) => {
               const color = COLORS[i % COLORS.length];
               return (
