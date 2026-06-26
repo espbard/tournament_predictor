@@ -257,7 +257,7 @@ export default function LeaderboardLineGraph({ data }: Props) {
               tickFormatter={(v) => v === matchCount + 1 ? '' : String(v)}
             />
             <YAxis
-              domain={[yDomainMin, 'auto']}
+              domain={[yDomainMin, (dataMax: number) => Math.ceil(dataMax + Math.max(dataMax * 0.1, 5))]}
               tick={{ fontSize: 10 }}
               tickLine={false}
               axisLine={false}
