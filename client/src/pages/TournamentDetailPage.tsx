@@ -274,6 +274,8 @@ export default function TournamentDetailPage() {
   const [overrideLuckyLosers, setOverrideLuckyLosers] = useState<string[] | null>(null);
   const [showConfirmGroupDialog, setShowConfirmGroupDialog] = useState<string | null>(null);
   const [showLuckyLosersDialog, setShowLuckyLosersDialog] = useState(false);
+  const [notConfirmedGroupsOpen, setNotConfirmedGroupsOpen] = useState(true);
+  const [confirmedGroupsOpen, setConfirmedGroupsOpen] = useState(false);
 
   // Players tab state
   const [showAddPlayer, setShowAddPlayer] = useState(false);
@@ -1157,98 +1159,168 @@ export default function TournamentDetailPage() {
             {isAdmin && !hasPendingResults && groupList.some(g => groupMatchesDoneMap.get(g.name)) && (
               <div className="space-y-3">
                 <h3 className="text-sm font-semibold">Confirm Group Standings</h3>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  {groupStandingData.map(({ group, rows }) => {
-                    const isDone = groupMatchesDoneMap.get(group.name) ?? false;
-                    const isConfirmed = Boolean(confirmedGroupStandings[group.name]);
-                    if (!isDone) return null;
 
-                    const computedOrder = rows.map(r => r.team.id);
-                    const editOrder = groupOrderEdits[group.name] ?? confirmedGroupStandings[group.name] ?? computedOrder;
+                {/* Not Confirmed groups */}
+                {groupStandingData.some(({ group }) => groupMatchesDoneMap.get(group.name) && !confirmedGroupStandings[group.name]) && (
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => setNotConfirmedGroupsOpen(o => !o)}
+                      className="flex items-center gap-1.5 text-sm font-medium text-foreground hover:text-foreground/80"
+                    >
+                      <span className={`inline-block transition-transform ${notConfirmedGroupsOpen ? 'rotate-90' : ''}`}>▶</span>
+                      Not Confirmed
+                    </button>
+                    {notConfirmedGroupsOpen && (
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        {groupStandingData.map(({ group, rows }) => {
+                          const isDone = groupMatchesDoneMap.get(group.name) ?? false;
+                          const isConfirmed = Boolean(confirmedGroupStandings[group.name]);
+                          if (!isDone || isConfirmed) return null;
 
-                    return (
-                      <div key={group.id} className="rounded-lg border overflow-hidden">
-                        <div className="flex items-center justify-between border-b px-3 py-2 bg-muted/30">
-                          <h4 className="font-semibold text-sm">Group {group.name}</h4>
-                          {isConfirmed && (
-                            <span className="rounded-full bg-green-500/10 px-2 py-0.5 text-xs font-medium text-green-600 dark:text-green-400">
-                              Confirmed
-                            </span>
-                          )}
-                        </div>
+                          const computedOrder = rows.map(r => r.team.id);
+                          const editOrder = groupOrderEdits[group.name] ?? computedOrder;
 
-                        <div className="p-2 space-y-1">
-                          {editOrder.map((teamId, idx) => {
-                            const team = teams.find(t => t.id === teamId);
-                            if (!team) return null;
-                            const effectiveDQ = Math.min(directQualifiers, editOrder.length - 1);
-                            const isDirect = idx < effectiveDQ;
-                            const isLL = numLuckyLosers > 0 && idx === effectiveDQ;
-                            return (
-                              <div
-                                key={teamId}
-                                className={`flex items-center gap-2 rounded-md border px-2.5 py-1.5 ${isDirect ? 'border-green-500/30 bg-green-500/5' : isLL ? 'border-yellow-400/30 bg-yellow-400/5' : ''}`}
-                              >
-                                <span className="w-5 text-xs font-bold tabular-nums text-muted-foreground">{idx + 1}.</span>
-                                {team.imageUrl ? (
-                                  <img src={team.imageUrl} alt={team.name} className="h-5 w-5 rounded-sm object-cover flex-shrink-0" />
-                                ) : (
-                                  <span className="h-5 w-5 rounded-sm bg-muted inline-block flex-shrink-0" />
-                                )}
-                                <span className="flex-1 text-sm truncate">{team.name}</span>
-                                {!isConfirmed && (
-                                  <div className="flex gap-0.5">
-                                    <button
-                                      type="button"
-                                      disabled={idx === 0}
-                                      onClick={() => {
-                                        const next = [...editOrder];
-                                        [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
-                                        setGroupOrderEdits(prev => ({ ...prev, [group.name]: next }));
-                                      }}
-                                      className="rounded px-1 py-0.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
-                                    >↑</button>
-                                    <button
-                                      type="button"
-                                      disabled={idx === editOrder.length - 1}
-                                      onClick={() => {
-                                        const next = [...editOrder];
-                                        [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
-                                        setGroupOrderEdits(prev => ({ ...prev, [group.name]: next }));
-                                      }}
-                                      className="rounded px-1 py-0.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
-                                    >↓</button>
-                                  </div>
-                                )}
+                          return (
+                            <div key={group.id} className="rounded-lg border overflow-hidden">
+                              <div className="flex items-center justify-between border-b px-3 py-2 bg-muted/30">
+                                <h4 className="font-semibold text-sm">Group {group.name}</h4>
                               </div>
-                            );
-                          })}
-                        </div>
 
-                        <div className="px-2 pb-2">
-                          {isConfirmed ? (
-                            <button
-                              type="button"
-                              disabled={reopenGroupMutation.isPending && reopenGroupMutation.variables === group.name}
-                              onClick={() => reopenGroupMutation.mutate(group.name)}
-                              className="w-full rounded-md border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
-                            >
-                              {reopenGroupMutation.isPending && reopenGroupMutation.variables === group.name ? 'Re-opening…' : 'Re-open Group'}
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => setShowConfirmGroupDialog(group.name)}
-                              className="w-full rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-                            >
-                              Confirm Group {group.name}
-                            </button>
-                          )}
-                        </div>
+                              <div className="p-2 space-y-1">
+                                {editOrder.map((teamId, idx) => {
+                                  const team = teams.find(t => t.id === teamId);
+                                  if (!team) return null;
+                                  const effectiveDQ = Math.min(directQualifiers, editOrder.length - 1);
+                                  const isDirect = idx < effectiveDQ;
+                                  const isLL = numLuckyLosers > 0 && idx === effectiveDQ;
+                                  return (
+                                    <div
+                                      key={teamId}
+                                      className={`flex items-center gap-2 rounded-md border px-2.5 py-1.5 ${isDirect ? 'border-green-500/30 bg-green-500/5' : isLL ? 'border-yellow-400/30 bg-yellow-400/5' : ''}`}
+                                    >
+                                      <span className="w-5 text-xs font-bold tabular-nums text-muted-foreground">{idx + 1}.</span>
+                                      {team.imageUrl ? (
+                                        <img src={team.imageUrl} alt={team.name} className="h-5 w-5 rounded-sm object-cover flex-shrink-0" />
+                                      ) : (
+                                        <span className="h-5 w-5 rounded-sm bg-muted inline-block flex-shrink-0" />
+                                      )}
+                                      <span className="flex-1 text-sm truncate">{team.name}</span>
+                                      <div className="flex gap-0.5">
+                                        <button
+                                          type="button"
+                                          disabled={idx === 0}
+                                          onClick={() => {
+                                            const next = [...editOrder];
+                                            [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+                                            setGroupOrderEdits(prev => ({ ...prev, [group.name]: next }));
+                                          }}
+                                          className="rounded px-1 py-0.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
+                                        >↑</button>
+                                        <button
+                                          type="button"
+                                          disabled={idx === editOrder.length - 1}
+                                          onClick={() => {
+                                            const next = [...editOrder];
+                                            [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+                                            setGroupOrderEdits(prev => ({ ...prev, [group.name]: next }));
+                                          }}
+                                          className="rounded px-1 py-0.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
+                                        >↓</button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+
+                              <div className="px-2 pb-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setShowConfirmGroupDialog(group.name)}
+                                  className="w-full rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                                >
+                                  Confirm Group {group.name}
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-                    );
-                  })}
-                </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Confirmed groups */}
+                {groupStandingData.some(({ group }) => groupMatchesDoneMap.get(group.name) && confirmedGroupStandings[group.name]) && (
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => setConfirmedGroupsOpen(o => !o)}
+                      className="flex items-center gap-1.5 text-sm font-medium text-foreground hover:text-foreground/80"
+                    >
+                      <span className={`inline-block transition-transform ${confirmedGroupsOpen ? 'rotate-90' : ''}`}>▶</span>
+                      Confirmed
+                    </button>
+                    {confirmedGroupsOpen && (
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        {groupStandingData.map(({ group, rows }) => {
+                          const isDone = groupMatchesDoneMap.get(group.name) ?? false;
+                          const isConfirmed = Boolean(confirmedGroupStandings[group.name]);
+                          if (!isDone || !isConfirmed) return null;
+
+                          const computedOrder = rows.map(r => r.team.id);
+                          const editOrder = confirmedGroupStandings[group.name] ?? computedOrder;
+
+                          return (
+                            <div key={group.id} className="rounded-lg border overflow-hidden">
+                              <div className="flex items-center justify-between border-b px-3 py-2 bg-muted/30">
+                                <h4 className="font-semibold text-sm">Group {group.name}</h4>
+                                <span className="rounded-full bg-green-500/10 px-2 py-0.5 text-xs font-medium text-green-600 dark:text-green-400">
+                                  Confirmed
+                                </span>
+                              </div>
+
+                              <div className="p-2 space-y-1">
+                                {editOrder.map((teamId, idx) => {
+                                  const team = teams.find(t => t.id === teamId);
+                                  if (!team) return null;
+                                  const effectiveDQ = Math.min(directQualifiers, editOrder.length - 1);
+                                  const isDirect = idx < effectiveDQ;
+                                  const isLL = numLuckyLosers > 0 && idx === effectiveDQ;
+                                  return (
+                                    <div
+                                      key={teamId}
+                                      className={`flex items-center gap-2 rounded-md border px-2.5 py-1.5 ${isDirect ? 'border-green-500/30 bg-green-500/5' : isLL ? 'border-yellow-400/30 bg-yellow-400/5' : ''}`}
+                                    >
+                                      <span className="w-5 text-xs font-bold tabular-nums text-muted-foreground">{idx + 1}.</span>
+                                      {team.imageUrl ? (
+                                        <img src={team.imageUrl} alt={team.name} className="h-5 w-5 rounded-sm object-cover flex-shrink-0" />
+                                      ) : (
+                                        <span className="h-5 w-5 rounded-sm bg-muted inline-block flex-shrink-0" />
+                                      )}
+                                      <span className="flex-1 text-sm truncate">{team.name}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+
+                              <div className="px-2 pb-2">
+                                <button
+                                  type="button"
+                                  disabled={reopenGroupMutation.isPending && reopenGroupMutation.variables === group.name}
+                                  onClick={() => reopenGroupMutation.mutate(group.name)}
+                                  className="w-full rounded-md border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
+                                >
+                                  {reopenGroupMutation.isPending && reopenGroupMutation.variables === group.name ? 'Re-opening…' : 'Re-open Group'}
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
