@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import type { LeaderboardProgressionResponse } from '@tournament-predictor/shared';
 import { useT } from '@/lib/useT';
+import { ZoomIn, ZoomOut } from 'lucide-react';
 
 const COLORS = [
   '#6366f1', '#f59e0b', '#10b981', '#ef4444', '#3b82f6',
@@ -9,7 +10,7 @@ const COLORS = [
 ];
 
 const ICON_R = 8;
-const MAX_ZOOM = 5;
+const ZOOM_WINDOW = 25;
 
 interface FrozenEntry {
   userId: string;
@@ -47,15 +48,10 @@ export default function LeaderboardLineGraph({ data }: Props) {
   // After a dismiss, suppress Recharts' own hover tooltip until the next chart interaction.
   // On mobile, Recharts never fires mouseleave on tap-away so active stays true internally.
   const [suppressTooltip, setSuppressTooltip] = useState(false);
-  const [zoomLevel, setZoomLevel] = useState(1);
+  const [isZoomedIn, setIsZoomedIn] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const zoomLevelRef = useRef(1);
-  const pinchRef = useRef<{ initialDist: number; initialZoom: number } | null>(null);
-  zoomLevelRef.current = zoomLevel;
 
   const matchCount = data.matches.length;
-  const sentinelIndex = matchCount;
 
   const chartData = [
     ...data.matches.map((m, i) => {
@@ -73,6 +69,23 @@ export default function LeaderboardLineGraph({ data }: Props) {
       return point;
     })(),
   ];
+
+  // Slice to last ZOOM_WINDOW real data points + sentinel when zoomed in
+  const displayData = isZoomedIn
+    ? chartData.slice(Math.max(0, matchCount - ZOOM_WINDOW))
+    : chartData;
+
+  const sentinelIndex = displayData.length - 1;
+
+  // Compute Y-axis minimum: lowest visible value in the current window minus 5
+  const visibleRealData = displayData.filter(d => (d.matchIndex as number) <= matchCount);
+  const allVisibleValues = visibleRealData.flatMap(d =>
+    data.users
+      .filter(u => !hiddenUsers.has(u.userId))
+      .map(u => (d[u.userId] as number) ?? 0),
+  );
+  const minVisibleValue = allVisibleValues.length > 0 ? Math.min(...allVisibleValues) : 0;
+  const yDomainMin: number | string = isZoomedIn ? Math.max(0, minVisibleValue - 5) : 0;
 
   const toggleUser = (userId: string) => {
     setHiddenUsers(prev => {
@@ -99,7 +112,7 @@ export default function LeaderboardLineGraph({ data }: Props) {
     const matchIndex = state.activeLabel as number;
     if (matchIndex > matchCount) return;
 
-    const matchLabel = (chartData[matchIndex - 1]?.matchLabel as string) ?? String(matchIndex);
+    const matchLabel = (displayData.find(d => d.matchIndex === matchIndex)?.matchLabel as string) ?? String(matchIndex);
     const entries: FrozenEntry[] = state.activePayload
       .filter(p => !hiddenUsers.has(p.dataKey as string))
       .map(p => ({
@@ -109,7 +122,7 @@ export default function LeaderboardLineGraph({ data }: Props) {
       }))
       .sort((a, b) => b.value - a.value);
     setFrozenTooltip({ matchLabel, entries });
-  }, [chartData, hiddenUsers, matchCount]);
+  }, [displayData, hiddenUsers, matchCount]);
 
   useEffect(() => {
     // Use pointerdown in capture phase so:
@@ -125,40 +138,6 @@ export default function LeaderboardLineGraph({ data }: Props) {
     };
     document.addEventListener('pointerdown', dismiss, true);
     return () => document.removeEventListener('pointerdown', dismiss, true);
-  }, []);
-
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-
-    const onTouchStart = (e: TouchEvent) => {
-      if (e.touches.length === 2) {
-        const dx = e.touches[0].clientX - e.touches[1].clientX;
-        const dy = e.touches[0].clientY - e.touches[1].clientY;
-        pinchRef.current = { initialDist: Math.hypot(dx, dy), initialZoom: zoomLevelRef.current };
-      }
-    };
-
-    const onTouchMove = (e: TouchEvent) => {
-      if (e.touches.length === 2 && pinchRef.current) {
-        e.preventDefault();
-        const dx = e.touches[0].clientX - e.touches[1].clientX;
-        const dy = e.touches[0].clientY - e.touches[1].clientY;
-        const ratio = Math.hypot(dx, dy) / pinchRef.current.initialDist;
-        setZoomLevel(Math.max(1, Math.min(MAX_ZOOM, pinchRef.current.initialZoom * ratio)));
-      }
-    };
-
-    const onTouchEnd = () => { pinchRef.current = null; };
-
-    el.addEventListener('touchstart', onTouchStart, { passive: true });
-    el.addEventListener('touchmove', onTouchMove, { passive: false });
-    el.addEventListener('touchend', onTouchEnd, { passive: true });
-    return () => {
-      el.removeEventListener('touchstart', onTouchStart);
-      el.removeEventListener('touchmove', onTouchMove);
-      el.removeEventListener('touchend', onTouchEnd);
-    };
   }, []);
 
   const renderTooltip = ({
@@ -193,7 +172,7 @@ export default function LeaderboardLineGraph({ data }: Props) {
 
     const matchIndex = label as number;
     if (!active || !payload?.length || matchIndex > matchCount) return null;
-    const matchLabel = (chartData[matchIndex - 1]?.matchLabel as string) ?? String(matchIndex);
+    const matchLabel = (displayData.find(d => d.matchIndex === matchIndex)?.matchLabel as string) ?? String(matchIndex);
     const sorted = [...payload]
       .filter(p => !hiddenUsers.has(p.dataKey as string))
       .sort((a, b) => (b.value as number) - (a.value as number));
@@ -216,104 +195,105 @@ export default function LeaderboardLineGraph({ data }: Props) {
     );
   };
 
-  const isZoomed = zoomLevel > 1.01;
-
   return (
     <div ref={containerRef}>
-      <div
-        ref={scrollRef}
-        style={{
-          overflowX: isZoomed ? 'auto' : 'hidden',
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          WebkitOverflowScrolling: 'touch' as any,
-          touchAction: isZoomed ? 'pan-x' : 'auto',
-        }}
-      >
-        <div style={{ width: `${Math.max(100, zoomLevel * 100)}%` }}>
-        <ResponsiveContainer width="100%" height={isMobile ? 420 : 280}>
-        <LineChart
-          data={chartData}
-          margin={{ top: 5, right: ICON_R + 12, bottom: 5, left: -10 }}
-          onClick={handleChartClick}
-          onMouseMove={() => setSuppressTooltip(false)}
+      <div className="relative">
+        <button
+          onClick={() => setIsZoomedIn(prev => !prev)}
+          className="absolute top-1 right-1 z-10 p-1.5 rounded-md bg-background/80 border shadow-sm hover:bg-accent transition-colors"
+          title={isZoomedIn ? 'Show full graph' : 'Zoom to last 25 rounds'}
         >
-          <CartesianGrid strokeDasharray="3 3" stroke="currentColor" strokeOpacity={0.1} />
-          <XAxis
-            dataKey="matchIndex"
-            tick={{ fontSize: 10 }}
-            tickLine={false}
-            allowDecimals={false}
-            tickFormatter={(v) => v === matchCount + 1 ? '' : String(v)}
-          />
-          <YAxis tick={{ fontSize: 10 }} tickLine={false} axisLine={false} width={32} />
-          <Tooltip
-            content={renderTooltip}
-            wrapperStyle={frozenTooltip ? { visibility: 'visible', pointerEvents: 'none' } : undefined}
-          />
-          {data.users.map((u, i) => {
-            const color = COLORS[i % COLORS.length];
-            return (
-              <Line
-                key={u.userId}
-                type="monotone"
-                dataKey={u.userId}
-                stroke={color}
-                strokeWidth={2}
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                dot={(props: any) => {
-                  const { cx, cy, index } = props as { cx?: number; cy?: number; index?: number };
-                  if (index !== sentinelIndex || cx == null || cy == null) return <g />;
-                  if (u.imageUrl) {
-                    const clipId = `uclip-${u.userId}`;
+          {isZoomedIn ? <ZoomOut size={16} /> : <ZoomIn size={16} />}
+        </button>
+        <ResponsiveContainer width="100%" height={isMobile ? 420 : 280}>
+          <LineChart
+            data={displayData}
+            margin={{ top: 5, right: ICON_R + 12, bottom: 5, left: -10 }}
+            onClick={handleChartClick}
+            onMouseMove={() => setSuppressTooltip(false)}
+          >
+            <CartesianGrid strokeDasharray="3 3" stroke="currentColor" strokeOpacity={0.1} />
+            <XAxis
+              dataKey="matchIndex"
+              tick={{ fontSize: 10 }}
+              tickLine={false}
+              allowDecimals={false}
+              tickFormatter={(v) => v === matchCount + 1 ? '' : String(v)}
+            />
+            <YAxis
+              domain={[yDomainMin, 'auto']}
+              tick={{ fontSize: 10 }}
+              tickLine={false}
+              axisLine={false}
+              width={32}
+            />
+            <Tooltip
+              content={renderTooltip}
+              wrapperStyle={frozenTooltip ? { visibility: 'visible', pointerEvents: 'none' } : undefined}
+            />
+            {data.users.map((u, i) => {
+              const color = COLORS[i % COLORS.length];
+              return (
+                <Line
+                  key={u.userId}
+                  type="monotone"
+                  dataKey={u.userId}
+                  stroke={color}
+                  strokeWidth={2}
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  dot={(props: any) => {
+                    const { cx, cy, index } = props as { cx?: number; cy?: number; index?: number };
+                    if (index !== sentinelIndex || cx == null || cy == null) return <g />;
+                    if (u.imageUrl) {
+                      const clipId = `uclip-${u.userId}`;
+                      return (
+                        <g key={`icon-${u.userId}`}>
+                          <defs>
+                            <clipPath id={clipId}>
+                              <circle cx={cx} cy={cy} r={ICON_R} />
+                            </clipPath>
+                          </defs>
+                          <circle cx={cx} cy={cy} r={ICON_R + 1} fill={color} />
+                          <image
+                            href={u.imageUrl}
+                            x={cx - ICON_R}
+                            y={cy - ICON_R}
+                            width={ICON_R * 2}
+                            height={ICON_R * 2}
+                            clipPath={`url(#${clipId})`}
+                          />
+                        </g>
+                      );
+                    }
                     return (
                       <g key={`icon-${u.userId}`}>
-                        <defs>
-                          <clipPath id={clipId}>
-                            <circle cx={cx} cy={cy} r={ICON_R} />
-                          </clipPath>
-                        </defs>
-                        <circle cx={cx} cy={cy} r={ICON_R + 1} fill={color} />
-                        <image
-                          href={u.imageUrl}
-                          x={cx - ICON_R}
-                          y={cy - ICON_R}
-                          width={ICON_R * 2}
-                          height={ICON_R * 2}
-                          clipPath={`url(#${clipId})`}
-                        />
+                        <circle cx={cx} cy={cy} r={ICON_R} fill={color} />
+                        <text
+                          x={cx}
+                          y={cy}
+                          textAnchor="middle"
+                          dominantBaseline="central"
+                          fontSize={8}
+                          fill="white"
+                          fontWeight="bold"
+                        >
+                          {u.username.charAt(0).toUpperCase()}
+                        </text>
                       </g>
                     );
-                  }
-                  return (
-                    <g key={`icon-${u.userId}`}>
-                      <circle cx={cx} cy={cy} r={ICON_R} fill={color} />
-                      <text
-                        x={cx}
-                        y={cy}
-                        textAnchor="middle"
-                        dominantBaseline="central"
-                        fontSize={8}
-                        fill="white"
-                        fontWeight="bold"
-                      >
-                        {u.username.charAt(0).toUpperCase()}
-                      </text>
-                    </g>
-                  );
-                }}
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                activeDot={(props: any) => {
-                  const { cx, cy, index, fill } = props as { cx?: number; cy?: number; index?: number; fill?: string };
-                  if (index === sentinelIndex || cx == null || cy == null) return <g />;
-                  return <circle key={`active-${u.userId}-${index}`} cx={cx} cy={cy} r={4} fill={fill ?? color} stroke="none" />;
-                }}
-                hide={hiddenUsers.has(u.userId)}
-              />
-            );
-          })}
-        </LineChart>
-      </ResponsiveContainer>
-      </div>
+                  }}
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  activeDot={(props: any) => {
+                    const { cx, cy, index, fill } = props as { cx?: number; cy?: number; index?: number; fill?: string };
+                    if (index === sentinelIndex || cx == null || cy == null) return <g />;
+                    return <circle key={`active-${u.userId}-${index}`} cx={cx} cy={cy} r={4} fill={fill ?? color} stroke="none" />;
+                  }}
+                  hide={hiddenUsers.has(u.userId)}
+                />
+              );
+            })}
+          </LineChart>
+        </ResponsiveContainer>
       </div>
 
       <div className="flex flex-wrap gap-x-4 gap-y-2 mt-3 text-xs items-center">
