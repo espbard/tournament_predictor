@@ -2222,10 +2222,10 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       if (soloTeams.length > 0) {
         const soloClauses = soloTeams.map(([teamId, predictors]) =>
           lang === 'no'
-            ? `**${predictors[0].username}** var den eneste som tippet at **${teamName(teamId)}** skulle gå hele veien`
+            ? `**${predictors[0].username}** er den eneste som har tippet at **${teamName(teamId)}** skal gå hele veien`
             : lang === 'de'
-              ? `**${predictors[0].username}** war der einzige Spieler, der auf **${teamName(teamId)}** als Gesamtsieger getippt hat`
-              : `**${predictors[0].username}** was the only player to predict **${teamName(teamId)}** to go all the way`
+              ? `**${predictors[0].username}** ist der einzige Spieler, der auf **${teamName(teamId)}** als Gesamtsieger getippt hat`
+              : `**${predictors[0].username}** is the only player to predict **${teamName(teamId)}** to go all the way`
         );
         const andWord = lang === 'no' ? 'og' : lang === 'de' ? 'und' : 'and';
         let soloText: string;
