@@ -2199,10 +2199,20 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       const sortedMainPredictors = [...mainPredictors].sort((a, b) => a.username.localeCompare(b.username));
       const mainUserList = formatUserList(sortedMainPredictors.map(u => u.username), lang);
 
-      let statistic = `**${mainTeamDisplayName}** is the most predicted winner! A total of **${mainCount}** ${mainCount === 1 ? 'user' : 'users'}: ${mainUserList} ${mainCount === 1 ? 'has' : 'have'} predicted that they will win the tournament.`;
+      let statistic =
+        lang === 'no'
+          ? `**${mainTeamDisplayName}** er den mest tippede vinneren! Totalt **${mainCount}** ${mainCount === 1 ? 'spiller' : 'spillere'}: ${mainUserList} har tippet at de vil vinne turneringen.`
+          : lang === 'de'
+            ? `**${mainTeamDisplayName}** ist der meistgetippte Turniersieger! Satte **${mainCount}** ${mainCount === 1 ? 'Spieler hat' : 'Spieler haben'} getippt, dass sie gewinnen werden: ${mainUserList}.`
+            : `**${mainTeamDisplayName}** is the most predicted winner! A total of **${mainCount}** ${mainCount === 1 ? 'user' : 'users'}: ${mainUserList} ${mainCount === 1 ? 'has' : 'have'} predicted that they will win the tournament.`;
 
       if (isNorwayFirst && mainEntry !== topEntry) {
-        statistic += ` Except for Norway of course! **${norwayCount}** ${norwayCount === 1 ? 'person has' : 'people have'} predicted that Norway will win the whole thing!`;
+        statistic +=
+          lang === 'no'
+            ? ` Bortsett fra Norge da! **${norwayCount}** ${norwayCount === 1 ? 'spiller' : 'spillere'} har tippet at Norge vinner det hele!`
+            : lang === 'de'
+              ? ` Außer Norwegen natürlich! **${norwayCount}** ${norwayCount === 1 ? 'Spieler hat' : 'Spieler haben'} getippt, dass Norwegen das Turnier gewinnt!`
+              : ` Except for Norway of course! **${norwayCount}** ${norwayCount === 1 ? 'person has' : 'people have'} predicted that Norway will win the whole thing!`;
       }
 
       const soloTeams = sortedWinnerTeams
@@ -2211,7 +2221,11 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
       if (soloTeams.length > 0) {
         const soloClauses = soloTeams.map(([teamId, predictors]) =>
-          `**${predictors[0].username}** was the only player to predict **${teamName(teamId)}** to go all the way`
+          lang === 'no'
+            ? `**${predictors[0].username}** var den eneste som tippet at **${teamName(teamId)}** skulle gå hele veien`
+            : lang === 'de'
+              ? `**${predictors[0].username}** war der einzige Spieler, der auf **${teamName(teamId)}** als Gesamtsieger getippt hat`
+              : `**${predictors[0].username}** was the only player to predict **${teamName(teamId)}** to go all the way`
         );
         const andWord = lang === 'no' ? 'og' : lang === 'de' ? 'und' : 'and';
         let soloText: string;
@@ -2222,12 +2236,13 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         } else {
           soloText = `${soloClauses.slice(0, -1).join(', ')}, ${andWord} ${soloClauses[soloClauses.length - 1]}!`;
         }
-        statistic += ` Meanwhile, ${soloText}`;
+        const meanwhileWord = lang === 'no' ? 'For øvrig' : lang === 'de' ? 'Außerdem' : 'Meanwhile';
+        statistic += ` ${meanwhileWord}, ${soloText}`;
       }
 
       audienceDarlingCard = {
         id: 'audienceDarling',
-        title: 'The Audience Darling',
+        title: lang === 'no' ? 'Publikumsfavoritten' : lang === 'de' ? 'Der Publikumsliebling' : 'The Audience Darling',
         statistic,
         subjects: [],
         linkType: null,

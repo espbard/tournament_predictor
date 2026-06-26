@@ -1,5 +1,6 @@
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, CartesianGrid } from 'recharts';
 import { useThemeStore } from '@/store/themeStore';
+import { useT } from '@/lib/useT';
 import type { UserStatCardData } from '@tournament-predictor/shared';
 
 const LIGHT_TITLE  = 'hsl(231, 70%, 28%)';
@@ -19,12 +20,28 @@ interface Props {
 
 export default function HaalandDistributionCard({ data }: Props) {
   const isDark = useThemeStore((s) => s.theme === 'dark');
+  const { language } = useT();
   const borderColor = isDark ? DARK_BORDER : LIGHT_BORDER;
   const titleColor  = isDark ? DARK_TITLE  : LIGHT_TITLE;
   const textColor   = isDark ? DARK_TEXT   : LIGHT_TEXT;
   const gridColor   = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
 
   if (!data.distributionData?.length) return null;
+
+  const heading =
+    language === 'no' ? 'Haalands tippede mål' :
+    language === 'de' ? 'Haalands getippte Tore' :
+    "Haaland's predicted goals";
+
+  const actualGoalsLabel = (n: number) =>
+    language === 'no' ? `Haaland har scoret ${n} mål så langt` :
+    language === 'de' ? `Haaland hat bisher ${n} Tor${n === 1 ? '' : 'e'} erzielt` :
+    `Haaland has scored ${n} goal${n === 1 ? '' : 's'} so far`;
+
+  const tooltipLabel = (goals: number, count: number) =>
+    language === 'no' ? `${goals} mål: ${count} spiller${count === 1 ? '' : 'e'}` :
+    language === 'de' ? `${goals} Tor${goals === 1 ? '' : 'e'}: ${count} Spieler` :
+    `${goals} goal${goals === 1 ? '' : 's'}: ${count} player${count === 1 ? '' : 's'}`;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const renderTooltip = (props: any) => {
@@ -33,13 +50,11 @@ export default function HaalandDistributionCard({ data }: Props) {
       payload?: ReadonlyArray<{ value?: number }>;
       label?: number;
     };
-    if (!active || !payload?.length) return null;
+    if (!active || !payload?.length || label == null) return null;
     const count = payload[0].value ?? 0;
     return (
       <div className="rounded-lg border bg-background p-2 text-xs shadow-md">
-        <p className="font-semibold text-foreground">
-          {label} goal{label === 1 ? '' : 's'}: {count} player{count === 1 ? '' : 's'}
-        </p>
+        <p className="font-semibold text-foreground">{tooltipLabel(label, count)}</p>
       </div>
     );
   };
@@ -53,7 +68,7 @@ export default function HaalandDistributionCard({ data }: Props) {
         className="text-xs font-bold uppercase tracking-wide text-center mb-3"
         style={{ color: titleColor }}
       >
-        Haaland&apos;s predicted goals
+        {heading}
       </h3>
       <ResponsiveContainer width="100%" height={160}>
         <BarChart
@@ -92,7 +107,7 @@ export default function HaalandDistributionCard({ data }: Props) {
       {data.distributionActualValue != null && (
         <p className="text-xs text-center mt-1" style={{ color: textColor }}>
           <span style={{ color: ACTUAL_LINE_COLOR, letterSpacing: '0.15em' }}>┅</span>
-          {' '}Haaland has scored {data.distributionActualValue} goal{data.distributionActualValue === 1 ? '' : 's'} so far
+          {' '}{actualGoalsLabel(data.distributionActualValue)}
         </p>
       )}
     </div>
