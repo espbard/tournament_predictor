@@ -18,6 +18,7 @@ import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { useT } from '@/lib/useT';
 import { useTeamName } from '@/lib/teamTranslations';
 import type { Tournament, Group, KnockoutConfig, KnockoutFirstRound, Match } from '@tournament-predictor/shared';
+import { KnockoutBracketVisualizer } from '@/components/KnockoutStageContent';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -74,8 +75,9 @@ const DEFAULT_CONFIG: KnockoutConfig = {
 type MatchWithTeams = Match & {
   homeTeamName: string | null;
   awayTeamName: string | null;
-  homeTeamImageUrl?: string | null;
-  awayTeamImageUrl?: string | null;
+  homeTeamImageUrl: string | null;
+  awayTeamImageUrl: string | null;
+  groupName: string | null;
 };
 
 // ── Lucky loser labels ────────────────────────────────────────────────────────
@@ -882,6 +884,246 @@ function FocusedAdminResults({
   );
 }
 
+// ── Admin bracket editor (drag-and-drop team reassignment) ────────────────────
+
+type TeamChipData = { teamId: string; name: string | null; imageUrl: string | null };
+
+function DraggableTeamChip({ teamId, name, imageUrl, isDragOverlay }: TeamChipData & { isDragOverlay?: boolean }) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: teamId });
+  const { tn } = useTeamName();
+  const style = transform ? { transform: CSS.Translate.toString(transform) } : undefined;
+  return (
+    <div
+      ref={isDragOverlay ? undefined : setNodeRef}
+      style={style}
+      {...(isDragOverlay ? {} : listeners)}
+      {...(isDragOverlay ? {} : attributes)}
+      className={`flex items-center gap-2 rounded-lg border bg-card px-3 py-2 cursor-grab active:cursor-grabbing touch-none select-none transition-opacity ${isDragging && !isDragOverlay ? 'opacity-30' : ''}`}
+    >
+      {imageUrl ? (
+        <img src={imageUrl} alt="" className="h-6 w-6 rounded-full object-cover flex-shrink-0" />
+      ) : (
+        <div className="h-6 w-6 rounded-full bg-muted flex-shrink-0 flex items-center justify-center text-[10px] font-bold">
+          {name?.charAt(0) ?? '?'}
+        </div>
+      )}
+      <span className="text-sm font-medium truncate">{tn(name) ?? 'TBD'}</span>
+    </div>
+  );
+}
+
+function DroppableSlot({ id, team, label }: { id: string; team: TeamChipData | null; label: string }) {
+  const { isOver, setNodeRef } = useDroppable({ id });
+  return (
+    <div
+      ref={setNodeRef}
+      className={`flex-1 min-w-0 rounded-lg border-2 border-dashed transition-colors ${isOver ? 'border-primary bg-primary/5' : 'border-border'} ${team ? 'bg-card' : 'bg-muted/20'}`}
+      style={{ minHeight: 48 }}
+    >
+      {team ? (
+        <DraggableTeamChip {...team} />
+      ) : (
+        <div className="flex items-center justify-center h-12 text-xs text-muted-foreground">
+          {isOver ? 'Drop here' : label}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DroppableBucket({ teams }: { teams: TeamChipData[] }) {
+  const { isOver, setNodeRef } = useDroppable({ id: 'bucket' });
+  return (
+    <div
+      ref={setNodeRef}
+      className={`rounded-xl border-2 border-dashed p-3 transition-colors min-h-[64px] ${isOver ? 'border-primary bg-primary/5' : 'border-amber-400/50 bg-amber-50/10 dark:bg-amber-900/10'}`}
+    >
+      <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 mb-2">Temporary Bucket</p>
+      {teams.length === 0 ? (
+        <p className="text-xs text-muted-foreground italic">{isOver ? 'Drop here' : 'Drag teams here while reorganizing'}</p>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {teams.map(t => <DraggableTeamChip key={t.teamId} {...t} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AdminBracketEditor({
+  tournamentId,
+  firstRoundMatches,
+  onCancel,
+  onConfirmed,
+}: {
+  tournamentId: string;
+  firstRoundMatches: MatchWithTeams[];
+  onCancel: () => void;
+  onConfirmed: () => void;
+}) {
+  const queryClient = useQueryClient();
+
+  // Build initial slot map and team data from match assignments
+  const initialTeamData = useMemo<Record<string, TeamChipData>>(() => {
+    const map: Record<string, TeamChipData> = {};
+    for (const m of firstRoundMatches) {
+      if (m.homeTeamId) map[m.homeTeamId] = { teamId: m.homeTeamId, name: m.homeTeamName, imageUrl: m.homeTeamImageUrl ?? null };
+      if (m.awayTeamId) map[m.awayTeamId] = { teamId: m.awayTeamId, name: m.awayTeamName, imageUrl: m.awayTeamImageUrl ?? null };
+    }
+    return map;
+  }, [firstRoundMatches]);
+
+  const initialSlotMap = useMemo<Record<string, string | null>>(() => {
+    const map: Record<string, string | null> = {};
+    for (const m of firstRoundMatches) {
+      map[`${m.id}_home`] = m.homeTeamId ?? null;
+      map[`${m.id}_away`] = m.awayTeamId ?? null;
+    }
+    return map;
+  }, [firstRoundMatches]);
+
+  const [slotMap, setSlotMap] = useState<Record<string, string | null>>(initialSlotMap);
+  const [bucket, setBucket] = useState<string[]>([]);
+  const [activeTeamId, setActiveTeamId] = useState<string | null>(null);
+
+  const teamData = initialTeamData;
+
+  const overwriteMutation = useMutation({
+    mutationFn: (payload: { matches: Array<{ matchId: string; homeTeamId: string | null; awayTeamId: string | null }> }) =>
+      api.post(`/tournaments/${tournamentId}/overwrite-first-round`, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['matches', tournamentId] });
+      onConfirmed();
+    },
+  });
+
+  function handleDragStart(event: DragStartEvent) {
+    setActiveTeamId(String(event.active.id));
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    setActiveTeamId(null);
+    const { active, over } = event;
+    if (!over) return;
+
+    const draggedTeamId = String(active.id);
+    const destinationId = String(over.id);
+
+    // Find source location
+    let sourceKey: string | null = null;
+    if (bucket.includes(draggedTeamId)) {
+      sourceKey = 'bucket';
+    } else {
+      for (const [k, v] of Object.entries(slotMap)) {
+        if (v === draggedTeamId) { sourceKey = k; break; }
+      }
+    }
+
+    if (!sourceKey || sourceKey === destinationId) return;
+
+    if (destinationId === 'bucket') {
+      // slot → bucket
+      setSlotMap(prev => ({ ...prev, [sourceKey!]: null }));
+      setBucket(prev => [...prev, draggedTeamId]);
+    } else if (destinationId.startsWith('slot_')) {
+      const destKey = destinationId.slice(5); // remove 'slot_' prefix
+      const displaced = slotMap[destKey] ?? null;
+
+      if (sourceKey === 'bucket') {
+        // bucket → slot
+        setSlotMap(prev => ({ ...prev, [destKey]: draggedTeamId }));
+        setBucket(prev => {
+          const next = prev.filter(id => id !== draggedTeamId);
+          if (displaced) next.push(displaced);
+          return next;
+        });
+      } else {
+        // slot → slot (swap)
+        setSlotMap(prev => ({ ...prev, [sourceKey!]: displaced, [destKey]: draggedTeamId }));
+      }
+    }
+  }
+
+  const canConfirm = bucket.length === 0;
+
+  function handleConfirm() {
+    const payload = {
+      matches: firstRoundMatches.map(m => ({
+        matchId: m.id,
+        homeTeamId: slotMap[`${m.id}_home`] ?? null,
+        awayTeamId: slotMap[`${m.id}_away`] ?? null,
+      })),
+    };
+    overwriteMutation.mutate(payload);
+  }
+
+  const activeTeam = activeTeamId ? teamData[activeTeamId] : null;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold">Edit Bracket — First Round</h3>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirm}
+            disabled={!canConfirm || overwriteMutation.isPending}
+            className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+            title={!canConfirm ? 'Move all teams from the bucket into matches first' : undefined}
+          >
+            {overwriteMutation.isPending ? 'Saving…' : 'Confirm Bracket'}
+          </button>
+        </div>
+      </div>
+
+      {overwriteMutation.isError && (
+        <p className="text-sm text-destructive">Failed to save bracket. Please try again.</p>
+      )}
+
+      <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+        <DroppableBucket teams={bucket.map(id => teamData[id]).filter(Boolean)} />
+
+        <div className="space-y-2 mt-4">
+          {firstRoundMatches.map((m, idx) => {
+            const homeTeamId = slotMap[`${m.id}_home`] ?? null;
+            const awayTeamId = slotMap[`${m.id}_away`] ?? null;
+            const homeTeam = homeTeamId ? (teamData[homeTeamId] ?? null) : null;
+            const awayTeam = awayTeamId ? (teamData[awayTeamId] ?? null) : null;
+            return (
+              <div key={m.id} className="rounded-lg border bg-muted/10 p-3">
+                <p className="text-xs text-muted-foreground font-medium mb-2">
+                  Match {idx + 1}
+                  {m.scheduledAt && (
+                    <span className="ml-2">
+                      · {new Date(m.scheduledAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  )}
+                </p>
+                <div className="flex items-center gap-2">
+                  <DroppableSlot id={`slot_${m.id}_home`} team={homeTeam} label="Home slot" />
+                  <span className="text-xs text-muted-foreground flex-shrink-0">vs</span>
+                  <DroppableSlot id={`slot_${m.id}_away`} team={awayTeam} label="Away slot" />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <DragOverlay dropAnimation={null}>
+          {activeTeam && <DraggableTeamChip {...activeTeam} isDragOverlay />}
+        </DragOverlay>
+      </DndContext>
+    </div>
+  );
+}
+
 // ── Knockout tab content (used both inline and on the standalone page) ─────────
 
 export function TournamentKnockoutTabContent({ tournamentId }: { tournamentId: string }) {
@@ -916,6 +1158,7 @@ export function TournamentKnockoutTabContent({ tournamentId }: { tournamentId: s
   const [configDirty, setConfigDirty] = useState(false);
   const [initialized, setInitialized] = useState(false);
   const [activeQualifier, setActiveQualifier] = useState<string | null>(null);
+  const [isEditingBracket, setIsEditingBracket] = useState(false);
 
   useEffect(() => {
     if (tournament && !initialized) {
@@ -1018,6 +1261,33 @@ export function TournamentKnockoutTabContent({ tournamentId }: { tournamentId: s
     saveConfigMutation.mutate({ bracketSlots: newSlots });
   }
 
+  // Build match map keyed by `${stage}_${bracketIndex}` for the bracket visualizer
+  const knockoutMatchMap = useMemo(() => {
+    const koStages = new Set(['round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'bronze_final', 'final']);
+    const byStage = new Map<string, MatchWithTeams[]>();
+    for (const m of knockoutMatches) {
+      if (!koStages.has(m.stage as string)) continue;
+      if (!byStage.has(m.stage as string)) byStage.set(m.stage as string, []);
+      byStage.get(m.stage as string)!.push(m);
+    }
+    for (const ms of byStage.values()) {
+      ms.sort((a, b) => {
+        if (a.bracketIndex != null && b.bracketIndex != null) return a.bracketIndex - b.bracketIndex;
+        if (a.bracketIndex != null) return -1;
+        if (b.bracketIndex != null) return 1;
+        if (!a.scheduledAt && !b.scheduledAt) return 0;
+        if (!a.scheduledAt) return 1;
+        if (!b.scheduledAt) return -1;
+        return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
+      });
+    }
+    const result: Record<string, MatchWithTeams> = {};
+    for (const [stage, ms] of byStage) {
+      ms.forEach((m, i) => { result[`${stage}_${i}`] = m; });
+    }
+    return result;
+  }, [knockoutMatches]);
+
   if (isLoading) return <LoadingSpinner />;
   if (!tournament) return null;
 
@@ -1066,9 +1336,57 @@ export function TournamentKnockoutTabContent({ tournamentId }: { tournamentId: s
       )}
 
       {isAdmin && isSetupLocked && (
-        <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
-          {t('knockout.setupLocked')}
-        </div>
+        <>
+          <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+            {t('knockout.setupLocked')}
+          </div>
+
+          {/* Bracket visualization + edit mode */}
+          {tournament.knockoutConfig && (
+            <section className="mb-8">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Knockout Bracket
+                </h2>
+                {!isEditingBracket && (
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingBracket(true)}
+                    className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+                  >
+                    Edit Bracket
+                  </button>
+                )}
+              </div>
+
+              {isEditingBracket ? (
+                <AdminBracketEditor
+                  tournamentId={tournamentId}
+                  firstRoundMatches={(() => {
+                    const fr = tournament.knockoutConfig!.firstRound;
+                    const frMatches = knockoutMatches.filter(m => m.stage === fr);
+                    return [...frMatches].sort((a, b) => {
+                      if (a.bracketIndex != null && b.bracketIndex != null) return a.bracketIndex - b.bracketIndex;
+                      if (a.bracketIndex != null) return -1;
+                      if (b.bracketIndex != null) return 1;
+                      if (!a.scheduledAt && !b.scheduledAt) return 0;
+                      if (!a.scheduledAt) return 1;
+                      if (!b.scheduledAt) return -1;
+                      return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
+                    });
+                  })()}
+                  onCancel={() => setIsEditingBracket(false)}
+                  onConfirmed={() => setIsEditingBracket(false)}
+                />
+              ) : (
+                <KnockoutBracketVisualizer
+                  knockoutConfig={tournament.knockoutConfig!}
+                  actualMatchMap={knockoutMatchMap}
+                />
+              )}
+            </section>
+          )}
+        </>
       )}
 
       {!isSetupLocked && (

@@ -1137,7 +1137,7 @@ const V_ROW_GAP = 3;
 const VIZ_NARROW = { vHPad: 7,  vCardW: 23, baseIcon: 17, finalIcon: 29, finalHPad: 5, bronzeIcon: 21, bronzeHPad: 4 };
 const VIZ_WIDE   = { vHPad: 11, vCardW: 26, baseIcon: 20, finalIcon: 32, finalHPad: 5, bronzeIcon: 24, bronzeHPad: 4 };
 
-type VizTeam = { imageUrl: string | null; name: string | null };
+export type VizTeam = { imageUrl: string | null; name: string | null };
 
 // Icon and card height scale progressively toward the final.
 // R=0=final (largest), R=maxRoundIdx=first round (smallest).
@@ -1177,7 +1177,7 @@ function VizTeamIcon({ team, size }: { team: VizTeam | null; size: number }) {
   );
 }
 
-function KnockoutBracketVisualizer({
+export function KnockoutBracketVisualizer({
   knockoutConfig,
   actualMatchMap,
   focusedPredKey = '',
