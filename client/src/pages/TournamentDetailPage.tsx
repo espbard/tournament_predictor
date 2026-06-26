@@ -1101,34 +1101,25 @@ export default function TournamentDetailPage() {
               )}
             </div>
 
-            {/* Lucky Losers Table — visualization or interactive reordering when all groups confirmed */}
-            {numLuckyLosers > 0 && (() => {
-              // Build map: teamId → { group, row } for LL candidates
+            {/* Lucky Losers Table — only shown once all groups are confirmed */}
+            {numLuckyLosers > 0 && allGroupsConfirmed && (() => {
+              // Build map: teamId → { group, row } for all non-direct-qualifying teams
               const llRowMap = new Map<string, { group: typeof groupList[0]; row: FullRow }>();
-              if (allGroupsConfirmed) {
-                for (const { group, rows } of groupStandingData) {
-                  const confirmedOrder = confirmedGroupStandings[group.name];
-                  if (!confirmedOrder) continue;
-                  for (let pos = directQualifiers; pos < confirmedOrder.length; pos++) {
-                    const llTeamId = confirmedOrder[pos];
-                    if (!llTeamId) continue;
-                    const llRow = rows.find(r => r.team.id === llTeamId);
-                    if (llRow) llRowMap.set(llTeamId, { group, row: llRow });
-                  }
-                }
-              } else {
-                for (const { group, rows } of groupStandingData) {
-                  for (let pos = directQualifiers; pos < rows.length; pos++) {
-                    const llRow = rows[pos];
-                    if (llRow) llRowMap.set(llRow.team.id, { group, row: llRow });
-                  }
+              for (const { group, rows } of groupStandingData) {
+                const confirmedOrder = confirmedGroupStandings[group.name];
+                if (!confirmedOrder) continue;
+                for (let pos = directQualifiers; pos < confirmedOrder.length; pos++) {
+                  const llTeamId = confirmedOrder[pos];
+                  if (!llTeamId) continue;
+                  const llRow = rows.find(r => r.team.id === llTeamId);
+                  if (llRow) llRowMap.set(llTeamId, { group, row: llRow });
                 }
               }
 
               if (llRowMap.size === 0) return null;
 
               // Determine display order
-              const displayIds = allGroupsConfirmed ? llDisplayOrder : sortedLL.map(r => r.team.id).filter(id => llRowMap.has(id));
+              const displayIds = llDisplayOrder;
 
               const llTableRows = displayIds
                 .map(teamId => {
