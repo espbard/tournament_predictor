@@ -6,7 +6,7 @@ import { useThemeStore } from '@/store/themeStore';
 interface UserStatCardProps {
   competitionId: string;
   data: UserStatCardData;
-  iconOnRight: boolean;
+  iconOnRight?: boolean;
   onMatchClick?: (matchId: string) => void;
   onLeaderboardClick?: () => void;
 }
@@ -143,7 +143,7 @@ function renderStatistic(text: string, boldColor: string) {
   );
 }
 
-export default function UserStatCard({ competitionId, data, iconOnRight, onMatchClick, onLeaderboardClick }: UserStatCardProps) {
+export default function UserStatCard({ competitionId, data, onMatchClick, onLeaderboardClick }: UserStatCardProps) {
   const { title, statistic, subjects } = data;
   const isDark = useThemeStore((s) => s.theme === 'dark');
   const titleColor  = isDark ? DARK_TITLE  : LIGHT_TITLE;
@@ -151,10 +151,12 @@ export default function UserStatCard({ competitionId, data, iconOnRight, onMatch
   const textColor   = isDark ? DARK_TEXT   : LIGHT_TEXT;
   const borderColor = isDark ? DARK_BORDER : LIGHT_BORDER;
 
-  const icon = (
-    <div className="relative min-h-40 w-1/3 flex-shrink-0 sm:w-1/4">
+  const hasImage = !!(data.iconImageUrl || subjects.length > 0);
+
+  const image = hasImage && (
+    <div className="relative h-44 w-full flex-shrink-0">
       {data.iconImageUrl ? (
-        <img src={data.iconImageUrl} alt="" className="h-full w-full object-cover" />
+        <img src={data.iconImageUrl} alt="" className="h-full w-full object-contain p-4" />
       ) : subjects.length > 1 ? (
         <div className="relative h-full w-full">
           {subjects.map((subject, i) => {
@@ -220,25 +222,19 @@ export default function UserStatCard({ competitionId, data, iconOnRight, onMatch
     </div>
   );
 
-  const content = (
-    <div className="min-w-0 flex-1 p-4">
-      <p className="text-sm">{renderStatistic(statistic, boldColor)}</p>
-    </div>
-  );
-
   const card = (
     <div
       className="overflow-hidden rounded-2xl border-4 dark:border bg-[hsla(120,3%,91%,0.5)] dark:bg-[hsl(231,28%,16%)]"
       style={{ color: textColor, borderColor }}
     >
+      {image}
       <div className="px-4 py-3" style={{ borderBottom: `1px solid ${borderColor}` }}>
         <h3 className="text-lg font-bold uppercase tracking-wide text-center" style={{ color: titleColor }}>
           {title}
         </h3>
       </div>
-      <div className={`flex items-stretch ${iconOnRight ? 'flex-row-reverse' : 'flex-row'}`}>
-        {icon}
-        {content}
+      <div className="px-4 py-3">
+        <p className="text-sm">{renderStatistic(statistic, boldColor)}</p>
       </div>
     </div>
   );
