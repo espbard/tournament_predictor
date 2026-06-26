@@ -2190,36 +2190,92 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
       const topEntry = sortedWinnerTeams[0];
       const isNorwayFirst = !!norwayId && topEntry[0] === norwayId;
-      const secondEntry = sortedWinnerTeams[1];
-      const norwayTiedForFirst = isNorwayFirst && !!secondEntry && secondEntry[1].length === topEntry[1].length;
-      const shouldFilterNorway = isNorwayFirst && !norwayTiedForFirst;
-      const norwayCount = shouldFilterNorway ? topEntry[1].length : 0;
-      const mainEntry = shouldFilterNorway ? (sortedWinnerTeams[1] ?? topEntry) : topEntry;
+      const topCount = topEntry[1].length;
+      const tiedForFirst = sortedWinnerTeams.filter(([, predictors]) => predictors.length === topCount);
+      const isTieWithNorway = !!norwayId && tiedForFirst.length > 1 && tiedForFirst.some(([teamId]) => teamId === norwayId);
+      // Filter Norway only when it is strictly alone at the top (not tied)
+      const shouldFilterNorway = isNorwayFirst && !isTieWithNorway;
 
-      const [mainTeamId, mainPredictors] = mainEntry;
-      const mainTeamDisplayName = teamName(mainTeamId);
-      const mainCount = mainPredictors.length;
-      const sortedMainPredictors = [...mainPredictors].sort((a, b) => a.username.localeCompare(b.username));
-      const mainUserList = formatUserList(sortedMainPredictors.map(u => u.username), lang);
+      let statistic: string;
+      let cardIconImageUrl: string | null;
+      let cardSubjects: Array<{ type: 'user' | 'team'; id: string; name: string; imageUrl?: string | null; iconColor?: string | null }>;
+      let featuredTeamIds: Set<string>;
 
-      let statistic =
-        lang === 'no'
-          ? `**${mainTeamDisplayName}** er den mest tippede vinneren! Totalt **${mainCount}** ${mainCount === 1 ? 'spiller' : 'spillere'}: ${mainUserList} har tippet at de vil vinne turneringen.`
+      if (isTieWithNorway) {
+        const andWord = lang === 'no' ? 'og' : lang === 'de' ? 'und' : 'and';
+        const tiedNames = tiedForFirst.map(([teamId]) => `**${teamName(teamId)}**`);
+        const teamsString =
+          tiedNames.length === 2
+            ? `${tiedNames[0]} ${andWord} ${tiedNames[1]}`
+            : `${tiedNames.slice(0, -1).join(', ')}, ${andWord} ${tiedNames[tiedNames.length - 1]}`;
+
+        const perTeam = tiedForFirst.map(([teamId, predictors]) => {
+          const sorted = [...predictors].sort((a, b) => a.username.localeCompare(b.username));
+          return { teamId, name: teamName(teamId), userList: formatUserList(sorted.map(u => u.username), lang), count: predictors.length };
+        });
+
+        const bothAll = lang === 'no'
+          ? (tiedForFirst.length === 2 ? 'begge' : 'alle')
           : lang === 'de'
-            ? `**${mainTeamDisplayName}** ist der meistgetippte Turniersieger! Satte **${mainCount}** ${mainCount === 1 ? 'Spieler hat' : 'Spieler haben'} getippt, dass sie gewinnen werden: ${mainUserList}.`
-            : `**${mainTeamDisplayName}** is the most predicted winner! A total of **${mainCount}** ${mainCount === 1 ? 'user' : 'users'}: ${mainUserList} ${mainCount === 1 ? 'has' : 'have'} predicted that they will win the tournament.`;
+            ? (tiedForFirst.length === 2 ? 'beide' : 'alle')
+            : (tiedForFirst.length === 2 ? 'both' : 'all');
 
-      if (shouldFilterNorway && mainEntry !== topEntry) {
-        statistic +=
+        if (lang === 'no') {
+          const intro = `${teamsString} er ${bothAll} de mest tippede vinnerne med **${topCount}** ${topCount === 1 ? 'spiller' : 'spillere'} hver!`;
+          const details = perTeam.map(d => `${d.userList} har tippet **${d.name}**`).join(', mens ') + '.';
+          statistic = `${intro} ${details}`;
+        } else if (lang === 'de') {
+          const intro = `${teamsString} sind ${bothAll} die meistgetippten Turniersieger mit jeweils **${topCount}** ${topCount === 1 ? 'Spieler' : 'Spielern'}!`;
+          const details = perTeam.map(d => `${d.userList} ${d.count === 1 ? 'hat' : 'haben'} auf **${d.name}** getippt`).join(', während ') + '.';
+          statistic = `${intro} ${details}`;
+        } else {
+          const intro = `${teamsString} are ${bothAll} tied as the most predicted winners with **${topCount}** prediction${topCount === 1 ? '' : 's'} each!`;
+          const details = perTeam.map(d => `${d.userList} predicted **${d.name}**`).join(', while ') + ' to win the tournament.';
+          statistic = `${intro} ${details}`;
+        }
+
+        cardSubjects = tiedForFirst.map(([teamId]) => ({
+          type: 'team' as const,
+          id: teamId,
+          name: teamName(teamId),
+          imageUrl: teamImageMap.get(teamId) ?? null,
+        }));
+        cardIconImageUrl = null;
+        featuredTeamIds = new Set(tiedForFirst.map(([teamId]) => teamId));
+      } else {
+        const norwayCount = shouldFilterNorway ? topEntry[1].length : 0;
+        const mainEntry = shouldFilterNorway ? (sortedWinnerTeams[1] ?? topEntry) : topEntry;
+
+        const [mainTeamId, mainPredictors] = mainEntry;
+        const mainTeamDisplayName = teamName(mainTeamId);
+        const mainCount = mainPredictors.length;
+        const sortedMainPredictors = [...mainPredictors].sort((a, b) => a.username.localeCompare(b.username));
+        const mainUserList = formatUserList(sortedMainPredictors.map(u => u.username), lang);
+
+        statistic =
           lang === 'no'
-            ? ` Bortsett fra Norge da! **${norwayCount}** ${norwayCount === 1 ? 'spiller' : 'spillere'} har tippet at Norge vinner det hele!`
+            ? `**${mainTeamDisplayName}** er den mest tippede vinneren! Totalt **${mainCount}** ${mainCount === 1 ? 'spiller' : 'spillere'}: ${mainUserList} har tippet at de vil vinne turneringen.`
             : lang === 'de'
-              ? ` Außer Norwegen natürlich! **${norwayCount}** ${norwayCount === 1 ? 'Spieler hat' : 'Spieler haben'} getippt, dass Norwegen das Turnier gewinnt!`
-              : ` Except for Norway of course! **${norwayCount}** ${norwayCount === 1 ? 'person has' : 'people have'} predicted that Norway will win the whole thing!`;
+              ? `**${mainTeamDisplayName}** ist der meistgetippte Turniersieger! Satte **${mainCount}** ${mainCount === 1 ? 'Spieler hat' : 'Spieler haben'} getippt, dass sie gewinnen werden: ${mainUserList}.`
+              : `**${mainTeamDisplayName}** is the most predicted winner! A total of **${mainCount}** ${mainCount === 1 ? 'user' : 'users'}: ${mainUserList} ${mainCount === 1 ? 'has' : 'have'} predicted that they will win the tournament.`;
+
+        if (shouldFilterNorway && mainEntry !== topEntry) {
+          statistic +=
+            lang === 'no'
+              ? ` Bortsett fra Norge da! **${norwayCount}** ${norwayCount === 1 ? 'spiller' : 'spillere'} har tippet at Norge vinner det hele!`
+              : lang === 'de'
+                ? ` Außer Norwegen natürlich! **${norwayCount}** ${norwayCount === 1 ? 'Spieler hat' : 'Spieler haben'} getippt, dass Norwegen das Turnier gewinnt!`
+                : ` Except for Norway of course! **${norwayCount}** ${norwayCount === 1 ? 'person has' : 'people have'} predicted that Norway will win the whole thing!`;
+        }
+
+        cardSubjects = [];
+        cardIconImageUrl = teamImageMap.get(mainTeamId) ?? null;
+        featuredTeamIds = new Set([mainTeamId]);
+        if (shouldFilterNorway && norwayId) featuredTeamIds.add(norwayId);
       }
 
       const soloTeams = sortedWinnerTeams
-        .filter(([teamId, predictors]) => predictors.length === 1 && teamId !== mainTeamId && !(shouldFilterNorway && teamId === norwayId))
+        .filter(([teamId, predictors]) => predictors.length === 1 && !featuredTeamIds.has(teamId))
         .sort(([idA], [idB]) => teamName(idA).localeCompare(teamName(idB)));
 
       if (soloTeams.length > 0) {
@@ -2247,9 +2303,9 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         id: 'audienceDarling',
         title: lang === 'no' ? 'Publikumsfavoritten' : lang === 'de' ? 'Der Publikumsliebling' : 'The Audience Darling',
         statistic,
-        subjects: [],
+        subjects: cardSubjects,
         linkType: null,
-        iconImageUrl: teamImageMap.get(mainTeamId) ?? null,
+        iconImageUrl: cardIconImageUrl,
       };
     }
 
