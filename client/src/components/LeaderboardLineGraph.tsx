@@ -11,6 +11,7 @@ const COLORS = [
 
 const ICON_R = 8;
 const ZOOM_WINDOW = 25;
+const LEGEND_MAX = 6;
 
 interface FrozenEntry {
   userId: string;
@@ -52,6 +53,12 @@ export default function LeaderboardLineGraph({ data }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   const matchCount = data.matches.length;
+
+  // Sort users by their latest cumulative points so the legend shows the top 6 by rank
+  const lastMatch = data.matches[matchCount - 1];
+  const legendUsers = [...data.users]
+    .map((u, i) => ({ ...u, color: COLORS[i % COLORS.length], currentPoints: lastMatch?.cumulativePoints[u.userId] ?? 0 }))
+    .sort((a, b) => b.currentPoints - a.currentPoints);
 
   const chartData = [
     ...data.matches.map((m, i) => {
@@ -198,6 +205,33 @@ export default function LeaderboardLineGraph({ data }: Props) {
   return (
     <div ref={containerRef}>
       <div className="relative">
+        {/* Legend overlay — top left, max LEGEND_MAX entries */}
+        <div className="absolute top-1 left-1 z-10 bg-background/80 border shadow-sm rounded-md p-1.5 text-[10px]">
+          {legendUsers.slice(0, LEGEND_MAX).map(u => {
+            const isHidden = hiddenUsers.has(u.userId);
+            return (
+              <label key={u.userId} className="flex items-center gap-1 cursor-pointer select-none py-0.5">
+                <input
+                  type="checkbox"
+                  checked={!isHidden}
+                  onChange={() => toggleUser(u.userId)}
+                  style={{ accentColor: u.color }}
+                  className="w-3 h-3 shrink-0"
+                />
+                <span
+                  style={{ color: isHidden ? undefined : u.color }}
+                  className={isHidden ? 'text-muted-foreground line-through' : 'font-medium'}
+                >
+                  {u.username}
+                </span>
+              </label>
+            );
+          })}
+          {data.users.length > LEGEND_MAX && (
+            <div className="text-muted-foreground py-0.5 pl-4">...</div>
+          )}
+        </div>
+
         <button
           onClick={() => setIsZoomedIn(prev => !prev)}
           className="absolute top-1 right-1 z-10 p-1.5 rounded-md bg-background/80 border shadow-sm hover:bg-accent transition-colors"
@@ -296,28 +330,8 @@ export default function LeaderboardLineGraph({ data }: Props) {
         </ResponsiveContainer>
       </div>
 
-      <div className="flex flex-wrap gap-x-4 gap-y-2 mt-3 text-xs items-center">
-        {data.users.map((u, i) => {
-          const color = COLORS[i % COLORS.length];
-          const isHidden = hiddenUsers.has(u.userId);
-          return (
-            <label key={u.userId} className="flex items-center gap-1.5 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={!isHidden}
-                onChange={() => toggleUser(u.userId)}
-                style={{ accentColor: color }}
-              />
-              <span
-                style={{ color: isHidden ? undefined : color }}
-                className={isHidden ? 'text-muted-foreground line-through' : 'font-medium'}
-              >
-                {u.username}
-              </span>
-            </label>
-          );
-        })}
-        <label className="flex items-center gap-1.5 cursor-pointer select-none text-muted-foreground ml-auto">
+      <div className="flex mt-3 text-xs justify-end">
+        <label className="flex items-center gap-1.5 cursor-pointer select-none text-muted-foreground">
           <input
             type="checkbox"
             checked={hiddenUsers.size === 0}
