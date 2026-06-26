@@ -1,4 +1,4 @@
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, CartesianGrid } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, ReferenceLine, CartesianGrid } from 'recharts';
 import { useThemeStore } from '@/store/themeStore';
 import { useT } from '@/lib/useT';
 import type { UserStatCardData } from '@tournament-predictor/shared';
@@ -11,7 +11,7 @@ const DARK_TITLE   = 'hsl(231, 60%, 65%)';
 const DARK_BORDER  = 'hsl(231, 40%, 28%)';
 const DARK_TEXT    = 'hsl(120, 3%, 85%)';
 
-const BAR_COLOR = '#6366f1';
+const LINE_COLOR = '#6366f1';
 const ACTUAL_LINE_COLOR = '#eab308';
 
 interface Props {
@@ -38,27 +38,6 @@ export default function HaalandDistributionCard({ data }: Props) {
     language === 'de' ? `Haaland hat bisher ${n} Tor${n === 1 ? '' : 'e'} erzielt` :
     `Haaland has scored ${n} goal${n === 1 ? '' : 's'} so far`;
 
-  const tooltipLabel = (goals: number, count: number) =>
-    language === 'no' ? `${goals} mål: ${count} spiller${count === 1 ? '' : 'e'}` :
-    language === 'de' ? `${goals} Tor${goals === 1 ? '' : 'e'}: ${count} Spieler` :
-    `${goals} goal${goals === 1 ? '' : 's'}: ${count} player${count === 1 ? '' : 's'}`;
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const renderTooltip = (props: any) => {
-    const { active, payload, label } = props as {
-      active?: boolean;
-      payload?: ReadonlyArray<{ value?: number }>;
-      label?: number;
-    };
-    if (!active || !payload?.length || label == null) return null;
-    const count = payload[0].value ?? 0;
-    return (
-      <div className="rounded-lg border bg-background p-2 text-xs shadow-md">
-        <p className="font-semibold text-foreground">{tooltipLabel(label, count)}</p>
-      </div>
-    );
-  };
-
   return (
     <div
       className="overflow-hidden rounded-2xl border-4 dark:border bg-[hsla(120,3%,91%,0.5)] dark:bg-[hsl(231,28%,16%)] px-4 pb-4 pt-3"
@@ -71,7 +50,7 @@ export default function HaalandDistributionCard({ data }: Props) {
         {heading}
       </h3>
       <ResponsiveContainer width="100%" height={160}>
-        <BarChart
+        <LineChart
           data={data.distributionData}
           margin={{ top: 4, right: 16, bottom: 4, left: -10 }}
         >
@@ -89,11 +68,14 @@ export default function HaalandDistributionCard({ data }: Props) {
             allowDecimals={false}
             width={24}
           />
-          <Tooltip
-            content={renderTooltip}
-            cursor={{ fill: 'rgba(99,102,241,0.12)' }}
+          <Line
+            type="monotone"
+            dataKey="count"
+            stroke={LINE_COLOR}
+            strokeWidth={2}
+            dot={false}
+            isAnimationActive={false}
           />
-          <Bar dataKey="count" fill={BAR_COLOR} radius={[3, 3, 0, 0]} maxBarSize={48} />
           {data.distributionActualValue != null && (
             <ReferenceLine
               x={data.distributionActualValue}
@@ -102,7 +84,7 @@ export default function HaalandDistributionCard({ data }: Props) {
               strokeWidth={2}
             />
           )}
-        </BarChart>
+        </LineChart>
       </ResponsiveContainer>
       {data.distributionActualValue != null && (
         <p className="text-xs text-center mt-1" style={{ color: textColor }}>
