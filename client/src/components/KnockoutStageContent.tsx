@@ -168,6 +168,7 @@ function resolveSlots(
   directQualifiers: number,
   firstRoundMatchCount: number,
   luckyLoserChoices: DisciplinaryChoices = {},
+  preorderedLLIds?: string[],
 ): Record<string, TeamStat | null> {
   const byGroup = new Map(groupStandings);
   const resolved: Record<string, TeamStat | null> = {};
@@ -190,12 +191,21 @@ function resolveSlots(
     }
   }
 
-  const allLL = sortTeams(
-    groupStandings
+  let allLL: TeamStat[];
+  if (preorderedLLIds && preorderedLLIds.length > 0) {
+    const raw = groupStandings
       .filter(([, t]) => t.length > directQualifiers)
-      .map(([, t]) => t[directQualifiers]),
-    luckyLoserChoices,
-  );
+      .map(([, t]) => t[directQualifiers]);
+    const llMap = new Map(raw.map(t => [t.teamId, t]));
+    allLL = preorderedLLIds.map(id => llMap.get(id)).filter((t): t is TeamStat => t != null);
+  } else {
+    allLL = sortTeams(
+      groupStandings
+        .filter(([, t]) => t.length > directQualifiers)
+        .map(([, t]) => t[directQualifiers]),
+      luckyLoserChoices,
+    );
+  }
 
   function solve(slotIdx: number, available: TeamStat[]): void {
     if (slotIdx === llSlots.length) return;
@@ -757,6 +767,7 @@ function FocusedMatchCard({
 function FocusedBracketView({
   knockoutConfig,
   resolvedSlots,
+  resolvedActualSlots,
   bracketPreds,
   onUpdate,
   predsLoaded,
@@ -772,6 +783,7 @@ function FocusedBracketView({
 }: {
   knockoutConfig: KnockoutConfig;
   resolvedSlots: Record<string, TeamStat | null>;
+  resolvedActualSlots: Record<string, TeamStat | null>;
   bracketPreds: BracketPredictions;
   onUpdate: (key: string, pred: BracketMatchPrediction) => void;
   predsLoaded: boolean;
@@ -1078,8 +1090,8 @@ function FocusedBracketView({
               teamPageUserId={teamPageUserId}
               homeSlotLabel={current.round === firstRound && !current.isBronze ? knockoutConfig.bracketSlots[`m${current.matchIdxInRound + 1}_home`] : undefined}
               awaySlotLabel={current.round === firstRound && !current.isBronze ? knockoutConfig.bracketSlots[`m${current.matchIdxInRound + 1}_away`] : undefined}
-              homeFallbackTeam={current.round === firstRound && !current.isBronze ? (resolvedSlots[`m${current.matchIdxInRound + 1}_home`] ?? null) : null}
-              awayFallbackTeam={current.round === firstRound && !current.isBronze ? (resolvedSlots[`m${current.matchIdxInRound + 1}_away`] ?? null) : null}
+              homeFallbackTeam={current.round === firstRound && !current.isBronze ? (resolvedActualSlots[`m${current.matchIdxInRound + 1}_home`] ?? null) : null}
+              awayFallbackTeam={current.round === firstRound && !current.isBronze ? (resolvedActualSlots[`m${current.matchIdxInRound + 1}_away`] ?? null) : null}
             />
             <div className="mt-3 flex sm:hidden items-center justify-between">
               <button
@@ -1170,6 +1182,7 @@ function KnockoutBracketVisualizer({
   actualMatchMap,
   focusedPredKey = '',
   resolvedSlots,
+  resolvedActualSlots,
   bracketPreds,
   onFocusMatch,
 }: {
@@ -1177,6 +1190,7 @@ function KnockoutBracketVisualizer({
   actualMatchMap: Record<string, MatchWithTeams>;
   focusedPredKey?: string;
   resolvedSlots?: Record<string, TeamStat | null>;
+  resolvedActualSlots?: Record<string, TeamStat | null>;
   bracketPreds?: BracketPredictions;
   onFocusMatch?: (predKey: string) => void;
 }) {
@@ -1215,14 +1229,16 @@ function KnockoutBracketVisualizer({
   const halfCount = Math.floor(firstRoundMatchCount / 2);
   const isSingleMatch = firstRoundMatchCount === 1;
 
-  // Predicted teams for each bracket slot (VizTeam form), used as transparent fallbacks.
+  // Actual teams for each bracket slot (VizTeam form), used as transparent fallbacks.
   const predictedMatchTeams = useMemo(() => {
-    if (!resolvedSlots || !bracketPreds) return null;
+    if (!bracketPreds) return null;
+    const slots = resolvedActualSlots ?? resolvedSlots;
+    if (!slots) return null;
     const teamStats: Record<string, { home: TeamStat | null; away: TeamStat | null }> = {};
     for (let i = 0; i < firstRoundMatchCount; i++) {
       teamStats[`${maxRoundIdx}_${i}`] = {
-        home: resolvedSlots[`m${i + 1}_home`] ?? null,
-        away: resolvedSlots[`m${i + 1}_away`] ?? null,
+        home: slots[`m${i + 1}_home`] ?? null,
+        away: slots[`m${i + 1}_away`] ?? null,
       };
     }
     for (let R = maxRoundIdx - 1; R >= 0; R--) {
@@ -1769,6 +1785,49 @@ export default function KnockoutStageContent({
     return { predictedGroupStandings: byGroup, predictedGroupResults: groupResultsMap };
   }, [matchList, predMap, groupDisciplinaryChoices]);
 
+  const actualGroupStandings = useMemo(() => {
+    const groupMatches = matchList.filter(m => m.stage === 'group');
+    const teamMap = new Map<string, TeamStat>();
+    for (const m of groupMatches) {
+      const g = m.groupName;
+      if (!g) continue;
+      if (m.homeTeamId && m.homeTeamName && !teamMap.has(m.homeTeamId))
+        teamMap.set(m.homeTeamId, { teamId: m.homeTeamId, teamName: m.homeTeamName, imageUrl: m.homeTeamImageUrl, group: g, P: 0, W: 0, D: 0, L: 0, GF: 0, GA: 0 });
+      if (m.awayTeamId && m.awayTeamName && !teamMap.has(m.awayTeamId))
+        teamMap.set(m.awayTeamId, { teamId: m.awayTeamId, teamName: m.awayTeamName, imageUrl: m.awayTeamImageUrl, group: g, P: 0, W: 0, D: 0, L: 0, GF: 0, GA: 0 });
+    }
+    for (const m of groupMatches) {
+      if (!m.homeTeamId || !m.awayTeamId || m.homeScore == null || m.awayScore == null) continue;
+      const hs = m.homeScore, as_ = m.awayScore;
+      const home = teamMap.get(m.homeTeamId);
+      const away = teamMap.get(m.awayTeamId);
+      if (home) { home.P++; home.GF += hs; home.GA += as_; if (hs > as_) home.W++; else if (hs === as_) home.D++; else home.L++; }
+      if (away) { away.P++; away.GF += as_; away.GA += hs; if (as_ > hs) away.W++; else if (hs === as_) away.D++; else away.L++; }
+    }
+    const byGroup = new Map<string, TeamStat[]>();
+    for (const t of teamMap.values()) {
+      if (!byGroup.has(t.group)) byGroup.set(t.group, []);
+      byGroup.get(t.group)!.push(t);
+    }
+    const confirmedGroupStandings = tournament?.knockoutConfig?.confirmedGroupStandings;
+    const groupStandingsLocked = tournament?.knockoutConfig?.groupStandingsLocked;
+    for (const [groupName, teams] of byGroup) {
+      const confirmed = groupStandingsLocked ? confirmedGroupStandings?.[groupName] : undefined;
+      if (confirmed?.length) {
+        teams.sort((a, b) => confirmed.indexOf(a.teamId) - confirmed.indexOf(b.teamId));
+      } else {
+        teams.sort((a, b) => {
+          const pa = a.W * 3 + a.D, pb = b.W * 3 + b.D;
+          if (pb !== pa) return pb - pa;
+          const ga = a.GF - a.GA, gb = b.GF - b.GA;
+          if (gb !== ga) return gb - ga;
+          return b.GF - a.GF;
+        });
+      }
+    }
+    return byGroup;
+  }, [matchList, tournament]);
+
   const knockoutMatchMap = useMemo(() => {
     const koStages = new Set(['round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'bronze_final', 'final']);
     const byStage = new Map<string, MatchWithTeams[]>();
@@ -1838,6 +1897,21 @@ export default function KnockoutStageContent({
       luckyLoserDisciplinaryChoices,
     );
   }, [knockoutConfig, luckyLoserLabels, predictedGroupStandings, luckyLoserDisciplinaryChoices]);
+
+  const resolvedActualSlots = useMemo(() => {
+    if (!knockoutConfig) return {};
+    const confirmedLuckyLosers = tournament?.knockoutConfig?.confirmedLuckyLosers;
+    const groupStandingsLocked = tournament?.knockoutConfig?.groupStandingsLocked;
+    return resolveSlots(
+      knockoutConfig.bracketSlots,
+      luckyLoserLabels,
+      [...actualGroupStandings.entries()],
+      knockoutConfig.directQualifiers,
+      FIRST_ROUND_COUNTS[knockoutConfig.firstRound],
+      {},
+      groupStandingsLocked && confirmedLuckyLosers?.length ? confirmedLuckyLosers : undefined,
+    );
+  }, [knockoutConfig, luckyLoserLabels, actualGroupStandings, tournament]);
 
   // Maps each first-round predKey (e.g. "round_of_16_0") to the teams the user predicted
   // would qualify for that slot. Derived from resolvedSlots so lucky-loser slots are
@@ -1988,6 +2062,7 @@ export default function KnockoutStageContent({
             <FocusedBracketView
               knockoutConfig={knockoutConfig}
               resolvedSlots={resolvedSlots}
+              resolvedActualSlots={resolvedActualSlots}
               bracketPreds={localPreds}
               onUpdate={updatePrediction}
               predsLoaded={initialized}
@@ -2019,6 +2094,7 @@ export default function KnockoutStageContent({
               actualMatchMap={knockoutMatchMap}
               focusedPredKey={focusedPredKey}
               resolvedSlots={resolvedSlots}
+              resolvedActualSlots={resolvedActualSlots}
               bracketPreds={localPreds}
               onFocusMatch={setFocusedPredKey}
             />
