@@ -221,21 +221,25 @@ export default function UserStatCard({ competitionId, data, iconOnRight, onMatch
   );
 
   const content = (
-    <div className="min-w-0 flex-1 p-6">
-      <h3 className="text-lg font-bold uppercase tracking-wide" style={{ color: titleColor }}>
-        {title}
-      </h3>
-      <p className="mt-2 text-sm">{renderStatistic(statistic, boldColor)}</p>
+    <div className="min-w-0 flex-1 p-4">
+      <p className="text-sm">{renderStatistic(statistic, boldColor)}</p>
     </div>
   );
 
   const card = (
     <div
-      className={`flex items-stretch overflow-hidden rounded-2xl border-4 dark:border bg-[hsla(120,3%,91%,0.5)] dark:bg-[hsl(231,28%,16%)] ${iconOnRight ? 'flex-row-reverse' : 'flex-row'}`}
+      className="overflow-hidden rounded-2xl border-4 dark:border bg-[hsla(120,3%,91%,0.5)] dark:bg-[hsl(231,28%,16%)]"
       style={{ color: textColor, borderColor }}
     >
-      {icon}
-      {content}
+      <div className="px-4 py-3" style={{ borderBottom: `1px solid ${borderColor}` }}>
+        <h3 className="text-lg font-bold uppercase tracking-wide text-center" style={{ color: titleColor }}>
+          {title}
+        </h3>
+      </div>
+      <div className={`flex items-stretch ${iconOnRight ? 'flex-row-reverse' : 'flex-row'}`}>
+        {icon}
+        {content}
+      </div>
     </div>
   );
 
