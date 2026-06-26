@@ -1437,7 +1437,7 @@ export default function CompetitionDetailPage() {
                                   <tr key={tm.teamId} className={
                                     i < effectiveDQ
                                       ? 'bg-green-50 dark:bg-green-950/30'
-                                      : i === effectiveDQ && actualQualifyingThirdPlaceIds.has(tm.teamId)
+                                      : actualQualifyingThirdPlaceIds.has(tm.teamId)
                                       ? 'bg-yellow-50 dark:bg-yellow-950/30'
                                       : ''
                                   }>
@@ -1507,17 +1507,30 @@ export default function CompetitionDetailPage() {
                   .map(stat => predLLMap.get(stat.teamId)!)
                   .filter(Boolean);
 
-                const sortedActualLL = [...displayActualGroupStandings.entries()]
-                  .sort(([a], [b]) => a.localeCompare(b))
-                  .filter(([, teams]) => teams.length > directQualifiers)
-                  .map(([groupName, teams]) => ({ groupName, tm: teams[directQualifiers] }))
-                  .sort((a, b) => {
-                    const pa = a.tm.W * 3 + a.tm.D, pb = b.tm.W * 3 + b.tm.D;
-                    if (pb !== pa) return pb - pa;
-                    const gda = a.tm.GF - a.tm.GA, gdb = b.tm.GF - b.tm.GA;
-                    if (gdb !== gda) return gdb - gda;
-                    return b.tm.GF - a.tm.GF;
-                  });
+                // Build a flat lookup so we can order by admin-confirmed list when available
+                const actualTeamDataMap = new Map<string, { groupName: string; tm: TeamStat }>();
+                for (const [groupName, teams] of displayActualGroupStandings.entries()) {
+                  for (const tm of teams) actualTeamDataMap.set(tm.teamId, { groupName, tm });
+                }
+
+                const confirmedLL = tournament?.knockoutConfig?.confirmedLuckyLosers;
+                const llLocked = tournament?.knockoutConfig?.groupStandingsLocked ?? false;
+
+                const sortedActualLL: { groupName: string; tm: TeamStat }[] = llLocked && confirmedLL?.length
+                  ? confirmedLL
+                      .map(teamId => actualTeamDataMap.get(teamId))
+                      .filter((x): x is { groupName: string; tm: TeamStat } => x !== undefined)
+                  : [...displayActualGroupStandings.entries()]
+                      .sort(([a], [b]) => a.localeCompare(b))
+                      .filter(([, teams]) => teams.length > directQualifiers)
+                      .map(([groupName, teams]) => ({ groupName, tm: teams[directQualifiers] }))
+                      .sort((a, b) => {
+                        const pa = a.tm.W * 3 + a.tm.D, pb = b.tm.W * 3 + b.tm.D;
+                        if (pb !== pa) return pb - pa;
+                        const gda = a.tm.GF - a.tm.GA, gdb = b.tm.GF - b.tm.GA;
+                        if (gdb !== gda) return gdb - gda;
+                        return b.tm.GF - a.tm.GF;
+                      });
 
                 if (sortedPredLL.length === 0) return null;
 

@@ -755,13 +755,11 @@ export default function TournamentDetailPage() {
     for (const row of rows) teamRowMap.set(row.team.id, row);
   }
 
-  // When all groups confirmed: LL candidates come from confirmed standings, sorted by pts→gd→gf
+  // When all groups confirmed: ALL non-direct-qualifying teams are LL candidates (admin can freely reorder)
   const confirmedLLCandidateIds: string[] = groupStandingData.flatMap(({ group }) => {
     const confirmedOrder = confirmedGroupStandings[group.name];
     if (!confirmedOrder) return [];
-    const effectiveDQ = Math.min(directQualifiers, confirmedOrder.length - 1);
-    const id = confirmedOrder[effectiveDQ];
-    return id ? [id] : [];
+    return confirmedOrder.slice(directQualifiers).filter(Boolean);
   });
   const defaultLLOrder = [...confirmedLLCandidateIds].sort((a, b) => {
     const ra = teamRowMap.get(a);
@@ -771,7 +769,9 @@ export default function TournamentDetailPage() {
     if (rb.gd !== ra.gd) return rb.gd - ra.gd;
     return rb.gf - ra.gf;
   });
-  const llDisplayOrder = overrideLuckyLosers ?? defaultLLOrder;
+  const confirmedLuckyLosers = tournament.knockoutConfig?.confirmedLuckyLosers;
+  const llDisplayOrder = overrideLuckyLosers
+    ?? (groupStandingsLocked && confirmedLuckyLosers?.length ? confirmedLuckyLosers : defaultLLOrder);
 
   // Group matches by calendar date for display — group stage only (knockout shown in Knockout tab)
   const groupStageMatches = matchList.filter(m => m.stage === 'group');
@@ -1103,31 +1103,25 @@ export default function TournamentDetailPage() {
               )}
             </div>
 
-            {/* Lucky Losers Table — visualization or interactive reordering when all groups confirmed */}
-            {numLuckyLosers > 0 && (() => {
-              // Build map: teamId → { group, row } for LL candidates
+            {/* Lucky Losers Table — only shown once all groups are confirmed */}
+            {numLuckyLosers > 0 && allGroupsConfirmed && (() => {
+              // Build map: teamId → { group, row } for all non-direct-qualifying teams
               const llRowMap = new Map<string, { group: typeof groupList[0]; row: FullRow }>();
-              if (allGroupsConfirmed) {
-                for (const { group, rows } of groupStandingData) {
-                  const confirmedOrder = confirmedGroupStandings[group.name];
-                  if (!confirmedOrder) continue;
-                  const effectiveDQ = Math.min(directQualifiers, confirmedOrder.length - 1);
-                  const llTeamId = confirmedOrder[effectiveDQ];
+              for (const { group, rows } of groupStandingData) {
+                const confirmedOrder = confirmedGroupStandings[group.name];
+                if (!confirmedOrder) continue;
+                for (let pos = directQualifiers; pos < confirmedOrder.length; pos++) {
+                  const llTeamId = confirmedOrder[pos];
                   if (!llTeamId) continue;
                   const llRow = rows.find(r => r.team.id === llTeamId);
                   if (llRow) llRowMap.set(llTeamId, { group, row: llRow });
-                }
-              } else {
-                for (const { group, rows } of groupStandingData) {
-                  const llRow = rows[directQualifiers];
-                  if (llRow) llRowMap.set(llRow.team.id, { group, row: llRow });
                 }
               }
 
               if (llRowMap.size === 0) return null;
 
               // Determine display order
-              const displayIds = allGroupsConfirmed ? llDisplayOrder : sortedLL.map(r => r.team.id).filter(id => llRowMap.has(id));
+              const displayIds = llDisplayOrder;
 
               const llTableRows = displayIds
                 .map(teamId => {
@@ -1138,7 +1132,7 @@ export default function TournamentDetailPage() {
 
               if (llTableRows.length === 0) return null;
 
-              const isInteractive = isAdmin && allGroupsConfirmed && !groupStandingsLocked;
+              const isInteractive = isAdmin && !groupStandingsLocked;
 
               return (
                 <div className="space-y-3">
@@ -1151,7 +1145,7 @@ export default function TournamentDetailPage() {
 
                   {isInteractive && (
                     <p className="text-xs text-muted-foreground">
-                      Use the arrows to re-order teams. The top {numLuckyLosers} will advance as lucky losers.
+                      Use the arrows to freely re-order all non-qualifying teams. The top {numLuckyLosers} (highlighted) will advance as lucky losers regardless of points or goals.
                     </p>
                   )}
 
@@ -1162,12 +1156,12 @@ export default function TournamentDetailPage() {
                           <th className="w-1 py-1.5" />
                           <th className="px-3 py-1.5 text-left w-6">#</th>
                           <th className="px-3 py-1.5 text-left">{t('groupTable.team')}</th>
-                          <th className="px-2 py-1.5 text-center w-8">{t('groupTable.played')}</th>
-                          <th className="px-2 py-1.5 text-center w-8">{t('groupTable.won')}</th>
-                          <th className="px-2 py-1.5 text-center w-8">{t('groupTable.drawn')}</th>
-                          <th className="px-2 py-1.5 text-center w-8">{t('groupTable.lost')}</th>
+                          <th className="hidden sm:table-cell px-2 py-1.5 text-center w-8">{t('groupTable.played')}</th>
+                          <th className="hidden sm:table-cell px-2 py-1.5 text-center w-8">{t('groupTable.won')}</th>
+                          <th className="hidden sm:table-cell px-2 py-1.5 text-center w-8">{t('groupTable.drawn')}</th>
+                          <th className="hidden sm:table-cell px-2 py-1.5 text-center w-8">{t('groupTable.lost')}</th>
                           <th className="px-2 py-1.5 text-center w-8">{t('groupTable.gd')}</th>
-                          <th className="px-2 py-1.5 text-center w-8">{t('groupTable.gf')}</th>
+                          <th className="hidden sm:table-cell px-2 py-1.5 text-center w-8">{t('groupTable.gf')}</th>
                           <th className="px-2 py-1.5 text-center w-10 font-bold">{t('groupTable.pts')}</th>
                           <th className="px-2 py-1.5 text-center w-10">Grp</th>
                           {isInteractive && <th className="w-16" />}
@@ -1190,12 +1184,12 @@ export default function TournamentDetailPage() {
                                   <span className="truncate">{row.team.name}</span>
                                 </span>
                               </td>
-                              <td className="px-2 py-2 text-center tabular-nums">{row.mp}</td>
-                              <td className="px-2 py-2 text-center tabular-nums">{row.w}</td>
-                              <td className="px-2 py-2 text-center tabular-nums">{row.d}</td>
-                              <td className="px-2 py-2 text-center tabular-nums">{row.l}</td>
+                              <td className="hidden sm:table-cell px-2 py-2 text-center tabular-nums">{row.mp}</td>
+                              <td className="hidden sm:table-cell px-2 py-2 text-center tabular-nums">{row.w}</td>
+                              <td className="hidden sm:table-cell px-2 py-2 text-center tabular-nums">{row.d}</td>
+                              <td className="hidden sm:table-cell px-2 py-2 text-center tabular-nums">{row.l}</td>
                               <td className="px-2 py-2 text-center tabular-nums">{row.gd > 0 ? `+${row.gd}` : row.gd}</td>
-                              <td className="px-2 py-2 text-center tabular-nums">{row.gf}</td>
+                              <td className="hidden sm:table-cell px-2 py-2 text-center tabular-nums">{row.gf}</td>
                               <td className="px-2 py-2 text-center tabular-nums font-bold">{row.pts}</td>
                               <td className="px-2 py-2 text-center text-muted-foreground text-xs">{group.name}</td>
                               {isInteractive && (
