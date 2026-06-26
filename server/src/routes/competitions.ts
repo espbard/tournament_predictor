@@ -1550,6 +1550,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     let jaViElskerCard: UserStatCardData | null = null;
     let traitorCard: UserStatCardData | null = null;
     let matchMadeInHeavenCard: UserStatCardData | null = null;
+    let audienceDarlingCard: UserStatCardData | null = null;
 
     if (kingGroup.length > 0) {
       const gameCount = kingGroup[0].streak;
@@ -2146,17 +2147,108 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       }
     }
 
+    // ── The Audience Darling: most predicted tournament winner ──
+    const audienceDarlingBpRows = await db
+      .select({ userId: bracketPredictions.userId, predictions: bracketPredictions.predictions })
+      .from(bracketPredictions)
+      .where(eq(bracketPredictions.competitionId, id));
+
+    const winnerPredsByTeam = new Map<string, { userId: string; username: string; imageUrl: string | null; iconColor: string | null }[]>();
+    for (const bp of audienceDarlingBpRows) {
+      if (activeStatUserIds && !activeStatUserIds.has(bp.userId)) continue;
+      if (!userInfo.has(bp.userId)) continue;
+      const preds = bp.predictions as BracketPredictions;
+      for (const [key, pred] of Object.entries(preds)) {
+        if (key.startsWith('final_') && pred.progressingTeamId) {
+          if (!winnerPredsByTeam.has(pred.progressingTeamId)) winnerPredsByTeam.set(pred.progressingTeamId, []);
+          const info = userInfo.get(bp.userId)!;
+          winnerPredsByTeam.get(pred.progressingTeamId)!.push({ userId: bp.userId, username: info.username, imageUrl: info.imageUrl, iconColor: info.iconColor });
+          break;
+        }
+      }
+    }
+
     const neededTeamIds = new Set<string>();
     for (const m of [bestPredictionMatch, worstPredictionMatch, unexpectedMatch, mostPredictableMatch, contrastMatch, swingAndAMissData]) {
       if (m?.homeTeamId) neededTeamIds.add(m.homeTeamId);
       if (m?.awayTeamId) neededTeamIds.add(m.awayTeamId);
     }
     for (const teamId of heavenTeamIds) neededTeamIds.add(teamId);
+    for (const teamId of winnerPredsByTeam.keys()) neededTeamIds.add(teamId);
     const teamRows =
       neededTeamIds.size > 0 ? await db.select().from(teams).where(inArray(teams.id, [...neededTeamIds])) : [];
     const teamNameMap = new Map(teamRows.map(t => [t.id, t.name]));
     const teamImageMap = new Map(teamRows.map(t => [t.id, t.imageUrl]));
     const teamName = (teamId: string | null) => (teamId ? teamNameMap.get(teamId) ?? 'Unknown' : 'Unknown');
+
+    if (winnerPredsByTeam.size > 0) {
+      const norwayId = norwayTeam?.id;
+      const sortedWinnerTeams = [...winnerPredsByTeam.entries()].sort((a, b) => {
+        const diff = b[1].length - a[1].length;
+        return diff !== 0 ? diff : teamName(a[0]).localeCompare(teamName(b[0]));
+      });
+
+      const topEntry = sortedWinnerTeams[0];
+      const isNorwayFirst = !!norwayId && topEntry[0] === norwayId;
+      const norwayCount = isNorwayFirst ? topEntry[1].length : 0;
+      const mainEntry = isNorwayFirst ? (sortedWinnerTeams[1] ?? topEntry) : topEntry;
+
+      const [mainTeamId, mainPredictors] = mainEntry;
+      const mainTeamDisplayName = teamName(mainTeamId);
+      const mainCount = mainPredictors.length;
+      const sortedMainPredictors = [...mainPredictors].sort((a, b) => a.username.localeCompare(b.username));
+      const mainUserList = formatUserList(sortedMainPredictors.map(u => u.username), lang);
+
+      let statistic =
+        lang === 'no'
+          ? `**${mainTeamDisplayName}** er den mest tippede vinneren! Totalt **${mainCount}** ${mainCount === 1 ? 'spiller' : 'spillere'}: ${mainUserList} har tippet at de vil vinne turneringen.`
+          : lang === 'de'
+            ? `**${mainTeamDisplayName}** ist der meistgetippte Turniersieger! Satte **${mainCount}** ${mainCount === 1 ? 'Spieler hat' : 'Spieler haben'} getippt, dass sie gewinnen werden: ${mainUserList}.`
+            : `**${mainTeamDisplayName}** is the most predicted winner! A total of **${mainCount}** ${mainCount === 1 ? 'user' : 'users'}: ${mainUserList} ${mainCount === 1 ? 'has' : 'have'} predicted that they will win the tournament.`;
+
+      if (isNorwayFirst && mainEntry !== topEntry) {
+        statistic +=
+          lang === 'no'
+            ? ` Bortsett fra Norge da! **${norwayCount}** ${norwayCount === 1 ? 'spiller' : 'spillere'} har tippet at Norge vinner det hele!`
+            : lang === 'de'
+              ? ` Außer Norwegen natürlich! **${norwayCount}** ${norwayCount === 1 ? 'Spieler hat' : 'Spieler haben'} getippt, dass Norwegen das Turnier gewinnt!`
+              : ` Except for Norway of course! **${norwayCount}** ${norwayCount === 1 ? 'person has' : 'people have'} predicted that Norway will win the whole thing!`;
+      }
+
+      const soloTeams = sortedWinnerTeams
+        .filter(([teamId, predictors]) => predictors.length === 1 && teamId !== mainTeamId && !(isNorwayFirst && teamId === norwayId))
+        .sort(([idA], [idB]) => teamName(idA).localeCompare(teamName(idB)));
+
+      if (soloTeams.length > 0) {
+        const soloClauses = soloTeams.map(([teamId, predictors]) =>
+          lang === 'no'
+            ? `**${predictors[0].username}**, for øvrig, er den eneste som har tippet at **${teamName(teamId)}** skal gå hele veien`
+            : lang === 'de'
+              ? `**${predictors[0].username}** ist der einzige Spieler, der auf **${teamName(teamId)}** als Gesamtsieger getippt hat`
+              : `**${predictors[0].username}** is the only player to predict **${teamName(teamId)}** to go all the way`
+        );
+        const andWord = lang === 'no' ? 'og' : lang === 'de' ? 'und' : 'and';
+        let soloText: string;
+        if (soloClauses.length === 1) {
+          soloText = `${soloClauses[0]}!`;
+        } else if (soloClauses.length === 2) {
+          soloText = `${soloClauses[0]}, ${andWord} ${soloClauses[1]}!`;
+        } else {
+          soloText = `${soloClauses.slice(0, -1).join(', ')}, ${andWord} ${soloClauses[soloClauses.length - 1]}!`;
+        }
+        const meanwhilePrefix = lang === 'no' ? '' : lang === 'de' ? 'Außerdem, ' : 'Meanwhile, ';
+        statistic += ` ${meanwhilePrefix}${soloText}`;
+      }
+
+      audienceDarlingCard = {
+        id: 'audienceDarling',
+        title: lang === 'no' ? 'Publikumsfavoritten' : lang === 'de' ? 'Der Publikumsliebling' : 'The Audience Darling',
+        statistic,
+        subjects: [],
+        linkType: null,
+        iconImageUrl: teamImageMap.get(mainTeamId) ?? null,
+      };
+    }
 
     if (bestPredictionMatch) {
       const homeTeamName = teamName(bestPredictionMatch.homeTeamId);
@@ -2569,6 +2661,13 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           .filter(p => p.goals === minGoals)
           .sort((a, b) => a.username.localeCompare(b.username));
 
+        const goalCountMap = new Map<number, number>();
+        for (const p of haalandPredictions) goalCountMap.set(p.goals, (goalCountMap.get(p.goals) ?? 0) + 1);
+        const distributionData: { value: number; count: number }[] = [];
+        for (let v = 0; v <= maxGoals + 1; v++) distributionData.push({ value: v, count: goalCountMap.get(v) ?? 0 });
+
+        const haalandActualGoals = (haalandPlayer && haalandPlayer.gamesPlayed >= 1) ? haalandPlayer.goalsScored : null;
+
         brautometerCard = {
           id: 'brautometer',
           title: lang === 'no' ? 'Brautometeret' : lang === 'de' ? 'Der Brautometer' : 'The Brautometer',
@@ -2581,11 +2680,13 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           subjects: mostFaithGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor ?? null })),
           linkType: 'userBonus',
           iconImageUrl: '/haaland.jpg',
+          distributionData,
+          distributionActualValue: haalandActualGoals,
         };
 
-        if (haalandPlayer && haalandPlayer.gamesPlayed >= 1) {
-          const goals = haalandPlayer.goalsScored;
-          const games = haalandPlayer.gamesPlayed;
+        if (haalandActualGoals !== null) {
+          const goals = haalandActualGoals;
+          const games = haalandPlayer!.gamesPlayed;
           brautometerCard.statistic +=
             lang === 'no'
               ? ` Haaland har så langt scoret ${goals} ${goals === 1 ? 'mål' : 'mål'} på ${games} ${games === 1 ? 'kamp' : 'kamper'}.`
@@ -2945,6 +3046,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       traitorCard,
       brautometerCard,
       matchMadeInHeavenCard,
+      audienceDarlingCard,
     ].filter((card): card is UserStatCardData => card !== null);
 
     res.json(cards);

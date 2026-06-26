@@ -8,6 +8,7 @@ import KnockoutStageContent from '@/components/KnockoutStageContent';
 import PlayerPodium from '@/components/PlayerPodium';
 import LeaderboardLineGraph from '@/components/LeaderboardLineGraph';
 import UserStatCard from '@/components/UserStatCard';
+import HaalandDistributionCard from '@/components/HaalandDistributionCard';
 import { UserAvatar } from '@/components/UserAvatar';
 import { SoccerKickAnimation } from '@/components/SoccerKickAnimation';
 import { CryingPlayerAnimation } from '@/components/CryingPlayerAnimation';
@@ -2659,17 +2660,27 @@ export default function CompetitionDetailPage() {
       )}
 
       {activeTab === 'userStats' && (
-        <div className="space-y-6">
-          {userStats.map((stat, i) => (
-            <UserStatCard
-              key={stat.id}
-              competitionId={id!}
-              data={stat}
-              iconOnRight={i % 2 === 1}
-              onMatchClick={handleStatCardMatchClick}
-              onLeaderboardClick={handleStatCardLeaderboardClick}
-            />
-          ))}
+        <div className="columns-1 sm:columns-2 md:columns-3 lg:columns-4 gap-6 px-4 sm:px-0">
+          {userStats.map((stat, i) => {
+            const cardEl = (
+              <UserStatCard
+                competitionId={id!}
+                data={stat}
+                iconOnRight={i % 2 === 1}
+                onMatchClick={handleStatCardMatchClick}
+                onLeaderboardClick={handleStatCardLeaderboardClick}
+              />
+            );
+            if (stat.distributionData?.length) {
+              return (
+                <div key={stat.id} className="break-inside-avoid mb-6 flex flex-col gap-2">
+                  {cardEl}
+                  <HaalandDistributionCard data={stat} />
+                </div>
+              );
+            }
+            return <div key={stat.id} className="break-inside-avoid mb-6">{cardEl}</div>;
+          })}
         </div>
       )}
 
