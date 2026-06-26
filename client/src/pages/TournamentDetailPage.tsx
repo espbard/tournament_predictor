@@ -755,13 +755,11 @@ export default function TournamentDetailPage() {
     for (const row of rows) teamRowMap.set(row.team.id, row);
   }
 
-  // When all groups confirmed: LL candidates come from confirmed standings, sorted by pts→gd→gf
+  // When all groups confirmed: ALL non-direct-qualifying teams are LL candidates (admin can freely reorder)
   const confirmedLLCandidateIds: string[] = groupStandingData.flatMap(({ group }) => {
     const confirmedOrder = confirmedGroupStandings[group.name];
     if (!confirmedOrder) return [];
-    const effectiveDQ = Math.min(directQualifiers, confirmedOrder.length - 1);
-    const id = confirmedOrder[effectiveDQ];
-    return id ? [id] : [];
+    return confirmedOrder.slice(directQualifiers).filter(Boolean);
   });
   const defaultLLOrder = [...confirmedLLCandidateIds].sort((a, b) => {
     const ra = teamRowMap.get(a);
@@ -1111,16 +1109,19 @@ export default function TournamentDetailPage() {
                 for (const { group, rows } of groupStandingData) {
                   const confirmedOrder = confirmedGroupStandings[group.name];
                   if (!confirmedOrder) continue;
-                  const effectiveDQ = Math.min(directQualifiers, confirmedOrder.length - 1);
-                  const llTeamId = confirmedOrder[effectiveDQ];
-                  if (!llTeamId) continue;
-                  const llRow = rows.find(r => r.team.id === llTeamId);
-                  if (llRow) llRowMap.set(llTeamId, { group, row: llRow });
+                  for (let pos = directQualifiers; pos < confirmedOrder.length; pos++) {
+                    const llTeamId = confirmedOrder[pos];
+                    if (!llTeamId) continue;
+                    const llRow = rows.find(r => r.team.id === llTeamId);
+                    if (llRow) llRowMap.set(llTeamId, { group, row: llRow });
+                  }
                 }
               } else {
                 for (const { group, rows } of groupStandingData) {
-                  const llRow = rows[directQualifiers];
-                  if (llRow) llRowMap.set(llRow.team.id, { group, row: llRow });
+                  for (let pos = directQualifiers; pos < rows.length; pos++) {
+                    const llRow = rows[pos];
+                    if (llRow) llRowMap.set(llRow.team.id, { group, row: llRow });
+                  }
                 }
               }
 
@@ -1151,7 +1152,7 @@ export default function TournamentDetailPage() {
 
                   {isInteractive && (
                     <p className="text-xs text-muted-foreground">
-                      Use the arrows to re-order teams. The top {numLuckyLosers} will advance as lucky losers.
+                      Use the arrows to freely re-order all non-qualifying teams. The top {numLuckyLosers} (highlighted) will advance as lucky losers regardless of points or goals.
                     </p>
                   )}
 
