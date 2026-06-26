@@ -215,7 +215,7 @@ function resolveSlots(
     solve(slotIdx + 1, available);
   }
 
-  solve(0, allLL);
+  solve(0, allLL.slice(0, llSlots.length));
   return resolved;
 }
 
