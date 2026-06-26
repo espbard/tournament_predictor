@@ -301,6 +301,7 @@ const translations = {
         noTeamsInGroup: 'No teams in this group',
         directQualifier: 'Direct qualifier',
         luckyLoser: 'Lucky loser',
+        luckyLosersTable: 'Lucky Losers',
         tiebreakerResolution: 'Tiebreaker Resolution',
         tiebreakerDesc:
           'These teams are equal on all objective criteria. Set the order manually — position 1 ranks highest.',
@@ -785,6 +786,7 @@ const translations = {
         noTeamsInGroup: 'Ingen lag i denne gruppen',
         directQualifier: 'Direkte kvalifisert',
         luckyLoser: 'Lucky loser',
+        luckyLosersTable: 'Lucky Losers',
         tiebreakerResolution: 'Avgjørereløsning',
         tiebreakerDesc:
           'Disse lagene er like på alle objektive kriterier. Sett rekkefølgen manuelt – posisjon 1 rangerer høyest.',
@@ -1268,6 +1270,7 @@ const translations = {
         noTeamsInGroup: 'Keine Mannschaften in dieser Gruppe',
         directQualifier: 'Direkt qualifiziert',
         luckyLoser: 'Glücklicher Verlierer',
+        luckyLosersTable: 'Glückliche Verlierer',
         tiebreakerResolution: 'Entscheiderfindung',
         tiebreakerDesc:
           'Diese Mannschaften sind in allen objektiven Kriterien gleich. Setzt die Reihenfolge manuell — Position 1 ist die höchste.',

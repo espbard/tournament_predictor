@@ -1083,6 +1083,74 @@ export default function TournamentDetailPage() {
               )}
             </div>
 
+            {/* Lucky Losers Table */}
+            {numLuckyLosers > 0 && sortedLL.length > 0 && (() => {
+              const llRowMap = new Map<string, { group: typeof groupList[0]; row: FullRow }>();
+              for (const { group, rows } of groupStandingData) {
+                const llRow = rows[directQualifiers];
+                if (llRow) llRowMap.set(llRow.team.id, { group, row: llRow });
+              }
+              const llTableRows = sortedLL
+                .map(stat => {
+                  const entry = llRowMap.get(stat.teamId);
+                  return entry ? { ...entry, stat } : null;
+                })
+                .filter((x): x is { group: typeof groupList[0]; row: FullRow; stat: TeamTiebreakerStat } => x !== null);
+
+              if (llTableRows.length === 0) return null;
+              return (
+                <div className="space-y-3">
+                  <h3 className="text-sm font-semibold">{t('tournamentDetail.standings.luckyLosersTable')}</h3>
+                  <div className="rounded-lg border overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b text-xs text-muted-foreground bg-muted/30">
+                          <th className="w-1 py-1.5" />
+                          <th className="px-3 py-1.5 text-left w-6">#</th>
+                          <th className="px-3 py-1.5 text-left">{t('groupTable.team')}</th>
+                          <th className="px-3 py-1.5 text-left">{t('common.group')}</th>
+                          <th className="px-2 py-1.5 text-center w-8">{t('groupTable.played')}</th>
+                          <th className="px-2 py-1.5 text-center w-8">{t('groupTable.won')}</th>
+                          <th className="px-2 py-1.5 text-center w-8">{t('groupTable.drawn')}</th>
+                          <th className="px-2 py-1.5 text-center w-8">{t('groupTable.lost')}</th>
+                          <th className="px-2 py-1.5 text-center w-8">{t('groupTable.gd')}</th>
+                          <th className="px-2 py-1.5 text-center w-10 font-bold">{t('groupTable.pts')}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {llTableRows.map(({ group, row, stat }, i) => {
+                          const isQualifying = i < numLuckyLosers;
+                          return (
+                            <tr key={stat.teamId} className={`border-b last:border-0 hover:bg-muted/20 ${isQualifying ? 'bg-green-500/5' : ''}`}>
+                              <td className={`w-1 ${isQualifying ? 'bg-green-500' : 'bg-transparent'}`} />
+                              <td className="px-3 py-2 text-muted-foreground text-xs">{i + 1}</td>
+                              <td className="px-3 py-2">
+                                <span className="flex items-center gap-2">
+                                  {row.team.imageUrl ? (
+                                    <img src={row.team.imageUrl} alt={row.team.name} className="h-5 w-5 rounded-sm object-cover flex-shrink-0" />
+                                  ) : (
+                                    <span className="h-5 w-5 rounded-sm bg-muted inline-block flex-shrink-0" />
+                                  )}
+                                  <span className="truncate">{row.team.name}</span>
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 text-muted-foreground text-xs">{group.name}</td>
+                              <td className="px-2 py-2 text-center tabular-nums">{row.mp}</td>
+                              <td className="px-2 py-2 text-center tabular-nums">{row.w}</td>
+                              <td className="px-2 py-2 text-center tabular-nums">{row.d}</td>
+                              <td className="px-2 py-2 text-center tabular-nums">{row.l}</td>
+                              <td className="px-2 py-2 text-center tabular-nums">{row.gd > 0 ? `+${row.gd}` : row.gd}</td>
+                              <td className="px-2 py-2 text-center tabular-nums font-bold">{row.pts}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Per-group confirm/re-open — admin only */}
             {isAdmin && !hasPendingResults && groupList.some(g => groupMatchesDoneMap.get(g.name)) && (
               <div className="space-y-3">
