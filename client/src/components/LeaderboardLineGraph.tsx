@@ -15,7 +15,6 @@ const MIN_WINDOW = 5;
 const ZOOM_STEP = 5;
 const ANIMATION_MS = 300;
 
-// Ease-in-out cubic
 function ease(t: number) {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }
@@ -53,8 +52,6 @@ export default function LeaderboardLineGraph({ data }: Props) {
   const isMobile = useIsMobile();
   const [hiddenUsers, setHiddenUsers] = useState<Set<string>>(new Set());
   const [frozenTooltip, setFrozenTooltip] = useState<FrozenTooltip | null>(null);
-  // After a dismiss, suppress Recharts' own hover tooltip until the next chart interaction.
-  // On mobile, Recharts never fires mouseleave on tap-away so active stays true internally.
   const [suppressTooltip, setSuppressTooltip] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -68,67 +65,52 @@ export default function LeaderboardLineGraph({ data }: Props) {
     }),
     (() => {
       const last = data.matches[matchCount - 1];
-      const point: Record<string, string | number> = {
-        matchIndex: matchCount + 1,
-        matchLabel: '',
-      };
+      const point: Record<string, string | number> = { matchIndex: matchCount + 1, matchLabel: '' };
       for (const u of data.users) point[u.userId] = last?.cumulativePoints[u.userId] ?? 0;
       return point;
     })(),
   ];
 
-  // Sentinel is always the last point in chartData (used for end-of-line avatars)
-  const sentinelIndex = chartData.length - 1;
-
-  // --- Zoom state & animation ---
-  const initialWindow = Math.min(25, matchCount);
-  const [windowSize, setWindowSize] = useState(initialWindow);
-
-  // animXMin: the left edge of the X-axis domain, animated smoothly
-  const animXMinRef = useRef(Math.max(1, matchCount - initialWindow + 1));
-  const [animXMin, setAnimXMin] = useState(animXMinRef.current);
+  // --- Zoom: animate windowSize, slice chartData ---
+  const [windowSize, setWindowSize] = useState(Math.min(25, matchCount));
+  const animWindowRef = useRef(Math.min(25, matchCount));
+  const [animWindow, setAnimWindow] = useState(Math.min(25, matchCount));
   const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
-    const clampedWindow = Math.min(windowSize, matchCount);
-    const targetXMin = matchCount > 0 ? Math.max(1, matchCount - clampedWindow + 1) : 1;
-    const fromXMin = animXMinRef.current;
-
+    const from = animWindowRef.current;
+    const to = Math.min(windowSize, matchCount);
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    const startTime = performance.now();
-
+    const start = performance.now();
     const tick = (now: number) => {
-      const elapsed = now - startTime;
-      const t = Math.min(elapsed / ANIMATION_MS, 1);
-      const current = fromXMin + (targetXMin - fromXMin) * ease(t);
-      animXMinRef.current = current;
-      setAnimXMin(current);
+      const t = Math.min((now - start) / ANIMATION_MS, 1);
+      const current = from + (to - from) * ease(t);
+      animWindowRef.current = current;
+      setAnimWindow(current);
       if (t < 1) rafRef.current = requestAnimationFrame(tick);
     };
-
     rafRef.current = requestAnimationFrame(tick);
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
   }, [windowSize, matchCount]);
 
-  // Y-axis minimum: derived from the currently animated X window so it also animates
-  const visibleInWindow = chartData.filter(d => {
-    const idx = d.matchIndex as number;
-    return idx >= Math.ceil(animXMin) && idx <= matchCount;
-  });
-  const allVisibleValues = visibleInWindow.flatMap(d =>
+  // Slice to the animated window (rounded to whole matches)
+  const displayData = chartData.slice(Math.max(0, matchCount - Math.round(animWindow)));
+  const sentinelIndex = displayData.length - 1;
+
+  // Y-axis minimum from the currently displayed data
+  const visibleRealData = displayData.filter(d => (d.matchIndex as number) <= matchCount);
+  const allVisibleValues = visibleRealData.flatMap(d =>
     data.users
       .filter(u => !hiddenUsers.has(u.userId))
       .map(u => (d[u.userId] as number) ?? 0),
   );
   const minVisible = allVisibleValues.length > 0 ? Math.min(...allVisibleValues) : 0;
-  // When fully zoomed out (xMin at 1), start Y at 0; otherwise start 5 below min
-  const yDomainMin = animXMin <= 1.01 ? 0 : Math.max(0, minVisible - 5);
+  const yDomainMin = Math.round(animWindow) >= matchCount ? 0 : Math.max(0, minVisible - 5);
 
   const canZoomIn = windowSize > MIN_WINDOW;
   const canZoomOut = windowSize < matchCount;
-
-  const zoomIn = () => setWindowSize(prev => Math.max(MIN_WINDOW, prev - ZOOM_STEP));
-  const zoomOut = () => setWindowSize(prev => Math.min(matchCount, prev + ZOOM_STEP));
+  const zoomIn = () => setWindowSize(p => Math.max(MIN_WINDOW, p - ZOOM_STEP));
+  const zoomOut = () => setWindowSize(p => Math.min(matchCount, p + ZOOM_STEP));
 
   const toggleUser = (userId: string) => {
     setHiddenUsers(prev => {
@@ -148,14 +130,11 @@ export default function LeaderboardLineGraph({ data }: Props) {
     activePayload?: Array<{ dataKey?: unknown; value?: unknown; stroke?: unknown }>;
     activeLabel?: unknown;
   } | null) => {
-    // Any tap/click on the chart lifts the suppress so hover works again
     setSuppressTooltip(false);
-
     if (!state?.activePayload?.length) { setFrozenTooltip(null); return; }
     const matchIndex = state.activeLabel as number;
     if (matchIndex > matchCount) return;
-
-    const matchLabel = (chartData[matchIndex - 1]?.matchLabel as string) ?? String(matchIndex);
+    const matchLabel = (displayData.find(d => d.matchIndex === matchIndex)?.matchLabel as string) ?? String(matchIndex);
     const entries: FrozenEntry[] = state.activePayload
       .filter(p => !hiddenUsers.has(p.dataKey as string))
       .map(p => ({
@@ -165,17 +144,12 @@ export default function LeaderboardLineGraph({ data }: Props) {
       }))
       .sort((a, b) => b.value - a.value);
     setFrozenTooltip({ matchLabel, entries });
-  }, [chartData, hiddenUsers, matchCount]);
+  }, [displayData, hiddenUsers, matchCount]);
 
   useEffect(() => {
-    // Use pointerdown in capture phase so:
-    //  (a) it fires for both mouse and touch with a single listener
-    //  (b) capture phase runs before any stopPropagation in the DOM tree
     const dismiss = (e: PointerEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setFrozenTooltip(null);
-        // Also suppress Recharts' own hover tooltip — on mobile, active never goes
-        // false via mouseleave, so we must explicitly block the content render.
         setSuppressTooltip(true);
       }
     };
@@ -183,6 +157,8 @@ export default function LeaderboardLineGraph({ data }: Props) {
     return () => document.removeEventListener('pointerdown', dismiss, true);
   }, []);
 
+  // Hover tooltip only — the frozen tooltip is a separate absolutely-positioned div.
+  // Recharts' own wrapper is hidden via wrapperStyle when frozen so it can't drift.
   const renderTooltip = ({
     active,
     payload,
@@ -192,35 +168,10 @@ export default function LeaderboardLineGraph({ data }: Props) {
     payload?: ReadonlyArray<{ dataKey?: unknown; value?: unknown; stroke?: unknown }>;
     label?: unknown;
   }) => {
-    if (suppressTooltip) return null;
-
-    // Frozen tooltip: render here so Recharts' position prop can pin it top-left.
-    // Returning content from inside renderTooltip (rather than a separate absolute div)
-    // is the only way to prevent Recharts from repositioning the wrapper near the active point.
-    if (frozenTooltip) {
-      return (
-        <div className="rounded-lg border bg-background p-2 text-xs shadow-md min-w-[120px]">
-          <p className="font-semibold mb-1 text-foreground">{frozenTooltip.matchLabel}</p>
-          {frozenTooltip.entries.slice(0, TOOLTIP_MAX).map(entry => {
-            const u = data.users.find(u => u.userId === entry.userId);
-            return (
-              <div key={entry.userId} className="flex items-center gap-1.5 py-0.5">
-                <span style={{ color: entry.stroke }}>■</span>
-                <span className="text-muted-foreground flex-1">{u?.username ?? entry.userId}</span>
-                <span className="font-bold text-foreground">{entry.value}</span>
-              </div>
-            );
-          })}
-          {frozenTooltip.entries.length > TOOLTIP_MAX && (
-            <div className="text-muted-foreground py-0.5 pl-4">...</div>
-          )}
-        </div>
-      );
-    }
-
+    if (frozenTooltip || suppressTooltip) return null;
     const matchIndex = label as number;
     if (!active || !payload?.length || matchIndex > matchCount) return null;
-    const matchLabel = (chartData[matchIndex - 1]?.matchLabel as string) ?? String(matchIndex);
+    const matchLabel = (displayData.find(d => d.matchIndex === matchIndex)?.matchLabel as string) ?? String(matchIndex);
     const sorted = [...payload]
       .filter(p => !hiddenUsers.has(p.dataKey as string))
       .sort((a, b) => (b.value as number) - (a.value as number));
@@ -249,6 +200,27 @@ export default function LeaderboardLineGraph({ data }: Props) {
   return (
     <div ref={containerRef}>
       <div className="relative">
+
+        {/* Frozen tooltip — pinned top-left as a plain div, completely outside Recharts */}
+        {frozenTooltip && (
+          <div className="absolute top-1 left-1 z-10 rounded-lg border bg-background p-2 text-xs shadow-md min-w-[120px] pointer-events-none">
+            <p className="font-semibold mb-1 text-foreground">{frozenTooltip.matchLabel}</p>
+            {frozenTooltip.entries.slice(0, TOOLTIP_MAX).map(entry => {
+              const u = data.users.find(u => u.userId === entry.userId);
+              return (
+                <div key={entry.userId} className="flex items-center gap-1.5 py-0.5">
+                  <span style={{ color: entry.stroke }}>■</span>
+                  <span className="text-muted-foreground flex-1">{u?.username ?? entry.userId}</span>
+                  <span className="font-bold text-foreground">{entry.value}</span>
+                </div>
+              );
+            })}
+            {frozenTooltip.entries.length > TOOLTIP_MAX && (
+              <div className="text-muted-foreground py-0.5 pl-4">...</div>
+            )}
+          </div>
+        )}
+
         {/* Zoom buttons — top right */}
         <div className="absolute top-1 right-1 z-10 flex gap-1">
           <button
@@ -271,7 +243,7 @@ export default function LeaderboardLineGraph({ data }: Props) {
 
         <ResponsiveContainer width="100%" height={isMobile ? 420 : 280}>
           <LineChart
-            data={chartData}
+            data={displayData}
             margin={{ top: 5, right: ICON_R + 12, bottom: 5, left: -10 }}
             onClick={handleChartClick}
             onMouseMove={() => setSuppressTooltip(false)}
@@ -279,8 +251,6 @@ export default function LeaderboardLineGraph({ data }: Props) {
             <CartesianGrid strokeDasharray="3 3" stroke="currentColor" strokeOpacity={0.1} />
             <XAxis
               dataKey="matchIndex"
-              type="number"
-              domain={[animXMin, matchCount + 1]}
               tick={{ fontSize: 10 }}
               tickLine={false}
               allowDecimals={false}
@@ -293,11 +263,13 @@ export default function LeaderboardLineGraph({ data }: Props) {
               axisLine={false}
               width={32}
             />
+            {/*
+              wrapperStyle hides Recharts' own tooltip wrapper when frozen so it cannot
+              drift to the active point and fight with our pinned absolute div above.
+            */}
             <Tooltip
               content={renderTooltip}
-              position={frozenTooltip ? { x: 4, y: 4 } : undefined}
-              isAnimationActive={false}
-              wrapperStyle={frozenTooltip ? { visibility: 'visible', pointerEvents: 'none' } : undefined}
+              wrapperStyle={frozenTooltip ? { display: 'none' } : undefined}
             />
             {data.users.map((u, i) => {
               const color = COLORS[i % COLORS.length];
