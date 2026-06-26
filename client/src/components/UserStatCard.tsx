@@ -102,8 +102,7 @@ interface SliceLayout {
 // Sizes and positions the image to its slice's own bounding box (instead of the full collage
 // square), so object-cover centres the image on the slice rather than on the whole collage.
 function collageSliceLayout(index: number, total: number): SliceLayout {
-  // Rotating a 2-way split by 45 degrees turns the edge-to-edge cut into a corner-to-corner diagonal.
-  const rotationOffset = total === 2 ? 45 : 0;
+  const rotationOffset = 0;
   const points = pieSlicePoints(index, total, rotationOffset);
 
   const minX = Math.min(...points.map(p => p.x));
@@ -228,12 +227,12 @@ export default function UserStatCard({ competitionId, data, onMatchClick, onLead
       style={{ color: textColor, borderColor }}
     >
       {image}
-      <div className="px-4 pt-3 pb-1">
+      <div className="px-4 pt-3 pb-0">
         <h3 className="text-lg font-bold uppercase tracking-wide text-center" style={{ color: titleColor }}>
           {title}
         </h3>
       </div>
-      <div className="px-4 py-3">
+      <div className="px-4 pt-1.5 pb-4">
         <p className="text-sm">{renderStatistic(statistic, boldColor)}</p>
       </div>
     </div>
