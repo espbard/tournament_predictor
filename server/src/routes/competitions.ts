@@ -2190,8 +2190,11 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
       const topEntry = sortedWinnerTeams[0];
       const isNorwayFirst = !!norwayId && topEntry[0] === norwayId;
-      const norwayCount = isNorwayFirst ? topEntry[1].length : 0;
-      const mainEntry = isNorwayFirst ? (sortedWinnerTeams[1] ?? topEntry) : topEntry;
+      const secondEntry = sortedWinnerTeams[1];
+      const norwayTiedForFirst = isNorwayFirst && !!secondEntry && secondEntry[1].length === topEntry[1].length;
+      const shouldFilterNorway = isNorwayFirst && !norwayTiedForFirst;
+      const norwayCount = shouldFilterNorway ? topEntry[1].length : 0;
+      const mainEntry = shouldFilterNorway ? (sortedWinnerTeams[1] ?? topEntry) : topEntry;
 
       const [mainTeamId, mainPredictors] = mainEntry;
       const mainTeamDisplayName = teamName(mainTeamId);
@@ -2206,7 +2209,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
             ? `**${mainTeamDisplayName}** ist der meistgetippte Turniersieger! Satte **${mainCount}** ${mainCount === 1 ? 'Spieler hat' : 'Spieler haben'} getippt, dass sie gewinnen werden: ${mainUserList}.`
             : `**${mainTeamDisplayName}** is the most predicted winner! A total of **${mainCount}** ${mainCount === 1 ? 'user' : 'users'}: ${mainUserList} ${mainCount === 1 ? 'has' : 'have'} predicted that they will win the tournament.`;
 
-      if (isNorwayFirst && mainEntry !== topEntry) {
+      if (shouldFilterNorway && mainEntry !== topEntry) {
         statistic +=
           lang === 'no'
             ? ` Bortsett fra Norge da! **${norwayCount}** ${norwayCount === 1 ? 'spiller' : 'spillere'} har tippet at Norge vinner det hele!`
@@ -2216,7 +2219,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       }
 
       const soloTeams = sortedWinnerTeams
-        .filter(([teamId, predictors]) => predictors.length === 1 && teamId !== mainTeamId && !(isNorwayFirst && teamId === norwayId))
+        .filter(([teamId, predictors]) => predictors.length === 1 && teamId !== mainTeamId && !(shouldFilterNorway && teamId === norwayId))
         .sort(([idA], [idB]) => teamName(idA).localeCompare(teamName(idB)));
 
       if (soloTeams.length > 0) {
