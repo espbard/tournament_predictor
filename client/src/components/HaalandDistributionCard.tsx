@@ -1,4 +1,4 @@
-import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, ReferenceLine, CartesianGrid } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, ReferenceLine, CartesianGrid } from 'recharts';
 import { useThemeStore } from '@/store/themeStore';
 import { useT } from '@/lib/useT';
 import type { UserStatCardData } from '@tournament-predictor/shared';
@@ -50,10 +50,16 @@ export default function HaalandDistributionCard({ data }: Props) {
         {heading}
       </h3>
       <ResponsiveContainer width="100%" height={160}>
-        <LineChart
+        <AreaChart
           data={data.distributionData}
           margin={{ top: 4, right: 16, bottom: 4, left: -10 }}
         >
+          <defs>
+            <linearGradient id="distFill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor={LINE_COLOR} stopOpacity={0.3} />
+              <stop offset="95%" stopColor={LINE_COLOR} stopOpacity={0.03} />
+            </linearGradient>
+          </defs>
           <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
           <XAxis
             dataKey="value"
@@ -68,11 +74,12 @@ export default function HaalandDistributionCard({ data }: Props) {
             allowDecimals={false}
             width={24}
           />
-          <Line
+          <Area
             type="monotone"
             dataKey="count"
             stroke={LINE_COLOR}
             strokeWidth={2}
+            fill="url(#distFill)"
             dot={false}
             isAnimationActive={false}
           />
@@ -84,7 +91,7 @@ export default function HaalandDistributionCard({ data }: Props) {
               strokeWidth={2}
             />
           )}
-        </LineChart>
+        </AreaChart>
       </ResponsiveContainer>
       {data.distributionActualValue != null && (
         <p className="text-xs text-center mt-1" style={{ color: textColor }}>

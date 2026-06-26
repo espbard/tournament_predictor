@@ -2664,7 +2664,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         const goalCountMap = new Map<number, number>();
         for (const p of haalandPredictions) goalCountMap.set(p.goals, (goalCountMap.get(p.goals) ?? 0) + 1);
         const distributionData: { value: number; count: number }[] = [];
-        for (let v = minGoals; v <= maxGoals; v++) distributionData.push({ value: v, count: goalCountMap.get(v) ?? 0 });
+        for (let v = 0; v <= maxGoals + 1; v++) distributionData.push({ value: v, count: goalCountMap.get(v) ?? 0 });
 
         const haalandActualGoals = (haalandPlayer && haalandPlayer.gamesPlayed >= 1) ? haalandPlayer.goalsScored : null;
 
