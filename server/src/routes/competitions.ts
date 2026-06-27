@@ -1951,17 +1951,21 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     }
 
     // ── Match Made in Heaven: users with perfect scores in ALL games featuring the same team ──
-    const userTeamPredStats = new Map<string, Map<string, { total: number; perfect: number }>>();
+    const userTeamPredStats = new Map<string, Map<string, { total: number; perfect: number; correctResults: number }>>();
     for (const row of activeRows) {
       if (row.actualHomeScore === null || row.actualAwayScore === null) continue;
       const isPerfect = row.predHomeScore === row.actualHomeScore && row.predAwayScore === row.actualAwayScore;
+      const actualOutcome = Math.sign(row.actualHomeScore - row.actualAwayScore);
+      const predOutcome = Math.sign(row.predHomeScore - row.predAwayScore);
+      const isCorrectResult = actualOutcome === predOutcome;
       for (const teamId of [row.homeTeamId, row.awayTeamId]) {
         if (!teamId) continue;
         if (!userTeamPredStats.has(row.userId)) userTeamPredStats.set(row.userId, new Map());
         const teamMap = userTeamPredStats.get(row.userId)!;
-        const entry = teamMap.get(teamId) ?? { total: 0, perfect: 0 };
+        const entry = teamMap.get(teamId) ?? { total: 0, perfect: 0, correctResults: 0 };
         entry.total += 1;
         if (isPerfect) entry.perfect += 1;
+        if (isCorrectResult) entry.correctResults += 1;
         teamMap.set(teamId, entry);
       }
     }
@@ -1976,12 +1980,13 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     }
 
     // Fallback: if no one has a perfect record, find who has the most perfect predictions (min 2)
+    // Only users who got the correct result for ALL games for that team are eligible.
     let heavenFallbackMaxPerfect = 0;
     const heavenFallbackByTeam = new Map<string, { userId: string; count: number }[]>();
     if (heavenByTeam.size === 0) {
       for (const teamMap of userTeamPredStats.values()) {
         for (const stats of teamMap.values()) {
-          if (stats.perfect >= 2 && stats.perfect > heavenFallbackMaxPerfect) {
+          if (stats.perfect >= 2 && stats.correctResults === stats.total && stats.perfect > heavenFallbackMaxPerfect) {
             heavenFallbackMaxPerfect = stats.perfect;
           }
         }
@@ -1989,7 +1994,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       if (heavenFallbackMaxPerfect >= 2) {
         for (const [userId, teamMap] of userTeamPredStats.entries()) {
           for (const [teamId, stats] of teamMap.entries()) {
-            if (stats.perfect === heavenFallbackMaxPerfect) {
+            if (stats.perfect === heavenFallbackMaxPerfect && stats.correctResults === stats.total) {
               if (!heavenFallbackByTeam.has(teamId)) heavenFallbackByTeam.set(teamId, []);
               heavenFallbackByTeam.get(teamId)!.push({ userId, count: stats.perfect });
             }
