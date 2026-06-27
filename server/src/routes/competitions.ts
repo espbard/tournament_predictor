@@ -1493,19 +1493,71 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     }
 
     // ── The Leader: how many consecutive recent matches the current leader(s) have topped the table ──
+    // Fetch all member totals to include non-match points (bonus questions, bracket, group positions, etc.)
+    const memberRows = await db
+      .select({
+        userId: users.id,
+        username: users.username,
+        imageUrl: users.imageUrl,
+        iconColor: users.iconColor,
+        exactScorePoints: competitionMembers.exactScorePoints,
+        correctResultPoints: competitionMembers.correctResultPoints,
+        correctTeamProgressesPoints: competitionMembers.correctTeamProgressesPoints,
+        correctGroupPositionPoints: competitionMembers.correctGroupPositionPoints,
+        correctTeamInKnockoutTiePoints: competitionMembers.correctTeamInKnockoutTiePoints,
+        correctTeamInFinalPoints: competitionMembers.correctTeamInFinalPoints,
+        correctWinnerPoints: competitionMembers.correctWinnerPoints,
+        bonusQuestionPoints: competitionMembers.bonusQuestionPoints,
+        lateAdditionPoints: competitionMembers.lateAdditionPoints,
+      })
+      .from(competitionMembers)
+      .innerJoin(users, eq(competitionMembers.userId, users.id))
+      .where(and(eq(competitionMembers.competitionId, id), eq(users.isLeaderboardUser, false), eq(users.isComparisonUser, false)));
+
+    // Non-match points (bonus questions, bracket/group/KO predictions, late-addition compensation)
+    // are treated as a constant offset added to every milestone so the ranking at each snapshot
+    // correctly mirrors the full leaderboard — not just per-match prediction points.
+    const nonMatchPointsByUser = new Map<string, number>();
+    for (const row of memberRows) {
+      nonMatchPointsByUser.set(row.userId,
+        row.correctTeamProgressesPoints +
+        row.correctGroupPositionPoints +
+        row.correctTeamInKnockoutTiePoints +
+        row.correctTeamInFinalPoints +
+        row.correctWinnerPoints +
+        row.bonusQuestionPoints +
+        row.lateAdditionPoints
+      );
+    }
+
+    // Build user info from ALL rows (not just active users) so the actual leader is never excluded
+    // because they haven't predicted recently.
+    const leaderUserInfo = new Map<string, { username: string; imageUrl: string | null; iconColor: string | null }>();
+    const leaderPointsByUserMatch = new Map<string, number>();
+    for (const row of rows) {
+      leaderUserInfo.set(row.userId, { username: row.username, imageUrl: row.imageUrl, iconColor: row.iconColor ?? null });
+      leaderPointsByUserMatch.set(`${row.userId}|${row.matchId}`, row.points ?? 0);
+    }
+    // Include members who have non-match points but no completed match predictions.
+    for (const row of memberRows) {
+      if (!leaderUserInfo.has(row.userId)) {
+        leaderUserInfo.set(row.userId, { username: row.username, imageUrl: row.imageUrl, iconColor: row.iconColor ?? null });
+      }
+    }
+
     const completedMatchesByOldest = [...completedMatchesByRecency].reverse();
     const cumulativePointsByUser = new Map<string, number>();
-    for (const userId of userInfo.keys()) cumulativePointsByUser.set(userId, 0);
+    for (const userId of leaderUserInfo.keys()) cumulativePointsByUser.set(userId, 0);
 
     const leadingSetsByMatch: Set<string>[] = [];
     for (const match of completedMatchesByOldest) {
-      for (const userId of userInfo.keys()) {
-        const points = pointsByUserMatch.get(`${userId}|${match.id}`) ?? 0;
+      for (const userId of leaderUserInfo.keys()) {
+        const points = leaderPointsByUserMatch.get(`${userId}|${match.id}`) ?? 0;
         cumulativePointsByUser.set(userId, (cumulativePointsByUser.get(userId) ?? 0) + points);
       }
-      const maxPoints = Math.max(...cumulativePointsByUser.values());
+      const maxPoints = Math.max(...[...cumulativePointsByUser.entries()].map(([userId, pts]) => pts + (nonMatchPointsByUser.get(userId) ?? 0)));
       leadingSetsByMatch.push(
-        new Set([...cumulativePointsByUser.entries()].filter(([, p]) => p === maxPoints).map(([userId]) => userId))
+        new Set([...cumulativePointsByUser.entries()].filter(([userId, p]) => p + (nonMatchPointsByUser.get(userId) ?? 0) === maxPoints).map(([userId]) => userId))
       );
     }
 
@@ -1525,7 +1577,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         const maxStreak = Math.max(...leaderStreaks.map(l => l.streak));
         kingGroup = leaderStreaks
           .filter(l => l.streak === maxStreak)
-          .map(l => ({ userId: l.userId, streak: l.streak, ...userInfo.get(l.userId)! }))
+          .map(l => ({ userId: l.userId, streak: l.streak, ...leaderUserInfo.get(l.userId)! }))
           .sort((a, b) => a.username.localeCompare(b.username));
       }
     }
@@ -1569,26 +1621,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     }
 
     // ── Bottom of the league: lowest total points vs. the leader ──
-    const memberRows = await db
-      .select({
-        userId: users.id,
-        username: users.username,
-        imageUrl: users.imageUrl,
-        iconColor: users.iconColor,
-        exactScorePoints: competitionMembers.exactScorePoints,
-        correctResultPoints: competitionMembers.correctResultPoints,
-        correctTeamProgressesPoints: competitionMembers.correctTeamProgressesPoints,
-        correctGroupPositionPoints: competitionMembers.correctGroupPositionPoints,
-        correctTeamInKnockoutTiePoints: competitionMembers.correctTeamInKnockoutTiePoints,
-        correctTeamInFinalPoints: competitionMembers.correctTeamInFinalPoints,
-        correctWinnerPoints: competitionMembers.correctWinnerPoints,
-        bonusQuestionPoints: competitionMembers.bonusQuestionPoints,
-        lateAdditionPoints: competitionMembers.lateAdditionPoints,
-      })
-      .from(competitionMembers)
-      .innerJoin(users, eq(competitionMembers.userId, users.id))
-      .where(and(eq(competitionMembers.competitionId, id), eq(users.isLeaderboardUser, false), eq(users.isComparisonUser, false)));
-
+    // memberRows was fetched above for the Leader card calculation and is reused here.
     const memberTotals = memberRows
       .filter(m => !activeStatUserIds || activeStatUserIds.has(m.userId))
       .map(row => ({
