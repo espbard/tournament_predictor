@@ -676,7 +676,7 @@ function FocusedMatchCard({
         <div>
           <div className="text-center mb-1.5">
             <p className="text-xs text-muted-foreground font-medium">
-              {isCompleted ? t('knockoutContent.result') : 'Actual match'}
+              {isCompleted ? t('knockoutContent.result') : t('knockoutContent.actualMatch')}
             </p>
           </div>
           <div className="rounded-xl border-2 bg-card shadow-sm overflow-hidden">
@@ -863,7 +863,7 @@ function FocusedBracketView({
     return list;
   }, [chronoRounds, maxRoundIdx, hasBronzeFinal, actualMatchMap]);
 
-  const { t } = useT();
+  const { t, language } = useT();
   const getRoundLabel = (round: KnockoutFirstRound) => t(`knockout.rounds.${round}` as any) || ROUND_LABELS[round] || round;
 
   const [currentIdx, setCurrentIdx] = useState(0);
@@ -996,7 +996,7 @@ function FocusedBracketView({
           )}
           {actualMatchMap[current.predKey]?.scheduledAt && (
             <p className="text-[11px] text-muted-foreground mt-0.5">
-              {new Date(actualMatchMap[current.predKey].scheduledAt!).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+              {new Date(actualMatchMap[current.predKey].scheduledAt!).toLocaleString(language, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
             </p>
           )}
         </div>
