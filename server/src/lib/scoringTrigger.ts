@@ -322,18 +322,6 @@ async function recomputeAllMemberBreakdowns(
       firstRoundPredTeams,
     );
 
-    // --- First-round knockout tie points (based on predicted group qualifiers) ---
-    let correctTeamInFirstRound = 0;
-    allFirstRoundMatches.forEach((match, i) => {
-      if (match.status !== 'completed') return;
-      const { predHomeId, predAwayId } = firstRoundPredTeams[`${firstRound}_${i}`] ?? {};
-      for (const actualTeamId of [match.homeTeamId, match.awayTeamId]) {
-        if (!actualTeamId) continue;
-        if (predHomeId !== actualTeamId && predAwayId !== actualTeamId) continue;
-        correctTeamInFirstRound += config.correct_team_in_knockout_tie;
-      }
-    });
-
     // --- Bonus question points ---
     const bonusRows = await db
       .select({ points: bonusAnswers.points })
@@ -348,7 +336,7 @@ async function recomputeAllMemberBreakdowns(
         correctResultPoints: groupCorrectResult + koResult.breakdown.correctResult,
         correctTeamProgressesPoints: groupCorrectTeamProgresses + koResult.breakdown.correctTeamProgresses,
         correctGroupPositionPoints: groupPositionPts,
-        correctTeamInKnockoutTiePoints: koResult.breakdown.correctTeamInKnockoutTie + correctTeamInFirstRound,
+        correctTeamInKnockoutTiePoints: koResult.breakdown.correctTeamInKnockoutTie,
         correctTeamInFinalPoints: koResult.breakdown.correctTeamInFinal,
         correctWinnerPoints: koResult.breakdown.correctWinner,
         bonusQuestionPoints: bonusPts,
