@@ -2496,9 +2496,6 @@ export default function CompetitionDetailPage() {
                           const isExpanded = expandedPredKey === predKey;
                           const effectiveMatchHome = pred.flipped ? (match.awayScore ?? 0) : (match.homeScore ?? 0);
                           const effectiveMatchAway = pred.flipped ? (match.homeScore ?? 0) : (match.awayScore ?? 0);
-                          const isCorrectResult =
-                            match.homeScore !== null && match.awayScore !== null &&
-                            Math.sign(pred.homeScore - pred.awayScore) === Math.sign(effectiveMatchHome - effectiveMatchAway);
                           const isExactScore =
                             match.homeScore !== null && match.awayScore !== null &&
                             pred.homeScore === effectiveMatchHome && pred.awayScore === effectiveMatchAway;
