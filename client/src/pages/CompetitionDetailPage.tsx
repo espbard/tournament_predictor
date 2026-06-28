@@ -2543,7 +2543,7 @@ export default function CompetitionDetailPage() {
                                 type="button"
                                 onClick={() => setExpandedPredKey(k => k === predKey ? null : predKey)}
                                 className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-opacity hover:opacity-80 ${
-                                  isCorrectResult ? 'bg-green-50 dark:bg-green-950/25' : 'bg-muted/20'
+                                  (pred.points ?? 0) > 0 ? 'bg-green-50 dark:bg-green-950/25' : 'bg-muted/20'
                                 }`}
                               >
                                 <UserAvatar username={pred.username} imageUrl={pred.imageUrl} iconColor={pred.iconColor} className="h-5 w-5 flex-shrink-0" />
@@ -2604,7 +2604,7 @@ export default function CompetitionDetailPage() {
 
                               {isExpanded && (
                                 <div className={`px-3 py-2 text-xs space-y-1 border-t ${
-                                  isCorrectResult ? 'bg-green-50/50 dark:bg-green-950/10 border-green-100 dark:border-green-900/30' : 'bg-muted/10 border-border'
+                                  (pred.points ?? 0) > 0 ? 'bg-green-50/50 dark:bg-green-950/10 border-green-100 dark:border-green-900/30' : 'bg-muted/10 border-border'
                                 }`}>
                                   {breakdownLines.length === 0 ? (
                                     <p className="text-muted-foreground">No points earned</p>
