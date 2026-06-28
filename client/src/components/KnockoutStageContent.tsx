@@ -996,7 +996,7 @@ function FocusedBracketView({
           )}
           {actualMatchMap[current.predKey]?.scheduledAt && (
             <p className="text-[11px] text-muted-foreground mt-0.5">
-              {new Date(actualMatchMap[current.predKey].scheduledAt).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+              {new Date(actualMatchMap[current.predKey].scheduledAt!).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
             </p>
           )}
         </div>
