@@ -491,11 +491,9 @@ function FocusedMatchCard({
     <div className="space-y-3 w-full">
       {/* ── Predicted card ─────────────────────────────────── */}
       <div>
-        {isCompleted && (
-          <p className="text-xs text-muted-foreground text-center mb-1.5 font-medium">
-            {t('knockoutContent.yourPrediction')}
-          </p>
-        )}
+        <p className="text-xs text-muted-foreground text-center mb-1.5 font-medium">
+          {t('knockoutContent.yourPrediction')}
+        </p>
         <div className={`rounded-xl border-2 shadow-sm overflow-hidden ${isCorrectResult ? 'border-green-400 bg-green-50/60 dark:bg-green-950/25' : 'bg-card'}`}>
           {/* Home row */}
           <div
@@ -680,11 +678,6 @@ function FocusedMatchCard({
             <p className="text-xs text-muted-foreground font-medium">
               {isCompleted ? t('knockoutContent.result') : 'Actual match'}
             </p>
-            {actualMatch.scheduledAt && (
-              <p className="text-[11px] text-muted-foreground">
-                {new Date(actualMatch.scheduledAt).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-              </p>
-            )}
           </div>
           <div className="rounded-xl border-2 bg-card shadow-sm overflow-hidden">
             {/* Home row */}
@@ -999,6 +992,11 @@ function FocusedBracketView({
           {!current.isBronze && roundMatchesForDots.length > 1 && (
             <p className="text-xs text-muted-foreground mt-0.5">
               {t('knockoutContent.matchOf', { n: current.matchIdxInRound + 1, total: current.matchCountInRound })}
+            </p>
+          )}
+          {actualMatchMap[current.predKey]?.scheduledAt && (
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              {new Date(actualMatchMap[current.predKey].scheduledAt).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
             </p>
           )}
         </div>
