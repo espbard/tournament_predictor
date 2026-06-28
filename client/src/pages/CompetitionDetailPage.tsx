@@ -45,6 +45,7 @@ interface MatchWithTeams {
   awayScore: number | null;
   groupName: string | null;
   progressingTeamId: string | null;
+  bracketIndex: number | null;
 }
 
 interface PredBreakdown {
