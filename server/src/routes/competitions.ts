@@ -1507,22 +1507,6 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       .innerJoin(users, eq(competitionMembers.userId, users.id))
       .where(and(eq(competitionMembers.competitionId, id), eq(users.isLeaderboardUser, false), eq(users.isComparisonUser, false)));
 
-    // Non-match points (bonus questions, bracket/group/KO predictions, late-addition compensation)
-    // are treated as a constant offset added to every milestone so the ranking at each snapshot
-    // correctly mirrors the full leaderboard — not just per-match prediction points.
-    const nonMatchPointsByUser = new Map<string, number>();
-    for (const row of memberRows) {
-      nonMatchPointsByUser.set(row.userId,
-        row.correctTeamProgressesPoints +
-        row.correctGroupPositionPoints +
-        row.correctTeamInKnockoutTiePoints +
-        row.correctTeamInFinalPoints +
-        row.correctWinnerPoints +
-        row.bonusQuestionPoints +
-        row.lateAdditionPoints
-      );
-    }
-
     // Build user info from ALL rows (not just active users) so the actual leader is never excluded
     // because they haven't predicted recently.
     const leaderUserInfo = new Map<string, { username: string; imageUrl: string | null; iconColor: string | null }>();
@@ -1530,6 +1514,27 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     for (const row of rows) {
       leaderUserInfo.set(row.userId, { username: row.username, imageUrl: row.imageUrl, iconColor: row.iconColor ?? null });
       leaderPointsByUserMatch.set(`${row.userId}|${row.matchId}`, row.points ?? 0);
+    }
+
+    // Sum of per-match group prediction points per user (already counted in leaderPointsByUserMatch).
+    const groupPredSumByUser = new Map<string, number>();
+    for (const [key, pts] of leaderPointsByUserMatch) {
+      const userId = key.split('|')[0];
+      groupPredSumByUser.set(userId, (groupPredSumByUser.get(userId) ?? 0) + pts);
+    }
+
+    // nonMatchPointsByUser = storedTotal − groupPredSum, so that
+    // cumulativePointsByUser + nonMatchPointsByUser == storedTotal at the final milestone.
+    // This avoids double-counting group correctTeamProgresses and ensures KO exact/result
+    // points (stored in exactScorePoints/correctResultPoints combined with group values) are included.
+    const nonMatchPointsByUser = new Map<string, number>();
+    for (const row of memberRows) {
+      const storedTotal =
+        row.exactScorePoints + row.correctResultPoints + row.correctTeamProgressesPoints +
+        row.correctGroupPositionPoints + row.correctTeamInKnockoutTiePoints +
+        row.correctTeamInFinalPoints + row.correctWinnerPoints +
+        row.bonusQuestionPoints + row.lateAdditionPoints;
+      nonMatchPointsByUser.set(row.userId, storedTotal - (groupPredSumByUser.get(row.userId) ?? 0));
     }
     // Include members who have non-match points but no completed match predictions.
     for (const row of memberRows) {
