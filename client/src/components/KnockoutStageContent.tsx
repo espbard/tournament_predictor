@@ -456,8 +456,8 @@ function FocusedMatchCard({
 
   const isFlipped = isCompleted && (!!prediction?.flipped || clientSideFlip);
 
-  const isDisplayHomeTeamCorrect = isCompleted && (isFlipped ? pointsInfo?.isActualAwayTeamCorrect : pointsInfo?.isActualHomeTeamCorrect) === true;
-  const isDisplayAwayTeamCorrect = isCompleted && (isFlipped ? pointsInfo?.isActualHomeTeamCorrect : pointsInfo?.isActualAwayTeamCorrect) === true;
+  const isDisplayHomeTeamCorrect = isCompleted && pointsInfo?.isActualHomeTeamCorrect === true;
+  const isDisplayAwayTeamCorrect = isCompleted && pointsInfo?.isActualAwayTeamCorrect === true;
 
   // When flipped: swap teams and scores so the prediction card mirrors the
   // actual result card's home/away layout.
