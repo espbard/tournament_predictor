@@ -279,14 +279,18 @@ export default function CompetitionDetailPage() {
   );
 
   // Map actual knockout match UUIDs → the user's bracket prediction for that slot.
-  // Bracket predictions are keyed by position (e.g. "round_of_16_0") not by match UUID,
-  // so we replicate the server's ordering: sort each stage's matches by scheduledAt, then
-  // assign indices to build the same "stage_i" keys.
+  // Bracket predictions are keyed by position (e.g. "round_of_16_0") not by match UUID.
+  // Keys are assigned using bracketIndex-first ordering (matching how the bracket UI stores them).
   const knockoutPredByMatchId = useMemo<Record<string, BracketMatchPrediction>>(() => {
     if (!bracketPreds) return {};
     const koMatches = [...matchList]
       .filter(m => m.stage !== 'group')
       .sort((a, b) => {
+        const aHasIdx = a.bracketIndex != null;
+        const bHasIdx = b.bracketIndex != null;
+        if (aHasIdx && bHasIdx && a.bracketIndex !== b.bracketIndex) return a.bracketIndex! - b.bracketIndex!;
+        if (aHasIdx && !bHasIdx) return -1;
+        if (!aHasIdx && bHasIdx) return 1;
         if (!a.scheduledAt && !b.scheduledAt) return 0;
         if (!a.scheduledAt) return 1;
         if (!b.scheduledAt) return -1;

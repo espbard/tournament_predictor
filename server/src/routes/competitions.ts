@@ -1023,14 +1023,27 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
     // (round_of_16_0, etc.) stay consistent with how the scoring logic assigns them.
     const KNOCKOUT_STAGE_LIST = ['round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'bronze_final', 'final'] as const;
     const allKoMatches = await db
-      .select({ id: matches.id, stage: matches.stage, scheduledAt: matches.scheduledAt, status: matches.status, homeTeamId: matches.homeTeamId, awayTeamId: matches.awayTeamId, homeScore: matches.homeScore, awayScore: matches.awayScore, progressingTeamId: matches.progressingTeamId })
+      .select({ id: matches.id, stage: matches.stage, scheduledAt: matches.scheduledAt, status: matches.status, homeTeamId: matches.homeTeamId, awayTeamId: matches.awayTeamId, homeScore: matches.homeScore, awayScore: matches.awayScore, progressingTeamId: matches.progressingTeamId, bracketIndex: matches.bracketIndex })
       .from(matches)
       .where(and(
         eq(matches.tournamentId, competition.tournamentId),
         inArray(matches.stage, [...KNOCKOUT_STAGE_LIST]),
       ));
 
+    // Sort matches using the same logic as the client bracket visualizer:
+    // bracketIndex first (nulls last), then scheduledAt. This ensures the
+    // stage_N bracket keys assigned below match what was stored when users
+    // submitted their predictions.
     allKoMatches.sort((a, b) => {
+      const aHasIdx = a.bracketIndex != null;
+      const bHasIdx = b.bracketIndex != null;
+      if (aHasIdx && bHasIdx) {
+        if (a.bracketIndex !== b.bracketIndex) return a.bracketIndex! - b.bracketIndex!;
+      } else if (aHasIdx) {
+        return -1;
+      } else if (bHasIdx) {
+        return 1;
+      }
       if (!a.scheduledAt && !b.scheduledAt) return 0;
       if (!a.scheduledAt) return 1;
       if (!b.scheduledAt) return -1;
