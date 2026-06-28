@@ -368,7 +368,7 @@ function FocusedMatchCard({
           if (isFinal) {
             if (teamId === actualMatch.progressingTeamId && prediction.progressingTeamId === actualMatch.progressingTeamId) correctWinner = scoringConfig.correct_winner;
             else correctTeamInFinal += scoringConfig.correct_team_in_final;
-          } else {
+          } else if (!isFirstRound) {
             correctTeamInKnockoutTie += scoringConfig.correct_team_in_knockout_tie;
           }
           if (teamId === actHomeId) isActualHomeTeamCorrect = true;
@@ -456,8 +456,13 @@ function FocusedMatchCard({
 
   const isFlipped = isCompleted && (!!prediction?.flipped || clientSideFlip);
 
-  const isDisplayHomeTeamCorrect = isCompleted && (isFlipped ? pointsInfo?.isActualAwayTeamCorrect : pointsInfo?.isActualHomeTeamCorrect) === true;
-  const isDisplayAwayTeamCorrect = isCompleted && (isFlipped ? pointsInfo?.isActualHomeTeamCorrect : pointsInfo?.isActualAwayTeamCorrect) === true;
+  const isPendingFlip = !isCompleted && !!prediction && !!actualMatch?.homeTeamId && !!actualMatch?.awayTeamId && (
+    (homeTeam?.teamId != null && homeTeam.teamId === actualMatch.awayTeamId) ||
+    (awayTeam?.teamId != null && awayTeam.teamId === actualMatch.homeTeamId)
+  );
+
+  const isDisplayHomeTeamCorrect = isCompleted && pointsInfo?.isActualHomeTeamCorrect === true;
+  const isDisplayAwayTeamCorrect = isCompleted && pointsInfo?.isActualAwayTeamCorrect === true;
 
   // When flipped: swap teams and scores so the prediction card mirrors the
   // actual result card's home/away layout.
@@ -668,6 +673,11 @@ function FocusedMatchCard({
       {isFlipped && (
         <p className="text-xs text-muted-foreground text-center px-2">
           ⟳ {t('knockoutContent.predictionFlipped')}
+        </p>
+      )}
+      {isPendingFlip && (
+        <p className="text-xs text-muted-foreground text-center px-2">
+          ⟳ {t('knockoutContent.predictionWillBeFlipped')}
         </p>
       )}
 
