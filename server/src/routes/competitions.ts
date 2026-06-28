@@ -651,7 +651,13 @@ router.get('/:id/leaderboard-progression', requireAuth, async (req, res) => {
     const allGroupDone = allGroupMatches.length > 0 && allGroupMatches.every(m => m.status === 'completed');
 
     const allKoMatchesRaw = allMatches.filter(m => m.stage !== 'group');
+    // Must match the client's knockoutMatchMap sort so stage_N bracket keys align with stored predictions.
     allKoMatchesRaw.sort((a, b) => {
+      const aHasIdx = a.bracketIndex != null;
+      const bHasIdx = b.bracketIndex != null;
+      if (aHasIdx && bHasIdx && a.bracketIndex !== b.bracketIndex) return a.bracketIndex! - b.bracketIndex!;
+      if (aHasIdx && !bHasIdx) return -1;
+      if (!aHasIdx && bHasIdx) return 1;
       if (!a.scheduledAt && !b.scheduledAt) return 0;
       if (!a.scheduledAt) return 1;
       if (!b.scheduledAt) return -1;
@@ -837,23 +843,9 @@ router.get('/:id/leaderboard-progression', requireAuth, async (req, res) => {
 
         const koResult = calculateKnockoutPoints(filteredKoMatches, firstRound, userBracket, config, firstRoundPredTeams);
 
-        // First-round tie points (not covered by calculateKnockoutPoints)
-        let curFirstRoundTiePts = 0;
-        allFirstRoundMatches.forEach((frMatch, i) => {
-          const isCompleted = filteredKoMatches.find(m => m.id === frMatch.id)?.status === 'completed';
-          if (!isCompleted) return;
-          const { predHomeId, predAwayId } = firstRoundPredTeams[`${firstRound}_${i}`] ?? {};
-          for (const actualTeamId of [frMatch.homeTeamId, frMatch.awayTeamId]) {
-            if (!actualTeamId) continue;
-            if (predHomeId !== actualTeamId && predAwayId !== actualTeamId) continue;
-            curFirstRoundTiePts += config.correct_team_in_knockout_tie;
-          }
-        });
-
-        const newKoTotal = koResult.total + curFirstRoundTiePts;
-        const delta = newKoTotal - (prevKoTotals[member.userId] ?? 0);
+        const delta = koResult.total - (prevKoTotals[member.userId] ?? 0);
         if (delta > 0) cumulativeTotals[member.userId] += delta;
-        prevKoTotals[member.userId] = newKoTotal;
+        prevKoTotals[member.userId] = koResult.total;
       }
 
       milestones.push({ matchId: match.id, label: formatMatchLabel(match), stage: match.stage, cumulativePoints: { ...cumulativeTotals } });
