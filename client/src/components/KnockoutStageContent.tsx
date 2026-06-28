@@ -456,6 +456,11 @@ function FocusedMatchCard({
 
   const isFlipped = isCompleted && (!!prediction?.flipped || clientSideFlip);
 
+  const isPendingFlip = !isCompleted && !!prediction && !!actualMatch?.homeTeamId && !!actualMatch?.awayTeamId && (
+    (homeTeam?.teamId != null && homeTeam.teamId === actualMatch.awayTeamId) ||
+    (awayTeam?.teamId != null && awayTeam.teamId === actualMatch.homeTeamId)
+  );
+
   const isDisplayHomeTeamCorrect = isCompleted && pointsInfo?.isActualHomeTeamCorrect === true;
   const isDisplayAwayTeamCorrect = isCompleted && pointsInfo?.isActualAwayTeamCorrect === true;
 
@@ -668,6 +673,11 @@ function FocusedMatchCard({
       {isFlipped && (
         <p className="text-xs text-muted-foreground text-center px-2">
           ⟳ {t('knockoutContent.predictionFlipped')}
+        </p>
+      )}
+      {isPendingFlip && (
+        <p className="text-xs text-muted-foreground text-center px-2">
+          ⟳ {t('knockoutContent.predictionWillBeFlipped')}
         </p>
       )}
 

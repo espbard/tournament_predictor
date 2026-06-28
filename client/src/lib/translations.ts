@@ -394,6 +394,7 @@ const translations = {
       correctTeamInTie: 'correct team(s) in tie',
       whoAdvances: 'Who advances after extra time / penalties?',
       predictionFlipped: 'Your prediction was flipped because you predicted one or both teams in the tie, but on the wrong side of the draw.',
+      predictionWillBeFlipped: 'Your prediction will be flipped because you predicted one or both teams in the tie, but on the wrong side of the draw.',
       predictionsLocked: 'Knockout predictions are locked — the tournament has started.',
       bracketOverview: 'Bracket',
       vizRoundLabels: {
@@ -881,6 +882,7 @@ const translations = {
       correctTeamInTie: 'riktig lag i oppgjøret',
       whoAdvances: 'Hvem går videre etter ekstraomganger/straffespark?',
       predictionFlipped: 'Tipset ditt ble snudd fordi du tippet ett eller begge lagene i oppgjøret, men på feil side av trekningen.',
+      predictionWillBeFlipped: 'Tipset ditt vil bli snudd fordi du tippet ett eller begge lagene i oppgjøret, men på feil side av trekningen.',
       predictionsLocked: 'Sluttspill-tips er låst – turneringen har startet.',
       bracketOverview: 'Bracket',
       vizRoundLabels: {
@@ -1367,6 +1369,7 @@ const translations = {
       correctTeamInTie: 'richtiges Team im Elfmeterschießen',
       whoAdvances: 'Wer geht weiter nach Verlängerung / Elfmeterschießen?',
       predictionFlipped: 'Dein Tipp wurde umgekehrt, weil du ein oder beide Teams im Duell getippt hast, aber auf der falschen Seite des Brackets.',
+      predictionWillBeFlipped: 'Dein Tipp wird umgekehrt, weil du ein oder beide Teams im Duell getippt hast, aber auf der falschen Seite des Brackets.',
       predictionsLocked: 'K.o.-Tipps sind gesperrt — das Turnier hat begonnen.',
       bracketOverview: 'Bracket',
       vizRoundLabels: {
