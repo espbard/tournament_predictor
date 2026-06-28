@@ -1037,16 +1037,14 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
       return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
     });
 
-    // Map bracket key → matchId (and full data) for completed matches only
+    // Map bracket key → matchId (and full data) for all knockout matches
     const bracketKeyToMatchId = new Map<string, string>();
     const matchIdToKoData = new Map<string, typeof allKoMatches[number]>();
     const stageIdx = new Map<string, number>();
     for (const m of allKoMatches) {
       const i = stageIdx.get(m.stage) ?? 0;
-      if (m.status === 'completed') {
-        bracketKeyToMatchId.set(`${m.stage}_${i}`, m.id);
-        matchIdToKoData.set(m.id, m);
-      }
+      bracketKeyToMatchId.set(`${m.stage}_${i}`, m.id);
+      matchIdToKoData.set(m.id, m);
       stageIdx.set(m.stage, i + 1);
     }
 
