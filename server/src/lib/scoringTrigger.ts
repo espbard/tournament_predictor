@@ -108,7 +108,14 @@ async function recomputeAllMemberBreakdowns(
     .select()
     .from(matches)
     .where(and(eq(matches.tournamentId, tournamentId), inArray(matches.stage, [...KNOCKOUT_STAGES])));
+  // Must match the client's knockoutMatchMap sort (bracketIndex-first, then scheduledAt)
+  // so that stage_N bracket keys align with how users stored their predictions.
   allKoMatches.sort((a, b) => {
+    const aHasIdx = a.bracketIndex != null;
+    const bHasIdx = b.bracketIndex != null;
+    if (aHasIdx && bHasIdx && a.bracketIndex !== b.bracketIndex) return a.bracketIndex! - b.bracketIndex!;
+    if (aHasIdx && !bHasIdx) return -1;
+    if (!aHasIdx && bHasIdx) return 1;
     if (!a.scheduledAt && !b.scheduledAt) return 0;
     if (!a.scheduledAt) return 1;
     if (!b.scheduledAt) return -1;

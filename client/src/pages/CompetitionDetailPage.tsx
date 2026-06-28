@@ -45,6 +45,7 @@ interface MatchWithTeams {
   awayScore: number | null;
   groupName: string | null;
   progressingTeamId: string | null;
+  bracketIndex: number | null;
 }
 
 interface PredBreakdown {
@@ -279,14 +280,18 @@ export default function CompetitionDetailPage() {
   );
 
   // Map actual knockout match UUIDs → the user's bracket prediction for that slot.
-  // Bracket predictions are keyed by position (e.g. "round_of_16_0") not by match UUID,
-  // so we replicate the server's ordering: sort each stage's matches by scheduledAt, then
-  // assign indices to build the same "stage_i" keys.
+  // Bracket predictions are keyed by position (e.g. "round_of_16_0") not by match UUID.
+  // Keys are assigned using bracketIndex-first ordering (matching how the bracket UI stores them).
   const knockoutPredByMatchId = useMemo<Record<string, BracketMatchPrediction>>(() => {
     if (!bracketPreds) return {};
     const koMatches = [...matchList]
       .filter(m => m.stage !== 'group')
       .sort((a, b) => {
+        const aHasIdx = a.bracketIndex != null;
+        const bHasIdx = b.bracketIndex != null;
+        if (aHasIdx && bHasIdx && a.bracketIndex !== b.bracketIndex) return a.bracketIndex! - b.bracketIndex!;
+        if (aHasIdx && !bHasIdx) return -1;
+        if (!aHasIdx && bHasIdx) return 1;
         if (!a.scheduledAt && !b.scheduledAt) return 0;
         if (!a.scheduledAt) return 1;
         if (!b.scheduledAt) return -1;
@@ -2491,9 +2496,6 @@ export default function CompetitionDetailPage() {
                           const isExpanded = expandedPredKey === predKey;
                           const effectiveMatchHome = pred.flipped ? (match.awayScore ?? 0) : (match.homeScore ?? 0);
                           const effectiveMatchAway = pred.flipped ? (match.homeScore ?? 0) : (match.awayScore ?? 0);
-                          const isCorrectResult =
-                            match.homeScore !== null && match.awayScore !== null &&
-                            Math.sign(pred.homeScore - pred.awayScore) === Math.sign(effectiveMatchHome - effectiveMatchAway);
                           const isExactScore =
                             match.homeScore !== null && match.awayScore !== null &&
                             pred.homeScore === effectiveMatchHome && pred.awayScore === effectiveMatchAway;
@@ -2538,7 +2540,7 @@ export default function CompetitionDetailPage() {
                                 type="button"
                                 onClick={() => setExpandedPredKey(k => k === predKey ? null : predKey)}
                                 className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-opacity hover:opacity-80 ${
-                                  isCorrectResult ? 'bg-green-50 dark:bg-green-950/25' : 'bg-muted/20'
+                                  (pred.points ?? 0) > 0 ? 'bg-green-50 dark:bg-green-950/25' : 'bg-muted/20'
                                 }`}
                               >
                                 <UserAvatar username={pred.username} imageUrl={pred.imageUrl} iconColor={pred.iconColor} className="h-5 w-5 flex-shrink-0" />
@@ -2599,7 +2601,7 @@ export default function CompetitionDetailPage() {
 
                               {isExpanded && (
                                 <div className={`px-3 py-2 text-xs space-y-1 border-t ${
-                                  isCorrectResult ? 'bg-green-50/50 dark:bg-green-950/10 border-green-100 dark:border-green-900/30' : 'bg-muted/10 border-border'
+                                  (pred.points ?? 0) > 0 ? 'bg-green-50/50 dark:bg-green-950/10 border-green-100 dark:border-green-900/30' : 'bg-muted/10 border-border'
                                 }`}>
                                   {breakdownLines.length === 0 ? (
                                     <p className="text-muted-foreground">No points earned</p>
