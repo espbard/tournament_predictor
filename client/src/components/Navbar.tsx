@@ -1,6 +1,6 @@
 import { Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { Moon, Sun, ChevronDown, LogOut, Settings } from 'lucide-react';
+import { Moon, Sun, ChevronDown, LogOut, Settings, Home } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
@@ -91,6 +91,13 @@ export default function Navbar() {
   return (
     <nav className="bg-background border-b border-border">
       <div className="mx-auto flex items-center max-w-5xl px-4 py-2">
+        {/* Home icon – shown when not on home page */}
+        {location.pathname !== '/' && (
+          <Link to="/" className="shrink-0 flex items-center p-1.5 mr-1 text-foreground hover:opacity-70" aria-label="Home">
+            <Home size={18} />
+          </Link>
+        )}
+
         {/* Site name – hidden on mobile only when tabs are shown */}
         <Link
           to="/"
@@ -191,15 +198,6 @@ export default function Navbar() {
             </button>
             {userMenuOpen && (
               <div className="absolute right-0 top-full mt-2 z-[100] w-52 rounded-md border border-border bg-popover shadow-md py-2">
-                {/* Theme toggle */}
-                <button
-                  onClick={toggleTheme}
-                  className="w-full flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-muted"
-                >
-                  {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
-                  {theme === 'dark' ? t('nav.lightMode') : t('nav.darkMode')}
-                </button>
-
                 {/* Language picker */}
                 <div className="px-4 py-2 flex items-center gap-2">
                   {LANGUAGES.map((lang) => (
@@ -213,6 +211,15 @@ export default function Navbar() {
                     />
                   ))}
                 </div>
+
+                {/* Theme toggle */}
+                <button
+                  onClick={toggleTheme}
+                  className="w-full flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-muted"
+                >
+                  {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
+                  {theme === 'dark' ? t('nav.lightMode') : t('nav.darkMode')}
+                </button>
 
                 <div className="border-t border-border my-1" />
 

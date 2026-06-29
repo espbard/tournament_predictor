@@ -113,7 +113,7 @@ const translations = {
         bonusQuestions: 'Bonus Questions',
         leaderboard: 'Leaderboard',
         pointProgression: 'Point Progression',
-        userStats: 'User Stats',
+        userStats: 'Stats',
       },
       leaderboard: {
         player: 'Player',
@@ -607,7 +607,7 @@ const translations = {
         bonusQuestions: 'Bonusspørsmål',
         leaderboard: 'Ledertavle',
         pointProgression: 'Poengutvikling',
-        userStats: 'Brukerstatistikk',
+        userStats: 'Statistikk',
       },
       leaderboard: {
         player: 'Spiller',
@@ -1099,7 +1099,7 @@ const translations = {
         bonusQuestions: 'Bonusfragen',
         leaderboard: 'Rangliste der Sieger',
         pointProgression: 'Punkteentwicklung',
-        userStats: 'Benutzerstatistiken',
+        userStats: 'Statistiken',
       },
       leaderboard: {
         player: 'Spieler',
