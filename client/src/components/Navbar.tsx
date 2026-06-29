@@ -75,14 +75,14 @@ export default function Navbar() {
     }`;
 
   const dropItemCls = (active: boolean) =>
-    `w-full text-left px-4 py-2 text-sm hover:bg-muted ${active ? 'text-primary font-medium' : 'text-foreground'}`;
+    `w-full text-left px-4 py-2 text-sm hover:bg-muted ${active ? 'text-primary dark:text-blue-400 font-medium' : 'text-foreground'}`;
 
   const predictionsActive = activeTab === 'group' || activeTab === 'tables' || activeTab === 'knockout' || activeTab === 'bonus';
   const standingsActive = activeTab === 'leaderboard' || activeTab === 'pointProgression';
 
   return (
     <nav className="bg-primary dark:bg-background">
-      <div className="mx-auto flex items-center max-w-5xl px-4">
+      <div className="mx-auto flex items-center max-w-5xl px-4 py-2">
         {/* Site name – hidden on mobile only when tabs are shown */}
         <Link
           to="/"

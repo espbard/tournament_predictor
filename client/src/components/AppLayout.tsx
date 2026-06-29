@@ -7,8 +7,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-background">
-      {!user?.isLeaderboardUser && <Navbar />}
-      <div className={`${user?.isLeaderboardUser ? 'min-h-[100dvh]' : ''} ${showFeedbackButton ? 'pb-20' : ''}`}>
+      {!user?.isLeaderboardUser && (
+        <div className="fixed top-0 inset-x-0 z-50">
+          <Navbar />
+        </div>
+      )}
+      <div className={`${user?.isLeaderboardUser ? 'min-h-[100dvh]' : 'pt-16'} ${showFeedbackButton ? 'pb-20' : ''}`}>
         {children}
       </div>
       {user?.isLeaderboardUser && <Navbar />}
