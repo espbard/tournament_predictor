@@ -1043,6 +1043,9 @@ function FocusedBracketView({
                 isCorrectResult = Math.sign(predH - predA) === Math.sign(h - a);
                 isExactScore = predH === h && predA === a;
               }
+              const isPartialCredit = !isCorrectResult && hasActual && hasPred && !!pred && !!actualMatch &&
+                actualMatch.progressingTeamId !== null &&
+                pred.progressingTeamId === actualMatch.progressingTeamId;
               const dotClass = isCurrent
                 ? 'w-5 h-2.5 bg-primary dark:bg-blue-400'
                 : !hasPred
@@ -1053,13 +1056,17 @@ function FocusedBracketView({
                 ? 'w-2.5 h-2.5 bg-green-500 ring-1 ring-offset-1 ring-offset-background ring-amber-400'
                 : isCorrectResult
                 ? 'w-2.5 h-2.5 bg-green-500'
+                : isPartialCredit
+                ? 'w-2.5 h-2.5'
                 : 'w-2.5 h-2.5 bg-red-500';
+              const dotStyle = isPartialCredit ? { background: 'linear-gradient(135deg, #fde047 50%, #22c55e 50%)' } : undefined;
               return (
                 <button
                   key={m.predKey}
                   type="button"
                   onClick={() => goTo(flatIdx)}
                   className={`rounded-full transition-all duration-200 ${dotClass}`}
+                  style={dotStyle}
                   aria-label={`Match ${m.matchIdxInRound + 1}`}
                 />
               );

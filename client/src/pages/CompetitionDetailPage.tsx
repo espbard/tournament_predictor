@@ -2321,6 +2321,9 @@ export default function CompetitionDetailPage() {
                             Math.sign(activePred!.homeScore - activePred!.awayScore) === Math.sign(effActH - effActA);
                           const isExactScore = hasPred && hasActual &&
                             activePred!.homeScore === effActH && activePred!.awayScore === effActA;
+                          const isPartialCredit = m.stage !== 'group' && !isCorrectResult && hasActual && hasPred && !!activePred &&
+                            m.progressingTeamId !== null &&
+                            activePred.progressingTeamId === m.progressingTeamId;
                           const dotClass = isCurrent
                             ? 'w-5 h-2.5 bg-primary dark:bg-blue-400'
                             : !hasPred
@@ -2331,13 +2334,17 @@ export default function CompetitionDetailPage() {
                             ? 'w-2.5 h-2.5 bg-green-500 ring-1 ring-offset-1 ring-offset-background ring-amber-400'
                             : isCorrectResult
                             ? 'w-2.5 h-2.5 bg-green-500'
+                            : isPartialCredit
+                            ? 'w-2.5 h-2.5'
                             : 'w-2.5 h-2.5 bg-red-500';
+                          const dotStyle = isPartialCredit ? { background: 'linear-gradient(135deg, #fde047 50%, #22c55e 50%)' } : undefined;
                           return (
                             <button
                               key={m.id}
                               type="button"
                               onClick={() => setCurrentPredMatchIdx(idx)}
                               className={`rounded-full transition-all duration-200 ${dotClass}`}
+                              style={dotStyle}
                               aria-label={`Match ${idx + 1}`}
                             />
                           );
