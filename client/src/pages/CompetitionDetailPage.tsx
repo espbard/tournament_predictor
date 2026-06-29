@@ -720,6 +720,16 @@ export default function CompetitionDetailPage() {
     }
   }, [allGroupMatchesList, allGroupFilled, localEdits, groupStageLocked, hasDeclined, showProceedPrompt, predictionsFetched, tournament?.status, activeTab]);
 
+  const prevActiveTabRef = useRef(activeTab);
+  useEffect(() => {
+    const prev = prevActiveTabRef.current;
+    prevActiveTabRef.current = activeTab;
+    if (prev !== 'group' && activeTab === 'group') {
+      setShowProceedPrompt(false);
+      if (allGroupFilled) setHasDeclined(true);
+    }
+  }, [activeTab, allGroupFilled]);
+
   useEffect(() => {
     if (firstGroupUnfilledRef.current || !savedPredictions.length) return;
     firstGroupUnfilledRef.current = true;
@@ -1078,72 +1088,7 @@ export default function CompetitionDetailPage() {
         </form>
       )}
 
-      {user?.isAdmin && (
-        <div className="flex flex-wrap gap-1 mb-6 border-b">
-          <button
-            onClick={() => setActiveTab('leaderboard')}
-            className={`whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-              activeTab === 'leaderboard' ? 'border-primary text-primary dark:border-[hsl(231,60%,65%)] dark:text-[hsl(231,60%,65%)]' : 'border-transparent text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            {t('competitionDetail.tabs.leaderboard')}
-          </button>
-        </div>
-      )}
-
-      {user?.isLeaderboardUser && (
-        <div className="flex flex-wrap gap-1 mb-6 border-b tv:hidden">
-          {([
-            ['leaderboard', t('competitionDetail.tabs.leaderboard')],
-            ['pointProgression', t('competitionDetail.tabs.pointProgression')],
-          ] as const).map(([tab, label]) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-                activeTab === tab
-                  ? 'border-primary text-primary dark:border-[hsl(231,60%,65%)] dark:text-[hsl(231,60%,65%)]'
-                  : 'border-transparent text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      )}
-
       {!user?.isAdmin && (<>
-      {!user?.isLeaderboardUser && (
-      <div className="flex flex-wrap gap-1 mb-6 border-b">
-        {([
-          ['group', t('competitionDetail.tabs.groupStage')],
-          ['tables', t('competitionDetail.tabs.groupTables')],
-          ['knockout', t('competitionDetail.tabs.knockoutStage')],
-          ['bonus', t('competitionDetail.tabs.bonusQuestions')],
-          ['leaderboard', t('competitionDetail.tabs.leaderboard')],
-          ['pointProgression', t('competitionDetail.tabs.pointProgression')],
-          ['userStats', t('competitionDetail.tabs.userStats')],
-        ] as const).map(([tab, label]) => (
-          <button
-            key={tab}
-            onClick={() => {
-              setActiveTab(tab);
-              if (tab === 'group') {
-                setShowProceedPrompt(false);
-                if (allGroupFilled) setHasDeclined(true);
-              }
-            }}
-            className={`whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-              activeTab === tab
-                ? 'border-primary text-primary dark:border-[hsl(231,60%,65%)] dark:text-[hsl(231,60%,65%)]'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-      )}
 
       {activeTab === 'tables' && (
         <div>

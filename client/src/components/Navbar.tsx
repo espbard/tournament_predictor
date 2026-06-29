@@ -1,6 +1,6 @@
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { Moon, Sun } from 'lucide-react';
+import { Moon, Sun, ChevronDown } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
@@ -19,16 +19,28 @@ export default function Navbar() {
   const { user, setUser } = useAuthStore();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { language, setLanguage } = useLanguageStore();
   const { theme, toggleTheme } = useThemeStore();
   const { t } = useT();
   const [langOpen, setLangOpen] = useState(false);
+  const [groupsOpen, setGroupsOpen] = useState(false);
+  const [standingsOpen, setStandingsOpen] = useState(false);
   const langRef = useRef<HTMLDivElement>(null);
+  const groupsRef = useRef<HTMLDivElement>(null);
+  const standingsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (langRef.current && !langRef.current.contains(e.target as Node)) {
         setLangOpen(false);
+      }
+      if (groupsRef.current && !groupsRef.current.contains(e.target as Node)) {
+        setGroupsOpen(false);
+      }
+      if (standingsRef.current && !standingsRef.current.contains(e.target as Node)) {
+        setStandingsOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -44,9 +56,35 @@ export default function Navbar() {
 
   const currentLang = LANGUAGES.find((l) => l.code === language) ?? LANGUAGES[0];
 
+  const isOnCompetitionPage = /^\/competitions\/[^/]+$/.test(location.pathname);
+  const activeTab = searchParams.get('tab') ?? (user?.isLeaderboardUser || user?.isAdmin ? 'leaderboard' : 'group');
+
+  const setTab = (tab: string) => {
+    setGroupsOpen(false);
+    setStandingsOpen(false);
+    setSearchParams(prev => {
+      const n = new URLSearchParams(prev);
+      n.set('tab', tab);
+      return n;
+    }, { replace: true });
+  };
+
+  const tabCls = (active: boolean) =>
+    `whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1 ${
+      active
+        ? 'border-primary-foreground text-primary-foreground'
+        : 'border-transparent text-primary-foreground/60 hover:text-primary-foreground'
+    }`;
+
+  const dropItemCls = (active: boolean) =>
+    `w-full text-left px-4 py-2 text-sm hover:bg-muted ${active ? 'text-primary font-medium' : 'text-foreground'}`;
+
+  const groupsActive = activeTab === 'group' || activeTab === 'tables';
+  const standingsActive = activeTab === 'leaderboard' || activeTab === 'pointProgression';
+
   return (
-    <nav className="bg-primary px-4 py-3">
-      <div className="mx-auto flex max-w-5xl items-center justify-between">
+    <nav className="bg-primary">
+      <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
         <Link to="/" className="text-base font-semibold text-primary-foreground hover:opacity-80">
           {t('nav.appName')}
         </Link>
@@ -119,6 +157,83 @@ export default function Navbar() {
           </button>
         </div>
       </div>
+
+      {isOnCompetitionPage && (
+        <div className={`border-t border-primary-foreground/10 ${user?.isLeaderboardUser ? 'tv:hidden' : ''}`}>
+          <div className="mx-auto flex items-stretch max-w-5xl px-2 overflow-x-auto">
+            {!user?.isAdmin && !user?.isLeaderboardUser ? (
+              <>
+                {/* Groups dropdown */}
+                <div ref={groupsRef} className="relative">
+                  <button
+                    onClick={() => { setGroupsOpen(o => !o); setStandingsOpen(false); }}
+                    className={tabCls(groupsActive)}
+                  >
+                    {t('nav.tabGroups')}
+                    <ChevronDown size={13} className={`transition-transform duration-150 ${groupsOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {groupsOpen && (
+                    <div className="absolute left-0 top-full z-50 min-w-[160px] rounded-md border border-border bg-popover shadow-md py-1">
+                      <button onClick={() => setTab('group')} className={dropItemCls(activeTab === 'group')}>
+                        {t('competitionDetail.tabs.groupStage')}
+                      </button>
+                      <button onClick={() => setTab('tables')} className={dropItemCls(activeTab === 'tables')}>
+                        {t('competitionDetail.tabs.groupTables')}
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <button onClick={() => setTab('knockout')} className={tabCls(activeTab === 'knockout')}>
+                  {t('competitionDetail.tabs.knockoutStage')}
+                </button>
+                <button onClick={() => setTab('bonus')} className={tabCls(activeTab === 'bonus')}>
+                  {t('competitionDetail.tabs.bonusQuestions')}
+                </button>
+
+                {/* Standings dropdown */}
+                <div ref={standingsRef} className="relative">
+                  <button
+                    onClick={() => { setStandingsOpen(o => !o); setGroupsOpen(false); }}
+                    className={tabCls(standingsActive)}
+                  >
+                    {t('nav.tabStandings')}
+                    <ChevronDown size={13} className={`transition-transform duration-150 ${standingsOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {standingsOpen && (
+                    <div className="absolute left-0 top-full z-50 min-w-[190px] rounded-md border border-border bg-popover shadow-md py-1">
+                      <button onClick={() => setTab('leaderboard')} className={dropItemCls(activeTab === 'leaderboard')}>
+                        {t('competitionDetail.tabs.leaderboard')}
+                      </button>
+                      <button onClick={() => setTab('pointProgression')} className={dropItemCls(activeTab === 'pointProgression')}>
+                        {t('competitionDetail.tabs.pointProgression')}
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <button onClick={() => setTab('userStats')} className={tabCls(activeTab === 'userStats')}>
+                  {t('competitionDetail.tabs.userStats')}
+                </button>
+              </>
+            ) : user?.isLeaderboardUser ? (
+              <>
+                <button onClick={() => setTab('leaderboard')} className={tabCls(activeTab === 'leaderboard')}>
+                  {t('competitionDetail.tabs.leaderboard')}
+                </button>
+                <button onClick={() => setTab('pointProgression')} className={tabCls(activeTab === 'pointProgression')}>
+                  {t('competitionDetail.tabs.pointProgression')}
+                </button>
+              </>
+            ) : (
+              /* Admin */
+              <button onClick={() => setTab('leaderboard')} className={tabCls(activeTab === 'leaderboard')}>
+                {t('competitionDetail.tabs.leaderboard')}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </nav>
   );
 }
