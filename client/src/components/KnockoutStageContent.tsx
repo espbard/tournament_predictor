@@ -506,7 +506,7 @@ function FocusedMatchCard({
         <div className={`rounded-xl shadow-sm overflow-hidden ${isCorrectResult ? 'bg-green-50/60 dark:bg-green-950/25' : 'bg-card'}`}>
           {/* Home row */}
           <div
-            className={`flex items-center gap-3 px-4 py-3.5 transition-colors border-t-2 border-l-2 border-r-2 ${predHomeBorderColor} ${isDisplayHomeProgressing ? 'bg-amber-50/40 dark:bg-amber-900/15' : displayHomeWins && !isDisplayHomeChampion ? 'bg-primary/5' : ''}`}
+            className={`flex items-center gap-3 px-4 py-3.5 transition-colors rounded-t-xl border-t-2 border-l-2 border-r-2 ${predHomeBorderColor} ${isDisplayHomeProgressing ? 'bg-amber-50/40 dark:bg-amber-900/15' : displayHomeWins && !isDisplayHomeChampion ? 'bg-primary/5' : ''}`}
             style={isDisplayHomeChampion ? { animation: 'ko_winner_glow 1.8s ease-in-out infinite' } : undefined}
           >
             {displayHomeTeam ? (
@@ -569,11 +569,11 @@ function FocusedMatchCard({
             )}
           </div>
 
-          <div className="h-px bg-border" />
+          <div className={`h-px ${isDisplayHomeProgressing || isDisplayAwayProgressing ? 'bg-[#eab308]' : 'bg-border'}`} />
 
           {/* Away row */}
           <div
-            className={`flex items-center gap-3 px-4 py-3.5 transition-colors border-l-2 border-r-2 ${predCardAwayIsLast ? 'border-b-2' : ''} ${predAwayBorderColor} ${isDisplayAwayProgressing ? 'bg-amber-50/40 dark:bg-amber-900/15' : displayAwayWins && !isDisplayAwayChampion ? 'bg-primary/5' : ''}`}
+            className={`flex items-center gap-3 px-4 py-3.5 transition-colors border-l-2 border-r-2 ${predCardAwayIsLast ? 'border-b-2 rounded-b-xl' : ''} ${predAwayBorderColor} ${isDisplayAwayProgressing ? 'bg-amber-50/40 dark:bg-amber-900/15' : displayAwayWins && !isDisplayAwayChampion ? 'bg-primary/5' : ''}`}
             style={isDisplayAwayChampion ? { animation: 'ko_winner_glow 1.8s ease-in-out infinite' } : undefined}
           >
             {displayAwayTeam ? (
@@ -640,7 +640,7 @@ function FocusedMatchCard({
           {isDraw && homeTeam && awayTeam && (!isCompleted || forceEditable) && !readOnly && (
             <>
               <div className="h-px bg-border" />
-              <div className="p-3 space-y-2 border-l-2 border-r-2 border-b-2 border-border">
+              <div className="p-3 space-y-2 rounded-b-xl border-l-2 border-r-2 border-b-2 border-border">
                 <p className="text-[11px] text-muted-foreground text-center font-medium">
                   {t('knockoutContent.whoAdvances')}
                 </p>
@@ -695,7 +695,7 @@ function FocusedMatchCard({
           </div>
           <div className="rounded-xl bg-card shadow-sm overflow-hidden">
             {/* Home row */}
-            <div className={`flex items-center gap-3 px-4 py-3.5 border-t-2 border-l-2 border-r-2 ${actualHomeBorderColor} ${actualHomeProgresses ? 'bg-amber-50/40 dark:bg-amber-900/15' : ''}`}>
+            <div className={`flex items-center gap-3 px-4 py-3.5 rounded-t-xl border-t-2 border-l-2 border-r-2 ${actualHomeBorderColor} ${actualHomeProgresses ? 'bg-amber-50/40 dark:bg-amber-900/15' : ''}`}>
               {actualMatch.homeTeamImageUrl ? (
                 <img src={actualMatch.homeTeamImageUrl} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0" />
               ) : homeFallbackTeam?.imageUrl ? (
@@ -715,9 +715,9 @@ function FocusedMatchCard({
                 {actualMatch.homeScore ?? '—'}
               </span>
             </div>
-            <div className="h-px bg-border" />
+            <div className={`h-px ${actualHomeProgresses || actualAwayProgresses ? 'bg-[#eab308]' : 'bg-border'}`} />
             {/* Away row */}
-            <div className={`flex items-center gap-3 px-4 py-3.5 border-l-2 border-r-2 ${!hasActualExtraTime ? 'border-b-2' : ''} ${actualAwayBorderColor} ${actualAwayProgresses ? 'bg-amber-50/40 dark:bg-amber-900/15' : ''}`}>
+            <div className={`flex items-center gap-3 px-4 py-3.5 border-l-2 border-r-2 ${!hasActualExtraTime ? 'border-b-2 rounded-b-xl' : ''} ${actualAwayBorderColor} ${actualAwayProgresses ? 'bg-amber-50/40 dark:bg-amber-900/15' : ''}`}>
               {actualMatch.awayTeamImageUrl ? (
                 <img src={actualMatch.awayTeamImageUrl} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0" />
               ) : awayFallbackTeam?.imageUrl ? (
@@ -741,7 +741,7 @@ function FocusedMatchCard({
             {isCompleted && actualMatch.homeScore === actualMatch.awayScore && actualMatch.progressingTeamId && (
               <>
                 <div className="h-px bg-border" />
-                <p className="px-4 py-2 text-xs text-muted-foreground text-center border-l-2 border-r-2 border-b-2 border-border">
+                <p className="px-4 py-2 text-xs text-muted-foreground text-center rounded-b-xl border-l-2 border-r-2 border-b-2 border-border">
                   {actualMatch.progressingTeamId === actualMatch.homeTeamId
                     ? tn(actualMatch.homeTeamName)
                     : tn(actualMatch.awayTeamName)} {t('knockoutContent.advances')}
@@ -1378,14 +1378,14 @@ export function KnockoutBracketVisualizer({
       >
         <div
           style={{ height: dims.slot, opacity: homeFallback ? 0.35 : undefined }}
-          className={`flex items-center justify-center border-t border-l border-r${dashed ? ' border-dashed' : ''} ${homeProgressed ? 'border-[#eab308]' : 'border-border'}`}
+          className={`flex items-center justify-center rounded-t-sm border-t border-l border-r${dashed ? ' border-dashed' : ''} ${homeProgressed ? 'border-[#eab308]' : 'border-border'}`}
         >
           <VizTeamIcon team={home} size={dims.icon} />
         </div>
-        <div className="bg-border flex-shrink-0" style={{ height: 1 }} />
+        <div className={`flex-shrink-0 ${homeProgressed || awayProgressed ? 'bg-[#eab308]' : 'bg-border'}`} style={{ height: 1 }} />
         <div
           style={{ height: dims.slot, opacity: awayFallback ? 0.35 : undefined }}
-          className={`flex items-center justify-center border-b border-l border-r${dashed ? ' border-dashed' : ''} ${awayProgressed ? 'border-[#eab308]' : 'border-border'}`}
+          className={`flex items-center justify-center rounded-b-sm border-b border-l border-r${dashed ? ' border-dashed' : ''} ${awayProgressed ? 'border-[#eab308]' : 'border-border'}`}
         >
           <VizTeamIcon team={away} size={dims.icon} />
         </div>
@@ -1412,14 +1412,14 @@ export function KnockoutBracketVisualizer({
       >
         <div
           style={{ width: slotW, opacity: homeFallback ? 0.35 : undefined, overflow: 'hidden', background: homeProgressed ? 'radial-gradient(circle, rgba(234,179,8,0.35) 0%, transparent 75%)' : undefined }}
-          className={`flex items-center justify-center flex-shrink-0 self-stretch border-t border-l border-b${dashed ? ' border-dashed' : ''} ${homeProgressed ? 'border-[#eab308]' : 'border-border'}`}
+          className={`flex items-center justify-center flex-shrink-0 self-stretch rounded-l-sm border-t border-l border-b${dashed ? ' border-dashed' : ''} ${homeProgressed ? 'border-[#eab308]' : 'border-border'}`}
         >
           <VizTeamIcon team={home} size={iconSize} />
         </div>
-        <div className="bg-border flex-shrink-0" style={{ width: 1 }} />
+        <div className={`flex-shrink-0 ${homeProgressed || awayProgressed ? 'bg-[#eab308]' : 'bg-border'}`} style={{ width: 1 }} />
         <div
           style={{ width: slotW, opacity: awayFallback ? 0.35 : undefined, overflow: 'hidden', background: awayProgressed ? 'radial-gradient(circle, rgba(234,179,8,0.35) 0%, transparent 75%)' : undefined }}
-          className={`flex items-center justify-center flex-shrink-0 self-stretch border-t border-r border-b${dashed ? ' border-dashed' : ''} ${awayProgressed ? 'border-[#eab308]' : 'border-border'}`}
+          className={`flex items-center justify-center flex-shrink-0 self-stretch rounded-r-sm border-t border-r border-b${dashed ? ' border-dashed' : ''} ${awayProgressed ? 'border-[#eab308]' : 'border-border'}`}
         >
           <VizTeamIcon team={away} size={iconSize} />
         </div>
