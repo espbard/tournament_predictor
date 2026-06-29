@@ -89,7 +89,7 @@ export default function Navbar() {
   const standingsActive = activeTab === 'leaderboard' || activeTab === 'pointProgression';
 
   return (
-    <nav className="bg-background border-b border-border">
+    <nav className="bg-background">
       <div className="mx-auto flex items-center max-w-5xl px-4 py-2">
         {/* Home icon – shown when not on home page */}
         {location.pathname !== '/' && (
