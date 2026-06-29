@@ -419,7 +419,7 @@ export default function UserPredictionsPage() {
   const canGoNext = currentMatchIdx < allGroupMatches.length - 1;
 
   return (
-    <main className="mx-auto max-w-2xl px-4 py-12">
+    <main className="mx-auto max-w-2xl md:max-w-4xl lg:max-w-6xl px-4 py-12">
       <BackButton href={`/competitions/${id}`} />
 
       <div className="flex items-center gap-3 mb-6">
