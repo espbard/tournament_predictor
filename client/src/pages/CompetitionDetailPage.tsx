@@ -1145,7 +1145,7 @@ export default function CompetitionDetailPage() {
                                 }>
                                   <td className="pl-3 py-1.5 text-muted-foreground">{i + 1}</td>
                                   <td className="py-1.5 pr-2">
-                                    <div className="flex items-center gap-1.5">
+                                    <div className="flex items-center gap-1.5 min-w-0">
                                       {tm.imageUrl ? (
                                         <img src={tm.imageUrl} alt="" className="h-4 w-4 rounded-full object-cover flex-shrink-0" />
                                       ) : (
@@ -1392,7 +1392,7 @@ export default function CompetitionDetailPage() {
                                   }>
                                     <td className="pl-3 py-1.5 text-muted-foreground">{i + 1}</td>
                                     <td className="py-1.5 pr-2">
-                                      <div className="flex items-center gap-1.5">
+                                      <div className="flex items-center gap-1.5 min-w-0">
                                         {tm.imageUrl ? (
                                           <img src={tm.imageUrl} alt="" className="h-4 w-4 rounded-full object-cover flex-shrink-0" />
                                         ) : (
