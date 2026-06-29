@@ -2058,17 +2058,11 @@ export default function KnockoutStageContent({
         }
       `}</style>
 
-      {isReadOnly && (
-        <div className="mb-4 rounded-lg bg-muted px-4 py-2.5 text-sm text-muted-foreground">
-          {t('knockoutContent.predictionsLocked')}
-        </div>
-      )}
-
-      <div className="flex items-center justify-between mb-2">
-        <p className="text-sm text-muted-foreground">
-          {t('knockoutContent.teamsBasedOn')}
-        </p>
-        {!isReadOnly && (
+      {!isReadOnly && (
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-sm text-muted-foreground">
+            {t('knockoutContent.teamsBasedOn')}
+          </p>
           <span className={`text-xs flex-shrink-0 ml-4 ${
             saveStatus === 'saving' ? 'text-muted-foreground' :
             saveStatus === 'saved' ? 'text-green-600' :
@@ -2076,8 +2070,8 @@ export default function KnockoutStageContent({
           }`}>
             {saveStatus === 'saving' ? t('knockoutContent.saving') : saveStatus === 'saved' ? t('knockoutContent.saved') : saveStatus === 'error' ? t('knockoutContent.saveFailed') : '.'}
           </span>
-        )}
-      </div>
+        </div>
+      )}
 
       {hasPendingTies && !isReadOnly && (
         <div className="mb-4 rounded-lg border border-amber-400/40 bg-amber-50/10 px-4 py-3 text-sm">

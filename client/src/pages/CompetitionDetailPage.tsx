@@ -1699,13 +1699,6 @@ export default function CompetitionDetailPage() {
         </div>
       )}
 
-      {/* Group stage locked banner */}
-      {groupStageLocked && hasKnockoutPredictions && (
-        <div className="mb-4 rounded-lg bg-muted px-4 py-2.5 text-sm text-muted-foreground">
-          {t('competitionDetail.groupStageLocked')}
-        </div>
-      )}
-
       {/* Predictions */}
       <div className="mb-6">
         <div className="flex items-center justify-between mb-4">
