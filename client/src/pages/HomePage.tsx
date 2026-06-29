@@ -45,7 +45,7 @@ function CompetitionsHome() {
   }
 
   return (
-    <main className="mx-auto max-w-2xl px-4 py-12">
+    <main className="mx-auto max-w-2xl md:max-w-4xl lg:max-w-[80%] px-4 py-12">
       <div className="mb-8 flex items-center gap-4">
         {user?.imageUrl ? (
           <img src={user.imageUrl} alt={user.username} className="h-14 w-14 rounded-full object-cover" />

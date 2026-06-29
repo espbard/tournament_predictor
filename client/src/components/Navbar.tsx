@@ -90,7 +90,7 @@ export default function Navbar() {
 
   return (
     <nav className="bg-background">
-      <div className="mx-auto flex items-center max-w-5xl px-4 py-1 sm:py-2">
+      <div className="mx-auto flex items-center max-w-5xl lg:max-w-[80%] px-4 py-1 sm:py-2">
         {/* Home icon – shown when not on home page */}
         {location.pathname !== '/' && (
           <Link to="/" className="shrink-0 flex items-center p-1.5 mr-1 text-foreground hover:opacity-70" aria-label="Home">

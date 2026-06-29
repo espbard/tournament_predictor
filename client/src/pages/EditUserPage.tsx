@@ -37,7 +37,7 @@ export default function EditUserPage() {
   }
 
   return (
-    <main className="mx-auto max-w-sm px-4 py-8">
+    <main className="mx-auto max-w-sm md:max-w-lg px-4 py-8">
       <BackButton href="/" />
       <h1 className="mb-6 text-2xl font-bold">{t('editUser.title')}</h1>
 

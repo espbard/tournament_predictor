@@ -71,7 +71,7 @@ export default function AdminFeedbackPage() {
   };
 
   return (
-    <main className="mx-auto max-w-2xl px-4 py-12">
+    <main className="mx-auto max-w-2xl md:max-w-4xl lg:max-w-[80%] px-4 py-12">
       <div className="mb-6">
         <BackButton href="/admin" />
         <h1 className="mt-2 text-2xl font-bold">{t('feedback.adminTitle')}</h1>
