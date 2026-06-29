@@ -2605,7 +2605,7 @@ export default function CompetitionDetailPage() {
       )}
 
       {activeTab === 'userStats' && (
-        <div className="columns-1 sm:columns-2 md:columns-3 lg:columns-4 xl:columns-5 2xl:columns-6 gap-6 px-4 sm:px-0">
+        <div className="columns-1 sm:columns-2 md:columns-3 lg:columns-4 min-[1260px]:columns-5 2xl:columns-6 min-[1840px]:columns-7 gap-6 px-4 sm:px-0">
           {userStats.map((stat, i) => {
             const cardEl = (
               <UserStatCard
@@ -2618,13 +2618,13 @@ export default function CompetitionDetailPage() {
             );
             if (stat.distributionData?.length) {
               return (
-                <div key={stat.id} className="break-inside-avoid mb-6 max-w-44 mx-auto flex flex-col gap-2">
+                <div key={stat.id} className="break-inside-avoid mb-6 flex flex-col gap-2">
                   {cardEl}
                   <HaalandDistributionCard data={stat} />
                 </div>
               );
             }
-            return <div key={stat.id} className="break-inside-avoid mb-6 max-w-44 mx-auto">{cardEl}</div>;
+            return <div key={stat.id} className="break-inside-avoid mb-6">{cardEl}</div>;
           })}
         </div>
       )}
