@@ -2605,7 +2605,7 @@ export default function CompetitionDetailPage() {
       )}
 
       {activeTab === 'userStats' && (
-        <div className="columns-1 sm:columns-2 md:columns-3 lg:columns-4 gap-6 px-4 sm:px-0">
+        <div className="grid gap-6 px-4 sm:px-0 items-start [grid-template-columns:repeat(auto-fill,_minmax(11rem,_1fr))]">
           {userStats.map((stat, i) => {
             const cardEl = (
               <UserStatCard
@@ -2618,13 +2618,13 @@ export default function CompetitionDetailPage() {
             );
             if (stat.distributionData?.length) {
               return (
-                <div key={stat.id} className="break-inside-avoid mb-6 flex flex-col gap-2">
+                <div key={stat.id} className="flex flex-col gap-2">
                   {cardEl}
                   <HaalandDistributionCard data={stat} />
                 </div>
               );
             }
-            return <div key={stat.id} className="break-inside-avoid mb-6">{cardEl}</div>;
+            return <div key={stat.id}>{cardEl}</div>;
           })}
         </div>
       )}
