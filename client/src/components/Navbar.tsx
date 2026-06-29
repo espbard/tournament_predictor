@@ -76,7 +76,7 @@ export default function Navbar() {
   };
 
   const tabCls = (active: boolean) =>
-    `whitespace-nowrap px-2 sm:px-3 py-1.5 sm:py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1 ${
+    `whitespace-nowrap px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium border-b-2 transition-colors flex items-center gap-1 ${
       active
         ? 'border-foreground text-foreground'
         : 'border-transparent text-foreground/50 hover:text-foreground'
@@ -90,7 +90,7 @@ export default function Navbar() {
 
   return (
     <nav className="bg-background border-b border-border">
-      <div className="mx-auto flex flex-wrap items-center max-w-5xl lg:max-w-[80%] px-3 sm:px-4 py-1 sm:py-2">
+      <div className="mx-auto flex items-center max-w-5xl lg:max-w-[80%] px-3 sm:px-4 py-1 sm:py-2">
         {/* Home icon – shown when not on home page */}
         {location.pathname !== '/' && (
           <Link to="/" className="shrink-0 flex items-center p-1 mr-0.5 text-foreground hover:opacity-70" aria-label="Home">
@@ -111,7 +111,7 @@ export default function Navbar() {
 
         {/* Competition tabs */}
         {showTabs && (
-          <div className={`flex items-center order-last sm:order-none w-full sm:w-auto ${user?.isLeaderboardUser ? 'tv:hidden' : ''}`}>
+          <div className={`flex items-center min-w-0 ${user?.isLeaderboardUser ? 'tv:hidden' : ''}`}>
             {!user?.isAdmin && !user?.isLeaderboardUser ? (
               <>
                 {/* Predictions dropdown */}
