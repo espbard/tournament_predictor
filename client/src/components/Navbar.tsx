@@ -80,30 +80,20 @@ export default function Navbar() {
   const predictionsActive = activeTab === 'group' || activeTab === 'tables' || activeTab === 'knockout' || activeTab === 'bonus';
   const standingsActive = activeTab === 'leaderboard' || activeTab === 'pointProgression';
 
-  const getPageTitle = (): string | null => {
-    const p = location.pathname;
-    if (p === '/') return t('nav.pageHome');
-    if (p === '/settings') return t('nav.editProfile');
-    if (/^\/competitions\/[^/]+\/predictions\//.test(p)) return t('nav.tabGroups');
-    if (/^\/competitions\/[^/]+\/team\//.test(p)) return t('nav.pageTeam');
-    if (p.startsWith('/admin')) return 'Admin';
-    return null;
-  };
-
   return (
     <nav className="bg-primary dark:bg-background">
-      <div className="mx-auto flex items-stretch max-w-5xl px-4">
-        {/* App name – hidden on narrow screens */}
+      <div className="mx-auto flex items-center max-w-5xl px-4">
+        {/* Site name – hidden on mobile only when tabs are shown */}
         <Link
           to="/"
-          className="hidden sm:flex shrink-0 items-center text-base font-semibold text-primary-foreground hover:opacity-80 mr-3 py-3"
+          className={`shrink-0 flex items-center text-base font-semibold text-primary-foreground hover:opacity-80 mr-3 py-3 ${isOnCompetitionPage ? 'hidden sm:flex' : ''}`}
         >
           {t('nav.appName')}
         </Link>
 
         {/* Competition tabs */}
         {isOnCompetitionPage ? (
-          <div className={`flex items-stretch flex-1 min-w-0 ${user?.isLeaderboardUser ? 'tv:hidden' : ''}`}>
+          <div className={`flex items-center flex-1 min-w-0 ${user?.isLeaderboardUser ? 'tv:hidden' : ''}`}>
             {!user?.isAdmin && !user?.isLeaderboardUser ? (
               <>
                 {/* Predictions dropdown */}
@@ -174,11 +164,7 @@ export default function Navbar() {
             )}
           </div>
         ) : (
-          <div className="flex-1 flex items-center justify-center">
-            {getPageTitle() && (
-              <span className="text-sm font-medium text-primary-foreground/80">{getPageTitle()}</span>
-            )}
-          </div>
+          <div className="flex-1" />
         )}
 
         {/* User settings menu */}
