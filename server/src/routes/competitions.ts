@@ -1300,9 +1300,12 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         )
       );
 
-    // Determine inactive users (no predictions in the 5 most recent completed matches)
+    // Determine inactive users (no predictions in the 5 most recent completed matches).
+    // Group-stage predictions live in `predictions`; knockout predictions live in
+    // `bracketPredictions`, so we must query both tables when recent matches span
+    // multiple stages (which happens once the knockout phase begins).
     const recentForStatCards = await db
-      .select({ id: matches.id })
+      .select({ id: matches.id, stage: matches.stage })
       .from(matches)
       .where(and(eq(matches.tournamentId, competition.tournamentId), eq(matches.status, 'completed')))
       .orderBy(desc(matches.scheduledAt))
@@ -1310,12 +1313,30 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
     let activeStatUserIds: Set<string> | null = null;
     if (recentForStatCards.length >= 5) {
-      const recentIdsForStatCards = recentForStatCards.map(m => m.id);
-      const recentStatPreds = await db
-        .select({ userId: predictions.userId })
-        .from(predictions)
-        .where(and(eq(predictions.competitionId, id), inArray(predictions.matchId, recentIdsForStatCards)));
-      activeStatUserIds = new Set(recentStatPreds.map(r => r.userId));
+      const recentGroupMatchIds = recentForStatCards.filter(m => m.stage === 'group').map(m => m.id);
+      const hasRecentKoMatches = recentForStatCards.some(m => m.stage !== 'group');
+
+      const activeUserIdSet = new Set<string>();
+
+      if (recentGroupMatchIds.length > 0) {
+        const recentStatPreds = await db
+          .select({ userId: predictions.userId })
+          .from(predictions)
+          .where(and(eq(predictions.competitionId, id), inArray(predictions.matchId, recentGroupMatchIds)));
+        recentStatPreds.forEach(r => activeUserIdSet.add(r.userId));
+      }
+
+      if (hasRecentKoMatches) {
+        // Any user who submitted bracket predictions is considered active during the KO stage
+        // (bracket predictions cover all knockout matches in a single submission).
+        const bracketPredUsersForStats = await db
+          .select({ userId: bracketPredictions.userId })
+          .from(bracketPredictions)
+          .where(eq(bracketPredictions.competitionId, id));
+        bracketPredUsersForStats.forEach(r => activeUserIdSet.add(r.userId));
+      }
+
+      activeStatUserIds = activeUserIdSet;
     }
 
     const activeRows = activeStatUserIds ? rows.filter(r => activeStatUserIds!.has(r.userId)) : rows;
@@ -1409,11 +1430,15 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         .sort((a, b) => a.username.localeCompare(b.username));
     }
 
-    // ── Best/Worst form: points earned across the most recent completed matches ──
+    // ── Best/Worst form: points earned across the most recent completed GROUP matches ──
+    // Knockout predictions are stored per-competition in bracketPredictions (not per-match
+    // in predictions), so we cannot retrieve per-match KO points from activeRows. Restricting
+    // to group-stage matches keeps the form cards accurate and avoids false droughts caused by
+    // KO matches appearing in the "recent 5" with zero entries in pointsByUserMatch.
     const completedMatches = await db
       .select({ id: matches.id, scheduledAt: matches.scheduledAt })
       .from(matches)
-      .where(and(eq(matches.tournamentId, competition.tournamentId), eq(matches.status, 'completed')));
+      .where(and(eq(matches.tournamentId, competition.tournamentId), eq(matches.status, 'completed'), eq(matches.stage, 'group')));
     const completedMatchesByRecency = [...completedMatches].sort(
       (a, b) => (b.scheduledAt?.getTime() ?? 0) - (a.scheduledAt?.getTime() ?? 0)
     );
