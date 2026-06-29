@@ -149,7 +149,7 @@ export default function UserStatCard({ competitionId, data, onMatchClick, onLead
 
   const card = (
     <div
-      className="overflow-hidden rounded-2xl border-4 dark:border bg-[hsla(120,3%,91%,0.5)] dark:bg-[hsl(231,28%,16%)]"
+      className="overflow-hidden rounded-2xl border dark:border bg-[hsla(120,3%,91%,0.5)] dark:bg-[hsl(231,28%,16%)]"
       style={{ color: textColor, borderColor }}
     >
       {image}
