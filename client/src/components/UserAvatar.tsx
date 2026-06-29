@@ -8,7 +8,7 @@ interface UserAvatarProps {
 
 export function UserAvatar({ username, imageUrl, iconColor, className = '', style }: UserAvatarProps) {
   if (imageUrl) {
-    return <img src={imageUrl} alt={username} className={`object-cover ${className}`} style={style} />;
+    return <img src={imageUrl} alt={username} className={`object-cover rounded-full ${className}`} style={style} />;
   }
 
   const initial = username.charAt(0).toUpperCase();

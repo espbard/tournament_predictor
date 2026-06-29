@@ -61,7 +61,7 @@ export default function TournamentsPage() {
   };
 
   return (
-    <main className="mx-auto max-w-2xl px-4 py-8">
+    <main className="mx-auto max-w-2xl md:max-w-4xl lg:max-w-[80%] px-4 py-8">
       <div className="mb-6 flex items-center justify-between">
         <div>
           <BackButton href="/" />

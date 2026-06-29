@@ -720,6 +720,16 @@ export default function CompetitionDetailPage() {
     }
   }, [allGroupMatchesList, allGroupFilled, localEdits, groupStageLocked, hasDeclined, showProceedPrompt, predictionsFetched, tournament?.status, activeTab]);
 
+  const prevActiveTabRef = useRef(activeTab);
+  useEffect(() => {
+    const prev = prevActiveTabRef.current;
+    prevActiveTabRef.current = activeTab;
+    if (prev !== 'group' && activeTab === 'group') {
+      setShowProceedPrompt(false);
+      if (allGroupFilled) setHasDeclined(true);
+    }
+  }, [activeTab, allGroupFilled]);
+
   useEffect(() => {
     if (firstGroupUnfilledRef.current || !savedPredictions.length) return;
     firstGroupUnfilledRef.current = true;
@@ -934,10 +944,8 @@ export default function CompetitionDetailPage() {
   return (
     <main className={`mx-auto px-4 py-12 ${
       user?.isLeaderboardUser
-        ? 'max-w-2xl md:max-w-4xl lg:max-w-6xl tv:max-w-none tv:px-16'
-        : activeTab === 'leaderboard'
-          ? 'max-w-2xl md:max-w-4xl lg:max-w-6xl'
-          : 'max-w-2xl'
+        ? 'max-w-2xl md:max-w-4xl lg:max-w-[80%] tv:max-w-none tv:px-16'
+        : 'max-w-2xl md:max-w-4xl lg:max-w-[80%]'
     }`}>
       <div>
       {!user?.isLeaderboardUser && (
@@ -1078,72 +1086,7 @@ export default function CompetitionDetailPage() {
         </form>
       )}
 
-      {user?.isAdmin && (
-        <div className="flex flex-wrap gap-1 mb-6 border-b">
-          <button
-            onClick={() => setActiveTab('leaderboard')}
-            className={`whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-              activeTab === 'leaderboard' ? 'border-primary text-primary dark:border-[hsl(231,60%,65%)] dark:text-[hsl(231,60%,65%)]' : 'border-transparent text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            {t('competitionDetail.tabs.leaderboard')}
-          </button>
-        </div>
-      )}
-
-      {user?.isLeaderboardUser && (
-        <div className="flex flex-wrap gap-1 mb-6 border-b tv:hidden">
-          {([
-            ['leaderboard', t('competitionDetail.tabs.leaderboard')],
-            ['pointProgression', t('competitionDetail.tabs.pointProgression')],
-          ] as const).map(([tab, label]) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-                activeTab === tab
-                  ? 'border-primary text-primary dark:border-[hsl(231,60%,65%)] dark:text-[hsl(231,60%,65%)]'
-                  : 'border-transparent text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      )}
-
       {!user?.isAdmin && (<>
-      {!user?.isLeaderboardUser && (
-      <div className="flex flex-wrap gap-1 mb-6 border-b">
-        {([
-          ['group', t('competitionDetail.tabs.groupStage')],
-          ['tables', t('competitionDetail.tabs.groupTables')],
-          ['knockout', t('competitionDetail.tabs.knockoutStage')],
-          ['bonus', t('competitionDetail.tabs.bonusQuestions')],
-          ['leaderboard', t('competitionDetail.tabs.leaderboard')],
-          ['pointProgression', t('competitionDetail.tabs.pointProgression')],
-          ['userStats', t('competitionDetail.tabs.userStats')],
-        ] as const).map(([tab, label]) => (
-          <button
-            key={tab}
-            onClick={() => {
-              setActiveTab(tab);
-              if (tab === 'group') {
-                setShowProceedPrompt(false);
-                if (allGroupFilled) setHasDeclined(true);
-              }
-            }}
-            className={`whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-              activeTab === tab
-                ? 'border-primary text-primary dark:border-[hsl(231,60%,65%)] dark:text-[hsl(231,60%,65%)]'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-      )}
 
       {activeTab === 'tables' && (
         <div>
@@ -2662,7 +2605,7 @@ export default function CompetitionDetailPage() {
       )}
 
       {activeTab === 'userStats' && (
-        <div className="columns-1 sm:columns-2 md:columns-3 lg:columns-4 gap-6 px-4 sm:px-0">
+        <div className="columns-1 sm:columns-2 md:columns-3 lg:columns-4 min-[1260px]:columns-5 2xl:columns-6 min-[1840px]:columns-7 gap-6 px-4 sm:px-0">
           {userStats.map((stat, i) => {
             const cardEl = (
               <UserStatCard

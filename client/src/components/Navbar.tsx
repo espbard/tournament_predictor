@@ -1,6 +1,6 @@
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { Moon, Sun } from 'lucide-react';
+import { Moon, Sun, ChevronDown, LogOut, Settings, Home } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
@@ -19,16 +19,28 @@ export default function Navbar() {
   const { user, setUser } = useAuthStore();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { language, setLanguage } = useLanguageStore();
   const { theme, toggleTheme } = useThemeStore();
   const { t } = useT();
-  const [langOpen, setLangOpen] = useState(false);
-  const langRef = useRef<HTMLDivElement>(null);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [groupsOpen, setGroupsOpen] = useState(false);
+  const [standingsOpen, setStandingsOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+  const groupsRef = useRef<HTMLDivElement>(null);
+  const standingsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (langRef.current && !langRef.current.contains(e.target as Node)) {
-        setLangOpen(false);
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setUserMenuOpen(false);
+      }
+      if (groupsRef.current && !groupsRef.current.contains(e.target as Node)) {
+        setGroupsOpen(false);
+      }
+      if (standingsRef.current && !standingsRef.current.contains(e.target as Node)) {
+        setStandingsOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -42,82 +54,198 @@ export default function Navbar() {
     navigate('/login');
   }
 
-  const currentLang = LANGUAGES.find((l) => l.code === language) ?? LANGUAGES[0];
+  const isOnCompetitionPage = /^\/competitions\/[^/]+$/.test(location.pathname);
+  const isOnPredictionsPage = /^\/competitions\/[^/]+\/predictions\/[^/]+$/.test(location.pathname);
+  const showTabs = isOnCompetitionPage || isOnPredictionsPage;
+  const competitionId = location.pathname.match(/^\/competitions\/([^/]+)/)?.[1];
+
+  const activeTab = searchParams.get('tab') ?? (user?.isLeaderboardUser || user?.isAdmin ? 'leaderboard' : 'group');
+
+  const setTab = (tab: string) => {
+    setGroupsOpen(false);
+    setStandingsOpen(false);
+    if (isOnPredictionsPage && competitionId) {
+      navigate(`/competitions/${competitionId}?tab=${tab}`);
+    } else {
+      setSearchParams(prev => {
+        const n = new URLSearchParams(prev);
+        n.set('tab', tab);
+        return n;
+      }, { replace: true });
+    }
+  };
+
+  const tabCls = (active: boolean) =>
+    `whitespace-nowrap px-3 py-1.5 sm:py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1 ${
+      active
+        ? 'border-foreground text-foreground'
+        : 'border-transparent text-foreground/50 hover:text-foreground'
+    }`;
+
+  const dropItemCls = (active: boolean) =>
+    `w-full text-left px-4 py-2 text-sm hover:bg-muted ${active ? 'text-primary dark:text-blue-400 font-medium' : 'text-foreground'}`;
+
+  const predictionsActive = activeTab === 'group' || activeTab === 'tables' || activeTab === 'knockout' || activeTab === 'bonus';
+  const standingsActive = activeTab === 'leaderboard' || activeTab === 'pointProgression';
 
   return (
-    <nav className="bg-primary px-4 py-3">
-      <div className="mx-auto flex max-w-5xl items-center justify-between">
-        <Link to="/" className="text-base font-semibold text-primary-foreground hover:opacity-80">
+    <nav className="bg-background">
+      <div className="mx-auto flex items-center max-w-5xl lg:max-w-[80%] px-4 py-1 sm:py-2">
+        {/* Home icon – shown when not on home page */}
+        {location.pathname !== '/' && (
+          <Link to="/" className="shrink-0 flex items-center p-1.5 mr-1 text-foreground hover:opacity-70" aria-label="Home">
+            <Home size={18} />
+          </Link>
+        )}
+
+        {/* Site name – hidden on mobile only when tabs are shown */}
+        <Link
+          to="/"
+          className={`shrink-0 flex items-center text-base font-semibold text-foreground hover:opacity-70 mr-3 py-2 sm:py-3 ${showTabs ? 'hidden sm:flex' : ''}`}
+        >
           {t('nav.appName')}
         </Link>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={toggleTheme}
-            className="rounded-md border border-primary-foreground/30 p-1.5 text-primary-foreground hover:bg-primary-foreground/10"
-            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-          >
-            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-          </button>
-          <div ref={langRef} className="relative flex items-center">
-            <button
-              onClick={() => setLangOpen((o) => !o)}
-              className="flex items-center hover:opacity-80"
-              title={currentLang.label}
-            >
-              <img src={currentLang.flag} alt={currentLang.label} className="h-5 w-8 rounded-sm object-cover" />
-            </button>
-            {langOpen && (
-              <div
-                className="fixed sm:absolute left-1/2 sm:left-auto -translate-x-1/2 sm:translate-x-0 sm:right-0 top-12 sm:top-full sm:mt-2 z-50 flex flex-row gap-4 px-4 py-3 rounded-md border border-border bg-popover shadow-md"
-                style={{ width: 'max-content' }}
-              >
-                {LANGUAGES.map((lang) => (
-                  <img
-                    key={lang.code}
-                    src={lang.flag}
-                    alt={lang.label}
-                    title={lang.label}
-                    onClick={() => { setLanguage(lang.code); setLangOpen(false); }}
-                    className={`h-8 w-12 rounded-sm object-cover cursor-pointer hover:opacity-80 transition-opacity ${lang.code === language ? 'ring-2 ring-primary' : ''}`}
-                  />
-                ))}
-              </div>
+
+        {/* Spacer – always pushes tabs and avatar to the right */}
+        <div className="flex-1" />
+
+        {/* Competition tabs */}
+        {showTabs && (
+          <div className={`flex items-center ${user?.isLeaderboardUser ? 'tv:hidden' : ''}`}>
+            {!user?.isAdmin && !user?.isLeaderboardUser ? (
+              <>
+                {/* Predictions dropdown */}
+                <div ref={groupsRef} className="relative">
+                  <button
+                    onClick={() => { setGroupsOpen(o => !o); setStandingsOpen(false); }}
+                    className={tabCls(predictionsActive)}
+                  >
+                    {t('nav.tabGroups')}
+                    <ChevronDown size={13} className={`transition-transform duration-150 ${groupsOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {groupsOpen && (
+                    <div className="absolute left-0 top-full z-[100] min-w-[180px] rounded-md border border-border bg-popover shadow-md py-1">
+                      <button onClick={() => setTab('group')} className={dropItemCls(activeTab === 'group')}>
+                        {t('competitionDetail.tabs.groupStage')}
+                      </button>
+                      <button onClick={() => setTab('tables')} className={dropItemCls(activeTab === 'tables')}>
+                        {t('competitionDetail.tabs.groupTables')}
+                      </button>
+                      <button onClick={() => setTab('knockout')} className={dropItemCls(activeTab === 'knockout')}>
+                        {t('competitionDetail.tabs.knockoutStage')}
+                      </button>
+                      <button onClick={() => setTab('bonus')} className={dropItemCls(activeTab === 'bonus')}>
+                        {t('competitionDetail.tabs.bonusQuestions')}
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Results dropdown */}
+                <div ref={standingsRef} className="relative">
+                  <button
+                    onClick={() => { setStandingsOpen(o => !o); setGroupsOpen(false); }}
+                    className={tabCls(standingsActive)}
+                  >
+                    {t('nav.tabStandings')}
+                    <ChevronDown size={13} className={`transition-transform duration-150 ${standingsOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {standingsOpen && (
+                    <div className="absolute left-0 top-full z-[100] min-w-[190px] rounded-md border border-border bg-popover shadow-md py-1">
+                      <button onClick={() => setTab('leaderboard')} className={dropItemCls(activeTab === 'leaderboard')}>
+                        {t('competitionDetail.tabs.leaderboard')}
+                      </button>
+                      <button onClick={() => setTab('pointProgression')} className={dropItemCls(activeTab === 'pointProgression')}>
+                        {t('competitionDetail.tabs.pointProgression')}
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <button onClick={() => setTab('userStats')} className={tabCls(activeTab === 'userStats')}>
+                  {t('competitionDetail.tabs.userStats')}
+                </button>
+              </>
+            ) : user?.isLeaderboardUser ? (
+              <>
+                <button onClick={() => setTab('leaderboard')} className={tabCls(activeTab === 'leaderboard')}>
+                  {t('competitionDetail.tabs.leaderboard')}
+                </button>
+                <button onClick={() => setTab('pointProgression')} className={tabCls(activeTab === 'pointProgression')}>
+                  {t('competitionDetail.tabs.pointProgression')}
+                </button>
+              </>
+            ) : (
+              <button onClick={() => setTab('leaderboard')} className={tabCls(activeTab === 'leaderboard')}>
+                {t('competitionDetail.tabs.leaderboard')}
+              </button>
             )}
           </div>
-          <Link
-            to="/settings"
-            className="flex items-center gap-2 text-sm text-primary-foreground/70 hover:text-primary-foreground"
-          >
-            {user && (
+        )}
+
+        {/* User settings menu */}
+        {user && (
+          <div ref={userMenuRef} className="relative shrink-0 flex items-center ml-2">
+            <button
+              onClick={() => setUserMenuOpen(o => !o)}
+              className="flex items-center py-1.5 sm:py-2 hover:opacity-80"
+            >
               <UserAvatar
                 username={user.username}
                 imageUrl={user.imageUrl}
                 iconColor={user.iconColor}
-                className="h-7 w-7"
+                className="h-8 w-8 rounded-full"
               />
+            </button>
+            {userMenuOpen && (
+              <div className="absolute right-0 top-full mt-2 z-[100] w-52 rounded-md border border-border bg-popover shadow-md py-2">
+                {/* Language picker */}
+                <div className="px-4 py-2 flex items-center gap-2">
+                  {LANGUAGES.map((lang) => (
+                    <img
+                      key={lang.code}
+                      src={lang.flag}
+                      alt={lang.label}
+                      title={lang.label}
+                      onClick={() => setLanguage(lang.code)}
+                      className={`h-6 w-9 rounded-sm object-cover cursor-pointer hover:opacity-80 transition-opacity ${lang.code === language ? 'ring-2 ring-primary' : ''}`}
+                    />
+                  ))}
+                </div>
+
+                {/* Theme toggle */}
+                <button
+                  onClick={toggleTheme}
+                  className="w-full flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-muted"
+                >
+                  {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
+                  {theme === 'dark' ? t('nav.lightMode') : t('nav.darkMode')}
+                </button>
+
+                <div className="border-t border-border my-1" />
+
+                {/* Edit profile */}
+                <Link
+                  to="/settings"
+                  onClick={() => setUserMenuOpen(false)}
+                  className="flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-muted"
+                >
+                  <Settings size={15} />
+                  {t('nav.editProfile')}
+                </Link>
+
+                {/* Logout */}
+                <button
+                  onClick={handleLogout}
+                  className="w-full flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-muted"
+                >
+                  <LogOut size={15} />
+                  {t('nav.logOut')}
+                </button>
+              </div>
             )}
-          </Link>
-          <button
-            onClick={handleLogout}
-            className="rounded-md border border-primary-foreground/30 p-1.5 text-primary-foreground hover:bg-primary-foreground/10"
-            title={t('nav.logOut')}
-          >
-            <span
-              className="block h-4 w-4 bg-current"
-              aria-hidden="true"
-              style={{
-                maskImage: 'url(/logout-icon.png)',
-                WebkitMaskImage: 'url(/logout-icon.png)',
-                maskSize: 'contain',
-                WebkitMaskSize: 'contain',
-                maskRepeat: 'no-repeat',
-                WebkitMaskRepeat: 'no-repeat',
-                maskPosition: 'center',
-                WebkitMaskPosition: 'center',
-              }}
-            />
-          </button>
-        </div>
+          </div>
+        )}
       </div>
     </nav>
   );

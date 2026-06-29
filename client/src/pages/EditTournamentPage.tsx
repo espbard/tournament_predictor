@@ -54,7 +54,7 @@ export default function EditTournamentPage() {
   if (!tournament) return <div className="p-8 text-sm">{t('tournamentDetail.notFound')}</div>;
 
   return (
-    <main className="mx-auto max-w-sm px-4 py-8">
+    <main className="mx-auto max-w-sm md:max-w-lg px-4 py-8">
       <BackButton href={`/admin/tournaments/${id}`} />
       <h1 className="mb-6 text-2xl font-bold">{t('editTournament.title')}</h1>
 

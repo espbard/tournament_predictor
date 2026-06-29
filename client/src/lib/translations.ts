@@ -37,6 +37,11 @@ const translations = {
     nav: {
       logOut: 'Log out',
       appName: 'Tournament Predictor',
+      tabGroups: 'Predictions',
+      tabStandings: 'Results',
+      darkMode: 'Dark mode',
+      lightMode: 'Light mode',
+      editProfile: 'Edit profile',
     },
     auth: {
       signIn: 'Sign in',
@@ -108,7 +113,7 @@ const translations = {
         bonusQuestions: 'Bonus Questions',
         leaderboard: 'Leaderboard',
         pointProgression: 'Point Progression',
-        userStats: 'User Stats',
+        userStats: 'Stats',
       },
       leaderboard: {
         player: 'Player',
@@ -526,6 +531,11 @@ const translations = {
     nav: {
       logOut: 'Logg ut',
       appName: 'Tournament Predictor',
+      tabGroups: 'Tips',
+      tabStandings: 'Resultat',
+      darkMode: 'Mørkt tema',
+      lightMode: 'Lyst tema',
+      editProfile: 'Rediger profil',
     },
     auth: {
       signIn: 'Logg inn',
@@ -597,7 +607,7 @@ const translations = {
         bonusQuestions: 'Bonusspørsmål',
         leaderboard: 'Ledertavle',
         pointProgression: 'Poengutvikling',
-        userStats: 'Brukerstatistikk',
+        userStats: 'Statistikk',
       },
       leaderboard: {
         player: 'Spiller',
@@ -1013,6 +1023,11 @@ const translations = {
     nav: {
       logOut: 'Auf Wiedersehen (Ausloggen)',
       appName: 'Turnier-Wahrsager',
+      tabGroups: 'Tipps',
+      tabStandings: 'Ergebnisse',
+      darkMode: 'Dunkles Design',
+      lightMode: 'Helles Design',
+      editProfile: 'Profil bearbeiten',
     },
     auth: {
       signIn: 'Einloggen in das System',
@@ -1084,7 +1099,7 @@ const translations = {
         bonusQuestions: 'Bonusfragen',
         leaderboard: 'Rangliste der Sieger',
         pointProgression: 'Punkteentwicklung',
-        userStats: 'Benutzerstatistiken',
+        userStats: 'Statistiken',
       },
       leaderboard: {
         player: 'Spieler',

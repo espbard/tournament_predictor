@@ -419,7 +419,7 @@ export default function UserPredictionsPage() {
   const canGoNext = currentMatchIdx < allGroupMatches.length - 1;
 
   return (
-    <main className="mx-auto max-w-2xl px-4 py-12">
+    <main className="mx-auto max-w-2xl md:max-w-4xl lg:max-w-[80%] px-4 py-12">
       <BackButton href={`/competitions/${id}`} />
 
       <div className="flex items-center gap-3 mb-6">
@@ -627,7 +627,7 @@ export default function UserPredictionsPage() {
           ) : (
             <div className="space-y-6">
               {tournament?.status === 'upcoming' ? (
-                <div className="grid gap-6 sm:grid-cols-2">
+                <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                   {groupStandings.map(([groupName, teams]) => {
                     const groupDisciplinaryChoices = (userTiebreakerChoices?.groupChoices ?? {}) as DisciplinaryChoices;
                     const groupTies = allGroupFilled
@@ -732,8 +732,8 @@ export default function UserPredictionsPage() {
                   })}
                 </div>
               ) : (
-                <div className="space-y-3">
-                  <div className="hidden sm:grid sm:grid-cols-2 sm:gap-x-6">
+                <div className="space-y-3 xl:grid xl:grid-cols-2 xl:gap-6 xl:space-y-0">
+                  <div className="hidden sm:grid xl:hidden sm:grid-cols-2 sm:gap-x-6">
                     <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground border-b pb-1.5">
                       {t('competitionDetail.tables.yourPredictions')}
                     </h3>
@@ -757,7 +757,7 @@ export default function UserPredictionsPage() {
                           <div className="rounded-lg border dark:bg-white/5 p-2">
                             <div className="bg-muted/50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground flex justify-between items-center">
                               <span>{t('common.group')} {groupName}</span>
-                              <span className="sm:hidden normal-case tracking-normal font-medium rounded px-1.5 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">{t('competitionDetail.tables.labelPredicted')}</span>
+                              <span className="sm:hidden xl:inline normal-case tracking-normal font-medium rounded px-1.5 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">{t('competitionDetail.tables.labelPredicted')}</span>
                             </div>
                             <table className="w-full text-xs">
                               <thead>
@@ -859,7 +859,7 @@ export default function UserPredictionsPage() {
                           <div className="rounded-lg border dark:bg-white/5 p-2">
                             <div className="bg-muted/50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground flex justify-between items-center">
                               <span>{t('common.group')} {groupName}</span>
-                              <span className="sm:hidden normal-case tracking-normal font-medium rounded px-1.5 py-0.5 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">{t('competitionDetail.tables.labelActual')}</span>
+                              <span className="sm:hidden xl:inline normal-case tracking-normal font-medium rounded px-1.5 py-0.5 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">{t('competitionDetail.tables.labelActual')}</span>
                             </div>
                             <table className="w-full text-xs">
                               <thead>
