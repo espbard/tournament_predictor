@@ -1244,7 +1244,7 @@ export default function CompetitionDetailPage() {
                       : [];
                     const actualTeams = displayActualGroupStandings.get(groupName) ?? [];
                     return (
-                      <div key={groupName} className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 border border-dashed border-border rounded-xl p-2 sm:border-0 sm:p-0">
+                      <div key={groupName} className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 border border-dashed border-blue-800 dark:border-yellow-400 rounded-xl p-2 sm:border-0 sm:p-0">
                         {/* Predicted */}
                         <div className="space-y-2 min-w-0">
                           <div className="rounded-lg border dark:bg-white/5 p-2">

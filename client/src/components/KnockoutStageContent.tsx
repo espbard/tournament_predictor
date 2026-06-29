@@ -962,7 +962,7 @@ function FocusedBracketView({
               key={round}
               type="button"
               onClick={() => firstIdx !== -1 && goTo(firstIdx)}
-              className={`px-3 py-1 sm:py-1.5 rounded-full text-xs font-medium transition-colors ${
+              className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs font-medium transition-colors ${
                 isActive
                   ? 'bg-primary text-primary-foreground'
                   : allDone
@@ -982,7 +982,7 @@ function FocusedBracketView({
                 key="bronze_final"
                 type="button"
                 onClick={() => bronzeIdx !== -1 && goTo(bronzeIdx)}
-                className={`px-3 py-1 sm:py-1.5 rounded-full text-xs font-medium transition-colors ${
+                className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs font-medium transition-colors ${
                   current.isBronze
                     ? 'bg-primary text-primary-foreground'
                     : isBronzeDone
