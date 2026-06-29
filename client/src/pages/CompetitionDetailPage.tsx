@@ -968,7 +968,7 @@ export default function CompetitionDetailPage() {
           </div>
         </div>
       ) : (
-        <div className="mb-8 flex items-start gap-4">
+        <div className="mb-4 flex items-start gap-3">
           {competition.imageUrl ? (
             <img
               src={competition.imageUrl}
@@ -978,13 +978,13 @@ export default function CompetitionDetailPage() {
           ) : (
             <div className="h-16 w-16 rounded-lg bg-muted flex-shrink-0" />
           )}
-          <div className="flex-1">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-2xl font-bold">{competition.name}</h2>
-                {tournament && <p className="mt-1 text-sm text-muted-foreground">{tournament.name}</p>}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 overflow-hidden">
+                <h2 className="text-xl sm:text-2xl font-bold leading-tight">{competition.name}</h2>
+                {tournament && <p className="mt-0.5 text-sm text-muted-foreground">{tournament.name}</p>}
                 {!user?.isAdmin && (
-                  <p className="mt-1 text-xs text-muted-foreground font-mono tracking-wider">
+                  <p className="mt-0.5 text-xs text-muted-foreground font-mono tracking-wider whitespace-nowrap">
                     {t('competitionDetail.inviteCodeLabel')}: {competition.inviteCode}
                   </p>
                 )}
