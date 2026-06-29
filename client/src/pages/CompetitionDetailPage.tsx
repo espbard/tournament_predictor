@@ -2618,13 +2618,13 @@ export default function CompetitionDetailPage() {
             );
             if (stat.distributionData?.length) {
               return (
-                <div key={stat.id} className="break-inside-avoid mb-6 flex flex-col gap-2">
+                <div key={stat.id} className="break-inside-avoid mb-6 max-w-44 mx-auto flex flex-col gap-2">
                   {cardEl}
                   <HaalandDistributionCard data={stat} />
                 </div>
               );
             }
-            return <div key={stat.id} className="break-inside-avoid mb-6">{cardEl}</div>;
+            return <div key={stat.id} className="break-inside-avoid mb-6 max-w-44 mx-auto">{cardEl}</div>;
           })}
         </div>
       )}
