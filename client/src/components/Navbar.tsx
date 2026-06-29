@@ -79,7 +79,7 @@ export default function Navbar() {
   const dropItemCls = (active: boolean) =>
     `w-full text-left px-4 py-2 text-sm hover:bg-muted ${active ? 'text-primary font-medium' : 'text-foreground'}`;
 
-  const groupsActive = activeTab === 'group' || activeTab === 'tables';
+  const predictionsActive = activeTab === 'group' || activeTab === 'tables' || activeTab === 'knockout' || activeTab === 'bonus';
   const standingsActive = activeTab === 'leaderboard' || activeTab === 'pointProgression';
 
   return (
@@ -159,39 +159,38 @@ export default function Navbar() {
       </div>
 
       {isOnCompetitionPage && (
-        <div className={`border-t border-primary-foreground/10 ${user?.isLeaderboardUser ? 'tv:hidden' : ''}`}>
-          <div className="mx-auto flex items-stretch max-w-5xl px-2 overflow-x-auto">
+        <div className={user?.isLeaderboardUser ? 'tv:hidden' : ''}>
+          <div className="mx-auto flex items-stretch max-w-5xl px-2">
             {!user?.isAdmin && !user?.isLeaderboardUser ? (
               <>
-                {/* Groups dropdown */}
+                {/* Predictions dropdown */}
                 <div ref={groupsRef} className="relative">
                   <button
                     onClick={() => { setGroupsOpen(o => !o); setStandingsOpen(false); }}
-                    className={tabCls(groupsActive)}
+                    className={tabCls(predictionsActive)}
                   >
                     {t('nav.tabGroups')}
                     <ChevronDown size={13} className={`transition-transform duration-150 ${groupsOpen ? 'rotate-180' : ''}`} />
                   </button>
                   {groupsOpen && (
-                    <div className="absolute left-0 top-full z-50 min-w-[160px] rounded-md border border-border bg-popover shadow-md py-1">
+                    <div className="absolute left-0 top-full z-[100] min-w-[180px] rounded-md border border-border bg-popover shadow-md py-1">
                       <button onClick={() => setTab('group')} className={dropItemCls(activeTab === 'group')}>
                         {t('competitionDetail.tabs.groupStage')}
                       </button>
                       <button onClick={() => setTab('tables')} className={dropItemCls(activeTab === 'tables')}>
                         {t('competitionDetail.tabs.groupTables')}
                       </button>
+                      <button onClick={() => setTab('knockout')} className={dropItemCls(activeTab === 'knockout')}>
+                        {t('competitionDetail.tabs.knockoutStage')}
+                      </button>
+                      <button onClick={() => setTab('bonus')} className={dropItemCls(activeTab === 'bonus')}>
+                        {t('competitionDetail.tabs.bonusQuestions')}
+                      </button>
                     </div>
                   )}
                 </div>
 
-                <button onClick={() => setTab('knockout')} className={tabCls(activeTab === 'knockout')}>
-                  {t('competitionDetail.tabs.knockoutStage')}
-                </button>
-                <button onClick={() => setTab('bonus')} className={tabCls(activeTab === 'bonus')}>
-                  {t('competitionDetail.tabs.bonusQuestions')}
-                </button>
-
-                {/* Standings dropdown */}
+                {/* Results dropdown */}
                 <div ref={standingsRef} className="relative">
                   <button
                     onClick={() => { setStandingsOpen(o => !o); setGroupsOpen(false); }}
@@ -201,7 +200,7 @@ export default function Navbar() {
                     <ChevronDown size={13} className={`transition-transform duration-150 ${standingsOpen ? 'rotate-180' : ''}`} />
                   </button>
                   {standingsOpen && (
-                    <div className="absolute left-0 top-full z-50 min-w-[190px] rounded-md border border-border bg-popover shadow-md py-1">
+                    <div className="absolute left-0 top-full z-[100] min-w-[190px] rounded-md border border-border bg-popover shadow-md py-1">
                       <button onClick={() => setTab('leaderboard')} className={dropItemCls(activeTab === 'leaderboard')}>
                         {t('competitionDetail.tabs.leaderboard')}
                       </button>

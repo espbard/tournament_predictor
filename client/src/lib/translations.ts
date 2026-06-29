@@ -37,8 +37,8 @@ const translations = {
     nav: {
       logOut: 'Log out',
       appName: 'Tournament Predictor',
-      tabGroups: 'Groups',
-      tabStandings: 'Standings',
+      tabGroups: 'Predictions',
+      tabStandings: 'Results',
     },
     auth: {
       signIn: 'Sign in',
@@ -528,8 +528,8 @@ const translations = {
     nav: {
       logOut: 'Logg ut',
       appName: 'Tournament Predictor',
-      tabGroups: 'Grupper',
-      tabStandings: 'Stilling',
+      tabGroups: 'Tips',
+      tabStandings: 'Resultat',
     },
     auth: {
       signIn: 'Logg inn',
@@ -1017,8 +1017,8 @@ const translations = {
     nav: {
       logOut: 'Auf Wiedersehen (Ausloggen)',
       appName: 'Turnier-Wahrsager',
-      tabGroups: 'Gruppen',
-      tabStandings: 'Ranglisten',
+      tabGroups: 'Tipps',
+      tabStandings: 'Ergebnisse',
     },
     auth: {
       signIn: 'Einloggen in das System',
