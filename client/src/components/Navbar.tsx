@@ -213,6 +213,8 @@ export default function Navbar() {
                   ))}
                 </div>
 
+                <div className="border-t border-border my-1" />
+
                 {/* Theme toggle */}
                 <button
                   onClick={toggleTheme}
@@ -233,6 +235,8 @@ export default function Navbar() {
                   <Settings size={15} />
                   {t('nav.editProfile')}
                 </Link>
+
+                <div className="border-t border-border my-1" />
 
                 {/* Logout */}
                 <button
