@@ -1111,7 +1111,7 @@ export default function CompetitionDetailPage() {
                       : [];
                     return (
                       <div key={groupName} className="space-y-3">
-                        <div className="rounded-lg border dark:bg-white/5 p-2">
+                        <div className="rounded-lg border bg-white dark:bg-white/5 p-2">
                           <div className="bg-muted/50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                             {t('common.group')} {groupName}
                           </div>
@@ -1247,7 +1247,7 @@ export default function CompetitionDetailPage() {
                       <div key={groupName} className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 border border-dashed border-gray-400 dark:border-yellow-400 rounded-xl p-2 bg-gray-100 sm:border-0 sm:p-0 sm:bg-transparent dark:bg-transparent">
                         {/* Predicted */}
                         <div className="space-y-2 min-w-0">
-                          <div className="rounded-lg border dark:bg-white/5 p-2">
+                          <div className="rounded-lg border bg-white dark:bg-white/5 p-2">
                             <div className="bg-muted/50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground flex justify-between items-center">
                               <span>{t('common.group')} {groupName}</span>
                               <span className="sm:hidden normal-case tracking-normal font-medium rounded px-1.5 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">{t('competitionDetail.tables.labelPredicted')}</span>
@@ -1360,7 +1360,7 @@ export default function CompetitionDetailPage() {
 
                         {/* Actual */}
                         <div className="min-w-0">
-                          <div className="rounded-lg border dark:bg-white/5 p-2">
+                          <div className="rounded-lg border bg-white dark:bg-white/5 p-2">
                             <div className="bg-muted/50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground flex justify-between items-center">
                               <span>{t('common.group')} {groupName}</span>
                               <span className="sm:hidden normal-case tracking-normal font-medium rounded px-1.5 py-0.5 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">{t('competitionDetail.tables.labelActual')}</span>
@@ -1522,7 +1522,7 @@ export default function CompetitionDetailPage() {
                   <div className="space-y-3">
                     <h3 className="text-sm font-semibold">{t('competitionDetail.tables.luckyLosersTable')}</h3>
                     {tournament?.status === 'upcoming' ? (
-                      <div className="rounded-lg border dark:bg-white/5 p-2">
+                      <div className="rounded-lg border bg-white dark:bg-white/5 p-2">
                         <table className="w-full text-xs table-fixed">
                           <thead>{llTableHeaders}</thead>
                           <tbody className="divide-y">
@@ -1545,7 +1545,7 @@ export default function CompetitionDetailPage() {
                             <div className="sm:hidden text-xs font-medium rounded px-1.5 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 inline-block mb-1">
                               {t('competitionDetail.tables.labelPredicted')}
                             </div>
-                            <div className="rounded-lg border dark:bg-white/5 p-2">
+                            <div className="rounded-lg border bg-white dark:bg-white/5 p-2">
                               <table className="w-full text-xs table-fixed">
                                 <thead>{llTableHeaders}</thead>
                                 <tbody className="divide-y">
@@ -1558,7 +1558,7 @@ export default function CompetitionDetailPage() {
                             <div className="sm:hidden text-xs font-medium rounded px-1.5 py-0.5 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 inline-block mb-1">
                               {t('competitionDetail.tables.labelActual')}
                             </div>
-                            <div className="rounded-lg border dark:bg-white/5 p-2">
+                            <div className="rounded-lg border bg-white dark:bg-white/5 p-2">
                               <table className="w-full text-xs table-fixed">
                                 <thead>{llTableHeaders}</thead>
                                 <tbody className="divide-y">
@@ -2193,7 +2193,7 @@ export default function CompetitionDetailPage() {
               );
               return (
                 <div className="hidden tv:grid tv:grid-cols-2 tv:gap-8 tv:items-start mt-4">
-                  <div className="rounded-lg border dark:bg-white/5 p-2">
+                  <div className="rounded-lg border bg-white dark:bg-white/5 p-2">
                     <div style={{ position: 'relative' }}>
                       <SoccerKickAnimation />
                       <table className="w-full text-sm">
@@ -2202,7 +2202,7 @@ export default function CompetitionDetailPage() {
                       </table>
                     </div>
                   </div>
-                  <div className="rounded-lg border dark:bg-white/5 p-2">
+                  <div className="rounded-lg border bg-white dark:bg-white/5 p-2">
                     <div style={{ position: 'relative' }}>
                       <CryingPlayerAnimation />
                       <table className="w-full text-sm">
