@@ -12,7 +12,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <Navbar />
         </div>
       )}
-      <div className={`${user?.isLeaderboardUser ? 'min-h-[100dvh]' : 'pt-16'} ${showFeedbackButton ? 'pb-20' : ''}`}>
+      <div className={`${user?.isLeaderboardUser ? 'min-h-[100dvh]' : 'pt-[52px] sm:pt-16'} ${showFeedbackButton ? 'pb-20' : ''}`}>
         {children}
       </div>
       {user?.isLeaderboardUser && <Navbar />}
