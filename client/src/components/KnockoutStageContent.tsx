@@ -486,7 +486,11 @@ function FocusedMatchCard({
   const actualHomeProgresses = actualIsDraw && actualMatch!.progressingTeamId === actualMatch!.homeTeamId;
   const actualAwayProgresses = actualIsDraw && actualMatch!.progressingTeamId === actualMatch!.awayTeamId;
 
-  const goldenBorderClass = 'ring-2 ring-inset ring-amber-400 bg-amber-50/40 dark:bg-amber-900/15';
+  const predHomeBorderColor = isCorrectResult ? 'border-green-400' : isDisplayHomeProgressing ? 'border-amber-400' : 'border-border';
+  const predAwayBorderColor = isCorrectResult ? 'border-green-400' : isDisplayAwayProgressing ? 'border-amber-400' : 'border-border';
+  const actualHomeBorderColor = actualHomeProgresses ? 'border-amber-400' : 'border-border';
+  const actualAwayBorderColor = actualAwayProgresses ? 'border-amber-400' : 'border-border';
+  const hasActualExtraTime = isCompleted && actualMatch?.homeScore === actualMatch?.awayScore && !!actualMatch?.progressingTeamId;
 
   // The "who advances" section only renders when editing a draw, so the away row is the
   // last item in the prediction card when completed (and not force-editable) or read-only.
@@ -499,10 +503,10 @@ function FocusedMatchCard({
         <p className="text-xs text-muted-foreground text-center mb-1.5 font-medium">
           {t('knockoutContent.yourPrediction')}
         </p>
-        <div className={`rounded-xl border-2 shadow-sm overflow-hidden ${isCorrectResult ? 'border-green-400 bg-green-50/60 dark:bg-green-950/25' : 'bg-card'}`}>
+        <div className={`rounded-xl shadow-sm overflow-hidden ${isCorrectResult ? 'bg-green-50/60 dark:bg-green-950/25' : 'bg-card'}`}>
           {/* Home row */}
           <div
-            className={`flex items-center gap-3 px-4 py-3.5 transition-colors ${isDisplayHomeProgressing ? goldenBorderClass + ' rounded-t-xl' : displayHomeWins && !isDisplayHomeChampion ? 'bg-primary/5' : ''}`}
+            className={`flex items-center gap-3 px-4 py-3.5 transition-colors border-t-2 border-l-2 border-r-2 ${predHomeBorderColor} ${isDisplayHomeProgressing ? 'bg-amber-50/40 dark:bg-amber-900/15' : displayHomeWins && !isDisplayHomeChampion ? 'bg-primary/5' : ''}`}
             style={isDisplayHomeChampion ? { animation: 'ko_winner_glow 1.8s ease-in-out infinite' } : undefined}
           >
             {displayHomeTeam ? (
@@ -569,7 +573,7 @@ function FocusedMatchCard({
 
           {/* Away row */}
           <div
-            className={`flex items-center gap-3 px-4 py-3.5 transition-colors ${isDisplayAwayProgressing ? goldenBorderClass + (predCardAwayIsLast ? ' rounded-b-xl' : '') : displayAwayWins && !isDisplayAwayChampion ? 'bg-primary/5' : ''}`}
+            className={`flex items-center gap-3 px-4 py-3.5 transition-colors border-l-2 border-r-2 ${predCardAwayIsLast ? 'border-b-2' : ''} ${predAwayBorderColor} ${isDisplayAwayProgressing ? 'bg-amber-50/40 dark:bg-amber-900/15' : displayAwayWins && !isDisplayAwayChampion ? 'bg-primary/5' : ''}`}
             style={isDisplayAwayChampion ? { animation: 'ko_winner_glow 1.8s ease-in-out infinite' } : undefined}
           >
             {displayAwayTeam ? (
@@ -636,7 +640,7 @@ function FocusedMatchCard({
           {isDraw && homeTeam && awayTeam && (!isCompleted || forceEditable) && !readOnly && (
             <>
               <div className="h-px bg-border" />
-              <div className="p-3 space-y-2">
+              <div className="p-3 space-y-2 border-l-2 border-r-2 border-b-2 border-border">
                 <p className="text-[11px] text-muted-foreground text-center font-medium">
                   {t('knockoutContent.whoAdvances')}
                 </p>
@@ -689,9 +693,9 @@ function FocusedMatchCard({
               {isCompleted ? t('knockoutContent.result') : t('knockoutContent.actualMatch')}
             </p>
           </div>
-          <div className="rounded-xl border-2 bg-card shadow-sm overflow-hidden">
+          <div className="rounded-xl bg-card shadow-sm overflow-hidden">
             {/* Home row */}
-            <div className={`flex items-center gap-3 px-4 py-3.5 ${actualHomeProgresses ? goldenBorderClass + ' rounded-t-xl' : ''}`}>
+            <div className={`flex items-center gap-3 px-4 py-3.5 border-t-2 border-l-2 border-r-2 ${actualHomeBorderColor} ${actualHomeProgresses ? 'bg-amber-50/40 dark:bg-amber-900/15' : ''}`}>
               {actualMatch.homeTeamImageUrl ? (
                 <img src={actualMatch.homeTeamImageUrl} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0" />
               ) : homeFallbackTeam?.imageUrl ? (
@@ -713,7 +717,7 @@ function FocusedMatchCard({
             </div>
             <div className="h-px bg-border" />
             {/* Away row */}
-            <div className={`flex items-center gap-3 px-4 py-3.5 ${actualAwayProgresses ? goldenBorderClass : ''}`}>
+            <div className={`flex items-center gap-3 px-4 py-3.5 border-l-2 border-r-2 ${!hasActualExtraTime ? 'border-b-2' : ''} ${actualAwayBorderColor} ${actualAwayProgresses ? 'bg-amber-50/40 dark:bg-amber-900/15' : ''}`}>
               {actualMatch.awayTeamImageUrl ? (
                 <img src={actualMatch.awayTeamImageUrl} alt="" className="h-7 w-7 rounded-full object-cover flex-shrink-0" />
               ) : awayFallbackTeam?.imageUrl ? (
@@ -737,7 +741,7 @@ function FocusedMatchCard({
             {isCompleted && actualMatch.homeScore === actualMatch.awayScore && actualMatch.progressingTeamId && (
               <>
                 <div className="h-px bg-border" />
-                <p className="px-4 py-2 text-xs text-muted-foreground text-center">
+                <p className="px-4 py-2 text-xs text-muted-foreground text-center border-l-2 border-r-2 border-b-2 border-border">
                   {actualMatch.progressingTeamId === actualMatch.homeTeamId
                     ? tn(actualMatch.homeTeamName)
                     : tn(actualMatch.awayTeamName)} {t('knockoutContent.advances')}
