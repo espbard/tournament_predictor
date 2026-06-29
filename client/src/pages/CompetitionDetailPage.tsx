@@ -942,7 +942,7 @@ export default function CompetitionDetailPage() {
   if (!competition) return null;
 
   return (
-    <main className={`mx-auto px-4 py-12 ${
+    <main className={`mx-auto px-4 pt-2.5 pb-12 sm:pt-12 ${
       user?.isLeaderboardUser
         ? 'max-w-2xl md:max-w-4xl lg:max-w-[80%] tv:max-w-none tv:px-16'
         : 'max-w-2xl md:max-w-4xl lg:max-w-[80%]'

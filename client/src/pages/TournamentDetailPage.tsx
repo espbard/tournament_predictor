@@ -937,7 +937,7 @@ export default function TournamentDetailPage() {
   }
 
   return (
-    <main className="mx-auto max-w-4xl lg:max-w-[80%] px-4 py-8">
+    <main className="mx-auto max-w-4xl lg:max-w-[80%] px-4 pt-2.5 pb-8 sm:pt-8">
       <BackButton href="/admin/tournaments" />
 
       {/* Stage tabs */}

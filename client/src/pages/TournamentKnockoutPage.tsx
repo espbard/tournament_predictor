@@ -1550,7 +1550,7 @@ export default function TournamentKnockoutPage() {
   if (!tournament) return <div className="p-8 text-sm">{t('knockout.notFound')}</div>;
 
   return (
-    <main className="mx-auto max-w-5xl lg:max-w-[80%] px-4 py-8">
+    <main className="mx-auto max-w-5xl lg:max-w-[80%] px-4 pt-2.5 pb-8 sm:pt-8">
       <BackButton href="/admin/tournaments" />
 
       <div className="flex border-b mb-6">
