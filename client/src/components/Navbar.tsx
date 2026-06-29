@@ -76,7 +76,7 @@ export default function Navbar() {
   };
 
   const tabCls = (active: boolean) =>
-    `whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1 ${
+    `whitespace-nowrap px-3 py-1.5 sm:py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1 ${
       active
         ? 'border-foreground text-foreground'
         : 'border-transparent text-foreground/50 hover:text-foreground'
@@ -90,7 +90,7 @@ export default function Navbar() {
 
   return (
     <nav className="bg-background">
-      <div className="mx-auto flex items-center max-w-5xl px-4 py-2">
+      <div className="mx-auto flex items-center max-w-5xl px-4 py-1 sm:py-2">
         {/* Home icon – shown when not on home page */}
         {location.pathname !== '/' && (
           <Link to="/" className="shrink-0 flex items-center p-1.5 mr-1 text-foreground hover:opacity-70" aria-label="Home">
@@ -101,14 +101,17 @@ export default function Navbar() {
         {/* Site name – hidden on mobile only when tabs are shown */}
         <Link
           to="/"
-          className={`shrink-0 flex items-center text-base font-semibold text-foreground hover:opacity-70 mr-3 py-3 ${showTabs ? 'hidden sm:flex' : ''}`}
+          className={`shrink-0 flex items-center text-base font-semibold text-foreground hover:opacity-70 mr-3 py-2 sm:py-3 ${showTabs ? 'hidden sm:flex' : ''}`}
         >
           {t('nav.appName')}
         </Link>
 
+        {/* Spacer – always pushes tabs and avatar to the right */}
+        <div className="flex-1" />
+
         {/* Competition tabs */}
-        {showTabs ? (
-          <div className={`flex items-center flex-1 min-w-0 ${user?.isLeaderboardUser ? 'tv:hidden' : ''}`}>
+        {showTabs && (
+          <div className={`flex items-center ${user?.isLeaderboardUser ? 'tv:hidden' : ''}`}>
             {!user?.isAdmin && !user?.isLeaderboardUser ? (
               <>
                 {/* Predictions dropdown */}
@@ -178,8 +181,6 @@ export default function Navbar() {
               </button>
             )}
           </div>
-        ) : (
-          <div className="flex-1" />
         )}
 
         {/* User settings menu */}
@@ -187,7 +188,7 @@ export default function Navbar() {
           <div ref={userMenuRef} className="relative shrink-0 flex items-center ml-2">
             <button
               onClick={() => setUserMenuOpen(o => !o)}
-              className="flex items-center py-2 hover:opacity-80"
+              className="flex items-center py-1.5 sm:py-2 hover:opacity-80"
             >
               <UserAvatar
                 username={user.username}
