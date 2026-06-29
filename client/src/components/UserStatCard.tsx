@@ -117,7 +117,7 @@ export default function UserStatCard({ competitionId, data, onMatchClick, onLead
   const hasImage = !!(data.iconImageUrl || displaySubjects.length > 0);
 
   const image = hasImage && (
-    <div className="relative h-44 w-full flex-shrink-0">
+    <div className="relative w-full flex-shrink-0 aspect-square">
       {data.iconImageUrl ? (
         <img src={data.iconImageUrl} alt="" className="h-full w-full object-contain p-4" />
       ) : displaySubjects.length > 1 ? (
