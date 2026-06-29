@@ -1454,6 +1454,7 @@ export function KnockoutBracketVisualizer({
 
   const GOLD = '#eab308';
   const BORDER = 'hsl(var(--border))';
+  const CR = 3; // SVG corner radius for connector line bends
 
   return (
     <div className="flex justify-center">
@@ -1503,13 +1504,11 @@ export function KnockoutBracketVisualizer({
                     const anyGold = topGold || botGold;
                     return [
                       <path key={`Lc_${childR}_${i}_t`} fill="none" strokeWidth={topGold ? 1.5 : 1}
-                        stroke={topGold ? GOLD : BORDER} d={`M ${childRight} ${topY} L ${midX} ${topY}`} />,
-                      <path key={`Lc_${childR}_${i}_vt`} fill="none" strokeWidth={topGold ? 1.5 : 1}
-                        stroke={topGold ? GOLD : BORDER} d={`M ${midX} ${topY} L ${midX} ${parentY}`} />,
-                      <path key={`Lc_${childR}_${i}_vb`} fill="none" strokeWidth={botGold ? 1.5 : 1}
-                        stroke={botGold ? GOLD : BORDER} d={`M ${midX} ${parentY} L ${midX} ${botY}`} />,
+                        stroke={topGold ? GOLD : BORDER}
+                        d={`M ${childRight} ${topY} L ${midX - CR} ${topY} A ${CR} ${CR} 0 0 1 ${midX} ${topY + CR} L ${midX} ${parentY}`} />,
                       <path key={`Lc_${childR}_${i}_b`} fill="none" strokeWidth={botGold ? 1.5 : 1}
-                        stroke={botGold ? GOLD : BORDER} d={`M ${midX} ${botY} L ${childRight} ${botY}`} />,
+                        stroke={botGold ? GOLD : BORDER}
+                        d={`M ${midX} ${parentY} L ${midX} ${botY - CR} A ${CR} ${CR} 0 0 1 ${midX - CR} ${botY} L ${childRight} ${botY}`} />,
                       <path key={`Lc_${childR}_${i}_p`} fill="none" strokeWidth={anyGold ? 1.5 : 1}
                         stroke={anyGold ? GOLD : BORDER} d={`M ${midX} ${parentY} L ${parentLeft} ${parentY}`} />,
                     ];
@@ -1551,13 +1550,11 @@ export function KnockoutBracketVisualizer({
                     const anyGold = topGold || botGold;
                     return [
                       <path key={`Rc_${childR}_${i}_t`} fill="none" strokeWidth={topGold ? 1.5 : 1}
-                        stroke={topGold ? GOLD : BORDER} d={`M ${childLeft} ${topY} L ${midX} ${topY}`} />,
-                      <path key={`Rc_${childR}_${i}_vt`} fill="none" strokeWidth={topGold ? 1.5 : 1}
-                        stroke={topGold ? GOLD : BORDER} d={`M ${midX} ${topY} L ${midX} ${parentY}`} />,
-                      <path key={`Rc_${childR}_${i}_vb`} fill="none" strokeWidth={botGold ? 1.5 : 1}
-                        stroke={botGold ? GOLD : BORDER} d={`M ${midX} ${parentY} L ${midX} ${botY}`} />,
+                        stroke={topGold ? GOLD : BORDER}
+                        d={`M ${childLeft} ${topY} L ${midX + CR} ${topY} A ${CR} ${CR} 0 0 0 ${midX} ${topY + CR} L ${midX} ${parentY}`} />,
                       <path key={`Rc_${childR}_${i}_b`} fill="none" strokeWidth={botGold ? 1.5 : 1}
-                        stroke={botGold ? GOLD : BORDER} d={`M ${midX} ${botY} L ${childLeft} ${botY}`} />,
+                        stroke={botGold ? GOLD : BORDER}
+                        d={`M ${midX} ${parentY} L ${midX} ${botY - CR} A ${CR} ${CR} 0 0 0 ${midX + CR} ${botY} L ${childLeft} ${botY}`} />,
                       <path key={`Rc_${childR}_${i}_p`} fill="none" strokeWidth={anyGold ? 1.5 : 1}
                         stroke={anyGold ? GOLD : BORDER} d={`M ${midX} ${parentY} L ${parentRight} ${parentY}`} />,
                     ];
