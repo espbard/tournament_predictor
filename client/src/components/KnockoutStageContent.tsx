@@ -1488,8 +1488,10 @@ export function KnockoutBracketVisualizer({
                     return [
                       <path key={`Lc_${childR}_${i}_t`} fill="none" strokeWidth={topGold ? 1.5 : 1}
                         stroke={topGold ? GOLD : BORDER} d={`M ${childRight} ${topY} L ${midX} ${topY}`} />,
-                      <path key={`Lc_${childR}_${i}_v`} fill="none" strokeWidth={anyGold ? 1.5 : 1}
-                        stroke={anyGold ? GOLD : BORDER} d={`M ${midX} ${topY} L ${midX} ${botY}`} />,
+                      <path key={`Lc_${childR}_${i}_vt`} fill="none" strokeWidth={topGold ? 1.5 : 1}
+                        stroke={topGold ? GOLD : BORDER} d={`M ${midX} ${topY} L ${midX} ${parentY}`} />,
+                      <path key={`Lc_${childR}_${i}_vb`} fill="none" strokeWidth={botGold ? 1.5 : 1}
+                        stroke={botGold ? GOLD : BORDER} d={`M ${midX} ${parentY} L ${midX} ${botY}`} />,
                       <path key={`Lc_${childR}_${i}_b`} fill="none" strokeWidth={botGold ? 1.5 : 1}
                         stroke={botGold ? GOLD : BORDER} d={`M ${midX} ${botY} L ${childRight} ${botY}`} />,
                       <path key={`Lc_${childR}_${i}_p`} fill="none" strokeWidth={anyGold ? 1.5 : 1}
@@ -1534,8 +1536,10 @@ export function KnockoutBracketVisualizer({
                     return [
                       <path key={`Rc_${childR}_${i}_t`} fill="none" strokeWidth={topGold ? 1.5 : 1}
                         stroke={topGold ? GOLD : BORDER} d={`M ${childLeft} ${topY} L ${midX} ${topY}`} />,
-                      <path key={`Rc_${childR}_${i}_v`} fill="none" strokeWidth={anyGold ? 1.5 : 1}
-                        stroke={anyGold ? GOLD : BORDER} d={`M ${midX} ${topY} L ${midX} ${botY}`} />,
+                      <path key={`Rc_${childR}_${i}_vt`} fill="none" strokeWidth={topGold ? 1.5 : 1}
+                        stroke={topGold ? GOLD : BORDER} d={`M ${midX} ${topY} L ${midX} ${parentY}`} />,
+                      <path key={`Rc_${childR}_${i}_vb`} fill="none" strokeWidth={botGold ? 1.5 : 1}
+                        stroke={botGold ? GOLD : BORDER} d={`M ${midX} ${parentY} L ${midX} ${botY}`} />,
                       <path key={`Rc_${childR}_${i}_b`} fill="none" strokeWidth={botGold ? 1.5 : 1}
                         stroke={botGold ? GOLD : BORDER} d={`M ${midX} ${botY} L ${childLeft} ${botY}`} />,
                       <path key={`Rc_${childR}_${i}_p`} fill="none" strokeWidth={anyGold ? 1.5 : 1}
