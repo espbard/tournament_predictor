@@ -2046,26 +2046,6 @@ export default function CompetitionDetailPage() {
 
       {activeTab === 'leaderboard' && (
         <>
-          <div className="flex flex-wrap gap-4 mb-3">
-            <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={showComparisonUsers}
-                onChange={e => setShowComparisonUsers(e.target.checked)}
-                className="rounded"
-              />
-              {t('competitionDetail.leaderboard.showAiUsers')}
-            </label>
-            <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={showInactiveUsers}
-                onChange={e => setShowInactiveUsers(e.target.checked)}
-                className="rounded"
-              />
-              {t('competitionDetail.leaderboard.showInactiveUsers')}
-            </label>
-          </div>
           {leaderboardLoading ? (
             <LoadingSpinner />
           ) : leaderboard.length === 0 ? (
@@ -2254,6 +2234,26 @@ export default function CompetitionDetailPage() {
                 {t('competitionDetail.leaderboard.inactiveLegend')}
               </p>
             )}
+            <div className="flex flex-wrap gap-4 mt-3">
+              <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={showComparisonUsers}
+                  onChange={e => setShowComparisonUsers(e.target.checked)}
+                  className="rounded"
+                />
+                {t('competitionDetail.leaderboard.showAiUsers')}
+              </label>
+              <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={showInactiveUsers}
+                  onChange={e => setShowInactiveUsers(e.target.checked)}
+                  className="rounded"
+                />
+                {t('competitionDetail.leaderboard.showInactiveUsers')}
+              </label>
+            </div>
           </>);
           })()}
 
