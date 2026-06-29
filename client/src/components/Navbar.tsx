@@ -80,6 +80,16 @@ export default function Navbar() {
   const predictionsActive = activeTab === 'group' || activeTab === 'tables' || activeTab === 'knockout' || activeTab === 'bonus';
   const standingsActive = activeTab === 'leaderboard' || activeTab === 'pointProgression';
 
+  const getPageTitle = (): string | null => {
+    const p = location.pathname;
+    if (p === '/') return t('nav.pageHome');
+    if (p === '/settings') return t('nav.editProfile');
+    if (/^\/competitions\/[^/]+\/predictions\//.test(p)) return t('nav.tabGroups');
+    if (/^\/competitions\/[^/]+\/team\//.test(p)) return t('nav.pageTeam');
+    if (p.startsWith('/admin')) return 'Admin';
+    return null;
+  };
+
   return (
     <nav className="bg-primary">
       <div className="mx-auto flex items-stretch max-w-5xl px-4">
@@ -164,7 +174,11 @@ export default function Navbar() {
             )}
           </div>
         ) : (
-          <div className="flex-1" />
+          <div className="flex-1 flex items-center justify-center">
+            {getPageTitle() && (
+              <span className="text-sm font-medium text-primary-foreground/80">{getPageTitle()}</span>
+            )}
+          </div>
         )}
 
         {/* User settings menu */}
@@ -172,13 +186,13 @@ export default function Navbar() {
           <div ref={userMenuRef} className="relative shrink-0 flex items-center ml-2">
             <button
               onClick={() => setUserMenuOpen(o => !o)}
-              className="flex items-center hover:opacity-80"
+              className="flex items-center py-2 hover:opacity-80"
             >
               <UserAvatar
                 username={user.username}
                 imageUrl={user.imageUrl}
                 iconColor={user.iconColor}
-                className="h-7 w-7"
+                className="h-8 w-8 rounded-full"
               />
             </button>
             {userMenuOpen && (

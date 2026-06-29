@@ -42,6 +42,8 @@ const translations = {
       darkMode: 'Dark mode',
       lightMode: 'Light mode',
       editProfile: 'Edit profile',
+      pageHome: 'Home',
+      pageTeam: 'Team',
     },
     auth: {
       signIn: 'Sign in',
@@ -536,6 +538,8 @@ const translations = {
       darkMode: 'Mørkt tema',
       lightMode: 'Lyst tema',
       editProfile: 'Rediger profil',
+      pageHome: 'Hjem',
+      pageTeam: 'Lag',
     },
     auth: {
       signIn: 'Logg inn',
@@ -1028,6 +1032,8 @@ const translations = {
       darkMode: 'Dunkles Design',
       lightMode: 'Helles Design',
       editProfile: 'Profil bearbeiten',
+      pageHome: 'Startseite',
+      pageTeam: 'Team',
     },
     auth: {
       signIn: 'Einloggen in das System',
