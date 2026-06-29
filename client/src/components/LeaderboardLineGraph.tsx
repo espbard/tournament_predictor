@@ -126,6 +126,12 @@ export default function LeaderboardLineGraph({ data }: Props) {
     );
   };
 
+  const userColorMap = new Map(data.users.map((u, i) => [u.userId, COLORS[i % COLORS.length]]));
+  const lastMatch = data.matches[data.matches.length - 1];
+  const sortedUsers = [...data.users].sort((a, b) =>
+    ((lastMatch?.cumulativePoints[b.userId] ?? 0) - (lastMatch?.cumulativePoints[a.userId] ?? 0))
+  );
+
   const handleChartClick = useCallback((state: {
     activePayload?: Array<{ dataKey?: unknown; value?: unknown; stroke?: unknown }>;
     activeLabel?: unknown;
@@ -338,8 +344,8 @@ export default function LeaderboardLineGraph({ data }: Props) {
       </div>
 
       <div className="flex flex-wrap gap-x-4 gap-y-2 mt-3 text-xs items-center">
-        {data.users.map((u, i) => {
-          const color = COLORS[i % COLORS.length];
+        {sortedUsers.map((u) => {
+          const color = userColorMap.get(u.userId)!;
           const isHidden = hiddenUsers.has(u.userId);
           return (
             <label key={u.userId} className="flex items-center gap-1.5 cursor-pointer select-none">

@@ -962,7 +962,7 @@ function FocusedBracketView({
               key={round}
               type="button"
               onClick={() => firstIdx !== -1 && goTo(firstIdx)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+              className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs font-medium transition-colors ${
                 isActive
                   ? 'bg-primary text-primary-foreground'
                   : allDone
@@ -982,7 +982,7 @@ function FocusedBracketView({
                 key="bronze_final"
                 type="button"
                 onClick={() => bronzeIdx !== -1 && goTo(bronzeIdx)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs font-medium transition-colors ${
                   current.isBronze
                     ? 'bg-primary text-primary-foreground'
                     : isBronzeDone
@@ -1043,6 +1043,9 @@ function FocusedBracketView({
                 isCorrectResult = Math.sign(predH - predA) === Math.sign(h - a);
                 isExactScore = predH === h && predA === a;
               }
+              const isPartialCredit = !isCorrectResult && hasActual && hasPred && !!pred && !!actualMatch &&
+                actualMatch.progressingTeamId !== null &&
+                pred.progressingTeamId === actualMatch.progressingTeamId;
               const dotClass = isCurrent
                 ? 'w-5 h-2.5 bg-primary dark:bg-blue-400'
                 : !hasPred
@@ -1053,13 +1056,17 @@ function FocusedBracketView({
                 ? 'w-2.5 h-2.5 bg-green-500 ring-1 ring-offset-1 ring-offset-background ring-amber-400'
                 : isCorrectResult
                 ? 'w-2.5 h-2.5 bg-green-500'
+                : isPartialCredit
+                ? 'w-2.5 h-2.5'
                 : 'w-2.5 h-2.5 bg-red-500';
+              const dotStyle = isPartialCredit ? { background: 'linear-gradient(135deg, #fde047 50%, #22c55e 50%)' } : undefined;
               return (
                 <button
                   key={m.predKey}
                   type="button"
                   onClick={() => goTo(flatIdx)}
                   className={`rounded-full transition-all duration-200 ${dotClass}`}
+                  style={dotStyle}
                   aria-label={`Match ${m.matchIdxInRound + 1}`}
                 />
               );
@@ -2051,17 +2058,11 @@ export default function KnockoutStageContent({
         }
       `}</style>
 
-      {isReadOnly && (
-        <div className="mb-4 rounded-lg bg-muted px-4 py-2.5 text-sm text-muted-foreground">
-          {t('knockoutContent.predictionsLocked')}
-        </div>
-      )}
-
-      <div className="flex items-center justify-between mb-2">
-        <p className="text-sm text-muted-foreground">
-          {t('knockoutContent.teamsBasedOn')}
-        </p>
-        {!isReadOnly && (
+      {!isReadOnly && (
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-sm text-muted-foreground">
+            {t('knockoutContent.teamsBasedOn')}
+          </p>
           <span className={`text-xs flex-shrink-0 ml-4 ${
             saveStatus === 'saving' ? 'text-muted-foreground' :
             saveStatus === 'saved' ? 'text-green-600' :
@@ -2069,8 +2070,8 @@ export default function KnockoutStageContent({
           }`}>
             {saveStatus === 'saving' ? t('knockoutContent.saving') : saveStatus === 'saved' ? t('knockoutContent.saved') : saveStatus === 'error' ? t('knockoutContent.saveFailed') : '.'}
           </span>
-        )}
-      </div>
+        </div>
+      )}
 
       {hasPendingTies && !isReadOnly && (
         <div className="mb-4 rounded-lg border border-amber-400/40 bg-amber-50/10 px-4 py-3 text-sm">

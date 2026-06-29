@@ -942,7 +942,7 @@ export default function CompetitionDetailPage() {
   if (!competition) return null;
 
   return (
-    <main className={`mx-auto px-4 py-12 ${
+    <main className={`mx-auto px-4 pt-2.5 pb-12 sm:pt-12 ${
       user?.isLeaderboardUser
         ? 'max-w-2xl md:max-w-4xl lg:max-w-[80%] tv:max-w-none tv:px-16'
         : 'max-w-2xl md:max-w-4xl lg:max-w-[80%]'
@@ -968,7 +968,7 @@ export default function CompetitionDetailPage() {
           </div>
         </div>
       ) : (
-        <div className="mb-8 flex items-start gap-4">
+        <div className="mb-4 flex items-start gap-3">
           {competition.imageUrl ? (
             <img
               src={competition.imageUrl}
@@ -978,13 +978,13 @@ export default function CompetitionDetailPage() {
           ) : (
             <div className="h-16 w-16 rounded-lg bg-muted flex-shrink-0" />
           )}
-          <div className="flex-1">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-2xl font-bold">{competition.name}</h2>
-                {tournament && <p className="mt-1 text-sm text-muted-foreground">{tournament.name}</p>}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 overflow-hidden">
+                <h2 className="text-xl sm:text-2xl font-bold leading-tight">{competition.name}</h2>
+                {tournament && <p className="mt-0.5 text-sm text-muted-foreground">{tournament.name}</p>}
                 {!user?.isAdmin && (
-                  <p className="mt-1 text-xs text-muted-foreground font-mono tracking-wider">
+                  <p className="mt-0.5 text-xs text-muted-foreground font-mono tracking-wider whitespace-nowrap">
                     {t('competitionDetail.inviteCodeLabel')}: {competition.inviteCode}
                   </p>
                 )}
@@ -1111,23 +1111,23 @@ export default function CompetitionDetailPage() {
                       : [];
                     return (
                       <div key={groupName} className="space-y-3">
-                        <div className="rounded-lg border dark:bg-white/5 p-2">
+                        <div className="rounded-lg border bg-white dark:bg-white/5 p-2">
                           <div className="bg-muted/50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                             {t('common.group')} {groupName}
                           </div>
-                          <table className="w-full text-xs">
+                          <table className="w-full text-xs table-fixed">
                             <thead>
                               <tr className="border-b text-muted-foreground">
-                                <th className="pl-3 py-1.5 text-left w-6">#</th>
-                                <th className="py-1.5 text-left">{t('groupTable.team')}</th>
-                                <th className="py-1.5 text-center w-6">{t('groupTable.played')}</th>
-                                <th className="py-1.5 text-center w-6">{t('groupTable.won')}</th>
-                                <th className="py-1.5 text-center w-6">{t('groupTable.drawn')}</th>
-                                <th className="py-1.5 text-center w-6">{t('groupTable.lost')}</th>
-                                <th className="py-1.5 text-center w-8">{t('groupTable.gf')}</th>
-                                <th className="py-1.5 text-center w-8">{t('groupTable.ga')}</th>
-                                <th className="py-1.5 text-center w-8 font-bold text-foreground">{t('groupTable.pts')}</th>
-                                <th className="pr-3 py-1.5 w-12" />
+                                <th className="pl-3 py-1.5 text-left">#</th>
+                                <th className="py-1.5 text-left w-1/2">{t('groupTable.team')}</th>
+                                <th className="py-1.5 text-center">{t('groupTable.played')}</th>
+                                <th className="py-1.5 text-center">{t('groupTable.won')}</th>
+                                <th className="py-1.5 text-center">{t('groupTable.drawn')}</th>
+                                <th className="py-1.5 text-center">{t('groupTable.lost')}</th>
+                                <th className="py-1.5 text-center">{t('groupTable.gf')}</th>
+                                <th className="py-1.5 text-center">{t('groupTable.ga')}</th>
+                                <th className="py-1.5 text-center font-bold text-foreground">{t('groupTable.pts')}</th>
+                                <th className="pr-3 py-1.5" />
                               </tr>
                             </thead>
                             <tbody className="divide-y">
@@ -1144,14 +1144,14 @@ export default function CompetitionDetailPage() {
                                     : ''
                                 }>
                                   <td className="pl-3 py-1.5 text-muted-foreground">{i + 1}</td>
-                                  <td className="py-1.5 pr-2">
-                                    <div className="flex items-center gap-1.5">
+                                  <td className="py-1.5 pr-2 overflow-hidden">
+                                    <div className="flex items-center gap-1.5 min-w-0">
                                       {tm.imageUrl ? (
                                         <img src={tm.imageUrl} alt="" className="h-4 w-4 rounded-full object-cover flex-shrink-0" />
                                       ) : (
                                         <div className="h-4 w-4 rounded-full bg-muted flex-shrink-0" />
                                       )}
-                                      <Link to={`/competitions/${id}/team/${tm.teamId}`} className="truncate hover:underline">{tn(tm.teamName)}</Link>
+                                      <Link to={`/competitions/${id}/team/${tm.teamId}`} className="flex-1 truncate hover:underline">{tn(tm.teamName)}</Link>
                                       {tiebreakerChosenTeams.has(tm.teamId) && (
                                         <span className="text-amber-600 dark:text-amber-400 font-bold flex-shrink-0">✓</span>
                                       )}
@@ -1244,27 +1244,27 @@ export default function CompetitionDetailPage() {
                       : [];
                     const actualTeams = displayActualGroupStandings.get(groupName) ?? [];
                     return (
-                      <div key={groupName} className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
+                      <div key={groupName} className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 border border-dashed border-gray-400 dark:border-yellow-400 rounded-xl p-2 bg-gray-100 sm:border-0 sm:p-0 sm:bg-transparent dark:bg-transparent">
                         {/* Predicted */}
                         <div className="space-y-2 min-w-0">
-                          <div className="rounded-lg border dark:bg-white/5 p-2">
+                          <div className="rounded-lg border bg-white dark:bg-white/5 p-2">
                             <div className="bg-muted/50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground flex justify-between items-center">
                               <span>{t('common.group')} {groupName}</span>
                               <span className="sm:hidden normal-case tracking-normal font-medium rounded px-1.5 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">{t('competitionDetail.tables.labelPredicted')}</span>
                             </div>
-                            <table className="w-full text-xs">
+                            <table className="w-full text-xs table-fixed">
                               <thead>
                                 <tr className="border-b text-muted-foreground">
-                                  <th className="pl-3 py-1.5 text-left w-6">#</th>
-                                  <th className="py-1.5 text-left">{t('groupTable.team')}</th>
-                                  <th className="py-1.5 text-center w-6">{t('groupTable.played')}</th>
-                                  <th className="py-1.5 text-center w-6">{t('groupTable.won')}</th>
-                                  <th className="py-1.5 text-center w-6">{t('groupTable.drawn')}</th>
-                                  <th className="py-1.5 text-center w-6">{t('groupTable.lost')}</th>
-                                  <th className="py-1.5 text-center w-8">{t('groupTable.gf')}</th>
-                                  <th className="py-1.5 text-center w-8">{t('groupTable.ga')}</th>
-                                  <th className="py-1.5 text-center w-8 font-bold text-foreground">{t('groupTable.pts')}</th>
-                                  <th className="pr-3 py-1.5 w-12" />
+                                  <th className="pl-3 py-1.5 text-left">#</th>
+                                  <th className="py-1.5 text-left w-1/2">{t('groupTable.team')}</th>
+                                  <th className="py-1.5 text-center">{t('groupTable.played')}</th>
+                                  <th className="py-1.5 text-center">{t('groupTable.won')}</th>
+                                  <th className="py-1.5 text-center">{t('groupTable.drawn')}</th>
+                                  <th className="py-1.5 text-center">{t('groupTable.lost')}</th>
+                                  <th className="py-1.5 text-center">{t('groupTable.gf')}</th>
+                                  <th className="py-1.5 text-center">{t('groupTable.ga')}</th>
+                                  <th className="py-1.5 text-center font-bold text-foreground">{t('groupTable.pts')}</th>
+                                  <th className="pr-3 py-1.5" />
                                 </tr>
                               </thead>
                               <tbody className="divide-y">
@@ -1287,7 +1287,7 @@ export default function CompetitionDetailPage() {
                                         ) : (
                                           <div className="h-4 w-4 rounded-full bg-muted flex-shrink-0" />
                                         )}
-                                        <Link to={`/competitions/${id}/team/${tm.teamId}`} className="truncate hover:underline">{tn(tm.teamName)}</Link>
+                                        <Link to={`/competitions/${id}/team/${tm.teamId}`} className="flex-1 truncate hover:underline">{tn(tm.teamName)}</Link>
                                         {tiebreakerChosenTeams.has(tm.teamId) && (
                                           <span className="text-amber-600 dark:text-amber-400 font-bold flex-shrink-0">✓</span>
                                         )}
@@ -1360,23 +1360,23 @@ export default function CompetitionDetailPage() {
 
                         {/* Actual */}
                         <div className="min-w-0">
-                          <div className="rounded-lg border dark:bg-white/5 p-2">
+                          <div className="rounded-lg border bg-white dark:bg-white/5 p-2">
                             <div className="bg-muted/50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground flex justify-between items-center">
                               <span>{t('common.group')} {groupName}</span>
                               <span className="sm:hidden normal-case tracking-normal font-medium rounded px-1.5 py-0.5 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">{t('competitionDetail.tables.labelActual')}</span>
                             </div>
-                            <table className="w-full text-xs">
+                            <table className="w-full text-xs table-fixed">
                               <thead>
                                 <tr className="border-b text-muted-foreground">
-                                  <th className="pl-3 py-1.5 text-left w-6">#</th>
-                                  <th className="py-1.5 text-left">{t('groupTable.team')}</th>
-                                  <th className="py-1.5 text-center w-6">{t('groupTable.played')}</th>
-                                  <th className="py-1.5 text-center w-6">{t('groupTable.won')}</th>
-                                  <th className="py-1.5 text-center w-6">{t('groupTable.drawn')}</th>
-                                  <th className="py-1.5 text-center w-6">{t('groupTable.lost')}</th>
-                                  <th className="py-1.5 text-center w-8">{t('groupTable.gf')}</th>
-                                  <th className="py-1.5 text-center w-8">{t('groupTable.ga')}</th>
-                                  <th className="pr-3 py-1.5 text-center w-8 font-bold text-foreground">{t('groupTable.pts')}</th>
+                                  <th className="pl-3 py-1.5 text-left">#</th>
+                                  <th className="py-1.5 text-left w-1/2">{t('groupTable.team')}</th>
+                                  <th className="py-1.5 text-center">{t('groupTable.played')}</th>
+                                  <th className="py-1.5 text-center">{t('groupTable.won')}</th>
+                                  <th className="py-1.5 text-center">{t('groupTable.drawn')}</th>
+                                  <th className="py-1.5 text-center">{t('groupTable.lost')}</th>
+                                  <th className="py-1.5 text-center">{t('groupTable.gf')}</th>
+                                  <th className="py-1.5 text-center">{t('groupTable.ga')}</th>
+                                  <th className="pr-3 py-1.5 text-center font-bold text-foreground">{t('groupTable.pts')}</th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y">
@@ -1391,14 +1391,14 @@ export default function CompetitionDetailPage() {
                                       : ''
                                   }>
                                     <td className="pl-3 py-1.5 text-muted-foreground">{i + 1}</td>
-                                    <td className="py-1.5 pr-2">
-                                      <div className="flex items-center gap-1.5">
+                                    <td className="py-1.5 pr-2 overflow-hidden">
+                                      <div className="flex items-center gap-1.5 min-w-0">
                                         {tm.imageUrl ? (
                                           <img src={tm.imageUrl} alt="" className="h-4 w-4 rounded-full object-cover flex-shrink-0" />
                                         ) : (
                                           <div className="h-4 w-4 rounded-full bg-muted flex-shrink-0" />
                                         )}
-                                        <Link to={`/competitions/${id}/team/${tm.teamId}`} className="truncate hover:underline">{tn(tm.teamName)}</Link>
+                                        <Link to={`/competitions/${id}/team/${tm.teamId}`} className="flex-1 truncate hover:underline">{tn(tm.teamName)}</Link>
                                       </div>
                                     </td>
                                     <td className="py-1.5 text-center text-muted-foreground">{tm.P}</td>
@@ -1485,16 +1485,16 @@ export default function CompetitionDetailPage() {
 
                 const llTableHeaders = (
                   <tr className="border-b text-muted-foreground">
-                    <th className="pl-3 py-1.5 text-left w-6">#</th>
-                    <th className="py-1.5 text-left">{t('groupTable.team')}</th>
-                    <th className="py-1.5 text-center w-6">{t('groupTable.played')}</th>
-                    <th className="py-1.5 text-center w-6">{t('groupTable.won')}</th>
-                    <th className="py-1.5 text-center w-6">{t('groupTable.drawn')}</th>
-                    <th className="py-1.5 text-center w-6">{t('groupTable.lost')}</th>
-                    <th className="py-1.5 text-center w-8">{t('groupTable.gd')}</th>
-                    <th className="py-1.5 text-center w-8">{t('groupTable.gf')}</th>
-                    <th className="py-1.5 text-center w-8 font-bold text-foreground">{t('groupTable.pts')}</th>
-                    <th className="py-1.5 text-center w-8">Grp</th>
+                    <th className="pl-3 py-1.5 text-left">#</th>
+                    <th className="py-1.5 text-left w-1/2">{t('groupTable.team')}</th>
+                    <th className="py-1.5 text-center">{t('groupTable.played')}</th>
+                    <th className="py-1.5 text-center">{t('groupTable.won')}</th>
+                    <th className="py-1.5 text-center">{t('groupTable.drawn')}</th>
+                    <th className="py-1.5 text-center">{t('groupTable.lost')}</th>
+                    <th className="py-1.5 text-center">{t('groupTable.gd')}</th>
+                    <th className="py-1.5 text-center">{t('groupTable.gf')}</th>
+                    <th className="py-1.5 text-center font-bold text-foreground">{t('groupTable.pts')}</th>
+                    <th className="py-1.5 text-center">Grp</th>
                   </tr>
                 );
 
@@ -1504,7 +1504,7 @@ export default function CompetitionDetailPage() {
                     <td className="py-1.5 pr-2 overflow-hidden">
                       <div className="flex items-center gap-1.5 min-w-0">
                         {tm.imageUrl ? <img src={tm.imageUrl} alt="" className="h-4 w-4 rounded-full object-cover flex-shrink-0" /> : <div className="h-4 w-4 rounded-full bg-muted flex-shrink-0" />}
-                        <Link to={`/competitions/${id}/team/${tm.teamId}`} className="truncate hover:underline">{tn(tm.teamName)}</Link>
+                        <Link to={`/competitions/${id}/team/${tm.teamId}`} className="flex-1 truncate hover:underline">{tn(tm.teamName)}</Link>
                       </div>
                     </td>
                     <td className="py-1.5 text-center text-muted-foreground">{tm.P}</td>
@@ -1522,7 +1522,7 @@ export default function CompetitionDetailPage() {
                   <div className="space-y-3">
                     <h3 className="text-sm font-semibold">{t('competitionDetail.tables.luckyLosersTable')}</h3>
                     {tournament?.status === 'upcoming' ? (
-                      <div className="rounded-lg border dark:bg-white/5 p-2">
+                      <div className="rounded-lg border bg-white dark:bg-white/5 p-2">
                         <table className="w-full text-xs table-fixed">
                           <thead>{llTableHeaders}</thead>
                           <tbody className="divide-y">
@@ -1545,7 +1545,7 @@ export default function CompetitionDetailPage() {
                             <div className="sm:hidden text-xs font-medium rounded px-1.5 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 inline-block mb-1">
                               {t('competitionDetail.tables.labelPredicted')}
                             </div>
-                            <div className="rounded-lg border dark:bg-white/5 p-2">
+                            <div className="rounded-lg border bg-white dark:bg-white/5 p-2">
                               <table className="w-full text-xs table-fixed">
                                 <thead>{llTableHeaders}</thead>
                                 <tbody className="divide-y">
@@ -1558,7 +1558,7 @@ export default function CompetitionDetailPage() {
                             <div className="sm:hidden text-xs font-medium rounded px-1.5 py-0.5 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 inline-block mb-1">
                               {t('competitionDetail.tables.labelActual')}
                             </div>
-                            <div className="rounded-lg border dark:bg-white/5 p-2">
+                            <div className="rounded-lg border bg-white dark:bg-white/5 p-2">
                               <table className="w-full text-xs table-fixed">
                                 <thead>{llTableHeaders}</thead>
                                 <tbody className="divide-y">
@@ -1696,13 +1696,6 @@ export default function CompetitionDetailPage() {
             : deadlinePassed
               ? `${t('competitionDetail.deadline.closed')} · ${new Date(competition.predictionDeadline!).toLocaleString()}`
               : `${t('competitionDetail.deadline.openUntil')} ${new Date(competition.predictionDeadline!).toLocaleString()}`}
-        </div>
-      )}
-
-      {/* Group stage locked banner */}
-      {groupStageLocked && hasKnockoutPredictions && (
-        <div className="mb-4 rounded-lg bg-muted px-4 py-2.5 text-sm text-muted-foreground">
-          {t('competitionDetail.groupStageLocked')}
         </div>
       )}
 
@@ -2046,26 +2039,6 @@ export default function CompetitionDetailPage() {
 
       {activeTab === 'leaderboard' && (
         <>
-          <div className="flex flex-wrap gap-4 mb-3">
-            <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={showComparisonUsers}
-                onChange={e => setShowComparisonUsers(e.target.checked)}
-                className="rounded"
-              />
-              {t('competitionDetail.leaderboard.showAiUsers')}
-            </label>
-            <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={showInactiveUsers}
-                onChange={e => setShowInactiveUsers(e.target.checked)}
-                className="rounded"
-              />
-              {t('competitionDetail.leaderboard.showInactiveUsers')}
-            </label>
-          </div>
           {leaderboardLoading ? (
             <LoadingSpinner />
           ) : leaderboard.length === 0 ? (
@@ -2220,7 +2193,7 @@ export default function CompetitionDetailPage() {
               );
               return (
                 <div className="hidden tv:grid tv:grid-cols-2 tv:gap-8 tv:items-start mt-4">
-                  <div className="rounded-lg border dark:bg-white/5 p-2">
+                  <div className="rounded-lg border bg-white dark:bg-white/5 p-2">
                     <div style={{ position: 'relative' }}>
                       <SoccerKickAnimation />
                       <table className="w-full text-sm">
@@ -2229,7 +2202,7 @@ export default function CompetitionDetailPage() {
                       </table>
                     </div>
                   </div>
-                  <div className="rounded-lg border dark:bg-white/5 p-2">
+                  <div className="rounded-lg border bg-white dark:bg-white/5 p-2">
                     <div style={{ position: 'relative' }}>
                       <CryingPlayerAnimation />
                       <table className="w-full text-sm">
@@ -2254,6 +2227,26 @@ export default function CompetitionDetailPage() {
                 {t('competitionDetail.leaderboard.inactiveLegend')}
               </p>
             )}
+            <div className="flex flex-wrap gap-4 mt-3">
+              <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={showComparisonUsers}
+                  onChange={e => setShowComparisonUsers(e.target.checked)}
+                  className="rounded"
+                />
+                {t('competitionDetail.leaderboard.showAiUsers')}
+              </label>
+              <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={showInactiveUsers}
+                  onChange={e => setShowInactiveUsers(e.target.checked)}
+                  className="rounded"
+                />
+                {t('competitionDetail.leaderboard.showInactiveUsers')}
+              </label>
+            </div>
           </>);
           })()}
 
@@ -2321,6 +2314,9 @@ export default function CompetitionDetailPage() {
                             Math.sign(activePred!.homeScore - activePred!.awayScore) === Math.sign(effActH - effActA);
                           const isExactScore = hasPred && hasActual &&
                             activePred!.homeScore === effActH && activePred!.awayScore === effActA;
+                          const isPartialCredit = m.stage !== 'group' && !isCorrectResult && hasActual && hasPred && !!activePred &&
+                            m.progressingTeamId !== null &&
+                            activePred.progressingTeamId === m.progressingTeamId;
                           const dotClass = isCurrent
                             ? 'w-5 h-2.5 bg-primary dark:bg-blue-400'
                             : !hasPred
@@ -2331,13 +2327,17 @@ export default function CompetitionDetailPage() {
                             ? 'w-2.5 h-2.5 bg-green-500 ring-1 ring-offset-1 ring-offset-background ring-amber-400'
                             : isCorrectResult
                             ? 'w-2.5 h-2.5 bg-green-500'
+                            : isPartialCredit
+                            ? 'w-2.5 h-2.5'
                             : 'w-2.5 h-2.5 bg-red-500';
+                          const dotStyle = isPartialCredit ? { background: 'linear-gradient(135deg, #fde047 50%, #22c55e 50%)' } : undefined;
                           return (
                             <button
                               key={m.id}
                               type="button"
                               onClick={() => setCurrentPredMatchIdx(idx)}
                               className={`rounded-full transition-all duration-200 ${dotClass}`}
+                              style={dotStyle}
                               aria-label={`Match ${idx + 1}`}
                             />
                           );

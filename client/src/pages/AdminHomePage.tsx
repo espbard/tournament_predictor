@@ -55,7 +55,7 @@ export default function AdminHomePage({ maintenanceMode }: Props) {
   });
 
   return (
-    <main className="mx-auto max-w-2xl md:max-w-4xl lg:max-w-[80%] px-4 py-12">
+    <main className="mx-auto max-w-2xl md:max-w-4xl lg:max-w-[80%] px-4 pt-2.5 pb-12 sm:pt-12">
       <div className="mb-8">
         <h1 className="text-2xl font-bold">{t('admin.panelTitle')}</h1>
         <p className="mt-1 text-sm text-muted-foreground">{t('admin.panelSubtitle')}</p>
