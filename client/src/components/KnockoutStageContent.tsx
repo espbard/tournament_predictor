@@ -1373,14 +1373,20 @@ export function KnockoutBracketVisualizer({
       <div
         key={key}
         style={{ position: 'absolute', left, top, width: V_CARD_W, height: dims.cardH, ...focusStyle }}
-        className={`rounded-sm border${dashed ? ' border-dashed' : ''} bg-card overflow-hidden flex flex-col${clickable ? ' cursor-pointer' : ''}`}
+        className={`rounded-sm bg-card overflow-hidden flex flex-col${clickable ? ' cursor-pointer' : ''}`}
         onClick={clickable ? () => onFocusMatch!(pk!) : undefined}
       >
-        <div style={{ height: dims.slot, opacity: homeFallback ? 0.35 : undefined, boxShadow: homeProgressed ? 'inset 0 0 0 1.5px #eab308' : undefined }} className="flex items-center justify-center">
+        <div
+          style={{ height: dims.slot, opacity: homeFallback ? 0.35 : undefined }}
+          className={`flex items-center justify-center border-t border-l border-r${dashed ? ' border-dashed' : ''} ${homeProgressed ? 'border-[#eab308]' : 'border-border'}`}
+        >
           <VizTeamIcon team={home} size={dims.icon} />
         </div>
         <div className="bg-border flex-shrink-0" style={{ height: 1 }} />
-        <div style={{ height: dims.slot, opacity: awayFallback ? 0.35 : undefined, boxShadow: awayProgressed ? 'inset 0 0 0 1.5px #eab308' : undefined }} className="flex items-center justify-center">
+        <div
+          style={{ height: dims.slot, opacity: awayFallback ? 0.35 : undefined }}
+          className={`flex items-center justify-center border-b border-l border-r${dashed ? ' border-dashed' : ''} ${awayProgressed ? 'border-[#eab308]' : 'border-border'}`}
+        >
           <VizTeamIcon team={away} size={dims.icon} />
         </div>
       </div>
@@ -1401,14 +1407,20 @@ export function KnockoutBracketVisualizer({
       <div
         key={key}
         style={{ position: 'absolute', left, top, width: cardW, height: cardH, ...focusStyle }}
-        className={`rounded-sm border${dashed ? ' border-dashed' : ''} bg-card overflow-hidden flex flex-row${clickable ? ' cursor-pointer' : ''}`}
+        className={`rounded-sm bg-card overflow-hidden flex flex-row${clickable ? ' cursor-pointer' : ''}`}
         onClick={clickable ? () => onFocusMatch!(pk!) : undefined}
       >
-        <div style={{ width: slotW, opacity: homeFallback ? 0.35 : undefined, overflow: 'hidden', background: homeProgressed ? 'radial-gradient(circle, rgba(234,179,8,0.35) 0%, transparent 75%)' : undefined, boxShadow: homeProgressed ? 'inset 0 0 0 1.5px #eab308' : undefined }} className="flex items-center justify-center flex-shrink-0 self-stretch">
+        <div
+          style={{ width: slotW, opacity: homeFallback ? 0.35 : undefined, overflow: 'hidden', background: homeProgressed ? 'radial-gradient(circle, rgba(234,179,8,0.35) 0%, transparent 75%)' : undefined }}
+          className={`flex items-center justify-center flex-shrink-0 self-stretch border-t border-l border-b${dashed ? ' border-dashed' : ''} ${homeProgressed ? 'border-[#eab308]' : 'border-border'}`}
+        >
           <VizTeamIcon team={home} size={iconSize} />
         </div>
         <div className="bg-border flex-shrink-0" style={{ width: 1 }} />
-        <div style={{ width: slotW, opacity: awayFallback ? 0.35 : undefined, overflow: 'hidden', background: awayProgressed ? 'radial-gradient(circle, rgba(234,179,8,0.35) 0%, transparent 75%)' : undefined, boxShadow: awayProgressed ? 'inset 0 0 0 1.5px #eab308' : undefined }} className="flex items-center justify-center flex-shrink-0 self-stretch">
+        <div
+          style={{ width: slotW, opacity: awayFallback ? 0.35 : undefined, overflow: 'hidden', background: awayProgressed ? 'radial-gradient(circle, rgba(234,179,8,0.35) 0%, transparent 75%)' : undefined }}
+          className={`flex items-center justify-center flex-shrink-0 self-stretch border-t border-r border-b${dashed ? ' border-dashed' : ''} ${awayProgressed ? 'border-[#eab308]' : 'border-border'}`}
+        >
           <VizTeamIcon team={away} size={iconSize} />
         </div>
       </div>
