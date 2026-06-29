@@ -91,7 +91,7 @@ export default function Navbar() {
   };
 
   return (
-    <nav className="bg-primary">
+    <nav className="bg-primary dark:bg-background">
       <div className="mx-auto flex items-stretch max-w-5xl px-4">
         {/* App name – hidden on narrow screens */}
         <Link
