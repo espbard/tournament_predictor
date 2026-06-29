@@ -55,23 +55,31 @@ export default function Navbar() {
   }
 
   const isOnCompetitionPage = /^\/competitions\/[^/]+$/.test(location.pathname);
+  const isOnPredictionsPage = /^\/competitions\/[^/]+\/predictions\/[^/]+$/.test(location.pathname);
+  const showTabs = isOnCompetitionPage || isOnPredictionsPage;
+  const competitionId = location.pathname.match(/^\/competitions\/([^/]+)/)?.[1];
+
   const activeTab = searchParams.get('tab') ?? (user?.isLeaderboardUser || user?.isAdmin ? 'leaderboard' : 'group');
 
   const setTab = (tab: string) => {
     setGroupsOpen(false);
     setStandingsOpen(false);
-    setSearchParams(prev => {
-      const n = new URLSearchParams(prev);
-      n.set('tab', tab);
-      return n;
-    }, { replace: true });
+    if (isOnPredictionsPage && competitionId) {
+      navigate(`/competitions/${competitionId}?tab=${tab}`);
+    } else {
+      setSearchParams(prev => {
+        const n = new URLSearchParams(prev);
+        n.set('tab', tab);
+        return n;
+      }, { replace: true });
+    }
   };
 
   const tabCls = (active: boolean) =>
     `whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1 ${
       active
-        ? 'border-primary-foreground text-primary-foreground'
-        : 'border-transparent text-primary-foreground/60 hover:text-primary-foreground'
+        ? 'border-foreground text-foreground'
+        : 'border-transparent text-foreground/50 hover:text-foreground'
     }`;
 
   const dropItemCls = (active: boolean) =>
@@ -81,18 +89,18 @@ export default function Navbar() {
   const standingsActive = activeTab === 'leaderboard' || activeTab === 'pointProgression';
 
   return (
-    <nav className="bg-primary dark:bg-background">
+    <nav className="bg-background border-b border-border">
       <div className="mx-auto flex items-center max-w-5xl px-4 py-2">
         {/* Site name – hidden on mobile only when tabs are shown */}
         <Link
           to="/"
-          className={`shrink-0 flex items-center text-base font-semibold text-primary-foreground hover:opacity-80 mr-3 py-3 ${isOnCompetitionPage ? 'hidden sm:flex' : ''}`}
+          className={`shrink-0 flex items-center text-base font-semibold text-foreground hover:opacity-70 mr-3 py-3 ${showTabs ? 'hidden sm:flex' : ''}`}
         >
           {t('nav.appName')}
         </Link>
 
         {/* Competition tabs */}
-        {isOnCompetitionPage ? (
+        {showTabs ? (
           <div className={`flex items-center flex-1 min-w-0 ${user?.isLeaderboardUser ? 'tv:hidden' : ''}`}>
             {!user?.isAdmin && !user?.isLeaderboardUser ? (
               <>
