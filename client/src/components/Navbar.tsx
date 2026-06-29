@@ -1,6 +1,6 @@
 import { Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { Moon, Sun, ChevronDown } from 'lucide-react';
+import { Moon, Sun, ChevronDown, LogOut, Settings } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
@@ -24,17 +24,17 @@ export default function Navbar() {
   const { language, setLanguage } = useLanguageStore();
   const { theme, toggleTheme } = useThemeStore();
   const { t } = useT();
-  const [langOpen, setLangOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [groupsOpen, setGroupsOpen] = useState(false);
   const [standingsOpen, setStandingsOpen] = useState(false);
-  const langRef = useRef<HTMLDivElement>(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
   const groupsRef = useRef<HTMLDivElement>(null);
   const standingsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (langRef.current && !langRef.current.contains(e.target as Node)) {
-        setLangOpen(false);
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setUserMenuOpen(false);
       }
       if (groupsRef.current && !groupsRef.current.contains(e.target as Node)) {
         setGroupsOpen(false);
@@ -53,8 +53,6 @@ export default function Navbar() {
     queryClient.clear();
     navigate('/login');
   }
-
-  const currentLang = LANGUAGES.find((l) => l.code === language) ?? LANGUAGES[0];
 
   const isOnCompetitionPage = /^\/competitions\/[^/]+$/.test(location.pathname);
   const activeTab = searchParams.get('tab') ?? (user?.isLeaderboardUser || user?.isAdmin ? 'leaderboard' : 'group');
@@ -84,83 +82,18 @@ export default function Navbar() {
 
   return (
     <nav className="bg-primary">
-      <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-        <Link to="/" className="text-base font-semibold text-primary-foreground hover:opacity-80">
+      <div className="mx-auto flex items-stretch max-w-5xl px-4">
+        {/* App name – hidden on narrow screens */}
+        <Link
+          to="/"
+          className="hidden sm:flex shrink-0 items-center text-base font-semibold text-primary-foreground hover:opacity-80 mr-3 py-3"
+        >
           {t('nav.appName')}
         </Link>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={toggleTheme}
-            className="rounded-md border border-primary-foreground/30 p-1.5 text-primary-foreground hover:bg-primary-foreground/10"
-            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-          >
-            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-          </button>
-          <div ref={langRef} className="relative flex items-center">
-            <button
-              onClick={() => setLangOpen((o) => !o)}
-              className="flex items-center hover:opacity-80"
-              title={currentLang.label}
-            >
-              <img src={currentLang.flag} alt={currentLang.label} className="h-5 w-8 rounded-sm object-cover" />
-            </button>
-            {langOpen && (
-              <div
-                className="fixed sm:absolute left-1/2 sm:left-auto -translate-x-1/2 sm:translate-x-0 sm:right-0 top-12 sm:top-full sm:mt-2 z-50 flex flex-row gap-4 px-4 py-3 rounded-md border border-border bg-popover shadow-md"
-                style={{ width: 'max-content' }}
-              >
-                {LANGUAGES.map((lang) => (
-                  <img
-                    key={lang.code}
-                    src={lang.flag}
-                    alt={lang.label}
-                    title={lang.label}
-                    onClick={() => { setLanguage(lang.code); setLangOpen(false); }}
-                    className={`h-8 w-12 rounded-sm object-cover cursor-pointer hover:opacity-80 transition-opacity ${lang.code === language ? 'ring-2 ring-primary' : ''}`}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-          <Link
-            to="/settings"
-            className="flex items-center gap-2 text-sm text-primary-foreground/70 hover:text-primary-foreground"
-          >
-            {user && (
-              <UserAvatar
-                username={user.username}
-                imageUrl={user.imageUrl}
-                iconColor={user.iconColor}
-                className="h-7 w-7"
-              />
-            )}
-          </Link>
-          <button
-            onClick={handleLogout}
-            className="rounded-md border border-primary-foreground/30 p-1.5 text-primary-foreground hover:bg-primary-foreground/10"
-            title={t('nav.logOut')}
-          >
-            <span
-              className="block h-4 w-4 bg-current"
-              aria-hidden="true"
-              style={{
-                maskImage: 'url(/logout-icon.png)',
-                WebkitMaskImage: 'url(/logout-icon.png)',
-                maskSize: 'contain',
-                WebkitMaskSize: 'contain',
-                maskRepeat: 'no-repeat',
-                WebkitMaskRepeat: 'no-repeat',
-                maskPosition: 'center',
-                WebkitMaskPosition: 'center',
-              }}
-            />
-          </button>
-        </div>
-      </div>
 
-      {isOnCompetitionPage && (
-        <div className={user?.isLeaderboardUser ? 'tv:hidden' : ''}>
-          <div className="mx-auto flex items-stretch max-w-5xl px-2">
+        {/* Competition tabs */}
+        {isOnCompetitionPage ? (
+          <div className={`flex items-stretch flex-1 min-w-0 ${user?.isLeaderboardUser ? 'tv:hidden' : ''}`}>
             {!user?.isAdmin && !user?.isLeaderboardUser ? (
               <>
                 {/* Predictions dropdown */}
@@ -225,14 +158,79 @@ export default function Navbar() {
                 </button>
               </>
             ) : (
-              /* Admin */
               <button onClick={() => setTab('leaderboard')} className={tabCls(activeTab === 'leaderboard')}>
                 {t('competitionDetail.tabs.leaderboard')}
               </button>
             )}
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="flex-1" />
+        )}
+
+        {/* User settings menu */}
+        {user && (
+          <div ref={userMenuRef} className="relative shrink-0 flex items-center ml-2">
+            <button
+              onClick={() => setUserMenuOpen(o => !o)}
+              className="flex items-center hover:opacity-80"
+            >
+              <UserAvatar
+                username={user.username}
+                imageUrl={user.imageUrl}
+                iconColor={user.iconColor}
+                className="h-7 w-7"
+              />
+            </button>
+            {userMenuOpen && (
+              <div className="absolute right-0 top-full mt-2 z-[100] w-52 rounded-md border border-border bg-popover shadow-md py-2">
+                {/* Theme toggle */}
+                <button
+                  onClick={toggleTheme}
+                  className="w-full flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-muted"
+                >
+                  {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
+                  {theme === 'dark' ? t('nav.lightMode') : t('nav.darkMode')}
+                </button>
+
+                {/* Language picker */}
+                <div className="px-4 py-2 flex items-center gap-2">
+                  {LANGUAGES.map((lang) => (
+                    <img
+                      key={lang.code}
+                      src={lang.flag}
+                      alt={lang.label}
+                      title={lang.label}
+                      onClick={() => setLanguage(lang.code)}
+                      className={`h-6 w-9 rounded-sm object-cover cursor-pointer hover:opacity-80 transition-opacity ${lang.code === language ? 'ring-2 ring-primary' : ''}`}
+                    />
+                  ))}
+                </div>
+
+                <div className="border-t border-border my-1" />
+
+                {/* Edit profile */}
+                <Link
+                  to="/settings"
+                  onClick={() => setUserMenuOpen(false)}
+                  className="flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-muted"
+                >
+                  <Settings size={15} />
+                  {t('nav.editProfile')}
+                </Link>
+
+                {/* Logout */}
+                <button
+                  onClick={handleLogout}
+                  className="w-full flex items-center gap-3 px-4 py-2 text-sm text-foreground hover:bg-muted"
+                >
+                  <LogOut size={15} />
+                  {t('nav.logOut')}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </nav>
   );
 }

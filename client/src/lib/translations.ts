@@ -39,6 +39,9 @@ const translations = {
       appName: 'Tournament Predictor',
       tabGroups: 'Predictions',
       tabStandings: 'Results',
+      darkMode: 'Dark mode',
+      lightMode: 'Light mode',
+      editProfile: 'Edit profile',
     },
     auth: {
       signIn: 'Sign in',
@@ -530,6 +533,9 @@ const translations = {
       appName: 'Tournament Predictor',
       tabGroups: 'Tips',
       tabStandings: 'Resultat',
+      darkMode: 'Mørkt tema',
+      lightMode: 'Lyst tema',
+      editProfile: 'Rediger profil',
     },
     auth: {
       signIn: 'Logg inn',
@@ -1019,6 +1025,9 @@ const translations = {
       appName: 'Turnier-Wahrsager',
       tabGroups: 'Tipps',
       tabStandings: 'Ergebnisse',
+      darkMode: 'Dunkles Design',
+      lightMode: 'Helles Design',
+      editProfile: 'Profil bearbeiten',
     },
     auth: {
       signIn: 'Einloggen in das System',
