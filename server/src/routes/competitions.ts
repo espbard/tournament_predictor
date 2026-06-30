@@ -1717,6 +1717,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     let theFallerCard: UserStatCardData | null = null;
     let knockoutSpecialistCard: UserStatCardData | null = null;
     let howDidYouKnowCard: UserStatCardData | null = null;
+    let xpertenCard: UserStatCardData | null = null;
     let groupStageGuruCard: UserStatCardData | null = null;
     let thePatriotCard: UserStatCardData | null = null;
     let theOptimistCard: UserStatCardData | null = null;
@@ -2028,6 +2029,75 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
               overlayImageUrl: team?.imageUrl ?? null,
             };
           }
+        }
+      }
+    }
+
+    // ── X-perten / It's a tie!: player with highest % of draw predictions ──
+    {
+      const userDrawStats = new Map<string, { total: number; draws: number }>();
+
+      for (const row of activeRows) {
+        if (!userDrawStats.has(row.userId)) userDrawStats.set(row.userId, { total: 0, draws: 0 });
+        const stats = userDrawStats.get(row.userId)!;
+        stats.total += 1;
+        if (row.predHomeScore === row.predAwayScore) stats.draws += 1;
+      }
+
+      for (const [userId, bpPreds] of bracketPredMapForLeader) {
+        if (activeStatUserIds && !activeStatUserIds.has(userId)) continue;
+        if (!leaderUserInfo.has(userId)) continue;
+        if (!userDrawStats.has(userId)) userDrawStats.set(userId, { total: 0, draws: 0 });
+        const stats = userDrawStats.get(userId)!;
+        for (const pred of Object.values(bpPreds as BracketPredictions)) {
+          stats.total += 1;
+          if (pred.homeScore === pred.awayScore) stats.draws += 1;
+        }
+      }
+
+      const MIN_PREDS = 5;
+      const eligible = [...userDrawStats.entries()]
+        .filter(([, s]) => s.total >= MIN_PREDS)
+        .map(([userId, s]) => ({
+          userId,
+          pct: s.draws / s.total,
+          ...leaderUserInfo.get(userId)!,
+        }));
+
+      if (eligible.length >= 2) {
+        const maxPct = Math.max(...eligible.map(u => u.pct));
+        const minPct = Math.min(...eligible.map(u => u.pct));
+
+        if (maxPct > minPct) {
+          const mostDrawish = eligible
+            .filter(u => u.pct === maxPct)
+            .sort((a, b) => a.username.localeCompare(b.username));
+          const leastDrawish = eligible
+            .filter(u => u.pct === minPct)
+            .sort((a, b) => a.username.localeCompare(b.username));
+
+          const fmtPct = (n: number) => `${Math.round(n * 100)}%`;
+          const highNames = formatUserList(mostDrawish.map(u => u.username), lang);
+          const lowNames = formatUserList(leastDrawish.map(u => u.username), lang);
+
+          xpertenCard = {
+            id: 'xperten',
+            title: lang === 'no' ? 'X-perten' : lang === 'de' ? 'Unentschieden-Experte' : "It's a tie!",
+            statistic:
+              lang === 'no'
+                ? `${highNames} er X-perten! Hele ${fmtPct(maxPct)} av tipsene deres ender med uavgjort. ${lowNames} på sin side har bare ${fmtPct(minPct)} uavgjorte tips.`
+                : lang === 'de'
+                  ? `${highNames} ${mostDrawish.length === 1 ? 'tippt' : 'tippen'} die meisten Unentschieden! ${fmtPct(maxPct)} ihrer Tipps enden remis. ${lowNames} hingegen hat nur ${fmtPct(minPct)} Unentschieden-Tipps.`
+                  : `${highNames} ${mostDrawish.length === 1 ? 'is' : 'are'} the draw specialist${mostDrawish.length === 1 ? '' : 's'}! ${fmtPct(maxPct)} of their predictions end in a draw. ${lowNames} on the other hand ${leastDrawish.length === 1 ? 'has' : 'have'} just ${fmtPct(minPct)} draw predictions.`,
+            subjects: mostDrawish.map(u => ({
+              type: 'user' as const,
+              id: u.userId,
+              name: u.username,
+              imageUrl: u.imageUrl,
+              iconColor: u.iconColor,
+            })),
+            linkType: 'leaderboard',
+          };
         }
       }
     }
@@ -3482,6 +3552,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       theFallerCard,
       knockoutSpecialistCard,
       howDidYouKnowCard,
+      xpertenCard,
       bestPredictionCard,
       worstPredictionCard,
       bestFormCard,
