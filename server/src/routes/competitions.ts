@@ -1719,6 +1719,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     let howDidYouKnowCard: UserStatCardData | null = null;
     let paperTigerCard: UserStatCardData | null = null;
     let xpertenCard: UserStatCardData | null = null;
+    let twinSpiritsCard: UserStatCardData | null = null;
     let groupStageGuruCard: UserStatCardData | null = null;
     let thePatriotCard: UserStatCardData | null = null;
     let theOptimistCard: UserStatCardData | null = null;
@@ -3638,6 +3639,93 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       };
     }
 
+    // ── Twin Spirits: pair of users with highest % of matching predicted results ──
+    {
+      // Build per-match per-user result (H/D/A) for group stage
+      const slotResultsByUser = new Map<string, Map<string, 'H' | 'D' | 'A'>>();
+      for (const row of activeRows) {
+        if (!slotResultsByUser.has(row.matchId)) slotResultsByUser.set(row.matchId, new Map());
+        const result: 'H' | 'D' | 'A' = row.predHomeScore > row.predAwayScore ? 'H' : row.predHomeScore === row.predAwayScore ? 'D' : 'A';
+        slotResultsByUser.get(row.matchId)!.set(row.userId, result);
+      }
+
+      // Build per-bracket-slot per-user result for KO stage
+      for (const [userId, bpPreds] of bracketPredMapForLeader) {
+        if (activeStatUserIds && !activeStatUserIds.has(userId)) continue;
+        if (!leaderUserInfo.has(userId)) continue;
+        for (const [key, pred] of Object.entries(bpPreds as BracketPredictions)) {
+          const slotKey = `ko:${key}`;
+          if (!slotResultsByUser.has(slotKey)) slotResultsByUser.set(slotKey, new Map());
+          const p = pred as { homeScore: number; awayScore: number };
+          const result: 'H' | 'D' | 'A' = p.homeScore > p.awayScore ? 'H' : p.homeScore === p.awayScore ? 'D' : 'A';
+          slotResultsByUser.get(slotKey)!.set(userId, result);
+        }
+      }
+
+      const allActiveUserIdSet = new Set<string>();
+      for (const row of activeRows) allActiveUserIdSet.add(row.userId);
+      for (const [userId] of bracketPredMapForLeader) {
+        if ((!activeStatUserIds || activeStatUserIds.has(userId)) && leaderUserInfo.has(userId))
+          allActiveUserIdSet.add(userId);
+      }
+      const userIdList = [...allActiveUserIdSet];
+      const allSlotMaps = [...slotResultsByUser.values()];
+
+      const MIN_SHARED = 10;
+      let bestPct = -1;
+      let bestShared = 0;
+      let bestPair: [string, string] | null = null;
+
+      for (let i = 0; i < userIdList.length; i++) {
+        for (let j = i + 1; j < userIdList.length; j++) {
+          const userA = userIdList[i];
+          const userB = userIdList[j];
+          let shared = 0;
+          let agreed = 0;
+          for (const userResults of allSlotMaps) {
+            const resA = userResults.get(userA);
+            const resB = userResults.get(userB);
+            if (resA === undefined || resB === undefined) continue;
+            shared++;
+            if (resA === resB) agreed++;
+          }
+          if (shared >= MIN_SHARED) {
+            const pct = agreed / shared;
+            if (pct > bestPct || (pct === bestPct && shared > bestShared)) {
+              bestPct = pct;
+              bestShared = shared;
+              bestPair = [userA, userB];
+            }
+          }
+        }
+      }
+
+      if (bestPair) {
+        const [userAId, userBId] = bestPair;
+        const infoA = leaderUserInfo.get(userAId)!;
+        const infoB = leaderUserInfo.get(userBId)!;
+        const [first, second] = [{ id: userAId, ...infoA }, { id: userBId, ...infoB }]
+          .sort((a, b) => a.username.localeCompare(b.username));
+        const fmtPct = (n: number) => `${Math.round(n * 100)}%`;
+
+        twinSpiritsCard = {
+          id: 'twinSpirits',
+          title: lang === 'no' ? 'Skilt ved fødselen' : lang === 'de' ? 'Seelenverwandte' : 'Twin spirits',
+          statistic:
+            lang === 'no'
+              ? `**${first.username}** og **${second.username}** har tippet samme resultat i ${fmtPct(bestPct)} av alle kampene de begge har tippet! Disse to er virkelig skilt ved fødselen.`
+              : lang === 'de'
+                ? `**${first.username}** und **${second.username}** haben in ${fmtPct(bestPct)} aller Spiele, die sie beide getippt haben, dasselbe Ergebnis vorhergesagt! Wahrhaftige Seelenverwandte.`
+                : `**${first.username}** and **${second.username}** predicted the same result in ${fmtPct(bestPct)} of all games they both predicted! Truly twin spirits.`,
+          subjects: [
+            { type: 'user' as const, id: first.id, name: first.username, imageUrl: first.imageUrl, iconColor: first.iconColor },
+            { type: 'user' as const, id: second.id, name: second.username, imageUrl: second.imageUrl, iconColor: second.iconColor },
+          ],
+          linkType: 'leaderboard',
+        };
+      }
+    }
+
     const cards = [
       theLeaderCard,
       bottomOfTheLeagueCard,
@@ -3664,6 +3752,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       jaViElskerCard,
       traitorCard,
       brautometerCard,
+      twinSpiritsCard,
       matchMadeInHeavenCard,
       audienceDarlingCard,
     ].filter((card): card is UserStatCardData => card !== null);
