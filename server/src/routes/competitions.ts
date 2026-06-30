@@ -1932,7 +1932,9 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
                 : `${formatUserList(climbers.map(u => u.username), lang)} ${climbers.length === 1 ? 'has' : 'have'} climbed ${maxClimbed} ${maxClimbed === 1 ? 'spot' : 'spots'} on the leaderboard over the last 10 games!`,
           subjects: climbers.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
           linkType: 'leaderboard',
-          backgroundImageUrl: '/arrow-up.png',
+          backgroundImageUrl: '/climber.png',
+          backgroundImagePosition: 'right' as const,
+          backgroundImageFilter: 'sepia(1) hue-rotate(160deg) saturate(4) brightness(0.75)',
         };
       }
 
