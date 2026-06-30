@@ -851,11 +851,15 @@ router.get('/:id/leaderboard-progression', requireAuth, async (req, res) => {
     // Knockout milestones — compute calculateKnockoutPoints incrementally
     const prevKoTotals: Record<string, number> = {};
     for (const userId of memberIds) prevKoTotals[userId] = 0;
+    const processedKoMatchIds = new Set<string>();
 
     for (const match of completedKoMatches) {
-      const matchTime = match.scheduledAt ? new Date(match.scheduledAt).getTime() : Infinity;
+      processedKoMatchIds.add(match.id);
 
-      // Build filtered KO match list: completed only up to and including this match's scheduledAt
+      // Build filtered KO match list: completed only for matches processed so far.
+      // Using a Set of IDs (rather than a scheduledAt cutoff) keeps the cumulative total
+      // monotonically increasing even when bracketIndex order diverges from scheduledAt order
+      // (e.g. two R16 games on the same day where bracketIndex=0 kicks off later than bracketIndex=1).
       const filteredKoMatches: CompletedKnockoutMatch[] = allKoMatchesRaw.map(m => ({
         id: m.id,
         stage: m.stage,
@@ -864,9 +868,7 @@ router.get('/:id/leaderboard-progression', requireAuth, async (req, res) => {
         homeScore: m.homeScore ?? 0,
         awayScore: m.awayScore ?? 0,
         progressingTeamId: m.progressingTeamId,
-        status: m.status === 'completed' && m.scheduledAt && new Date(m.scheduledAt).getTime() <= matchTime
-          ? 'completed'
-          : 'scheduled',
+        status: processedKoMatchIds.has(m.id) ? 'completed' : 'scheduled',
       }));
 
       for (const member of memberRows) {
