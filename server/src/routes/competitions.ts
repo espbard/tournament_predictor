@@ -1868,7 +1868,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       }
     }
 
-    // ── Knockout Specialist: biggest improvement from group stage to KO, among bottom-half group-stage scorers ──
+    // ── Knockout Specialist: biggest rank improvement from group stage ranking to KO ranking ──
     {
       const activeForKo = memberRows.filter(m => !activeStatUserIds || activeStatUserIds.has(m.userId));
       if (activeForKo.length >= 4) {
@@ -1885,29 +1885,43 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
             row.correctWinnerPoints,
         }));
 
-        const sortedByGroup = [...withPoints].sort((a, b) => b.groupPoints - a.groupPoints);
-        const bottomHalf = sortedByGroup.slice(Math.floor(sortedByGroup.length / 2));
+        const anyKoPoints = withPoints.some(u => u.koPoints > 0);
+        if (anyKoPoints) {
+          function rankPlayers(players: typeof withPoints, key: 'groupPoints' | 'koPoints'): Map<string, number> {
+            const sorted = [...players].sort((a, b) => b[key] - a[key]);
+            const ranks = new Map<string, number>();
+            for (let i = 0; i < sorted.length; i++) {
+              const rank = i === 0 || sorted[i][key] < sorted[i - 1][key] ? i + 1 : ranks.get(sorted[i - 1].userId)!;
+              ranks.set(sorted[i].userId, rank);
+            }
+            return ranks;
+          }
 
-        const maxImprovement = bottomHalf.length > 0
-          ? Math.max(...bottomHalf.map(u => u.koPoints - u.groupPoints))
-          : -Infinity;
+          const groupRanks = rankPlayers(withPoints, 'groupPoints');
+          const koRanks = rankPlayers(withPoints, 'koPoints');
 
-        if (maxImprovement > 0) {
-          const specialists = bottomHalf
-            .filter(u => u.koPoints - u.groupPoints === maxImprovement)
-            .sort((a, b) => a.username.localeCompare(b.username));
-          knockoutSpecialistCard = {
-            id: 'knockoutSpecialist',
-            title: lang === 'no' ? 'Best når det gjelder' : lang === 'de' ? 'K.O.-Spezialist' : 'The Knockout Specialist',
-            statistic:
-              lang === 'no'
-                ? `${formatUserList(specialists.map(u => u.username), lang)} sleit i gruppespillet, men virkelig best når det gjelder! ${maxImprovement} flere poeng fra sluttspillet enn fra gruppespillet!`
-                : lang === 'de'
-                  ? `${formatUserList(specialists.map(u => u.username), lang)} ${specialists.length === 1 ? 'kämpfte' : 'kämpften'} in der Gruppe, aber ${specialists.length === 1 ? 'glänzte' : 'glänzten'} im K.O.! ${maxImprovement} Punkte mehr als in der Gruppenphase!`
-                  : `${formatUserList(specialists.map(u => u.username), lang)} struggled in the group stage but turned it around in the knockouts — earning ${maxImprovement} more points in the knockout rounds than in the group stage!`,
-            subjects: specialists.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
-            linkType: 'leaderboard',
-          };
+          const candidates = withPoints
+            .filter(u => u.koPoints > 0)
+            .map(u => ({ ...u, rankImprovement: groupRanks.get(u.userId)! - koRanks.get(u.userId)! }));
+
+          const maxRankImprovement = candidates.length > 0 ? Math.max(...candidates.map(u => u.rankImprovement)) : 0;
+          if (maxRankImprovement > 0) {
+            const specialists = candidates
+              .filter(u => u.rankImprovement === maxRankImprovement)
+              .sort((a, b) => a.username.localeCompare(b.username));
+            knockoutSpecialistCard = {
+              id: 'knockoutSpecialist',
+              title: lang === 'no' ? 'Best når det gjelder' : lang === 'de' ? 'K.O.-Spezialist' : 'The Knockout Specialist',
+              statistic:
+                lang === 'no'
+                  ? `${formatUserList(specialists.map(u => u.username), lang)} sleit i gruppespillet, men virkelig best når det gjelder! ${maxRankImprovement} plasser bedre rangert i sluttspillet enn i gruppespillet!`
+                  : lang === 'de'
+                    ? `${formatUserList(specialists.map(u => u.username), lang)} ${specialists.length === 1 ? 'kämpfte' : 'kämpften'} in der Gruppe, aber ${specialists.length === 1 ? 'glänzte' : 'glänzten'} im K.O.! ${maxRankImprovement} ${maxRankImprovement === 1 ? 'Platz' : 'Plätze'} besser als in der Gruppenphase!`
+                    : `${formatUserList(specialists.map(u => u.username), lang)} struggled in the group stage but turned it around in the knockouts — ${maxRankImprovement} ${maxRankImprovement === 1 ? 'place' : 'places'} higher in the knockout rankings than in the group stage!`,
+              subjects: specialists.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
+              linkType: 'leaderboard',
+            };
+          }
         }
       }
     }
