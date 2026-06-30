@@ -276,7 +276,7 @@ async function recomputeAllMemberBreakdowns(
 
         const predKey = `${m.stage}_${matchIdx}`;
         const pred = updatedBracketPreds[predKey];
-        if (!pred || pred.flipped) continue;
+        if (!pred) continue;
 
         let predHome: string | null = null;
         let predAway: string | null = null;
@@ -297,8 +297,8 @@ async function recomputeAllMemberBreakdowns(
           (predHome !== null && predHome === m.awayTeamId) ||
           (predAway !== null && predAway === m.homeTeamId);
 
-        if (shouldFlip) {
-          updatedBracketPreds = { ...updatedBracketPreds, [predKey]: { ...pred, flipped: true } };
+        if (shouldFlip !== !!pred.flipped) {
+          updatedBracketPreds = { ...updatedBracketPreds, [predKey]: { ...pred, flipped: shouldFlip } };
           bracketPredsChanged = true;
         }
       }
