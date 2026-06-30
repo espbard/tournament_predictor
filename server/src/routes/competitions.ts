@@ -2020,10 +2020,10 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
               title: lang === 'no' ? 'Hvordan visste du det?' : lang === 'de' ? 'Wie wusstest du das?' : 'How did you know?',
               statistic:
                 lang === 'no'
-                  ? `${formatUserList(subjects.map(s => s.name), lang)} trodde at **${teamNameStr}** ville ta seg til sluttspillet! Bare ${minPredictors} av ${activeUsersWithBracketPreds} spillere så det komme!`
+                  ? `${formatUserList(subjects.map(s => s.name), lang)} trodde at **${teamNameStr}** ville ta seg til sluttspillet! Ingen andre så det komme!`
                   : lang === 'de'
-                    ? `${formatUserList(subjects.map(s => s.name), lang)} ${subjects.length === 1 ? 'hat' : 'haben'} **${teamNameStr}** in der K.O.-Runde gesehen! Nur ${minPredictors} von ${activeUsersWithBracketPreds} Nutzern haben das vorhergesehen!`
-                    : `${formatUserList(subjects.map(s => s.name), lang)} predicted **${teamNameStr}** to make it to the knockouts! Only ${minPredictors} out of ${activeUsersWithBracketPreds} users saw that coming!`,
+                    ? `${formatUserList(subjects.map(s => s.name), lang)} ${subjects.length === 1 ? 'hat' : 'haben'} **${teamNameStr}** in der K.O.-Runde gesehen! Niemand sonst hat das kommen sehen!`
+                    : `${formatUserList(subjects.map(s => s.name), lang)} predicted **${teamNameStr}** to make it to the knockouts! No one else saw that coming!`,
               subjects,
               linkType: 'leaderboard',
               overlayImageUrl: team?.imageUrl ?? null,
