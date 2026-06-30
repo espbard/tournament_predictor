@@ -186,6 +186,10 @@ export interface UserStatCardData {
   matchId?: string | null;
   overlayImageUrl?: string | null;
   iconImageUrl?: string | null;
+  backgroundImageUrl?: string | null;
+  backgroundImagePosition?: 'center' | 'right' | null;
+  backgroundImageFilter?: string | null;
+  backgroundImageBlend?: 'multiply' | 'screen' | null;
   distributionData?: { value: number; count: number }[] | null;
   distributionActualValue?: number | null;
 }
