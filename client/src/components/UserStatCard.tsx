@@ -116,31 +116,28 @@ export default function UserStatCard({ competitionId, data, onMatchClick, onLead
   const displaySubjects = subjects.length >= 7 ? subjects.slice(0, 1) : subjects;
   const hasImage = !!(data.iconImageUrl || data.backgroundImageUrl || displaySubjects.length > 0);
 
-  const avatarSize = displaySubjects.length === 1 ? 'w-20 h-20' : displaySubjects.length <= 3 ? 'w-16 h-16' : 'w-12 h-12';
-
   const image = hasImage && (
     <div className="relative h-44 w-full flex-shrink-0">
       {data.backgroundImageUrl ? (
         <>
           <img src={data.backgroundImageUrl} alt="" className="absolute inset-0 h-full w-full object-contain p-4" />
-          <div className="absolute inset-0 flex items-center justify-center gap-2" style={{ zIndex: 1 }}>
-            {displaySubjects.map(subject =>
-              subject.type === 'user' ? (
-                <UserAvatar
-                  key={subject.id}
-                  username={subject.name}
-                  imageUrl={subject.imageUrl}
-                  iconColor={subject.iconColor}
-                  className={`${avatarSize} ring-2 ring-white shadow-lg`}
-                />
-              ) : (
-                <img
-                  key={subject.id}
-                  src={subject.imageUrl ?? '/default-avatar.png'}
-                  alt={subject.name}
-                  className={`${avatarSize} rounded-full object-cover ring-2 ring-white shadow-lg`}
-                />
-              )
+          <div className="absolute inset-0 opacity-60" style={{ zIndex: 1 }}>
+            {displaySubjects.length > 1 ? (
+              <CollageGrid subjects={displaySubjects} />
+            ) : displaySubjects[0]?.type === 'user' && !displaySubjects[0]?.imageUrl ? (
+              <UserAvatar
+                username={displaySubjects[0].name}
+                imageUrl={displaySubjects[0].imageUrl}
+                iconColor={displaySubjects[0].iconColor}
+                className="h-full w-full"
+                style={{ borderRadius: 0 }}
+              />
+            ) : (
+              <img
+                src={displaySubjects[0]?.imageUrl ?? '/default-avatar.png'}
+                alt={displaySubjects[0]?.name ?? ''}
+                className="h-full w-full object-cover"
+              />
             )}
           </div>
         </>
