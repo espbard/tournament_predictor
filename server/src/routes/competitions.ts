@@ -2103,7 +2103,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
             paperTigerCard = {
               id: 'paperTiger',
-              title: lang === 'no' ? 'Papirtiger' : lang === 'de' ? 'Papiertiger' : 'Paper Tiger',
+              title: lang === 'no' ? 'Sjokk-exit' : lang === 'de' ? 'Papiertiger' : 'Paper Tiger',
               statistic:
                 lang === 'no'
                   ? noOneCorrect
