@@ -499,7 +499,7 @@ router.get('/:id/leaderboard', requireAuth, async (req, res) => {
     rowsWithTotal.sort((a, b) => b.totalPoints - a.totalPoints);
 
     const allCompletedMatchesSorted = await db
-      .select({ id: matches.id, scheduledAt: matches.scheduledAt })
+      .select({ id: matches.id, scheduledAt: matches.scheduledAt, stage: matches.stage })
       .from(matches)
       .where(and(eq(matches.tournamentId, competition.tournamentId), eq(matches.status, 'completed')))
       .orderBy(desc(matches.scheduledAt));
@@ -515,6 +515,22 @@ router.get('/:id/leaderboard', requireAuth, async (req, res) => {
       for (const p of allPredRows) {
         if (!userPredMatchIds.has(p.userId)) userPredMatchIds.set(p.userId, new Set());
         userPredMatchIds.get(p.userId)!.add(p.matchId);
+      }
+    }
+
+    // KO match predictions live in bracketPredictions, not predictions. If any of the last 5 completed
+    // matches are KO matches, treat users with non-empty bracket predictions as active.
+    const hasRecentKoMatches = globalRecentMatchIds.length >= 5 &&
+      allCompletedMatchesSorted.slice(0, 5).some(m => m.stage !== 'group');
+    const bracketActiveUserIds = new Set<string>();
+    if (hasRecentKoMatches) {
+      const bpRows = await db
+        .select({ userId: bracketPredictions.userId, preds: bracketPredictions.predictions })
+        .from(bracketPredictions)
+        .where(eq(bracketPredictions.competitionId, id));
+      for (const bp of bpRows) {
+        const preds = bp.preds as Record<string, unknown>;
+        if (preds && Object.keys(preds).length > 0) bracketActiveUserIds.add(bp.userId);
       }
     }
 
@@ -549,9 +565,13 @@ router.get('/:id/leaderboard', requireAuth, async (req, res) => {
             const postJoinMatches = allCompletedMatchesSorted
               .filter(m => m.scheduledAt != null && m.scheduledAt >= row.joinedAt)
               .slice(0, 5);
-            return postJoinMatches.length >= 5 && postJoinMatches.every(m => !userPreds.has(m.id));
+            if (postJoinMatches.length < 5) return false;
+            if (postJoinMatches.some(m => m.stage !== 'group') && bracketActiveUserIds.has(row.userId)) return false;
+            return postJoinMatches.every(m => !userPreds.has(m.id));
           }
-          return globalRecentMatchIds.length >= 5 && globalRecentMatchIds.every(mid => !userPreds.has(mid));
+          if (globalRecentMatchIds.length < 5) return false;
+          if (hasRecentKoMatches && bracketActiveUserIds.has(row.userId)) return false;
+          return globalRecentMatchIds.every(mid => !userPreds.has(mid));
         })(),
       };
     });
@@ -614,7 +634,7 @@ router.get('/:id/leaderboard-progression', requireAuth, async (req, res) => {
 
     // Filter out inactive users (no predictions in the 5 most recent completed matches)
     const recentCompletedForProgression = await db
-      .select({ id: matches.id })
+      .select({ id: matches.id, stage: matches.stage })
       .from(matches)
       .where(and(eq(matches.tournamentId, competition.tournamentId), eq(matches.status, 'completed')))
       .orderBy(desc(matches.scheduledAt))
@@ -631,6 +651,18 @@ router.get('/:id/leaderboard-progression', requireAuth, async (req, res) => {
           inArray(predictions.userId, allMemberIds),
         ));
       const activeUserIds = new Set(activePredRows.map(p => p.userId));
+      // KO predictions live in bracketPredictions. If any recent matches are KO matches,
+      // treat users with non-empty bracket predictions as active.
+      if (recentCompletedForProgression.some(m => m.stage !== 'group')) {
+        const bpRows = await db
+          .select({ userId: bracketPredictions.userId, preds: bracketPredictions.predictions })
+          .from(bracketPredictions)
+          .where(and(eq(bracketPredictions.competitionId, id), inArray(bracketPredictions.userId, allMemberIds)));
+        for (const bp of bpRows) {
+          const preds = bp.preds as Record<string, unknown>;
+          if (preds && Object.keys(preds).length > 0) activeUserIds.add(bp.userId);
+        }
+      }
       memberRows = memberRows.filter(m => activeUserIds.has(m.userId));
     }
 
