@@ -2280,6 +2280,8 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
               iconColor: u.iconColor,
             })),
             linkType: 'leaderboard',
+            backgroundImageUrl: '/scoreboard-tie.png',
+            backgroundImageBlend: 'screen' as const,
           };
         }
       }
