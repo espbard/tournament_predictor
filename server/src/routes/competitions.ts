@@ -733,12 +733,16 @@ router.get('/:id/leaderboard-progression', requireAuth, async (req, res) => {
       predLookup.get(p.matchId)!.set(p.userId, p.points ?? 0);
     }
 
-    // Group predictions by user for standings computation
+    // Group predictions by user for standings computation.
+    // Include replacement predictions so late addition users' predicted standings
+    // are derived from all group matches (matching the scoring trigger's behaviour).
+    // Real predictions overwrite replacements for the same match when both exist.
     const groupPredsByUser = new Map<string, Map<string, typeof allGroupPreds[number]>>();
     for (const p of allGroupPreds) {
-      if (p.isReplacement) continue;
       if (!groupPredsByUser.has(p.userId)) groupPredsByUser.set(p.userId, new Map());
-      groupPredsByUser.get(p.userId)!.set(p.matchId, p);
+      if (!p.isReplacement || !groupPredsByUser.get(p.userId)!.has(p.matchId)) {
+        groupPredsByUser.get(p.userId)!.set(p.matchId, p);
+      }
     }
 
     // Fetch bracket predictions for all members
@@ -864,7 +868,7 @@ router.get('/:id/leaderboard-progression', requireAuth, async (req, res) => {
         homeScore: m.homeScore ?? 0,
         awayScore: m.awayScore ?? 0,
         progressingTeamId: m.progressingTeamId,
-        status: m.status === 'completed' && m.scheduledAt && new Date(m.scheduledAt).getTime() <= matchTime
+        status: m.status === 'completed' && (!m.scheduledAt ? matchTime === Infinity : new Date(m.scheduledAt).getTime() <= matchTime)
           ? 'completed'
           : 'scheduled',
       }));
@@ -1702,7 +1706,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       const filteredKoMatches: CompletedKnockoutMatch[] = allKoMatchesForLeader.map(m => ({
         id: m.id, stage: m.stage, homeTeamId: m.homeTeamId, awayTeamId: m.awayTeamId,
         homeScore: m.homeScore ?? 0, awayScore: m.awayScore ?? 0, progressingTeamId: m.progressingTeamId,
-        status: m.status === 'completed' && m.scheduledAt && new Date(m.scheduledAt).getTime() <= matchTime
+        status: m.status === 'completed' && (!m.scheduledAt ? matchTime === Infinity : new Date(m.scheduledAt).getTime() <= matchTime)
           ? 'completed' : 'scheduled',
       }));
 
