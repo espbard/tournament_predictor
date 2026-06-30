@@ -1648,6 +1648,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     for (const userId of leaderUserInfo.keys()) cumulativePointsByUser.set(userId, 0);
 
     const leadingSetsByMatch: Set<string>[] = [];
+    const rankSnapshotsByMatch: Map<string, number>[] = [];
 
     // Group stage milestones
     for (const match of completedGroupMatchesForLeader) {
@@ -1657,6 +1658,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       }
       const maxPts = Math.max(...[...cumulativePointsByUser.entries()].map(([uid, p]) => p + (nonMatchPointsByUser.get(uid) ?? 0)));
       leadingSetsByMatch.push(new Set([...cumulativePointsByUser.entries()].filter(([uid, p]) => p + (nonMatchPointsByUser.get(uid) ?? 0) === maxPts).map(([uid]) => uid)));
+      rankSnapshotsByMatch.push(new Map(cumulativePointsByUser));
     }
 
     // Knockout stage milestones — compute KO points incrementally per match
@@ -1685,6 +1687,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
       const maxPts = Math.max(...[...cumulativePointsByUser.entries()].map(([uid, p]) => p + (nonMatchPointsByUser.get(uid) ?? 0)));
       leadingSetsByMatch.push(new Set([...cumulativePointsByUser.entries()].filter(([uid, p]) => p + (nonMatchPointsByUser.get(uid) ?? 0) === maxPts).map(([uid]) => uid)));
+      rankSnapshotsByMatch.push(new Map(cumulativePointsByUser));
     }
 
     let kingGroup: { userId: string; username: string; imageUrl: string | null; iconColor: string | null; streak: number }[] = [];
@@ -1710,6 +1713,13 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
     let theLeaderCard: UserStatCardData | null = null;
     let bottomOfTheLeagueCard: UserStatCardData | null = null;
+    let theClimberCard: UserStatCardData | null = null;
+    let theFallerCard: UserStatCardData | null = null;
+    let knockoutSpecialistCard: UserStatCardData | null = null;
+    let howDidYouKnowCard: UserStatCardData | null = null;
+    let paperTigerCard: UserStatCardData | null = null;
+    let xpertenCard: UserStatCardData | null = null;
+    let twinSpiritsCard: UserStatCardData | null = null;
     let groupStageGuruCard: UserStatCardData | null = null;
     let thePatriotCard: UserStatCardData | null = null;
     let theOptimistCard: UserStatCardData | null = null;
@@ -1790,6 +1800,400 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         subjects: bottomGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
         linkType: 'leaderboard',
       };
+    }
+
+    // ── The Climber / The Faller: biggest rank change over the last 10 games ──
+    if (rankSnapshotsByMatch.length >= 11) {
+      const totalSnapshots = rankSnapshotsByMatch.length;
+      const snapshotBefore = rankSnapshotsByMatch[totalSnapshots - 11];
+      const snapshotCurrent = rankSnapshotsByMatch[totalSnapshots - 1];
+
+      function computeRankMap(snapshot: Map<string, number>): Map<string, number> {
+        const sorted = [...snapshot.entries()]
+          .map(([uid, pts]) => ({ uid, total: pts + (nonMatchPointsByUser.get(uid) ?? 0) }))
+          .sort((a, b) => b.total - a.total);
+        const rankMap = new Map<string, number>();
+        for (let i = 0; i < sorted.length; i++) {
+          const rank = i === 0 || sorted[i].total < sorted[i - 1].total ? i + 1 : rankMap.get(sorted[i - 1].uid)!;
+          rankMap.set(sorted[i].uid, rank);
+        }
+        return rankMap;
+      }
+
+      const ranksBefore = computeRankMap(snapshotBefore);
+      const ranksCurrent = computeRankMap(snapshotCurrent);
+
+      type RankChange = { userId: string; username: string; imageUrl: string | null; iconColor: string | null; spotsClimbed: number };
+      const rankChanges: RankChange[] = [];
+      for (const [userId, currentRank] of ranksCurrent) {
+        const previousRank = ranksBefore.get(userId);
+        if (previousRank === undefined) continue;
+        const userInfo = leaderUserInfo.get(userId);
+        if (!userInfo) continue;
+        rankChanges.push({ userId, ...userInfo, spotsClimbed: previousRank - currentRank });
+      }
+
+      const maxClimbed = rankChanges.length > 0 ? Math.max(...rankChanges.map(r => r.spotsClimbed)) : 0;
+      if (maxClimbed >= 2) {
+        const climbers = rankChanges
+          .filter(r => r.spotsClimbed === maxClimbed)
+          .sort((a, b) => a.username.localeCompare(b.username));
+        theClimberCard = {
+          id: 'theClimber',
+          title: lang === 'no' ? 'Det klatres!' : lang === 'de' ? 'Der Aufsteiger' : 'The Climber',
+          statistic:
+            lang === 'no'
+              ? `${formatUserList(climbers.map(u => u.username), lang)} har klatret ${maxClimbed} ${maxClimbed === 1 ? 'plass' : 'plasser'} på tabellen de siste 10 kampene!`
+              : lang === 'de'
+                ? `${formatUserList(climbers.map(u => u.username), lang)} ist in den letzten 10 Spielen um ${maxClimbed} ${maxClimbed === 1 ? 'Platz' : 'Plätze'} aufgestiegen!`
+                : `${formatUserList(climbers.map(u => u.username), lang)} ${climbers.length === 1 ? 'has' : 'have'} climbed ${maxClimbed} ${maxClimbed === 1 ? 'spot' : 'spots'} on the leaderboard over the last 10 games!`,
+          subjects: climbers.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
+          linkType: 'leaderboard',
+        };
+      }
+
+      const maxFell = rankChanges.length > 0 ? Math.max(...rankChanges.map(r => -r.spotsClimbed)) : 0;
+      if (maxFell >= 2) {
+        const fallers = rankChanges
+          .filter(r => -r.spotsClimbed === maxFell)
+          .sort((a, b) => a.username.localeCompare(b.username));
+        theFallerCard = {
+          id: 'theFaller',
+          title: lang === 'no' ? 'Rett åt skogen' : lang === 'de' ? 'Tabellenabsteiger' : "I'm falling!",
+          statistic:
+            lang === 'no'
+              ? `${formatUserList(fallers.map(u => u.username), lang)} har falt ${maxFell} ${maxFell === 1 ? 'plass' : 'plasser'} på tabellen de siste 10 kampene!`
+              : lang === 'de'
+                ? `${formatUserList(fallers.map(u => u.username), lang)} ist in den letzten 10 Spielen um ${maxFell} ${maxFell === 1 ? 'Platz' : 'Plätze'} abgefallen!`
+                : `${formatUserList(fallers.map(u => u.username), lang)} ${fallers.length === 1 ? 'has' : 'have'} dropped ${maxFell} ${maxFell === 1 ? 'spot' : 'spots'} on the leaderboard over the last 10 games!`,
+          subjects: fallers.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
+          linkType: 'leaderboard',
+        };
+      }
+    }
+
+    // ── Knockout Specialist: biggest rank improvement from group stage ranking to KO ranking ──
+    {
+      const activeForKo = memberRows.filter(m => !activeStatUserIds || activeStatUserIds.has(m.userId));
+      if (activeForKo.length >= 4) {
+        const withPoints = activeForKo.map(row => ({
+          userId: row.userId,
+          username: row.username,
+          imageUrl: row.imageUrl,
+          iconColor: row.iconColor ?? null,
+          groupPoints: row.exactScorePoints + row.correctResultPoints,
+          koPoints:
+            row.correctTeamProgressesPoints +
+            row.correctTeamInKnockoutTiePoints +
+            row.correctTeamInFinalPoints +
+            row.correctWinnerPoints,
+        }));
+
+        const anyKoPoints = withPoints.some(u => u.koPoints > 0);
+        if (anyKoPoints) {
+          function rankPlayers(players: typeof withPoints, key: 'groupPoints' | 'koPoints'): Map<string, number> {
+            const sorted = [...players].sort((a, b) => b[key] - a[key]);
+            const ranks = new Map<string, number>();
+            for (let i = 0; i < sorted.length; i++) {
+              const rank = i === 0 || sorted[i][key] < sorted[i - 1][key] ? i + 1 : ranks.get(sorted[i - 1].userId)!;
+              ranks.set(sorted[i].userId, rank);
+            }
+            return ranks;
+          }
+
+          const groupRanks = rankPlayers(withPoints, 'groupPoints');
+          const koRanks = rankPlayers(withPoints, 'koPoints');
+
+          const candidates = withPoints
+            .filter(u => u.koPoints > 0)
+            .map(u => ({ ...u, rankImprovement: groupRanks.get(u.userId)! - koRanks.get(u.userId)! }));
+
+          const maxRankImprovement = candidates.length > 0 ? Math.max(...candidates.map(u => u.rankImprovement)) : 0;
+          if (maxRankImprovement > 0) {
+            // Sort tied specialists by KO points desc so the representative (index 0) is the highest scorer
+            const specialists = candidates
+              .filter(u => u.rankImprovement === maxRankImprovement)
+              .sort((a, b) => b.koPoints - a.koPoints || a.username.localeCompare(b.username));
+
+            // Representative: highest KO scorer among tied specialists (used for individual stat values)
+            const rep = specialists[0];
+
+            // Group stage averages: all active users, per completed group game
+            const numGroupGames = completedMatches.length;
+            const totalGroupPts = withPoints.reduce((s, u) => s + u.groupPoints, 0);
+            const groupOverallAvg = numGroupGames > 0 && withPoints.length > 0
+              ? totalGroupPts / (numGroupGames * withPoints.length)
+              : 0;
+            const repGroupAvg = numGroupGames > 0 ? rep.groupPoints / numGroupGames : 0;
+
+            // KO averages: active users who submitted bracket predictions, per completed KO game
+            const numKoGames = completedKoMatchesForLeader.length;
+            const activeKoUsers = withPoints.filter(u => {
+              const preds = bracketPredMapForLeader.get(u.userId);
+              return preds && Object.keys(preds).length > 0;
+            });
+            const totalKoPts = activeKoUsers.reduce((s, u) => s + u.koPoints, 0);
+            const koOverallAvg = numKoGames > 0 && activeKoUsers.length > 0
+              ? totalKoPts / (numKoGames * activeKoUsers.length)
+              : 0;
+            const repKoAvg = numKoGames > 0 ? rep.koPoints / numKoGames : 0;
+
+            const fmt = (n: number) => n.toFixed(1);
+
+            // Names for display — sorted alphabetically after the representative is chosen
+            const displayNames = specialists.map(u => u.username).sort((a, b) => a.localeCompare(b));
+
+            knockoutSpecialistCard = {
+              id: 'knockoutSpecialist',
+              title: lang === 'no' ? 'Best når det gjelder' : lang === 'de' ? 'K.O.-Spezialist' : 'The Knockout Specialist',
+              statistic:
+                lang === 'no'
+                  ? `${formatUserList(displayNames, lang)} har vist størst framgang fra gruppespillet til utslagsrundene! I gruppespillet hadde de et snitt på ${fmt(repGroupAvg)} poeng per kamp, sammenlignet med snittet som var ${fmt(groupOverallAvg)}. Men i sluttspillet har de sanket hele ${fmt(repKoAvg)} poeng i snitt per kamp! Mens snittet ligger på ${fmt(koOverallAvg)}.`
+                  : lang === 'de'
+                    ? `${formatUserList(displayNames, lang)} ${specialists.length === 1 ? 'hat' : 'haben'} den größten Sprung vom Gruppenspiel zu den K.O.-Runden gemacht! In der Gruppenphase: ${fmt(repGroupAvg)} Punkte pro Spiel (Schnitt: ${fmt(groupOverallAvg)}). In der K.O.-Runde hingegen ganze ${fmt(repKoAvg)} Punkte pro Spiel (Schnitt: ${fmt(koOverallAvg)})!`
+                    : `${formatUserList(displayNames, lang)} showed the biggest improvement from the group stage to the knockout rounds! In the group stage ${specialists.length === 1 ? 'they' : 'they'} averaged ${fmt(repGroupAvg)} points per game, compared to the overall average of ${fmt(groupOverallAvg)}. But in the knockout stage ${specialists.length === 1 ? "they've" : "they've"} racked up ${fmt(repKoAvg)} points per game on average! While the average sits at ${fmt(koOverallAvg)}.`,
+              subjects: specialists.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
+              linkType: 'leaderboard',
+            };
+          }
+        }
+      }
+    }
+
+    // ── How Did You Know: actual KO team predicted by fewest users ──
+    {
+      const actualKoTeamIds = new Set<string>();
+      for (const m of allKoMatchesForLeader) {
+        if (m.homeTeamId) actualKoTeamIds.add(m.homeTeamId);
+        if (m.awayTeamId) actualKoTeamIds.add(m.awayTeamId);
+      }
+
+      if (actualKoTeamIds.size > 0) {
+        const teamPredictorIds = new Map<string, string[]>();
+        for (const teamId of actualKoTeamIds) teamPredictorIds.set(teamId, []);
+
+        for (const [userId, firstRoundPreds] of userFirstRoundPredTeamsForLeader) {
+          if (activeStatUserIds && !activeStatUserIds.has(userId)) continue;
+          if (!leaderUserInfo.has(userId)) continue;
+
+          const predictedTeamIds = new Set<string>();
+          for (const pred of Object.values(firstRoundPreds)) {
+            if (pred.predHomeId) predictedTeamIds.add(pred.predHomeId);
+            if (pred.predAwayId) predictedTeamIds.add(pred.predAwayId);
+          }
+          for (const teamId of actualKoTeamIds) {
+            if (predictedTeamIds.has(teamId)) teamPredictorIds.get(teamId)!.push(userId);
+          }
+        }
+
+        const activeUsersWithBracketPreds = memberRows.filter(m => {
+          if (activeStatUserIds && !activeStatUserIds.has(m.userId)) return false;
+          const preds = userFirstRoundPredTeamsForLeader.get(m.userId);
+          return preds && Object.keys(preds).length > 0;
+        }).length;
+
+        if (activeUsersWithBracketPreds > 0) {
+          let minPredictors = Infinity;
+          let mostUnexpectedTeamId: string | null = null;
+          for (const [teamId, predictors] of teamPredictorIds) {
+            if (
+              predictors.length < minPredictors ||
+              (predictors.length === minPredictors && teamId < (mostUnexpectedTeamId ?? ''))
+            ) {
+              minPredictors = predictors.length;
+              mostUnexpectedTeamId = teamId;
+            }
+          }
+
+          if (mostUnexpectedTeamId && minPredictors >= 1 && minPredictors < activeUsersWithBracketPreds) {
+            const predictorIds = teamPredictorIds.get(mostUnexpectedTeamId)!;
+            const team = teamRowsForLeader.find(t => t.id === mostUnexpectedTeamId);
+            const teamNameStr = team?.name ?? '';
+
+            const subjects = predictorIds
+              .map(userId => {
+                const info = leaderUserInfo.get(userId)!;
+                return { type: 'user' as const, id: userId, name: info.username, imageUrl: info.imageUrl, iconColor: info.iconColor };
+              })
+              .sort((a, b) => a.name.localeCompare(b.name));
+
+            howDidYouKnowCard = {
+              id: 'howDidYouKnow',
+              title: lang === 'no' ? 'Hvordan visste du det?' : lang === 'de' ? 'Wie wusstest du das?' : 'How did you know?',
+              statistic:
+                lang === 'no'
+                  ? `${formatUserList(subjects.map(s => s.name), lang)} trodde at **${teamNameStr}** ville ta seg til sluttspillet! Ingen andre så den komme!`
+                  : lang === 'de'
+                    ? `${formatUserList(subjects.map(s => s.name), lang)} ${subjects.length === 1 ? 'hat' : 'haben'} **${teamNameStr}** in der K.O.-Runde gesehen! Niemand sonst hat das kommen sehen!`
+                    : `${formatUserList(subjects.map(s => s.name), lang)} predicted **${teamNameStr}** to make it to the knockouts! No one else saw that coming!`,
+              subjects,
+              linkType: 'leaderboard',
+              overlayImageUrl: team?.imageUrl ?? null,
+            };
+          }
+        }
+      }
+    }
+
+    // ── Paper Tiger: team most users predicted in KO that actually didn't qualify ──
+    {
+      // Only meaningful once all first-round KO slots are filled (group stage complete)
+      const firstRoundSlotsAllFilled = allFirstRoundMatchesForLeader.length > 0 &&
+        allFirstRoundMatchesForLeader.every(m => m.homeTeamId != null && m.awayTeamId != null);
+
+      if (firstRoundSlotsAllFilled) {
+        const actualKoTeamIds = new Set<string>();
+        for (const m of allKoMatchesForLeader) {
+          if (m.homeTeamId) actualKoTeamIds.add(m.homeTeamId);
+          if (m.awayTeamId) actualKoTeamIds.add(m.awayTeamId);
+        }
+
+        const teamPredictorIds = new Map<string, Set<string>>();
+        const usersWithBracketPreds = new Set<string>();
+
+        for (const [userId, firstRoundPreds] of userFirstRoundPredTeamsForLeader) {
+          if (activeStatUserIds && !activeStatUserIds.has(userId)) continue;
+          if (!leaderUserInfo.has(userId)) continue;
+          if (Object.keys(firstRoundPreds).length === 0) continue;
+          usersWithBracketPreds.add(userId);
+
+          for (const pred of Object.values(firstRoundPreds)) {
+            if (pred.predHomeId) {
+              if (!teamPredictorIds.has(pred.predHomeId)) teamPredictorIds.set(pred.predHomeId, new Set());
+              teamPredictorIds.get(pred.predHomeId)!.add(userId);
+            }
+            if (pred.predAwayId) {
+              if (!teamPredictorIds.has(pred.predAwayId)) teamPredictorIds.set(pred.predAwayId, new Set());
+              teamPredictorIds.get(pred.predAwayId)!.add(userId);
+            }
+          }
+        }
+
+        if (usersWithBracketPreds.size > 0) {
+          let maxPredictors = 0;
+          let bustTeamId: string | null = null;
+
+          for (const [teamId, predictors] of teamPredictorIds) {
+            if (actualKoTeamIds.has(teamId)) continue;
+            if (
+              predictors.size > maxPredictors ||
+              (predictors.size === maxPredictors && teamId < (bustTeamId ?? ''))
+            ) {
+              maxPredictors = predictors.size;
+              bustTeamId = teamId;
+            }
+          }
+
+          if (bustTeamId && maxPredictors >= 1) {
+            const wrongPredictorIds = teamPredictorIds.get(bustTeamId)!;
+            const team = teamRowsForLeader.find(t => t.id === bustTeamId);
+            const teamNameStr = team?.name ?? '';
+
+            const correctPredictors = [...usersWithBracketPreds]
+              .filter(userId => !wrongPredictorIds.has(userId))
+              .map(userId => {
+                const info = leaderUserInfo.get(userId)!;
+                return { type: 'user' as const, id: userId, name: info.username, imageUrl: info.imageUrl, iconColor: info.iconColor };
+              })
+              .sort((a, b) => a.name.localeCompare(b.name));
+
+            const wrongCount = wrongPredictorIds.size;
+            const totalCount = usersWithBracketPreds.size;
+            const noOneCorrect = correctPredictors.length === 0;
+            const correctNames = noOneCorrect ? '' : formatUserList(correctPredictors.map(u => u.name), lang);
+
+            paperTigerCard = {
+              id: 'paperTiger',
+              title: lang === 'no' ? 'Sjokk-exit' : lang === 'de' ? 'Papiertiger' : 'Paper Tiger',
+              statistic:
+                lang === 'no'
+                  ? noOneCorrect
+                    ? `${wrongCount} av ${totalCount} spillere trodde at **${teamNameStr}** ville ta seg til sluttspillet, men de røk ut i gruppespillet! Ingen så det komme.`
+                    : `${wrongCount} av ${totalCount} spillere trodde at **${teamNameStr}** ville ta seg til sluttspillet, men de røk ut i gruppespillet! ${correctNames} var de eneste som ikke lot seg lure.`
+                  : lang === 'de'
+                    ? noOneCorrect
+                      ? `${wrongCount} von ${totalCount} Nutzern glaubten, **${teamNameStr}** würde die K.O.-Runde erreichen, aber sie schieden in der Gruppenphase aus! Niemand hat das kommen sehen.`
+                      : `${wrongCount} von ${totalCount} Nutzern glaubten, **${teamNameStr}** würde die K.O.-Runde erreichen, aber sie schieden in der Gruppenphase aus! ${correctNames} ${correctPredictors.length === 1 ? 'hat' : 'haben'} es kommen sehen.`
+                    : noOneCorrect
+                      ? `${wrongCount} out of ${totalCount} users predicted **${teamNameStr}** to make the knockouts, but they were eliminated in the group stage! No one saw it coming.`
+                      : `${wrongCount} out of ${totalCount} users predicted **${teamNameStr}** to make the knockouts, but they were eliminated in the group stage! ${correctNames} ${correctPredictors.length === 1 ? 'was' : 'were'} the only one${correctPredictors.length === 1 ? '' : 's'} who saw it coming.`,
+              subjects: correctPredictors,
+              linkType: 'leaderboard',
+              overlayImageUrl: correctPredictors.length > 0 ? (team?.imageUrl ?? null) : null,
+              iconImageUrl: noOneCorrect ? (team?.imageUrl ?? null) : null,
+            };
+          }
+        }
+      }
+    }
+
+    // ── X-perten / It's a tie!: player with highest % of draw predictions ──
+    {
+      const userDrawStats = new Map<string, { total: number; draws: number }>();
+
+      for (const row of activeRows) {
+        if (!userDrawStats.has(row.userId)) userDrawStats.set(row.userId, { total: 0, draws: 0 });
+        const stats = userDrawStats.get(row.userId)!;
+        stats.total += 1;
+        if (row.predHomeScore === row.predAwayScore) stats.draws += 1;
+      }
+
+      for (const [userId, bpPreds] of bracketPredMapForLeader) {
+        if (activeStatUserIds && !activeStatUserIds.has(userId)) continue;
+        if (!leaderUserInfo.has(userId)) continue;
+        if (!userDrawStats.has(userId)) userDrawStats.set(userId, { total: 0, draws: 0 });
+        const stats = userDrawStats.get(userId)!;
+        for (const pred of Object.values(bpPreds as BracketPredictions)) {
+          stats.total += 1;
+          if (pred.homeScore === pred.awayScore) stats.draws += 1;
+        }
+      }
+
+      const MIN_PREDS = 5;
+      const eligible = [...userDrawStats.entries()]
+        .filter(([, s]) => s.total >= MIN_PREDS)
+        .map(([userId, s]) => ({
+          userId,
+          pct: s.draws / s.total,
+          ...leaderUserInfo.get(userId)!,
+        }));
+
+      if (eligible.length >= 2) {
+        const maxPct = Math.max(...eligible.map(u => u.pct));
+        const minPct = Math.min(...eligible.map(u => u.pct));
+
+        if (maxPct > minPct) {
+          const mostDrawish = eligible
+            .filter(u => u.pct === maxPct)
+            .sort((a, b) => a.username.localeCompare(b.username));
+          const leastDrawish = eligible
+            .filter(u => u.pct === minPct)
+            .sort((a, b) => a.username.localeCompare(b.username));
+
+          const fmtPct = (n: number) => `${Math.round(n * 100)}%`;
+          const highNames = formatUserList(mostDrawish.map(u => u.username), lang);
+          const lowNames = formatUserList(leastDrawish.map(u => u.username), lang);
+
+          xpertenCard = {
+            id: 'xperten',
+            title: lang === 'no' ? 'X-perten' : lang === 'de' ? 'Unentschieden-Experte' : "It's a tie!",
+            statistic:
+              lang === 'no'
+                ? `${highNames} har en tydelig strategi! De har tippet uavgjort i ${fmtPct(maxPct)} av kampene! ${lowNames}, til sammenligning, har tippet færrest uavgjort med bare ${fmtPct(minPct)} uavgjorte tips.`
+                : lang === 'de'
+                  ? `${highNames} ${mostDrawish.length === 1 ? 'tippt' : 'tippen'} die meisten Unentschieden! ${fmtPct(maxPct)} ihrer Tipps enden remis. ${lowNames} hingegen hat nur ${fmtPct(minPct)} Unentschieden-Tipps.`
+                  : `${highNames} ${mostDrawish.length === 1 ? 'is' : 'are'} the draw specialist${mostDrawish.length === 1 ? '' : 's'}! ${fmtPct(maxPct)} of their predictions end in a draw. ${lowNames} on the other hand ${leastDrawish.length === 1 ? 'has' : 'have'} just ${fmtPct(minPct)} draw predictions.`,
+            subjects: mostDrawish.map(u => ({
+              type: 'user' as const,
+              id: u.userId,
+              name: u.username,
+              imageUrl: u.imageUrl,
+              iconColor: u.iconColor,
+            })),
+            linkType: 'leaderboard',
+          };
+        }
+      }
     }
 
     // ── Group Stage Guru: accuracy of each user's predicted final group standings ──
@@ -3235,9 +3639,101 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       };
     }
 
+    // ── Twin Spirits: pair of users with highest % of matching predicted results ──
+    {
+      // Build per-match per-user result (H/D/A) for group stage
+      const slotResultsByUser = new Map<string, Map<string, 'H' | 'D' | 'A'>>();
+      for (const row of activeRows) {
+        if (!slotResultsByUser.has(row.matchId)) slotResultsByUser.set(row.matchId, new Map());
+        const result: 'H' | 'D' | 'A' = row.predHomeScore > row.predAwayScore ? 'H' : row.predHomeScore === row.predAwayScore ? 'D' : 'A';
+        slotResultsByUser.get(row.matchId)!.set(row.userId, result);
+      }
+
+      // Build per-bracket-slot per-user result for KO stage
+      for (const [userId, bpPreds] of bracketPredMapForLeader) {
+        if (activeStatUserIds && !activeStatUserIds.has(userId)) continue;
+        if (!leaderUserInfo.has(userId)) continue;
+        for (const [key, pred] of Object.entries(bpPreds as BracketPredictions)) {
+          const slotKey = `ko:${key}`;
+          if (!slotResultsByUser.has(slotKey)) slotResultsByUser.set(slotKey, new Map());
+          const p = pred as { homeScore: number; awayScore: number };
+          const result: 'H' | 'D' | 'A' = p.homeScore > p.awayScore ? 'H' : p.homeScore === p.awayScore ? 'D' : 'A';
+          slotResultsByUser.get(slotKey)!.set(userId, result);
+        }
+      }
+
+      const allActiveUserIdSet = new Set<string>();
+      for (const row of activeRows) allActiveUserIdSet.add(row.userId);
+      for (const [userId] of bracketPredMapForLeader) {
+        if ((!activeStatUserIds || activeStatUserIds.has(userId)) && leaderUserInfo.has(userId))
+          allActiveUserIdSet.add(userId);
+      }
+      const userIdList = [...allActiveUserIdSet];
+      const allSlotMaps = [...slotResultsByUser.values()];
+
+      const MIN_SHARED = 10;
+      let bestPct = -1;
+      let bestShared = 0;
+      let bestPair: [string, string] | null = null;
+
+      for (let i = 0; i < userIdList.length; i++) {
+        for (let j = i + 1; j < userIdList.length; j++) {
+          const userA = userIdList[i];
+          const userB = userIdList[j];
+          let shared = 0;
+          let agreed = 0;
+          for (const userResults of allSlotMaps) {
+            const resA = userResults.get(userA);
+            const resB = userResults.get(userB);
+            if (resA === undefined || resB === undefined) continue;
+            shared++;
+            if (resA === resB) agreed++;
+          }
+          if (shared >= MIN_SHARED) {
+            const pct = agreed / shared;
+            if (pct > bestPct || (pct === bestPct && shared > bestShared)) {
+              bestPct = pct;
+              bestShared = shared;
+              bestPair = [userA, userB];
+            }
+          }
+        }
+      }
+
+      if (bestPair) {
+        const [userAId, userBId] = bestPair;
+        const infoA = leaderUserInfo.get(userAId)!;
+        const infoB = leaderUserInfo.get(userBId)!;
+        const [first, second] = [{ id: userAId, ...infoA }, { id: userBId, ...infoB }]
+          .sort((a, b) => a.username.localeCompare(b.username));
+        const fmtPct = (n: number) => `${Math.round(n * 100)}%`;
+
+        twinSpiritsCard = {
+          id: 'twinSpirits',
+          title: lang === 'no' ? 'Skilt ved fødselen' : lang === 'de' ? 'Seelenverwandte' : 'Twin spirits',
+          statistic:
+            lang === 'no'
+              ? `**${first.username}** og **${second.username}** har tippet samme resultat i ${fmtPct(bestPct)} av alle kampene de begge har tippet! Disse to er virkelig skilt ved fødselen.`
+              : lang === 'de'
+                ? `**${first.username}** und **${second.username}** haben in ${fmtPct(bestPct)} aller Spiele, die sie beide getippt haben, dasselbe Ergebnis vorhergesagt! Wahrhaftige Seelenverwandte.`
+                : `**${first.username}** and **${second.username}** predicted the same result in ${fmtPct(bestPct)} of all games they both predicted! Truly twin spirits.`,
+          subjects: [
+            { type: 'user' as const, id: first.id, name: first.username, imageUrl: first.imageUrl, iconColor: first.iconColor },
+            { type: 'user' as const, id: second.id, name: second.username, imageUrl: second.imageUrl, iconColor: second.iconColor },
+          ],
+          linkType: 'leaderboard',
+        };
+      }
+    }
+
     const cards = [
       theLeaderCard,
       bottomOfTheLeagueCard,
+      theClimberCard,
+      theFallerCard,
+      howDidYouKnowCard,
+      paperTigerCard,
+      xpertenCard,
       bestPredictionCard,
       worstPredictionCard,
       bestFormCard,
@@ -3247,6 +3743,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       hitOrMissCard,
       closeButNoCigarCard,
       groupStageGuruCard,
+      knockoutSpecialistCard,
       theOptimistCard,
       mostContrastingPredictionCard,
       mostUnexpectedResultCard,
@@ -3255,6 +3752,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       jaViElskerCard,
       traitorCard,
       brautometerCard,
+      twinSpiritsCard,
       matchMadeInHeavenCard,
       audienceDarlingCard,
     ].filter((card): card is UserStatCardData => card !== null);
