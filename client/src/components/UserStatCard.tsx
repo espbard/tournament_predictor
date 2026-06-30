@@ -120,31 +120,29 @@ export default function UserStatCard({ competitionId, data, onMatchClick, onLead
     <div className="relative h-44 w-full flex-shrink-0">
       {data.backgroundImageUrl ? (
         <>
+          {displaySubjects.length > 1 ? (
+            <CollageGrid subjects={displaySubjects} />
+          ) : displaySubjects[0]?.type === 'user' && !displaySubjects[0]?.imageUrl ? (
+            <UserAvatar
+              username={displaySubjects[0].name}
+              imageUrl={displaySubjects[0].imageUrl}
+              iconColor={displaySubjects[0].iconColor}
+              className="h-full w-full"
+              style={{ borderRadius: 0 }}
+            />
+          ) : (
+            <img
+              src={displaySubjects[0]?.imageUrl ?? '/default-avatar.png'}
+              alt={displaySubjects[0]?.name ?? ''}
+              className="h-full w-full object-cover"
+            />
+          )}
           <img
             src={data.backgroundImageUrl}
             alt=""
-            className={`absolute inset-0 h-full w-full object-contain ${data.backgroundImagePosition === 'right' ? 'object-right' : 'p-4'}`}
+            className={`pointer-events-none absolute inset-0 h-full w-full object-contain mix-blend-multiply ${data.backgroundImagePosition === 'right' ? 'object-right' : 'p-4'}`}
             style={data.backgroundImageFilter ? { filter: data.backgroundImageFilter } : undefined}
           />
-          <div className="absolute inset-0 opacity-60" style={{ zIndex: 1 }}>
-            {displaySubjects.length > 1 ? (
-              <CollageGrid subjects={displaySubjects} />
-            ) : displaySubjects[0]?.type === 'user' && !displaySubjects[0]?.imageUrl ? (
-              <UserAvatar
-                username={displaySubjects[0].name}
-                imageUrl={displaySubjects[0].imageUrl}
-                iconColor={displaySubjects[0].iconColor}
-                className="h-full w-full"
-                style={{ borderRadius: 0 }}
-              />
-            ) : (
-              <img
-                src={displaySubjects[0]?.imageUrl ?? '/default-avatar.png'}
-                alt={displaySubjects[0]?.name ?? ''}
-                className="h-full w-full object-cover"
-              />
-            )}
-          </div>
         </>
       ) : data.iconImageUrl ? (
         <img src={data.iconImageUrl} alt="" className="h-full w-full object-contain p-4" />
