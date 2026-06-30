@@ -197,6 +197,11 @@ export default function UserStatCard({ competitionId, data, onMatchClick, onLead
           👑
         </span>
       )}
+      {data.id === 'bottomOfTheLeague' && (
+        <span className="absolute -top-3 -right-2 text-3xl leading-none select-none pointer-events-none z-10">
+          😓
+        </span>
+      )}
     </div>
   );
 
