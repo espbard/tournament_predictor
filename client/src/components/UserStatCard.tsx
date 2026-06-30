@@ -227,6 +227,46 @@ export default function UserStatCard({ competitionId, data, onMatchClick, onLead
           🤝
         </span>
       )}
+      {data.id === 'howDidYouKnow' && (
+        <span className="absolute -top-3 -right-2 text-3xl leading-none select-none pointer-events-none z-10">
+          🧠
+        </span>
+      )}
+      {data.id === 'worstPrediction' && (
+        <span className="absolute -top-3 -right-2 text-3xl leading-none select-none pointer-events-none z-10">
+          🙈
+        </span>
+      )}
+      {data.id === 'worstForm' && (
+        <span className="absolute -top-3 -right-2 text-3xl leading-none select-none pointer-events-none z-10">
+          📉
+        </span>
+      )}
+      {data.id === 'unlucky' && (
+        <span className="absolute -top-3 -right-2 text-3xl leading-none select-none pointer-events-none z-10">
+          🌧️
+        </span>
+      )}
+      {data.id === 'hitOrMiss' && (
+        <span className="absolute -top-3 -right-2 text-3xl leading-none select-none pointer-events-none z-10">
+          🎯
+        </span>
+      )}
+      {data.id === 'knockoutSpecialist' && (
+        <span className="absolute -top-3 -right-2 text-3xl leading-none select-none pointer-events-none z-10">
+          🥊
+        </span>
+      )}
+      {data.id === 'theOptimist' && (
+        <span className="absolute -top-3 -right-2 text-3xl leading-none select-none pointer-events-none z-10">
+          ☀️
+        </span>
+      )}
+      {data.id === 'mostUnexpectedResult' && (
+        <span className="absolute -top-3 -right-2 text-3xl leading-none select-none pointer-events-none z-10">
+          🤯
+        </span>
+      )}
     </div>
   );
 
