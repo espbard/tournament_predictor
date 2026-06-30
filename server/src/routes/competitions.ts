@@ -1739,6 +1739,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     let traitorCard: UserStatCardData | null = null;
     let matchMadeInHeavenCard: UserStatCardData | null = null;
     let audienceDarlingCard: UserStatCardData | null = null;
+    let longestInLeadCard: UserStatCardData | null = null;
 
     if (kingGroup.length > 0) {
       const gameCount = kingGroup[0].streak;
@@ -1800,6 +1801,88 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         subjects: bottomGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
         linkType: 'leaderboard',
       };
+    }
+
+    // ── Longest time in the lead ──
+    if (leadingSetsByMatch.length > 0 && memberTotals.length >= 2) {
+      const timeInLeadByUser = new Map<string, number>();
+      for (const leadSet of leadingSetsByMatch) {
+        for (const userId of leadSet) {
+          if (!activeStatUserIds || activeStatUserIds.has(userId)) {
+            timeInLeadByUser.set(userId, (timeInLeadByUser.get(userId) ?? 0) + 1);
+          }
+        }
+      }
+
+      if (timeInLeadByUser.size > 0) {
+        const maxTimeInLead = Math.max(...timeInLeadByUser.values());
+        const longestLeaders = [...timeInLeadByUser.entries()]
+          .filter(([, t]) => t === maxTimeInLead)
+          .map(([uid]) => {
+            const info = leaderUserInfo.get(uid);
+            return info ? { userId: uid, ...info } : null;
+          })
+          .filter((u): u is { userId: string; username: string; imageUrl: string | null; iconColor: string | null } => u !== null)
+          .sort((a, b) => a.username.localeCompare(b.username));
+
+        if (longestLeaders.length > 0) {
+          const sortedByPoints = [...memberTotals].sort((a, b) => b.totalPoints - a.totalPoints);
+          const getRank = (userId: string): number => {
+            const userPts = memberTotals.find(m => m.userId === userId)?.totalPoints ?? 0;
+            let rank = 1;
+            for (const m of sortedByPoints) {
+              if (m.totalPoints > userPts) rank++;
+              else break;
+            }
+            return rank;
+          };
+
+          const isCurrentlyLeading = longestLeaders.some(u => getRank(u.userId) === 1);
+          const names = formatUserList(longestLeaders.map(u => u.username), lang);
+          const isPlural = longestLeaders.length > 1;
+          const bestRank = Math.min(...longestLeaders.map(u => getRank(u.userId)));
+
+          let suffixLine: string;
+          if (isCurrentlyLeading) {
+            if (lang === 'no') {
+              suffixLine = `Det har lønnet seg – ${names} ${isPlural ? 'leder' : 'leder'} tabellen!`;
+            } else if (lang === 'de') {
+              suffixLine = `Das zahlt sich aus – ${names} ${isPlural ? 'führen' : 'führt'} die Tabelle an!`;
+            } else {
+              suffixLine = `And it's paying off – ${names} ${isPlural ? 'are' : 'is'} currently leading the table!`;
+            }
+          } else {
+            if (lang === 'no') {
+              const posText = longestLeaders.length === 1 ? `på ${bestRank}. plass` : 'ikke på toppen';
+              suffixLine = `Det hjelper ikke akkurat – ${names} er ${posText} for øyeblikket.`;
+            } else if (lang === 'de') {
+              const posText = longestLeaders.length === 1 ? `auf Platz ${bestRank}` : 'nicht an der Spitze';
+              suffixLine = `Das hilft gerade nicht – ${names} ${isPlural ? 'sind' : 'ist'} ${posText} gerade.`;
+            } else {
+              const ordinalEn = (n: number) => n === 2 ? '2nd' : n === 3 ? '3rd' : `${n}th`;
+              const posText = longestLeaders.length === 1 ? `in ${ordinalEn(bestRank)} place` : 'not currently leading the table';
+              suffixLine = `But it's not helping right now – ${names} ${isPlural ? 'are' : 'is'} ${posText}.`;
+            }
+          }
+
+          let statistic: string;
+          if (lang === 'no') {
+            statistic = `${names} har tronet på toppen etter ${maxTimeInLead} kamp${maxTimeInLead === 1 ? '' : 'er'}. ${suffixLine}`;
+          } else if (lang === 'de') {
+            statistic = `${names} ${isPlural ? 'lagen' : 'lag'} nach ${maxTimeInLead} Spiel${maxTimeInLead === 1 ? '' : 'en'} vorne. ${suffixLine}`;
+          } else {
+            statistic = `${names} ${isPlural ? 'have' : 'has'} led the table after ${maxTimeInLead} game${maxTimeInLead === 1 ? '' : 's'}. ${suffixLine}`;
+          }
+
+          longestInLeadCard = {
+            id: 'longestInLead',
+            title: lang === 'no' ? 'Lengst på Toppen' : lang === 'de' ? 'Dauergipfelstürmer' : 'Marathon Leader',
+            statistic,
+            subjects: longestLeaders.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
+            linkType: 'leaderboard',
+          };
+        }
+      }
     }
 
     // ── The Climber / The Faller: biggest rank change over the last 10 games ──
@@ -3728,6 +3811,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
     const cards = [
       theLeaderCard,
+      longestInLeadCard,
       bottomOfTheLeagueCard,
       theClimberCard,
       theFallerCard,
