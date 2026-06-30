@@ -1717,6 +1717,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     let theFallerCard: UserStatCardData | null = null;
     let knockoutSpecialistCard: UserStatCardData | null = null;
     let howDidYouKnowCard: UserStatCardData | null = null;
+    let paperTigerCard: UserStatCardData | null = null;
     let xpertenCard: UserStatCardData | null = null;
     let groupStageGuruCard: UserStatCardData | null = null;
     let thePatriotCard: UserStatCardData | null = null;
@@ -2027,6 +2028,98 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
               subjects,
               linkType: 'leaderboard',
               overlayImageUrl: team?.imageUrl ?? null,
+            };
+          }
+        }
+      }
+    }
+
+    // ── Paper Tiger: team most users predicted in KO that actually didn't qualify ──
+    {
+      // Only meaningful once all first-round KO slots are filled (group stage complete)
+      const firstRoundSlotsAllFilled = allFirstRoundMatchesForLeader.length > 0 &&
+        allFirstRoundMatchesForLeader.every(m => m.homeTeamId != null && m.awayTeamId != null);
+
+      if (firstRoundSlotsAllFilled) {
+        const actualKoTeamIds = new Set<string>();
+        for (const m of allKoMatchesForLeader) {
+          if (m.homeTeamId) actualKoTeamIds.add(m.homeTeamId);
+          if (m.awayTeamId) actualKoTeamIds.add(m.awayTeamId);
+        }
+
+        const teamPredictorIds = new Map<string, Set<string>>();
+        const usersWithBracketPreds = new Set<string>();
+
+        for (const [userId, firstRoundPreds] of userFirstRoundPredTeamsForLeader) {
+          if (activeStatUserIds && !activeStatUserIds.has(userId)) continue;
+          if (!leaderUserInfo.has(userId)) continue;
+          if (Object.keys(firstRoundPreds).length === 0) continue;
+          usersWithBracketPreds.add(userId);
+
+          for (const pred of Object.values(firstRoundPreds)) {
+            if (pred.predHomeId) {
+              if (!teamPredictorIds.has(pred.predHomeId)) teamPredictorIds.set(pred.predHomeId, new Set());
+              teamPredictorIds.get(pred.predHomeId)!.add(userId);
+            }
+            if (pred.predAwayId) {
+              if (!teamPredictorIds.has(pred.predAwayId)) teamPredictorIds.set(pred.predAwayId, new Set());
+              teamPredictorIds.get(pred.predAwayId)!.add(userId);
+            }
+          }
+        }
+
+        if (usersWithBracketPreds.size > 0) {
+          let maxPredictors = 0;
+          let bustTeamId: string | null = null;
+
+          for (const [teamId, predictors] of teamPredictorIds) {
+            if (actualKoTeamIds.has(teamId)) continue;
+            if (
+              predictors.size > maxPredictors ||
+              (predictors.size === maxPredictors && teamId < (bustTeamId ?? ''))
+            ) {
+              maxPredictors = predictors.size;
+              bustTeamId = teamId;
+            }
+          }
+
+          if (bustTeamId && maxPredictors >= 1) {
+            const wrongPredictorIds = teamPredictorIds.get(bustTeamId)!;
+            const team = teamRowsForLeader.find(t => t.id === bustTeamId);
+            const teamNameStr = team?.name ?? '';
+
+            const correctPredictors = [...usersWithBracketPreds]
+              .filter(userId => !wrongPredictorIds.has(userId))
+              .map(userId => {
+                const info = leaderUserInfo.get(userId)!;
+                return { type: 'user' as const, id: userId, name: info.username, imageUrl: info.imageUrl, iconColor: info.iconColor };
+              })
+              .sort((a, b) => a.name.localeCompare(b.name));
+
+            const wrongCount = wrongPredictorIds.size;
+            const totalCount = usersWithBracketPreds.size;
+            const noOneCorrect = correctPredictors.length === 0;
+            const correctNames = noOneCorrect ? '' : formatUserList(correctPredictors.map(u => u.name), lang);
+
+            paperTigerCard = {
+              id: 'paperTiger',
+              title: lang === 'no' ? 'Papirtiger' : lang === 'de' ? 'Papiertiger' : 'Paper Tiger',
+              statistic:
+                lang === 'no'
+                  ? noOneCorrect
+                    ? `${wrongCount} av ${totalCount} spillere trodde at **${teamNameStr}** ville ta seg til sluttspillet, men de røk ut i gruppespillet! Ingen så det komme.`
+                    : `${wrongCount} av ${totalCount} spillere trodde at **${teamNameStr}** ville ta seg til sluttspillet, men de røk ut i gruppespillet! ${correctNames} var blant de få som ikke lot seg lure.`
+                  : lang === 'de'
+                    ? noOneCorrect
+                      ? `${wrongCount} von ${totalCount} Nutzern glaubten, **${teamNameStr}** würde die K.O.-Runde erreichen, aber sie schieden in der Gruppenphase aus! Niemand hat das kommen sehen.`
+                      : `${wrongCount} von ${totalCount} Nutzern glaubten, **${teamNameStr}** würde die K.O.-Runde erreichen, aber sie schieden in der Gruppenphase aus! ${correctNames} ${correctPredictors.length === 1 ? 'hat' : 'haben'} es kommen sehen.`
+                    : noOneCorrect
+                      ? `${wrongCount} out of ${totalCount} users predicted **${teamNameStr}** to make the knockouts, but they were eliminated in the group stage! No one saw it coming.`
+                      : `${wrongCount} out of ${totalCount} users predicted **${teamNameStr}** to make the knockouts, but they were eliminated in the group stage! ${correctNames} ${correctPredictors.length === 1 ? 'was' : 'were'} the only one${correctPredictors.length === 1 ? '' : 's'} who saw it coming.`,
+              subjects: correctPredictors,
+              linkType: 'leaderboard',
+              overlayImageUrl: correctPredictors.length > 0 ? (team?.imageUrl ?? null) : null,
+              iconImageUrl: noOneCorrect ? (team?.imageUrl ?? null) : null,
             };
           }
         }
@@ -3552,6 +3645,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       theFallerCard,
       knockoutSpecialistCard,
       howDidYouKnowCard,
+      paperTigerCard,
       xpertenCard,
       bestPredictionCard,
       worstPredictionCard,
