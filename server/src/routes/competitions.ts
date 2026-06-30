@@ -1716,6 +1716,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     let theClimberCard: UserStatCardData | null = null;
     let theFallerCard: UserStatCardData | null = null;
     let knockoutSpecialistCard: UserStatCardData | null = null;
+    let howDidYouKnowCard: UserStatCardData | null = null;
     let groupStageGuruCard: UserStatCardData | null = null;
     let thePatriotCard: UserStatCardData | null = null;
     let theOptimistCard: UserStatCardData | null = null;
@@ -1950,6 +1951,81 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
                     : `${formatUserList(displayNames, lang)} showed the biggest improvement from the group stage to the knockout rounds! In the group stage ${specialists.length === 1 ? 'they' : 'they'} averaged ${fmt(repGroupAvg)} points per game, compared to the overall average of ${fmt(groupOverallAvg)}. But in the knockout stage ${specialists.length === 1 ? "they've" : "they've"} racked up ${fmt(repKoAvg)} points per game on average! While the average sits at ${fmt(koOverallAvg)}.`,
               subjects: specialists.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
               linkType: 'leaderboard',
+            };
+          }
+        }
+      }
+    }
+
+    // ── How Did You Know: actual KO team predicted by fewest users ──
+    {
+      const actualKoTeamIds = new Set<string>();
+      for (const m of allKoMatchesForLeader) {
+        if (m.homeTeamId) actualKoTeamIds.add(m.homeTeamId);
+        if (m.awayTeamId) actualKoTeamIds.add(m.awayTeamId);
+      }
+
+      if (actualKoTeamIds.size > 0) {
+        const teamPredictorIds = new Map<string, string[]>();
+        for (const teamId of actualKoTeamIds) teamPredictorIds.set(teamId, []);
+
+        for (const [userId, firstRoundPreds] of userFirstRoundPredTeamsForLeader) {
+          if (activeStatUserIds && !activeStatUserIds.has(userId)) continue;
+          if (!leaderUserInfo.has(userId)) continue;
+
+          const predictedTeamIds = new Set<string>();
+          for (const pred of Object.values(firstRoundPreds)) {
+            if (pred.predHomeId) predictedTeamIds.add(pred.predHomeId);
+            if (pred.predAwayId) predictedTeamIds.add(pred.predAwayId);
+          }
+          for (const teamId of actualKoTeamIds) {
+            if (predictedTeamIds.has(teamId)) teamPredictorIds.get(teamId)!.push(userId);
+          }
+        }
+
+        const activeUsersWithBracketPreds = memberRows.filter(m => {
+          if (activeStatUserIds && !activeStatUserIds.has(m.userId)) return false;
+          const preds = userFirstRoundPredTeamsForLeader.get(m.userId);
+          return preds && Object.keys(preds).length > 0;
+        }).length;
+
+        if (activeUsersWithBracketPreds > 0) {
+          let minPredictors = Infinity;
+          let mostUnexpectedTeamId: string | null = null;
+          for (const [teamId, predictors] of teamPredictorIds) {
+            if (
+              predictors.length < minPredictors ||
+              (predictors.length === minPredictors && teamId < (mostUnexpectedTeamId ?? ''))
+            ) {
+              minPredictors = predictors.length;
+              mostUnexpectedTeamId = teamId;
+            }
+          }
+
+          if (mostUnexpectedTeamId && minPredictors >= 1 && minPredictors < activeUsersWithBracketPreds) {
+            const predictorIds = teamPredictorIds.get(mostUnexpectedTeamId)!;
+            const team = teamRowsForLeader.find(t => t.id === mostUnexpectedTeamId);
+            const teamNameStr = team?.name ?? '';
+
+            const subjects = predictorIds
+              .map(userId => {
+                const info = leaderUserInfo.get(userId)!;
+                return { type: 'user' as const, id: userId, name: info.username, imageUrl: info.imageUrl, iconColor: info.iconColor };
+              })
+              .sort((a, b) => a.name.localeCompare(b.name));
+
+            howDidYouKnowCard = {
+              id: 'howDidYouKnow',
+              title: lang === 'no' ? 'Hvordan visste du det?' : lang === 'de' ? 'Wie wusstest du das?' : 'How did you know?',
+              statistic:
+                lang === 'no'
+                  ? `${formatUserList(subjects.map(s => s.name), lang)} trodde at **${teamNameStr}** ville ta seg til sluttspillet! Bare ${minPredictors} av ${activeUsersWithBracketPreds} spillere så det komme!`
+                  : lang === 'de'
+                    ? `${formatUserList(subjects.map(s => s.name), lang)} ${subjects.length === 1 ? 'hat' : 'haben'} **${teamNameStr}** in der K.O.-Runde gesehen! Nur ${minPredictors} von ${activeUsersWithBracketPreds} Nutzern haben das vorhergesehen!`
+                    : `${formatUserList(subjects.map(s => s.name), lang)} predicted **${teamNameStr}** to make it to the knockouts! Only ${minPredictors} out of ${activeUsersWithBracketPreds} users saw that coming!`,
+              subjects,
+              linkType: 'leaderboard',
+              overlayImageUrl: team?.imageUrl ?? null,
             };
           }
         }
@@ -3405,6 +3481,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       theClimberCard,
       theFallerCard,
       knockoutSpecialistCard,
+      howDidYouKnowCard,
       bestPredictionCard,
       worstPredictionCard,
       bestFormCard,
