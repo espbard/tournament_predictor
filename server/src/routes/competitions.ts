@@ -1648,6 +1648,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     for (const userId of leaderUserInfo.keys()) cumulativePointsByUser.set(userId, 0);
 
     const leadingSetsByMatch: Set<string>[] = [];
+    const rankSnapshotsByMatch: Map<string, number>[] = [];
 
     // Group stage milestones
     for (const match of completedGroupMatchesForLeader) {
@@ -1657,6 +1658,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       }
       const maxPts = Math.max(...[...cumulativePointsByUser.entries()].map(([uid, p]) => p + (nonMatchPointsByUser.get(uid) ?? 0)));
       leadingSetsByMatch.push(new Set([...cumulativePointsByUser.entries()].filter(([uid, p]) => p + (nonMatchPointsByUser.get(uid) ?? 0) === maxPts).map(([uid]) => uid)));
+      rankSnapshotsByMatch.push(new Map(cumulativePointsByUser));
     }
 
     // Knockout stage milestones — compute KO points incrementally per match
@@ -1685,6 +1687,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
       const maxPts = Math.max(...[...cumulativePointsByUser.entries()].map(([uid, p]) => p + (nonMatchPointsByUser.get(uid) ?? 0)));
       leadingSetsByMatch.push(new Set([...cumulativePointsByUser.entries()].filter(([uid, p]) => p + (nonMatchPointsByUser.get(uid) ?? 0) === maxPts).map(([uid]) => uid)));
+      rankSnapshotsByMatch.push(new Map(cumulativePointsByUser));
     }
 
     let kingGroup: { userId: string; username: string; imageUrl: string | null; iconColor: string | null; streak: number }[] = [];
@@ -1710,6 +1713,8 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
     let theLeaderCard: UserStatCardData | null = null;
     let bottomOfTheLeagueCard: UserStatCardData | null = null;
+    let theClimberCard: UserStatCardData | null = null;
+    let theFallerCard: UserStatCardData | null = null;
     let groupStageGuruCard: UserStatCardData | null = null;
     let thePatriotCard: UserStatCardData | null = null;
     let theOptimistCard: UserStatCardData | null = null;
@@ -1790,6 +1795,76 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         subjects: bottomGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
         linkType: 'leaderboard',
       };
+    }
+
+    // ── The Climber / The Faller: biggest rank change over the last 10 games ──
+    if (rankSnapshotsByMatch.length >= 11) {
+      const totalSnapshots = rankSnapshotsByMatch.length;
+      const snapshotBefore = rankSnapshotsByMatch[totalSnapshots - 11];
+      const snapshotCurrent = rankSnapshotsByMatch[totalSnapshots - 1];
+
+      function computeRankMap(snapshot: Map<string, number>): Map<string, number> {
+        const sorted = [...snapshot.entries()]
+          .map(([uid, pts]) => ({ uid, total: pts + (nonMatchPointsByUser.get(uid) ?? 0) }))
+          .sort((a, b) => b.total - a.total);
+        const rankMap = new Map<string, number>();
+        for (let i = 0; i < sorted.length; i++) {
+          const rank = i === 0 || sorted[i].total < sorted[i - 1].total ? i + 1 : rankMap.get(sorted[i - 1].uid)!;
+          rankMap.set(sorted[i].uid, rank);
+        }
+        return rankMap;
+      }
+
+      const ranksBefore = computeRankMap(snapshotBefore);
+      const ranksCurrent = computeRankMap(snapshotCurrent);
+
+      type RankChange = { userId: string; username: string; imageUrl: string | null; iconColor: string | null; spotsClimbed: number };
+      const rankChanges: RankChange[] = [];
+      for (const [userId, currentRank] of ranksCurrent) {
+        const previousRank = ranksBefore.get(userId);
+        if (previousRank === undefined) continue;
+        const userInfo = leaderUserInfo.get(userId);
+        if (!userInfo) continue;
+        rankChanges.push({ userId, ...userInfo, spotsClimbed: previousRank - currentRank });
+      }
+
+      const maxClimbed = rankChanges.length > 0 ? Math.max(...rankChanges.map(r => r.spotsClimbed)) : 0;
+      if (maxClimbed >= 2) {
+        const climbers = rankChanges
+          .filter(r => r.spotsClimbed === maxClimbed)
+          .sort((a, b) => a.username.localeCompare(b.username));
+        theClimberCard = {
+          id: 'theClimber',
+          title: lang === 'no' ? 'Det klatres!' : lang === 'de' ? 'Der Aufsteiger' : 'The Climber',
+          statistic:
+            lang === 'no'
+              ? `${formatUserList(climbers.map(u => u.username), lang)} har klatret ${maxClimbed} ${maxClimbed === 1 ? 'plass' : 'plasser'} på tabellen de siste 10 kampene!`
+              : lang === 'de'
+                ? `${formatUserList(climbers.map(u => u.username), lang)} ist in den letzten 10 Spielen um ${maxClimbed} ${maxClimbed === 1 ? 'Platz' : 'Plätze'} aufgestiegen!`
+                : `${formatUserList(climbers.map(u => u.username), lang)} ${climbers.length === 1 ? 'has' : 'have'} climbed ${maxClimbed} ${maxClimbed === 1 ? 'spot' : 'spots'} on the leaderboard over the last 10 games!`,
+          subjects: climbers.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
+          linkType: 'leaderboard',
+        };
+      }
+
+      const maxFell = rankChanges.length > 0 ? Math.max(...rankChanges.map(r => -r.spotsClimbed)) : 0;
+      if (maxFell >= 2) {
+        const fallers = rankChanges
+          .filter(r => -r.spotsClimbed === maxFell)
+          .sort((a, b) => a.username.localeCompare(b.username));
+        theFallerCard = {
+          id: 'theFaller',
+          title: lang === 'no' ? 'Rett åt skogen' : lang === 'de' ? 'Tabellenabsteiger' : "I'm falling!",
+          statistic:
+            lang === 'no'
+              ? `${formatUserList(fallers.map(u => u.username), lang)} har falt ${maxFell} ${maxFell === 1 ? 'plass' : 'plasser'} på tabellen de siste 10 kampene!`
+              : lang === 'de'
+                ? `${formatUserList(fallers.map(u => u.username), lang)} ist in den letzten 10 Spielen um ${maxFell} ${maxFell === 1 ? 'Platz' : 'Plätze'} abgefallen!`
+                : `${formatUserList(fallers.map(u => u.username), lang)} ${fallers.length === 1 ? 'has' : 'have'} dropped ${maxFell} ${maxFell === 1 ? 'spot' : 'spots'} on the leaderboard over the last 10 games!`,
+          subjects: fallers.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
+          linkType: 'leaderboard',
+        };
+      }
     }
 
     // ── Group Stage Guru: accuracy of each user's predicted final group standings ──
@@ -3238,6 +3313,8 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     const cards = [
       theLeaderCard,
       bottomOfTheLeagueCard,
+      theClimberCard,
+      theFallerCard,
       bestPredictionCard,
       worstPredictionCard,
       bestFormCard,
