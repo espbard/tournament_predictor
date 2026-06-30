@@ -1854,7 +1854,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           } else {
             if (lang === 'no') {
               const posText = longestLeaders.length === 1 ? `på ${bestRank}. plass` : 'ikke på toppen';
-              suffixLine = `Det hjelper ikke akkurat – ${names} er ${posText} for øyeblikket.`;
+              suffixLine = `Det hjelper lite, for ${names} er ${posText} for øyeblikket.`;
             } else if (lang === 'de') {
               const posText = longestLeaders.length === 1 ? `auf Platz ${bestRank}` : 'nicht an der Spitze';
               suffixLine = `Das hilft gerade nicht – ${names} ${isPlural ? 'sind' : 'ist'} ${posText} gerade.`;
