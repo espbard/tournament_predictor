@@ -2020,7 +2020,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
               title: lang === 'no' ? 'Hvordan visste du det?' : lang === 'de' ? 'Wie wusstest du das?' : 'How did you know?',
               statistic:
                 lang === 'no'
-                  ? `${formatUserList(subjects.map(s => s.name), lang)} trodde at **${teamNameStr}** ville ta seg til sluttspillet! Ingen andre så det komme!`
+                  ? `${formatUserList(subjects.map(s => s.name), lang)} trodde at **${teamNameStr}** ville ta seg til sluttspillet! Ingen andre så den komme!`
                   : lang === 'de'
                     ? `${formatUserList(subjects.map(s => s.name), lang)} ${subjects.length === 1 ? 'hat' : 'haben'} **${teamNameStr}** in der K.O.-Runde gesehen! Niemand sonst hat das kommen sehen!`
                     : `${formatUserList(subjects.map(s => s.name), lang)} predicted **${teamNameStr}** to make it to the knockouts! No one else saw that coming!`,
