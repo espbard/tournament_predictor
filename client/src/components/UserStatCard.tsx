@@ -114,11 +114,37 @@ export default function UserStatCard({ competitionId, data, onMatchClick, onLead
 
   // 7+ subjects: show only the first one
   const displaySubjects = subjects.length >= 7 ? subjects.slice(0, 1) : subjects;
-  const hasImage = !!(data.iconImageUrl || displaySubjects.length > 0);
+  const hasImage = !!(data.iconImageUrl || data.backgroundImageUrl || displaySubjects.length > 0);
+
+  const avatarSize = displaySubjects.length === 1 ? 'w-20 h-20' : displaySubjects.length <= 3 ? 'w-16 h-16' : 'w-12 h-12';
 
   const image = hasImage && (
     <div className="relative h-44 w-full flex-shrink-0">
-      {data.iconImageUrl ? (
+      {data.backgroundImageUrl ? (
+        <>
+          <img src={data.backgroundImageUrl} alt="" className="absolute inset-0 h-full w-full object-contain p-4" />
+          <div className="absolute inset-0 flex items-center justify-center gap-2" style={{ zIndex: 1 }}>
+            {displaySubjects.map(subject =>
+              subject.type === 'user' ? (
+                <UserAvatar
+                  key={subject.id}
+                  username={subject.name}
+                  imageUrl={subject.imageUrl}
+                  iconColor={subject.iconColor}
+                  className={`${avatarSize} ring-2 ring-white shadow-lg`}
+                />
+              ) : (
+                <img
+                  key={subject.id}
+                  src={subject.imageUrl ?? '/default-avatar.png'}
+                  alt={subject.name}
+                  className={`${avatarSize} rounded-full object-cover ring-2 ring-white shadow-lg`}
+                />
+              )
+            )}
+          </div>
+        </>
+      ) : data.iconImageUrl ? (
         <img src={data.iconImageUrl} alt="" className="h-full w-full object-contain p-4" />
       ) : displaySubjects.length > 1 ? (
         <CollageGrid subjects={displaySubjects} />
@@ -137,7 +163,7 @@ export default function UserStatCard({ competitionId, data, onMatchClick, onLead
           className="h-full w-full object-cover"
         />
       )}
-      {data.overlayImageUrl && (
+      {data.overlayImageUrl && !data.backgroundImageUrl && (
         <img
           src={data.overlayImageUrl}
           alt=""

@@ -186,6 +186,7 @@ export interface UserStatCardData {
   matchId?: string | null;
   overlayImageUrl?: string | null;
   iconImageUrl?: string | null;
+  backgroundImageUrl?: string | null;
   distributionData?: { value: number; count: number }[] | null;
   distributionActualValue?: number | null;
 }

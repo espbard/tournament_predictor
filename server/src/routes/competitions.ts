@@ -1932,6 +1932,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
                 : `${formatUserList(climbers.map(u => u.username), lang)} ${climbers.length === 1 ? 'has' : 'have'} climbed ${maxClimbed} ${maxClimbed === 1 ? 'spot' : 'spots'} on the leaderboard over the last 10 games!`,
           subjects: climbers.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
           linkType: 'leaderboard',
+          backgroundImageUrl: '/arrow-up.png',
         };
       }
 
@@ -1951,6 +1952,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
                 : `${formatUserList(fallers.map(u => u.username), lang)} ${fallers.length === 1 ? 'has' : 'have'} dropped ${maxFell} ${maxFell === 1 ? 'spot' : 'spots'} on the leaderboard over the last 10 games!`,
           subjects: fallers.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
           linkType: 'leaderboard',
+          backgroundImageUrl: '/arrow-down.png',
         };
       }
     }
