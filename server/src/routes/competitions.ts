@@ -1845,7 +1845,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           let suffixLine: string;
           if (isCurrentlyLeading) {
             if (lang === 'no') {
-              suffixLine = `Det har lønnet seg – ${names} ${isPlural ? 'leder' : 'leder'} tabellen!`;
+              suffixLine = `Det har lønnet seg, for ${names} ${isPlural ? 'leder' : 'leder'} tabellen!`;
             } else if (lang === 'de') {
               suffixLine = `Das zahlt sich aus – ${names} ${isPlural ? 'führen' : 'führt'} die Tabelle an!`;
             } else {
@@ -1867,7 +1867,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
           let statistic: string;
           if (lang === 'no') {
-            statistic = `${names} har tronet på toppen etter ${maxTimeInLead} kamp${maxTimeInLead === 1 ? '' : 'er'}. ${suffixLine}`;
+            statistic = `${names} har tronet øverst på tabellen i totalt ${maxTimeInLead} kamp${maxTimeInLead === 1 ? '' : 'er'}. Det er flere enn noen annen! ${suffixLine}`;
           } else if (lang === 'de') {
             statistic = `${names} ${isPlural ? 'lagen' : 'lag'} nach ${maxTimeInLead} Spiel${maxTimeInLead === 1 ? '' : 'en'} vorne. ${suffixLine}`;
           } else {
