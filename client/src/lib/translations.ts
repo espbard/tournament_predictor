@@ -617,7 +617,7 @@ const translations = {
         group: 'Gruppeplassering',
         progresses: 'Lag videre',
         koTie: 'Sluttspill - Riktig lag',
-        final: 'Finale - Riktig lag',
+        final: 'Riktig Finalist',
         winner: 'Riktig vinner',
         bonus: 'Bonus',
         noScores: 'Ingen poeng ennå.',
