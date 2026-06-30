@@ -202,6 +202,31 @@ export default function UserStatCard({ competitionId, data, onMatchClick, onLead
           😓
         </span>
       )}
+      {data.id === 'bestPrediction' && (
+        <span className="absolute -top-3 -right-2 text-3xl leading-none select-none pointer-events-none z-10">
+          🔮
+        </span>
+      )}
+      {data.id === 'bestForm' && (
+        <span className="absolute -top-3 -right-2 text-3xl leading-none select-none pointer-events-none z-10">
+          🔥
+        </span>
+      )}
+      {data.id === 'closeButNoCigar' && (
+        <span className="absolute -top-3 -right-2 text-3xl leading-none select-none pointer-events-none z-10">
+          🐢
+        </span>
+      )}
+      {data.id === 'swingAndAMiss' && (
+        <span className="absolute -top-3 -right-2 text-3xl leading-none select-none pointer-events-none z-10">
+          🤏
+        </span>
+      )}
+      {data.id === 'twinSpirits' && (
+        <span className="absolute -top-3 -right-2 text-3xl leading-none select-none pointer-events-none z-10">
+          🤝
+        </span>
+      )}
     </div>
   );
 
