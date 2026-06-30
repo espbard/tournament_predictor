@@ -1906,18 +1906,48 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
           const maxRankImprovement = candidates.length > 0 ? Math.max(...candidates.map(u => u.rankImprovement)) : 0;
           if (maxRankImprovement > 0) {
+            // Sort tied specialists by KO points desc so the representative (index 0) is the highest scorer
             const specialists = candidates
               .filter(u => u.rankImprovement === maxRankImprovement)
-              .sort((a, b) => a.username.localeCompare(b.username));
+              .sort((a, b) => b.koPoints - a.koPoints || a.username.localeCompare(b.username));
+
+            // Representative: highest KO scorer among tied specialists (used for individual stat values)
+            const rep = specialists[0];
+
+            // Group stage averages: all active users, per completed group game
+            const numGroupGames = completedMatches.length;
+            const totalGroupPts = withPoints.reduce((s, u) => s + u.groupPoints, 0);
+            const groupOverallAvg = numGroupGames > 0 && withPoints.length > 0
+              ? totalGroupPts / (numGroupGames * withPoints.length)
+              : 0;
+            const repGroupAvg = numGroupGames > 0 ? rep.groupPoints / numGroupGames : 0;
+
+            // KO averages: active users who submitted bracket predictions, per completed KO game
+            const numKoGames = completedKoMatchesForLeader.length;
+            const activeKoUsers = withPoints.filter(u => {
+              const preds = bracketPredMapForLeader.get(u.userId);
+              return preds && Object.keys(preds).length > 0;
+            });
+            const totalKoPts = activeKoUsers.reduce((s, u) => s + u.koPoints, 0);
+            const koOverallAvg = numKoGames > 0 && activeKoUsers.length > 0
+              ? totalKoPts / (numKoGames * activeKoUsers.length)
+              : 0;
+            const repKoAvg = numKoGames > 0 ? rep.koPoints / numKoGames : 0;
+
+            const fmt = (n: number) => n.toFixed(1);
+
+            // Names for display — sorted alphabetically after the representative is chosen
+            const displayNames = specialists.map(u => u.username).sort((a, b) => a.localeCompare(b));
+
             knockoutSpecialistCard = {
               id: 'knockoutSpecialist',
               title: lang === 'no' ? 'Best når det gjelder' : lang === 'de' ? 'K.O.-Spezialist' : 'The Knockout Specialist',
               statistic:
                 lang === 'no'
-                  ? `${formatUserList(specialists.map(u => u.username), lang)} sleit i gruppespillet, men virkelig best når det gjelder! ${maxRankImprovement} plasser bedre rangert i sluttspillet enn i gruppespillet!`
+                  ? `${formatUserList(displayNames, lang)} har vist størst framgang fra gruppespillet til utslagsrundene! I gruppespillet hadde de et snitt på ${fmt(repGroupAvg)} poeng per kamp, sammenlignet med snittet som var ${fmt(groupOverallAvg)}. Men i sluttspillet har de sanket hele ${fmt(repKoAvg)} poeng i snitt per kamp! Mens snittet ligger på ${fmt(koOverallAvg)}.`
                   : lang === 'de'
-                    ? `${formatUserList(specialists.map(u => u.username), lang)} ${specialists.length === 1 ? 'kämpfte' : 'kämpften'} in der Gruppe, aber ${specialists.length === 1 ? 'glänzte' : 'glänzten'} im K.O.! ${maxRankImprovement} ${maxRankImprovement === 1 ? 'Platz' : 'Plätze'} besser als in der Gruppenphase!`
-                    : `${formatUserList(specialists.map(u => u.username), lang)} struggled in the group stage but turned it around in the knockouts — ${maxRankImprovement} ${maxRankImprovement === 1 ? 'place' : 'places'} higher in the knockout rankings than in the group stage!`,
+                    ? `${formatUserList(displayNames, lang)} ${specialists.length === 1 ? 'hat' : 'haben'} den größten Sprung vom Gruppenspiel zu den K.O.-Runden gemacht! In der Gruppenphase: ${fmt(repGroupAvg)} Punkte pro Spiel (Schnitt: ${fmt(groupOverallAvg)}). In der K.O.-Runde hingegen ganze ${fmt(repKoAvg)} Punkte pro Spiel (Schnitt: ${fmt(koOverallAvg)})!`
+                    : `${formatUserList(displayNames, lang)} showed the biggest improvement from the group stage to the knockout rounds! In the group stage ${specialists.length === 1 ? 'they' : 'they'} averaged ${fmt(repGroupAvg)} points per game, compared to the overall average of ${fmt(groupOverallAvg)}. But in the knockout stage ${specialists.length === 1 ? "they've" : "they've"} racked up ${fmt(repKoAvg)} points per game on average! While the average sits at ${fmt(koOverallAvg)}.`,
               subjects: specialists.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
               linkType: 'leaderboard',
             };
