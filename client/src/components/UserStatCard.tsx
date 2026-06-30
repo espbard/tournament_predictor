@@ -140,7 +140,7 @@ export default function UserStatCard({ competitionId, data, onMatchClick, onLead
           <img
             src={data.backgroundImageUrl}
             alt=""
-            className={`pointer-events-none absolute inset-0 h-full w-full object-contain mix-blend-multiply ${data.backgroundImagePosition === 'right' ? 'object-right' : 'p-4'}`}
+            className={`pointer-events-none absolute inset-0 h-full w-full object-contain ${data.backgroundImageBlend === 'screen' ? 'mix-blend-screen' : 'mix-blend-multiply'} ${data.backgroundImagePosition === 'right' ? 'object-right' : 'p-4'}`}
             style={data.backgroundImageFilter ? { filter: data.backgroundImageFilter } : undefined}
           />
         </>

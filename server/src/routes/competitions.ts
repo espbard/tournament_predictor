@@ -1880,6 +1880,8 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
             statistic,
             subjects: longestLeaders.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
             linkType: 'leaderboard',
+            backgroundImageUrl: '/laurel-wreath.png',
+            backgroundImageBlend: 'screen' as const,
           };
         }
       }
