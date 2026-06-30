@@ -2109,7 +2109,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
                 lang === 'no'
                   ? noOneCorrect
                     ? `${wrongCount} av ${totalCount} spillere trodde at **${teamNameStr}** ville ta seg til sluttspillet, men de røk ut i gruppespillet! Ingen så det komme.`
-                    : `${wrongCount} av ${totalCount} spillere trodde at **${teamNameStr}** ville ta seg til sluttspillet, men de røk ut i gruppespillet! ${correctNames} var blant de få som ikke lot seg lure.`
+                    : `${wrongCount} av ${totalCount} spillere trodde at **${teamNameStr}** ville ta seg til sluttspillet, men de røk ut i gruppespillet! ${correctNames} var de eneste som ikke lot seg lure.`
                   : lang === 'de'
                     ? noOneCorrect
                       ? `${wrongCount} von ${totalCount} Nutzern glaubten, **${teamNameStr}** würde die K.O.-Runde erreichen, aber sie schieden in der Gruppenphase aus! Niemand hat das kommen sehen.`
