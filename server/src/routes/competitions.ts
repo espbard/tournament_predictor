@@ -695,7 +695,17 @@ router.get('/:id/leaderboard-progression', requireAuth, async (req, res) => {
       if (!b.scheduledAt) return -1;
       return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
     });
-    const completedKoMatches = allKoMatchesRaw.filter(m => m.status === 'completed');
+    // allKoMatchesRaw keeps bracketIndex order for correct bracket key alignment.
+    // completedKoMatches is re-sorted chronologically so progression milestones
+    // appear in the order the games were actually played.
+    const completedKoMatches = allKoMatchesRaw
+      .filter(m => m.status === 'completed')
+      .sort((a, b) => {
+        if (!a.scheduledAt && !b.scheduledAt) return 0;
+        if (!a.scheduledAt) return 1;
+        if (!b.scheduledAt) return -1;
+        return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
+      });
 
     // Fetch teams and groups for labels and standings
     const teamRows = await db.select().from(teams).where(eq(teams.tournamentId, competition.tournamentId));
@@ -1623,7 +1633,17 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       if (!b.scheduledAt) return -1;
       return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
     });
-    const completedKoMatchesForLeader = allKoMatchesForLeader.filter(m => m.status === 'completed');
+    // allKoMatchesForLeader keeps bracketIndex order for bracket key alignment.
+    // completedKoMatchesForLeader is re-sorted chronologically so leader milestones
+    // are processed in the order the games were actually played.
+    const completedKoMatchesForLeader = allKoMatchesForLeader
+      .filter(m => m.status === 'completed')
+      .sort((a, b) => {
+        if (!a.scheduledAt && !b.scheduledAt) return 0;
+        if (!a.scheduledAt) return 1;
+        if (!b.scheduledAt) return -1;
+        return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
+      });
 
     const memberUserIds = memberRows.map(m => m.userId);
     const [teamRowsForLeader, groupRowsForLeader, bracketPredRowsForLeader] = await Promise.all([
