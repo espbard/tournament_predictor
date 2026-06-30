@@ -240,9 +240,15 @@ export function getUserPredictedTeamForKnockoutSlot(
     prevStage, feederIndex, 'away', firstRound, matchesByStage, userBracketPredictions,
   );
 
-  if (pred.progressingTeamId) return pred.progressingTeamId;
+  // Score comparison takes precedence over progressingTeamId (matches client getWinner logic).
+  // progressingTeamId can become stale if the user changes group-stage predictions after
+  // filling in bracket picks, so it must not override a clear score-based winner.
   if (pred.homeScore > pred.awayScore) return predictedHome;
   if (pred.awayScore > pred.homeScore) return predictedAway;
+  // Draw: only use progressingTeamId if it still refers to one of the predicted teams.
+  if (pred.progressingTeamId === predictedHome || pred.progressingTeamId === predictedAway) {
+    return pred.progressingTeamId;
+  }
   return null;
 }
 

@@ -389,6 +389,36 @@ describe('calculateKnockoutPoints', () => {
       expect(r.breakdown.correctResult).toBe(2);
       expect(r.breakdown.correctTeamInKnockoutTie).toBe(0);
     });
+
+    // Regression: stale progressingTeamId on a feeder match must not override a
+    // clear score-based prediction. If the user predicted homeScore > awayScore (→
+    // home team advances) but a stale progressingTeamId points to a different team,
+    // the server must use the score-derived winner, not the stale ID.
+    it('case 7: stale progressingTeamId on feeder does not cause false flip', () => {
+      // R16_0 has germany (home) vs france (away). User score pred: 2-0 (germany wins).
+      // But progressingTeamId is stale "spain" — a team that changed slots after the
+      // user entered their group-stage predictions.
+      // QF actual: germany (home) 2-1 italy — no flip expected.
+      const staleR16 = [
+        { id: 'sr16-0', stage: 'round_of_16', homeTeamId: 'germany', awayTeamId: 'france', homeScore: 2, awayScore: 0, progressingTeamId: 'germany', status: 'completed' },
+        { id: 'sr16-1', stage: 'round_of_16', homeTeamId: 'portugal', awayTeamId: 'italy', homeScore: 0, awayScore: 2, progressingTeamId: 'italy', status: 'completed' },
+      ] as typeof allMatches;
+      const stalePredsWithStaleId: BracketPredictions = {
+        'round_of_16_0': { homeScore: 2, awayScore: 0, progressingTeamId: 'spain' }, // stale ID; score says germany wins
+        'round_of_16_1': { homeScore: 0, awayScore: 2, progressingTeamId: null },     // italy wins → predictedAway at QF
+        'quarter_final_0': { homeScore: 2, awayScore: 1, progressingTeamId: null },
+      };
+      const matches = [
+        ...staleR16,
+        { id: 'sqf-0', stage: 'quarter_final', homeTeamId: 'germany', awayTeamId: 'italy', homeScore: 2, awayScore: 1, progressingTeamId: 'germany', status: 'completed' as const },
+      ];
+      const r = calculateKnockoutPoints(matches, flipFirstRound, stalePredsWithStaleId, CONFIG);
+      // Score comparison must take priority: germany is correctly predicted as home
+      // (homeScore 2 > awayScore 0), so no flip. Expect same points as case 1.
+      expect(r.breakdown.exactScore).toBe(9);
+      expect(r.breakdown.correctResult).toBe(3);
+      expect(r.breakdown.correctTeamInKnockoutTie).toBe(2); // germany + italy both correctly predicted
+    });
   });
 
   it('does not award correct_winner when user predicted correct finalist but wrong winner', () => {

@@ -741,7 +741,7 @@ function FocusedMatchCard({
             {isCompleted && actualMatch.homeScore === actualMatch.awayScore && actualMatch.progressingTeamId && (
               <>
                 <div className="h-px bg-border" />
-                <p className="px-4 py-2 text-xs text-muted-foreground text-center rounded-b-xl border-l-2 border-r-2 border-b-2 border-border">
+                <p className={`px-4 py-2 text-xs text-muted-foreground text-center rounded-b-xl border-l-2 border-r-2 border-b-2 ${actualHomeProgresses ? actualHomeBorderColor : actualAwayBorderColor}`}>
                   {actualMatch.progressingTeamId === actualMatch.homeTeamId
                     ? tn(actualMatch.homeTeamName)
                     : tn(actualMatch.awayTeamName)} {t('knockoutContent.advances')}
@@ -897,7 +897,13 @@ function FocusedBracketView({
   useEffect(() => {
     if (initedRef.current || !predsLoaded) return;
     initedRef.current = true;
-  }, [predsLoaded]);
+    const lastCompletedIdx = allMatchesRef.current.reduce<number>((best, m, idx) =>
+      actualMatchMap[m.predKey]?.status === 'completed' ? idx : best, -1);
+    if (lastCompletedIdx > 0) {
+      setCurrentIdx(lastCompletedIdx);
+      onFocusedKeyChange?.(allMatchesRef.current[lastCompletedIdx]?.predKey ?? '');
+    }
+  }, [predsLoaded, actualMatchMap, onFocusedKeyChange]);
 
   useEffect(() => {
     if (!externalFocusPredKey) return;
