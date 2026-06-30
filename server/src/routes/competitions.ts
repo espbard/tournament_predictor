@@ -1715,6 +1715,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     let bottomOfTheLeagueCard: UserStatCardData | null = null;
     let theClimberCard: UserStatCardData | null = null;
     let theFallerCard: UserStatCardData | null = null;
+    let knockoutSpecialistCard: UserStatCardData | null = null;
     let groupStageGuruCard: UserStatCardData | null = null;
     let thePatriotCard: UserStatCardData | null = null;
     let theOptimistCard: UserStatCardData | null = null;
@@ -1864,6 +1865,47 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           subjects: fallers.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
           linkType: 'leaderboard',
         };
+      }
+    }
+
+    // ── Knockout Specialist: most KO points among the bottom half of group-stage scorers ──
+    {
+      const activeForKo = memberRows.filter(m => !activeStatUserIds || activeStatUserIds.has(m.userId));
+      if (activeForKo.length >= 4) {
+        const withPoints = activeForKo.map(row => ({
+          userId: row.userId,
+          username: row.username,
+          imageUrl: row.imageUrl,
+          iconColor: row.iconColor ?? null,
+          groupPoints: row.exactScorePoints + row.correctResultPoints,
+          koPoints:
+            row.correctTeamProgressesPoints +
+            row.correctTeamInKnockoutTiePoints +
+            row.correctTeamInFinalPoints +
+            row.correctWinnerPoints,
+        }));
+
+        const sortedByGroup = [...withPoints].sort((a, b) => b.groupPoints - a.groupPoints);
+        const bottomHalf = sortedByGroup.slice(Math.floor(sortedByGroup.length / 2));
+
+        const maxKoPoints = bottomHalf.length > 0 ? Math.max(...bottomHalf.map(u => u.koPoints)) : 0;
+        if (maxKoPoints > 0) {
+          const specialists = bottomHalf
+            .filter(u => u.koPoints === maxKoPoints)
+            .sort((a, b) => a.username.localeCompare(b.username));
+          knockoutSpecialistCard = {
+            id: 'knockoutSpecialist',
+            title: lang === 'no' ? 'Best når det gjelder' : lang === 'de' ? 'K.O.-Spezialist' : 'The Knockout Specialist',
+            statistic:
+              lang === 'no'
+                ? `${formatUserList(specialists.map(u => u.username), lang)} er i bunnen av tabellen på gruppespillspoeng, men virkelig best når det gjelder! ${maxKoPoints} poeng fra sluttspillet!`
+                : lang === 'de'
+                  ? `${formatUserList(specialists.map(u => u.username), lang)} ${specialists.length === 1 ? 'steckt' : 'stecken'} in der Gruppenphase im hinteren Feld, aber ${specialists.length === 1 ? 'glänzt' : 'glänzen'} im K.O.! ${maxKoPoints} Punkte in der K.O.-Runde!`
+                  : `${formatUserList(specialists.map(u => u.username), lang)} ${specialists.length === 1 ? 'is' : 'are'} in the bottom half for group stage points but ${specialists.length === 1 ? 'leads' : 'lead'} the pack in knockout points with ${maxKoPoints}!`,
+            subjects: specialists.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
+            linkType: 'leaderboard',
+          };
+        }
       }
     }
 
@@ -3315,6 +3357,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       bottomOfTheLeagueCard,
       theClimberCard,
       theFallerCard,
+      knockoutSpecialistCard,
       bestPredictionCard,
       worstPredictionCard,
       bestFormCard,
