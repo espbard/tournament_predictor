@@ -2085,7 +2085,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
             title: lang === 'no' ? 'X-perten' : lang === 'de' ? 'Unentschieden-Experte' : "It's a tie!",
             statistic:
               lang === 'no'
-                ? `${highNames} er X-perten! Hele ${fmtPct(maxPct)} av tipsene deres ender med uavgjort. ${lowNames} på sin side har bare ${fmtPct(minPct)} uavgjorte tips.`
+                ? `${highNames} har en tydelig strategi! De har tippet uavgjort i ${fmtPct(maxPct)} av kampene! ${lowNames}, til sammenligning, har tippet færrest uavgjort med bare ${fmtPct(minPct)} uavgjorte tips.`
                 : lang === 'de'
                   ? `${highNames} ${mostDrawish.length === 1 ? 'tippt' : 'tippen'} die meisten Unentschieden! ${fmtPct(maxPct)} ihrer Tipps enden remis. ${lowNames} hingegen hat nur ${fmtPct(minPct)} Unentschieden-Tipps.`
                   : `${highNames} ${mostDrawish.length === 1 ? 'is' : 'are'} the draw specialist${mostDrawish.length === 1 ? '' : 's'}! ${fmtPct(maxPct)} of their predictions end in a draw. ${lowNames} on the other hand ${leastDrawish.length === 1 ? 'has' : 'have'} just ${fmtPct(minPct)} draw predictions.`,
