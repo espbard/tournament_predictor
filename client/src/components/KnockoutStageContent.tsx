@@ -1695,7 +1695,7 @@ export default function KnockoutStageContent({
     enabled: !!competition,
   });
 
-  const { data: matchList = [] } = useQuery({
+  const { data: matchList = [], isSuccess: matchesLoaded } = useQuery({
     queryKey: ['tournaments', competition?.tournamentId, 'matches'],
     queryFn: () => api.get<MatchWithTeams[]>(`/tournaments/${competition!.tournamentId}/matches`),
     enabled: !!competition,
@@ -2106,7 +2106,7 @@ export default function KnockoutStageContent({
               resolvedActualSlots={resolvedActualSlots}
               bracketPreds={localPreds}
               onUpdate={updatePrediction}
-              predsLoaded={initialized}
+              predsLoaded={initialized && matchesLoaded}
               actualMatchMap={knockoutMatchMap}
               scoringConfig={competition.scoringConfig}
               predictedFirstRoundMap={predictedFirstRoundMap}

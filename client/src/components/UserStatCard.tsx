@@ -104,6 +104,24 @@ function CollageGrid({ subjects }: { subjects: Subject[] }) {
   );
 }
 
+const CARD_EMOJIS: Record<string, string> = {
+  theLeader: '👑',
+  bottomOfTheLeague: '😓',
+  bestPrediction: '🔮',
+  bestForm: '🔥',
+  closeButNoCigar: '🐢',
+  twinSpirits: '🤝',
+  worstPrediction: '🙈',
+  worstForm: '📉',
+  unlucky: '🌧️',
+  hitOrMiss: '🎯',
+  knockoutSpecialist: '🥊',
+  theOptimist: '☀️',
+};
+
+// Very small drop shadow so emoji overlays read clearly against any image behind them.
+const EMOJI_SHADOW = 'drop-shadow-[0_1px_1.5px_rgba(0,0,0,0.45)]';
+
 export default function UserStatCard({ competitionId, data, onMatchClick, onLeaderboardClick }: UserStatCardProps) {
   const { title, statistic, subjects } = data;
   const isDark = useThemeStore((s) => s.theme === 'dark');
@@ -115,28 +133,41 @@ export default function UserStatCard({ competitionId, data, onMatchClick, onLead
   // 7+ subjects: show only the first one
   const displaySubjects = subjects.length >= 7 ? subjects.slice(0, 1) : subjects;
   const hasImage = !!(data.iconImageUrl || data.backgroundImageUrl || displaySubjects.length > 0);
+  const cardEmoji = CARD_EMOJIS[data.id];
+
+  const subjectContent =
+    displaySubjects.length > 1 ? (
+      <CollageGrid subjects={displaySubjects} />
+    ) : displaySubjects[0]?.type === 'user' && !displaySubjects[0]?.imageUrl ? (
+      <UserAvatar
+        username={displaySubjects[0].name}
+        imageUrl={displaySubjects[0].imageUrl}
+        iconColor={displaySubjects[0].iconColor}
+        className="h-full w-full"
+        style={{ borderRadius: 0 }}
+      />
+    ) : (
+      <img
+        src={displaySubjects[0]?.imageUrl ?? '/default-avatar.png'}
+        alt={displaySubjects[0]?.name ?? ''}
+        className="h-full w-full object-cover"
+      />
+    );
 
   const image = hasImage && (
     <div className="relative h-44 w-full flex-shrink-0">
-      {data.backgroundImageUrl ? (
+      {data.backgroundImageUrl && data.backgroundImageMode === 'behind' ? (
         <>
-          {displaySubjects.length > 1 ? (
-            <CollageGrid subjects={displaySubjects} />
-          ) : displaySubjects[0]?.type === 'user' && !displaySubjects[0]?.imageUrl ? (
-            <UserAvatar
-              username={displaySubjects[0].name}
-              imageUrl={displaySubjects[0].imageUrl}
-              iconColor={displaySubjects[0].iconColor}
-              className="h-full w-full"
-              style={{ borderRadius: 0 }}
-            />
-          ) : (
-            <img
-              src={displaySubjects[0]?.imageUrl ?? '/default-avatar.png'}
-              alt={displaySubjects[0]?.name ?? ''}
-              className="h-full w-full object-cover"
-            />
-          )}
+          <img
+            src={data.backgroundImageUrl}
+            alt=""
+            className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+          />
+          <div className="relative h-full w-full opacity-70">{subjectContent}</div>
+        </>
+      ) : data.backgroundImageUrl ? (
+        <>
+          {subjectContent}
           <img
             src={data.backgroundImageUrl}
             alt=""
@@ -146,22 +177,8 @@ export default function UserStatCard({ competitionId, data, onMatchClick, onLead
         </>
       ) : data.iconImageUrl ? (
         <img src={data.iconImageUrl} alt="" className="h-full w-full object-contain p-4" />
-      ) : displaySubjects.length > 1 ? (
-        <CollageGrid subjects={displaySubjects} />
-      ) : displaySubjects[0]?.type === 'user' && !displaySubjects[0]?.imageUrl ? (
-        <UserAvatar
-          username={displaySubjects[0].name}
-          imageUrl={displaySubjects[0].imageUrl}
-          iconColor={displaySubjects[0].iconColor}
-          className="h-full w-full"
-          style={{ borderRadius: 0 }}
-        />
       ) : (
-        <img
-          src={displaySubjects[0]?.imageUrl ?? '/default-avatar.png'}
-          alt={displaySubjects[0]?.name ?? ''}
-          className="h-full w-full object-cover"
-        />
+        subjectContent
       )}
       {data.overlayImageUrl && !data.backgroundImageUrl && (
         <img
@@ -170,103 +187,41 @@ export default function UserStatCard({ competitionId, data, onMatchClick, onLead
           className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-40"
         />
       )}
+      {data.id === 'matchMadeInHeaven' ? (
+        <div className="pointer-events-none absolute inset-0 flex items-start justify-start pt-2 pl-2 z-20">
+          <span className={`text-5xl leading-none select-none mr-1 ${EMOJI_SHADOW}`} style={{ transform: 'scaleX(-1)' }}>
+            🪽
+          </span>
+          <span className={`text-5xl leading-none select-none ${EMOJI_SHADOW}`}>🪽</span>
+        </div>
+      ) : (
+        cardEmoji && (
+          <div
+            className={`pointer-events-none absolute inset-0 flex z-20 ${
+              data.id === 'twinSpirits' ? 'items-center justify-center' : 'items-start justify-start pt-2 pl-2'
+            }`}
+          >
+            <span className={`text-5xl leading-none select-none ${EMOJI_SHADOW}`}>{cardEmoji}</span>
+          </div>
+        )
+      )}
     </div>
   );
 
   const card = (
-    <div className="relative">
-      <div
-        className="overflow-hidden rounded-2xl border dark:border bg-[hsla(120,3%,91%,0.5)] dark:bg-[hsl(231,28%,16%)]"
-        style={{ color: textColor, borderColor }}
-      >
-        {image}
-        <div className="px-4 pt-3 pb-0">
-          <h3 className="text-lg font-bold uppercase tracking-wide text-center" style={{ color: titleColor }}>
-            {title}
-          </h3>
-        </div>
-        <div className="px-4 pt-1.5 pb-4">
-          <p className="text-sm">{renderStatistic(statistic, boldColor)}</p>
-        </div>
+    <div
+      className="overflow-hidden rounded-2xl border dark:border bg-[hsla(120,3%,91%,0.5)] dark:bg-[hsl(231,28%,16%)]"
+      style={{ color: textColor, borderColor }}
+    >
+      {image}
+      <div className="px-4 pt-3 pb-0">
+        <h3 className="text-lg font-bold uppercase tracking-wide text-center" style={{ color: titleColor }}>
+          {title}
+        </h3>
       </div>
-      {data.id === 'theLeader' && (
-        <span
-          className="absolute -top-3 -right-2 text-3xl leading-none select-none pointer-events-none z-10"
-          style={{ transform: 'rotate(15deg)' }}
-        >
-          👑
-        </span>
-      )}
-      {data.id === 'bottomOfTheLeague' && (
-        <span className="absolute -top-3 -right-2 text-3xl leading-none select-none pointer-events-none z-10">
-          😓
-        </span>
-      )}
-      {data.id === 'bestPrediction' && (
-        <span className="absolute -top-3 -right-2 text-3xl leading-none select-none pointer-events-none z-10">
-          🔮
-        </span>
-      )}
-      {data.id === 'bestForm' && (
-        <span className="absolute -top-3 -right-2 text-3xl leading-none select-none pointer-events-none z-10">
-          🔥
-        </span>
-      )}
-      {data.id === 'closeButNoCigar' && (
-        <span className="absolute -top-3 -right-2 text-3xl leading-none select-none pointer-events-none z-10">
-          🐢
-        </span>
-      )}
-      {data.id === 'swingAndAMiss' && (
-        <span className="absolute -top-3 -right-2 text-3xl leading-none select-none pointer-events-none z-10">
-          🤏
-        </span>
-      )}
-      {data.id === 'twinSpirits' && (
-        <span className="absolute -top-3 -right-2 text-3xl leading-none select-none pointer-events-none z-10">
-          🤝
-        </span>
-      )}
-      {data.id === 'howDidYouKnow' && (
-        <span className="absolute -top-3 -right-2 text-3xl leading-none select-none pointer-events-none z-10">
-          🧠
-        </span>
-      )}
-      {data.id === 'worstPrediction' && (
-        <span className="absolute -top-3 -right-2 text-3xl leading-none select-none pointer-events-none z-10">
-          🙈
-        </span>
-      )}
-      {data.id === 'worstForm' && (
-        <span className="absolute -top-3 -right-2 text-3xl leading-none select-none pointer-events-none z-10">
-          📉
-        </span>
-      )}
-      {data.id === 'unlucky' && (
-        <span className="absolute -top-3 -right-2 text-3xl leading-none select-none pointer-events-none z-10">
-          🌧️
-        </span>
-      )}
-      {data.id === 'hitOrMiss' && (
-        <span className="absolute -top-3 -right-2 text-3xl leading-none select-none pointer-events-none z-10">
-          🎯
-        </span>
-      )}
-      {data.id === 'knockoutSpecialist' && (
-        <span className="absolute -top-3 -right-2 text-3xl leading-none select-none pointer-events-none z-10">
-          🥊
-        </span>
-      )}
-      {data.id === 'theOptimist' && (
-        <span className="absolute -top-3 -right-2 text-3xl leading-none select-none pointer-events-none z-10">
-          ☀️
-        </span>
-      )}
-      {data.id === 'mostUnexpectedResult' && (
-        <span className="absolute -top-3 -right-2 text-3xl leading-none select-none pointer-events-none z-10">
-          🤯
-        </span>
-      )}
+      <div className="px-4 pt-1.5 pb-4">
+        <p className="text-sm">{renderStatistic(statistic, boldColor)}</p>
+      </div>
     </div>
   );
 
