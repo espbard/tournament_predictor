@@ -189,10 +189,10 @@ export default function UserStatCard({ competitionId, data, onMatchClick, onLead
       )}
       {data.id === 'matchMadeInHeaven' ? (
         <div className="pointer-events-none absolute inset-0 flex items-start justify-start pt-2 pl-2 z-20">
-          <span className={`text-5xl leading-none select-none opacity-90 mr-1 ${EMOJI_SHADOW}`} style={{ transform: 'scaleX(-1)' }}>
+          <span className={`text-5xl leading-none select-none mr-1 ${EMOJI_SHADOW}`} style={{ transform: 'scaleX(-1)' }}>
             🪽
           </span>
-          <span className={`text-5xl leading-none select-none opacity-90 ${EMOJI_SHADOW}`}>🪽</span>
+          <span className={`text-5xl leading-none select-none ${EMOJI_SHADOW}`}>🪽</span>
         </div>
       ) : (
         cardEmoji && (
@@ -201,7 +201,7 @@ export default function UserStatCard({ competitionId, data, onMatchClick, onLead
               data.id === 'twinSpirits' ? 'items-center justify-center' : 'items-start justify-start pt-2 pl-2'
             }`}
           >
-            <span className={`text-5xl leading-none select-none opacity-90 ${EMOJI_SHADOW}`}>{cardEmoji}</span>
+            <span className={`text-5xl leading-none select-none ${EMOJI_SHADOW}`}>{cardEmoji}</span>
           </div>
         )
       )}
