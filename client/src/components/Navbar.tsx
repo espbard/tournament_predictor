@@ -76,32 +76,34 @@ export default function Navbar() {
   };
 
   const tabCls = (active: boolean) =>
-    `whitespace-nowrap px-2 sm:px-3 py-1.5 sm:py-2 text-sm font-medium transition-colors flex items-center gap-1 ${
+    `whitespace-nowrap px-2 sm:px-3 lg:px-4 py-1.5 sm:py-2 lg:py-2.5 text-sm sm:text-[0.9rem] lg:text-base font-medium transition-colors flex items-center gap-1 ${
       active
         ? 'text-foreground'
-        : 'text-foreground/50 hover:text-foreground'
+        : 'text-foreground/60 hover:text-foreground dark:text-foreground/75'
     }`;
 
   const dropItemCls = (active: boolean) =>
-    `w-full text-left px-4 py-2 text-sm hover:bg-muted ${active ? 'text-primary dark:text-blue-400 font-medium' : 'text-foreground'}`;
+    `w-full text-left px-4 py-2 lg:py-2.5 text-sm lg:text-[0.9rem] hover:bg-muted ${active ? 'text-primary dark:text-blue-400 font-medium' : 'text-foreground'}`;
 
   const predictionsActive = activeTab === 'group' || activeTab === 'tables' || activeTab === 'knockout' || activeTab === 'bonus';
   const standingsActive = activeTab === 'leaderboard' || activeTab === 'pointProgression';
 
   return (
     <nav className="bg-background border-b border-border">
-      <div className="mx-auto flex items-center max-w-5xl lg:max-w-[80%] px-3 sm:px-4 py-1 sm:py-2">
+      <div className="mx-auto flex items-center max-w-5xl lg:max-w-[80%] px-3 sm:px-4 py-1 sm:py-2 lg:py-2.5">
         {/* Home icon – shown when not on home page */}
         {location.pathname !== '/' && (
-          <Link to="/" className="shrink-0 flex items-center py-1 pl-1 text-foreground hover:opacity-70" aria-label="Home">
-            <Home size={18} />
+          <Link to="/" className="shrink-0 flex items-center py-1 pl-1 sm:mr-2 lg:mr-3 text-foreground hover:opacity-70" aria-label="Home">
+            <Home size={18} className="sm:hidden" />
+            <Home size={20} className="hidden sm:block lg:hidden" />
+            <Home size={22} className="hidden lg:block" />
           </Link>
         )}
 
         {/* Site name – hidden on mobile only when tabs are shown */}
         <Link
           to="/"
-          className={`shrink-0 flex items-center text-base font-semibold text-foreground hover:opacity-70 mr-2 py-2 sm:py-3 ${showTabs ? 'hidden sm:flex' : ''}`}
+          className={`shrink-0 flex items-center text-base lg:text-lg font-semibold text-foreground hover:opacity-70 mr-2 py-2 sm:py-3 ${showTabs ? 'hidden sm:flex' : ''}`}
         >
           {t('nav.appName')}
         </Link>
@@ -121,7 +123,7 @@ export default function Navbar() {
                     className={tabCls(predictionsActive)}
                   >
                     {t('nav.tabGroups')}
-                    <ChevronDown size={13} className={`transition-transform duration-150 ${groupsOpen ? 'rotate-180' : ''}`} />
+                    <ChevronDown size={13} className={`transition-transform duration-150 lg:w-4 lg:h-4 ${groupsOpen ? 'rotate-180' : ''}`} />
                   </button>
                   {groupsOpen && (
                     <div className="absolute left-0 top-full z-[100] min-w-[180px] rounded-md border border-border bg-popover shadow-md py-1">
@@ -148,7 +150,7 @@ export default function Navbar() {
                     className={tabCls(standingsActive)}
                   >
                     {t('nav.tabStandings')}
-                    <ChevronDown size={13} className={`transition-transform duration-150 ${standingsOpen ? 'rotate-180' : ''}`} />
+                    <ChevronDown size={13} className={`transition-transform duration-150 lg:w-4 lg:h-4 ${standingsOpen ? 'rotate-180' : ''}`} />
                   </button>
                   {standingsOpen && (
                     <div className="absolute left-0 top-full z-[100] min-w-[190px] rounded-md border border-border bg-popover shadow-md py-1">
@@ -194,7 +196,7 @@ export default function Navbar() {
                 username={user.username}
                 imageUrl={user.imageUrl}
                 iconColor={user.iconColor}
-                className="h-8 w-8 rounded-full"
+                className="h-8 w-8 lg:h-9 lg:w-9 rounded-full"
               />
             </button>
             {userMenuOpen && (
