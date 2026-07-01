@@ -2230,17 +2230,26 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     {
       const activeForKo = memberRows.filter(m => !activeStatUserIds || activeStatUserIds.has(m.userId));
       if (activeForKo.length >= 4) {
+        // `competitionMembers.exactScorePoints`/`correctResultPoints` are combined group+KO
+        // totals (see scoringTrigger.ts), so they can't be used to isolate group-stage points.
+        // Sum `rows` (group-only predictions) and `koStatRows` (per-KO-match totals, which
+        // already include exact score/correct result plus all knockout bonus categories) instead.
+        const groupPointsByUserId = new Map<string, number>();
+        for (const row of rows) {
+          groupPointsByUserId.set(row.userId, (groupPointsByUserId.get(row.userId) ?? 0) + (row.points ?? 0));
+        }
+        const koPointsByUserId = new Map<string, number>();
+        for (const row of koStatRows) {
+          koPointsByUserId.set(row.userId, (koPointsByUserId.get(row.userId) ?? 0) + (row.points ?? 0));
+        }
+
         const withPoints = activeForKo.map(row => ({
           userId: row.userId,
           username: row.username,
           imageUrl: row.imageUrl,
           iconColor: row.iconColor ?? null,
-          groupPoints: row.exactScorePoints + row.correctResultPoints,
-          koPoints:
-            row.correctTeamProgressesPoints +
-            row.correctTeamInKnockoutTiePoints +
-            row.correctTeamInFinalPoints +
-            row.correctWinnerPoints,
+          groupPoints: groupPointsByUserId.get(row.userId) ?? 0,
+          koPoints: koPointsByUserId.get(row.userId) ?? 0,
         }));
 
         const anyKoPoints = withPoints.some(u => u.koPoints > 0);
