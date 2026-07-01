@@ -35,4 +35,28 @@ describe('resolveFirstRoundSlots', () => {
     const resolved = resolveFirstRoundSlots({}, standings, 2, 1, {});
     expect(resolved['m1_home']).toBeNull();
   });
+
+  it('only ever assigns lucky-loser slots to the top-N ranked third-place teams, never a lower-ranked one', () => {
+    // Only groups A, C, D exist. Each has a third-place ("lucky loser") candidate.
+    // The WC2026 combo table (filtered to these existing groups) gives:
+    //   slot m1_away (combo #1 'A,B,C,D,F' ∩ {A,C,D}) -> eligible {A, C, D}
+    //   slot m2_away (combo #2 'C,D,F,G,H' ∩ {A,C,D}) -> eligible {C, D}
+    // Only 2 lucky-loser slots exist, so per the real qualification rule exactly
+    // the top-2 ranked third-place teams (by points/GD/GF) should qualify —
+    // d3 (rank 1) and a3 (rank 2) — while c3 (rank 3, worst) must never appear,
+    // even though a naive slot-filling algorithm could be tempted to swap it in
+    // when the higher-ranked teams don't trivially fit slot order.
+    const standings = new Map<string, GroupStandingTeam[]>([
+      ['A', [team('a1', 9, 5, 8), team('a2', 6, 1, 4), team('a3', 4, 1, 3)]],
+      ['C', [team('c1', 9, 5, 8), team('c2', 6, 1, 4), team('c3', 2, -1, 1)]],
+      ['D', [team('d1', 9, 5, 8), team('d2', 6, 1, 4), team('d3', 6, 3, 5)]],
+    ]);
+    const bracketSlots = { m1_home: '1A', m2_home: '1C' };
+
+    const resolved = resolveFirstRoundSlots(bracketSlots, standings, 2, 2, {});
+
+    const llAssignments = [resolved['m1_away'], resolved['m2_away']];
+    expect(llAssignments.sort()).toEqual(['a3', 'd3']);
+    expect(llAssignments).not.toContain('c3');
+  });
 });
