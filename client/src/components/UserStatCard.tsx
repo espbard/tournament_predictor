@@ -191,7 +191,13 @@ export default function UserStatCard({ competitionId, data, onMatchClick, onLead
       )}
       {cardEmoji && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center z-20">
-          <span className="text-7xl leading-none select-none opacity-40">{cardEmoji}</span>
+          <div
+            className="absolute h-28 w-28 rounded-full"
+            style={{ background: 'radial-gradient(circle, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 72%)' }}
+          />
+          <span className="relative text-6xl leading-none select-none opacity-90 drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">
+            {cardEmoji}
+          </span>
         </div>
       )}
     </div>
