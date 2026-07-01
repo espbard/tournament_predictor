@@ -695,7 +695,14 @@ router.get('/:id/leaderboard-progression', requireAuth, async (req, res) => {
       if (!b.scheduledAt) return -1;
       return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
     });
-    const completedKoMatches = allKoMatchesRaw.filter(m => m.status === 'completed');
+    const completedKoMatches = allKoMatchesRaw
+      .filter(m => m.status === 'completed')
+      .sort((a, b) => {
+        if (!a.scheduledAt && !b.scheduledAt) return 0;
+        if (!a.scheduledAt) return 1;
+        if (!b.scheduledAt) return -1;
+        return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
+      });
 
     // Fetch teams and groups for labels and standings
     const teamRows = await db.select().from(teams).where(eq(teams.tournamentId, competition.tournamentId));
@@ -851,11 +858,15 @@ router.get('/:id/leaderboard-progression', requireAuth, async (req, res) => {
     // Knockout milestones — compute calculateKnockoutPoints incrementally
     const prevKoTotals: Record<string, number> = {};
     for (const userId of memberIds) prevKoTotals[userId] = 0;
+    const processedKoMatchIds = new Set<string>();
 
     for (const match of completedKoMatches) {
-      const matchTime = match.scheduledAt ? new Date(match.scheduledAt).getTime() : Infinity;
+      processedKoMatchIds.add(match.id);
 
-      // Build filtered KO match list: completed only up to and including this match's scheduledAt
+      // Build filtered KO match list: completed only for matches processed so far.
+      // Using a Set of IDs (rather than a scheduledAt cutoff) keeps the cumulative total
+      // monotonically increasing even when bracketIndex order diverges from scheduledAt order
+      // (e.g. two R16 games on the same day where bracketIndex=0 kicks off later than bracketIndex=1).
       const filteredKoMatches: CompletedKnockoutMatch[] = allKoMatchesRaw.map(m => ({
         id: m.id,
         stage: m.stage,
@@ -864,9 +875,7 @@ router.get('/:id/leaderboard-progression', requireAuth, async (req, res) => {
         homeScore: m.homeScore ?? 0,
         awayScore: m.awayScore ?? 0,
         progressingTeamId: m.progressingTeamId,
-        status: m.status === 'completed' && m.scheduledAt && new Date(m.scheduledAt).getTime() <= matchTime
-          ? 'completed'
-          : 'scheduled',
+        status: processedKoMatchIds.has(m.id) ? 'completed' : 'scheduled',
       }));
 
       for (const member of memberRows) {
@@ -1373,8 +1382,226 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
     const activeRows = activeStatUserIds ? rows.filter(r => activeStatUserIds!.has(r.userId)) : rows;
 
+    // ── Knockout-inclusive rows for per-match "form" stat cards ────────────────────
+    // Knockout predictions live in `bracketPredictions` (one JSON blob per user) rather
+    // than per-match in `predictions`, so completed knockout matches never appear in
+    // `rows`/`activeRows` above. Resolve each user's predicted score (and points earned)
+    // for every completed knockout match here, mirroring the per-match breakdown built by
+    // the all-match-predictions endpoint, so cards that aggregate over "every match a user
+    // has predicted" — Unlucky, Hit or Miss, Slow and Steady, Best/Worst form — also cover
+    // the knockout rounds instead of silently stopping at the group stage.
+    const KO_STAGE_LIST = ['round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'bronze_final', 'final'] as const;
+    const koMatchesForStats = await db
+      .select({
+        id: matches.id, stage: matches.stage, scheduledAt: matches.scheduledAt, status: matches.status,
+        homeTeamId: matches.homeTeamId, awayTeamId: matches.awayTeamId,
+        homeScore: matches.homeScore, awayScore: matches.awayScore,
+        progressingTeamId: matches.progressingTeamId, bracketIndex: matches.bracketIndex,
+      })
+      .from(matches)
+      .where(and(eq(matches.tournamentId, competition.tournamentId), inArray(matches.stage, [...KO_STAGE_LIST])));
+
+    // Sort using the same bracketIndex-first, then scheduledAt logic used elsewhere so
+    // stage_N bracket keys line up with how they were assigned when predictions were saved.
+    koMatchesForStats.sort((a, b) => {
+      const aHasIdx = a.bracketIndex != null;
+      const bHasIdx = b.bracketIndex != null;
+      if (aHasIdx && bHasIdx && a.bracketIndex !== b.bracketIndex) return a.bracketIndex! - b.bracketIndex!;
+      if (aHasIdx && !bHasIdx) return -1;
+      if (!aHasIdx && bHasIdx) return 1;
+      if (!a.scheduledAt && !b.scheduledAt) return 0;
+      if (!a.scheduledAt) return 1;
+      if (!b.scheduledAt) return -1;
+      return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
+    });
+
+    const koBracketKeyToMatchForStats = new Map<string, typeof koMatchesForStats[number]>();
+    {
+      const stageIdx = new Map<string, number>();
+      for (const m of koMatchesForStats) {
+        const i = stageIdx.get(m.stage) ?? 0;
+        koBracketKeyToMatchForStats.set(`${m.stage}_${i}`, m);
+        stageIdx.set(m.stage, i + 1);
+      }
+    }
+
+    const koStatRows: typeof rows = [];
+    if (koBracketKeyToMatchForStats.size > 0) {
+      const [koBpRowsForStats, koTournamentRowForStats, koTeamRowsForStats, koGroupRowsForStats, koMemberRowsForStats] = await Promise.all([
+        db.select({ userId: bracketPredictions.userId, predictions: bracketPredictions.predictions })
+          .from(bracketPredictions).where(eq(bracketPredictions.competitionId, id)),
+        db.select({ knockoutConfig: tournaments.knockoutConfig }).from(tournaments).where(eq(tournaments.id, competition.tournamentId)),
+        db.select({ id: teams.id, groupId: teams.groupId }).from(teams).where(eq(teams.tournamentId, competition.tournamentId)),
+        db.select({ id: groups.id, name: groups.name }).from(groups).where(eq(groups.tournamentId, competition.tournamentId)),
+        db.select({
+          userId: users.id, username: users.username, imageUrl: users.imageUrl, iconColor: users.iconColor,
+          isLateAddition: users.isLateAddition, isLeaderboardUser: users.isLeaderboardUser, isComparisonUser: users.isComparisonUser,
+          groupDisciplinaryChoices: competitionMembers.groupDisciplinaryChoices,
+          luckyLoserChoices: competitionMembers.luckyLoserChoices,
+        }).from(competitionMembers).innerJoin(users, eq(users.id, competitionMembers.userId)).where(eq(competitionMembers.competitionId, id)),
+      ]);
+
+      const koCfgForStats = koTournamentRowForStats[0]?.knockoutConfig as KnockoutConfig | null;
+      const koFirstRoundForStats = koCfgForStats?.firstRound ?? 'round_of_16';
+      const groupNameByIdForStats = new Map(koGroupRowsForStats.map(g => [g.id, g.name]));
+      const teamGroupMapForStats = new Map<string, string>();
+      for (const t of koTeamRowsForStats) {
+        if (t.groupId) {
+          const gName = groupNameByIdForStats.get(t.groupId);
+          if (gName) teamGroupMapForStats.set(t.id, gName);
+        }
+      }
+
+      const koUserInfoMap = new Map(
+        koMemberRowsForStats.filter(u => !u.isLeaderboardUser && !u.isComparisonUser).map(u => [u.userId, u])
+      );
+      const koBpPredsByUser = new Map(koBpRowsForStats.map(bp => [bp.userId, bp.predictions as BracketPredictions]));
+
+      // Predicted group standings per user, built from their group-stage prediction rows
+      // (already fetched above in `rows`), used to resolve which teams they expect in the
+      // first knockout round.
+      const groupPredsByUserForStats = new Map<string, Map<string, typeof rows[number]>>();
+      for (const row of rows) {
+        if (!groupPredsByUserForStats.has(row.userId)) groupPredsByUserForStats.set(row.userId, new Map());
+        groupPredsByUserForStats.get(row.userId)!.set(row.matchId, row);
+      }
+
+      const completedGroupMatchesForStats = await db
+        .select({ id: matches.id, homeTeamId: matches.homeTeamId, awayTeamId: matches.awayTeamId })
+        .from(matches)
+        .where(and(eq(matches.tournamentId, competition.tournamentId), eq(matches.stage, 'group'), eq(matches.status, 'completed')));
+
+      const allFirstRoundMatchesForStats = [...koBracketKeyToMatchForStats.values()].filter(m => m.stage === koFirstRoundForStats);
+
+      const matchesByStageActualForStats = new Map<string, KnockoutMatchSlot[]>();
+      for (const m of koBracketKeyToMatchForStats.values()) {
+        if (!matchesByStageActualForStats.has(m.stage)) matchesByStageActualForStats.set(m.stage, []);
+        matchesByStageActualForStats.get(m.stage)!.push({ id: m.id, stage: m.stage, homeTeamId: m.homeTeamId, awayTeamId: m.awayTeamId });
+      }
+
+      for (const [userId, info] of koUserInfoMap) {
+        const bpPreds = koBpPredsByUser.get(userId) ?? null;
+        if (!bpPreds) continue;
+
+        let firstRoundPredTeams: FirstRoundPredTeams = {};
+        let matchesByStageForStats: Map<string, KnockoutMatchSlot[]> = matchesByStageActualForStats;
+
+        if (koCfgForStats) {
+          const { bracketSlots, directQualifiers } = koCfgForStats;
+          const userGroupPredMap = groupPredsByUserForStats.get(userId) ?? new Map();
+          const simulatedMatches = completedGroupMatchesForStats
+            .filter(m => m.homeTeamId && m.awayTeamId)
+            .flatMap(m => {
+              const p = userGroupPredMap.get(m.id);
+              return p ? [{ homeTeamId: m.homeTeamId!, awayTeamId: m.awayTeamId!, homeScore: p.predHomeScore, awayScore: p.predAwayScore }] : [];
+            });
+          const predictedStandings = computeGroupStandings(
+            simulatedMatches, teamGroupMapForStats, (info.groupDisciplinaryChoices ?? {}) as Record<string, string[]>,
+          );
+          const resolvedSlots = resolveFirstRoundSlots(
+            bracketSlots, predictedStandings, directQualifiers, allFirstRoundMatchesForStats.length,
+            (info.luckyLoserChoices ?? {}) as Record<string, string[]>,
+          );
+          allFirstRoundMatchesForStats.forEach((m, i) => {
+            firstRoundPredTeams[`${koFirstRoundForStats}_${i}`] = {
+              predHomeId: resolvedSlots[`m${i + 1}_home`] ?? null,
+              predAwayId: resolvedSlots[`m${i + 1}_away`] ?? null,
+            };
+          });
+
+          const modMatchesByStage = new Map<string, KnockoutMatchSlot[]>();
+          const stageIdxCounter = new Map<string, number>();
+          for (const m of koBracketKeyToMatchForStats.values()) {
+            if (!modMatchesByStage.has(m.stage)) modMatchesByStage.set(m.stage, []);
+            const idx = stageIdxCounter.get(m.stage) ?? 0;
+            stageIdxCounter.set(m.stage, idx + 1);
+            const slot = m.stage === koFirstRoundForStats ? firstRoundPredTeams[`${koFirstRoundForStats}_${idx}`] : null;
+            modMatchesByStage.get(m.stage)!.push({
+              id: m.id, stage: m.stage,
+              homeTeamId: slot ? slot.predHomeId : m.homeTeamId,
+              awayTeamId: slot ? slot.predAwayId : m.awayTeamId,
+            });
+          }
+          matchesByStageForStats = modMatchesByStage;
+        }
+
+        for (const [bracketKey, m] of koBracketKeyToMatchForStats) {
+          const pred = bpPreds[bracketKey];
+          if (!pred) continue;
+          if (m.status !== 'completed' || m.homeScore === null || m.awayScore === null) continue;
+
+          const lastUnderscore = bracketKey.lastIndexOf('_');
+          const bracketStage = bracketKey.slice(0, lastUnderscore);
+          const matchIdx = parseInt(bracketKey.slice(lastUnderscore + 1), 10);
+
+          let predictedHome: string | null = null;
+          let predictedAway: string | null = null;
+          if (bracketStage !== 'bronze_final') {
+            if (bracketStage === koFirstRoundForStats) {
+              predictedHome = firstRoundPredTeams[bracketKey]?.predHomeId ?? null;
+              predictedAway = firstRoundPredTeams[bracketKey]?.predAwayId ?? null;
+            } else {
+              predictedHome = getUserPredictedTeamForKnockoutSlot(bracketStage, matchIdx, 'home', koFirstRoundForStats, matchesByStageForStats, bpPreds);
+              predictedAway = getUserPredictedTeamForKnockoutSlot(bracketStage, matchIdx, 'away', koFirstRoundForStats, matchesByStageForStats, bpPreds);
+            }
+          }
+
+          let shouldFlip = false;
+          if (m.homeTeamId && m.awayTeamId) {
+            shouldFlip =
+              (predictedHome !== null && predictedHome === m.awayTeamId) ||
+              (predictedAway !== null && predictedAway === m.homeTeamId);
+          }
+
+          // Reuse the tested knockout scoring engine to get the total points this single
+          // match contributes, by marking only this match as completed.
+          const singleMatchArray: CompletedKnockoutMatch[] = [...koBracketKeyToMatchForStats.values()].map(mm => ({
+            id: mm.id, stage: mm.stage, homeTeamId: mm.homeTeamId, awayTeamId: mm.awayTeamId,
+            homeScore: mm.homeScore ?? 0, awayScore: mm.awayScore ?? 0, progressingTeamId: mm.progressingTeamId,
+            status: mm.id === m.id ? 'completed' : 'scheduled',
+          }));
+          const koResult = calculateKnockoutPoints(singleMatchArray, koFirstRoundForStats, bpPreds, scoringConfig, firstRoundPredTeams);
+
+          koStatRows.push({
+            userId,
+            username: info.username,
+            imageUrl: info.imageUrl,
+            iconColor: info.iconColor,
+            isLateAddition: info.isLateAddition,
+            matchId: m.id,
+            predHomeScore: shouldFlip ? pred.awayScore : pred.homeScore,
+            predAwayScore: shouldFlip ? pred.homeScore : pred.awayScore,
+            actualHomeScore: m.homeScore,
+            actualAwayScore: m.awayScore,
+            homeTeamId: m.homeTeamId,
+            awayTeamId: m.awayTeamId,
+            scheduledAt: m.scheduledAt,
+            points: koResult.total,
+          });
+        }
+      }
+    }
+
+    const activeRowsWithKo = activeStatUserIds
+      ? [...activeRows, ...koStatRows.filter(r => activeStatUserIds!.has(r.userId))]
+      : [...activeRows, ...koStatRows];
+
+    // All completed matches (group + knockout) ordered most-recent-first, used by the
+    // Best/Worst form cards below so the "last 5 matches" / drought window isn't limited
+    // to the group stage once the knockout rounds begin.
+    const distinctCompletedMatchesById = new Map<string, { id: string; scheduledAt: Date | null }>();
+    for (const row of rows) distinctCompletedMatchesById.set(row.matchId, { id: row.matchId, scheduledAt: row.scheduledAt });
+    for (const m of koMatchesForStats) {
+      if (m.status === 'completed' && m.homeScore !== null && m.awayScore !== null) {
+        distinctCompletedMatchesById.set(m.id, { id: m.id, scheduledAt: m.scheduledAt });
+      }
+    }
+    const allCompletedMatchesByRecency = [...distinctCompletedMatchesById.values()].sort(
+      (a, b) => (b.scheduledAt?.getTime() ?? 0) - (a.scheduledAt?.getTime() ?? 0)
+    );
+
     const oneGoalAwayCounts = new Map<string, { username: string; imageUrl: string | null; iconColor: string | null; count: number }>();
-    for (const row of activeRows) {
+    for (const row of activeRowsWithKo) {
       if (row.actualHomeScore === null || row.actualAwayScore === null) continue;
       const goalsAway =
         Math.abs(row.predHomeScore - row.actualHomeScore) + Math.abs(row.predAwayScore - row.actualAwayScore);
@@ -1406,7 +1633,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       string,
       { username: string; imageUrl: string | null; iconColor: string | null; correctResults: number; exactScores: number }
     >();
-    for (const row of activeRows) {
+    for (const row of activeRowsWithKo) {
       if (row.actualHomeScore === null || row.actualAwayScore === null) continue;
       const predictedResult = Math.sign(row.predHomeScore - row.predAwayScore);
       const actualResult = Math.sign(row.actualHomeScore - row.actualAwayScore);
@@ -1462,32 +1689,31 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         .sort((a, b) => a.username.localeCompare(b.username));
     }
 
-    // ── Best/Worst form: points earned across the most recent completed GROUP matches ──
+    // ── Best/Worst form: points earned across the most recent completed matches (group + KO) ──
     // Knockout predictions are stored per-competition in bracketPredictions (not per-match
-    // in predictions), so we cannot retrieve per-match KO points from activeRows. Restricting
-    // to group-stage matches keeps the form cards accurate and avoids false droughts caused by
-    // KO matches appearing in the "recent 5" with zero entries in pointsByUserMatch.
+    // in predictions); `activeRowsWithKo`/`allCompletedMatchesByRecency` above resolve those
+    // into the same per-match shape so the "recent 5" / drought window spans both stages.
+    // `completedMatches` (group-only) is kept separate below for the Knockout Specialist card,
+    // which needs a group-stage-only game count.
     const completedMatches = await db
       .select({ id: matches.id, scheduledAt: matches.scheduledAt })
       .from(matches)
       .where(and(eq(matches.tournamentId, competition.tournamentId), eq(matches.status, 'completed'), eq(matches.stage, 'group')));
-    const completedMatchesByRecency = [...completedMatches].sort(
-      (a, b) => (b.scheduledAt?.getTime() ?? 0) - (a.scheduledAt?.getTime() ?? 0)
-    );
+    const completedMatchesByRecency = allCompletedMatchesByRecency;
     const last5MatchIds = new Set(completedMatchesByRecency.slice(0, 5).map(m => m.id));
 
     const userInfo = new Map<string, { username: string; imageUrl: string | null; iconColor: string | null }>();
     const isLateAdditionByUser = new Map<string, boolean>();
     const pointsByUserMatch = new Map<string, number>();
     const predCountByUser = new Map<string, number>();
-    for (const row of activeRows) {
+    for (const row of activeRowsWithKo) {
       userInfo.set(row.userId, { username: row.username, imageUrl: row.imageUrl, iconColor: row.iconColor ?? null });
       isLateAdditionByUser.set(row.userId, row.isLateAddition);
       pointsByUserMatch.set(`${row.userId}|${row.matchId}`, row.points ?? 0);
       predCountByUser.set(row.userId, (predCountByUser.get(row.userId) ?? 0) + 1);
     }
 
-    const completedMatchCountInCompetition = new Set(activeRows.map(r => r.matchId)).size;
+    const completedMatchCountInCompetition = new Set(activeRowsWithKo.map(r => r.matchId)).size;
     const usersWithAllPredictions = new Set(
       [...predCountByUser.entries()]
         .filter(([, count]) => count === completedMatchCountInCompetition)
@@ -1504,7 +1730,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     );
 
     const recentPointsByUser = new Map<string, number>();
-    for (const row of activeRows) {
+    for (const row of activeRowsWithKo) {
       if (!last5MatchIds.has(row.matchId)) continue;
       if (!formEligibleUserIds.has(row.userId)) continue;
       recentPointsByUser.set(row.userId, (recentPointsByUser.get(row.userId) ?? 0) + (row.points ?? 0));
@@ -1619,7 +1845,14 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       if (!b.scheduledAt) return -1;
       return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
     });
-    const completedKoMatchesForLeader = allKoMatchesForLeader.filter(m => m.status === 'completed');
+    const completedKoMatchesForLeader = allKoMatchesForLeader
+      .filter(m => m.status === 'completed')
+      .sort((a, b) => {
+        if (!a.scheduledAt && !b.scheduledAt) return 0;
+        if (!a.scheduledAt) return 1;
+        if (!b.scheduledAt) return -1;
+        return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
+      });
 
     const memberUserIds = memberRows.map(m => m.userId);
     const [teamRowsForLeader, groupRowsForLeader, bracketPredRowsForLeader] = await Promise.all([
@@ -1696,14 +1929,14 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     // Knockout stage milestones — compute KO points incrementally per match
     const prevKoTotalsForStreak: Record<string, number> = {};
     for (const userId of leaderUserInfo.keys()) prevKoTotalsForStreak[userId] = 0;
+    const processedKoMatchIdsForLeader = new Set<string>();
 
     for (const match of completedKoMatchesForLeader) {
-      const matchTime = match.scheduledAt ? new Date(match.scheduledAt).getTime() : Infinity;
+      processedKoMatchIdsForLeader.add(match.id);
       const filteredKoMatches: CompletedKnockoutMatch[] = allKoMatchesForLeader.map(m => ({
         id: m.id, stage: m.stage, homeTeamId: m.homeTeamId, awayTeamId: m.awayTeamId,
         homeScore: m.homeScore ?? 0, awayScore: m.awayScore ?? 0, progressingTeamId: m.progressingTeamId,
-        status: m.status === 'completed' && m.scheduledAt && new Date(m.scheduledAt).getTime() <= matchTime
-          ? 'completed' : 'scheduled',
+        status: processedKoMatchIdsForLeader.has(m.id) ? 'completed' : 'scheduled',
       }));
 
       for (const userId of leaderUserInfo.keys()) {
