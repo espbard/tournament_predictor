@@ -1425,6 +1425,33 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       }
     }
 
+    // ── Just As I Predicted: find the latest KO round where every match has both actual
+    // teams registered (bronze_final is a side branch, not part of the main progression).
+    const MAIN_KO_STAGE_ORDER = ['round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'final'] as const;
+    let justAsIPredictedStage: string | null = null;
+    let justAsIPredictedStageMatchCount = 0;
+    let justAsIPredictedRoundTeamIds = new Set<string>();
+    {
+      const stageGroups = new Map<string, typeof koMatchesForStats>();
+      for (const m of koMatchesForStats) {
+        if (m.stage === 'bronze_final') continue;
+        if (!stageGroups.has(m.stage)) stageGroups.set(m.stage, []);
+        stageGroups.get(m.stage)!.push(m);
+      }
+      for (const stage of MAIN_KO_STAGE_ORDER) {
+        const stageMatches = stageGroups.get(stage);
+        if (!stageMatches || stageMatches.length === 0) continue;
+        if (stageMatches.every(m => m.homeTeamId != null && m.awayTeamId != null)) {
+          justAsIPredictedStage = stage;
+          justAsIPredictedStageMatchCount = stageMatches.length;
+          justAsIPredictedRoundTeamIds = new Set(
+            stageMatches.flatMap(m => [m.homeTeamId, m.awayTeamId]).filter((t): t is string => t != null)
+          );
+        }
+      }
+    }
+    const justAsIPredictedCorrectByUser = new Map<string, number>();
+
     const koStatRows: typeof rows = [];
     if (koBracketKeyToMatchForStats.size > 0) {
       const [koBpRowsForStats, koTournamentRowForStats, koTeamRowsForStats, koGroupRowsForStats, koMemberRowsForStats] = await Promise.all([
@@ -1523,6 +1550,24 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
             });
           }
           matchesByStageForStats = modMatchesByStage;
+        }
+
+        // Just As I Predicted: which teams did this user predict would reach the target
+        // round, regardless of which match slot — only counted for users who submitted at
+        // least one bracket prediction (mirrors the "activeKoUsers" convention elsewhere).
+        if (justAsIPredictedStage && Object.keys(bpPreds).length > 0) {
+          const predictedRoundTeamIds = new Set<string>();
+          for (let idx = 0; idx < justAsIPredictedStageMatchCount; idx++) {
+            const homeId = getUserPredictedTeamForKnockoutSlot(justAsIPredictedStage, idx, 'home', koFirstRoundForStats, matchesByStageForStats, bpPreds);
+            const awayId = getUserPredictedTeamForKnockoutSlot(justAsIPredictedStage, idx, 'away', koFirstRoundForStats, matchesByStageForStats, bpPreds);
+            if (homeId) predictedRoundTeamIds.add(homeId);
+            if (awayId) predictedRoundTeamIds.add(awayId);
+          }
+          let correctCount = 0;
+          for (const teamId of predictedRoundTeamIds) {
+            if (justAsIPredictedRoundTeamIds.has(teamId)) correctCount += 1;
+          }
+          justAsIPredictedCorrectByUser.set(userId, correctCount);
         }
 
         for (const [bracketKey, m] of koBracketKeyToMatchForStats) {
@@ -1975,6 +2020,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     let theClimberCard: UserStatCardData | null = null;
     let theFallerCard: UserStatCardData | null = null;
     let knockoutSpecialistCard: UserStatCardData | null = null;
+    let justAsIPredictedCard: UserStatCardData | null = null;
     let howDidYouKnowCard: UserStatCardData | null = null;
     let paperTigerCard: UserStatCardData | null = null;
     let xpertenCard: UserStatCardData | null = null;
@@ -2318,6 +2364,70 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
                     : `${formatUserList(displayNames, lang)} showed the biggest improvement from the group stage to the knockout rounds! In the group stage ${specialists.length === 1 ? 'they' : 'they'} averaged ${fmt(repGroupAvg)} points per game, compared to the overall average of ${fmt(groupOverallAvg)}. But in the knockout stage ${specialists.length === 1 ? "they've" : "they've"} racked up ${fmt(repKoAvg)} points per game on average! While the average sits at ${fmt(koOverallAvg)}.`,
               subjects: specialists.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
               linkType: 'leaderboard',
+            };
+          }
+        }
+      }
+    }
+
+    // ── Just As I Predicted: most/least correct predicted teams in the latest KO round
+    // where every match has both actual teams registered. A team counts as "correct" if
+    // the user predicted it anywhere in that round, regardless of which match slot.
+    {
+      if (justAsIPredictedStage && justAsIPredictedRoundTeamIds.size > 0) {
+        const eligibleUsers = memberRows
+          .filter(m => !activeStatUserIds || activeStatUserIds.has(m.userId))
+          .filter(m => justAsIPredictedCorrectByUser.has(m.userId))
+          .map(m => ({
+            userId: m.userId,
+            username: m.username,
+            imageUrl: m.imageUrl,
+            iconColor: m.iconColor ?? null,
+            correct: justAsIPredictedCorrectByUser.get(m.userId)!,
+          }));
+
+        if (eligibleUsers.length >= 3) {
+          const maxCorrect = Math.max(...eligibleUsers.map(u => u.correct));
+          const minCorrect = Math.min(...eligibleUsers.map(u => u.correct));
+
+          if (maxCorrect > 0) {
+            const topGroup = eligibleUsers
+              .filter(u => u.correct === maxCorrect)
+              .sort((a, b) => a.username.localeCompare(b.username));
+            const bottomGroup = eligibleUsers
+              .filter(u => u.correct === minCorrect)
+              .sort((a, b) => a.username.localeCompare(b.username));
+
+            const STAGE_LABELS: Record<string, { no: string; en: string; de: string }> = {
+              round_of_32: { no: 'sekstendelsfinalen', en: 'the round of 32', de: 'der Runde der 32' },
+              round_of_16: { no: 'runde 16', en: 'the round of 16', de: 'dem Achtelfinale' },
+              quarter_final: { no: 'kvartfinalen', en: 'the quarterfinals', de: 'dem Viertelfinale' },
+              semi_final: { no: 'semifinalen', en: 'the semifinals', de: 'dem Halbfinale' },
+              final: { no: 'finalen', en: 'the final', de: 'dem Finale' },
+            };
+            const stageLabel = STAGE_LABELS[justAsIPredictedStage] ?? { no: justAsIPredictedStage, en: justAsIPredictedStage, de: justAsIPredictedStage };
+            const totalTeams = justAsIPredictedRoundTeamIds.size;
+            const topNames = formatUserList(topGroup.map(u => u.username), lang);
+            const sameGroup = maxCorrect === minCorrect;
+
+            justAsIPredictedCard = {
+              id: 'justAsIPredicted',
+              title: lang === 'no' ? 'Akkurat Som Jeg Spådde' : lang === 'de' ? 'Genau Wie Vorhergesagt' : 'Just As I Predicted',
+              statistic: sameGroup
+                ? lang === 'no'
+                  ? `${topNames} traff på ${maxCorrect} av ${totalTeams} lag i ${stageLabel.no} — akkurat som alle andre!`
+                  : lang === 'de'
+                    ? `${topNames} ${topGroup.length === 1 ? 'hat' : 'haben'} ${maxCorrect} von ${totalTeams} Mannschaften in ${stageLabel.de} richtig vorhergesagt — genau wie alle anderen!`
+                    : `${topNames} correctly predicted ${maxCorrect} of the ${totalTeams} teams in ${stageLabel.en} — same as everyone else!`
+                : lang === 'no'
+                  ? `${topNames} traff på hele ${maxCorrect} av ${totalTeams} lag i ${stageLabel.no}! ${formatUserList(bottomGroup.map(u => u.username), lang)} hadde færrest, med bare ${minCorrect}.`
+                  : lang === 'de'
+                    ? `${topNames} ${topGroup.length === 1 ? 'hat' : 'haben'} ganze ${maxCorrect} von ${totalTeams} Mannschaften in ${stageLabel.de} richtig vorhergesagt! ${formatUserList(bottomGroup.map(u => u.username), lang)} hatte${bottomGroup.length === 1 ? '' : 'n'} die wenigsten, nur ${minCorrect}.`
+                    : `${topNames} correctly predicted a whopping ${maxCorrect} of the ${totalTeams} teams in ${stageLabel.en}! ${formatUserList(bottomGroup.map(u => u.username), lang)} had the fewest, with just ${minCorrect}.`,
+              subjects: topGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
+              linkType: 'leaderboard',
+              backgroundImageUrl: '/just-as-i-predicted.png',
+              backgroundImageMode: 'behind' as const,
             };
           }
         }
@@ -4111,6 +4221,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       closeButNoCigarCard,
       groupStageGuruCard,
       knockoutSpecialistCard,
+      justAsIPredictedCard,
       theOptimistCard,
       mostContrastingPredictionCard,
       mostUnexpectedResultCard,

@@ -135,27 +135,39 @@ export default function UserStatCard({ competitionId, data, onMatchClick, onLead
   const hasImage = !!(data.iconImageUrl || data.backgroundImageUrl || displaySubjects.length > 0);
   const cardEmoji = CARD_EMOJIS[data.id];
 
+  const subjectContent =
+    displaySubjects.length > 1 ? (
+      <CollageGrid subjects={displaySubjects} />
+    ) : displaySubjects[0]?.type === 'user' && !displaySubjects[0]?.imageUrl ? (
+      <UserAvatar
+        username={displaySubjects[0].name}
+        imageUrl={displaySubjects[0].imageUrl}
+        iconColor={displaySubjects[0].iconColor}
+        className="h-full w-full"
+        style={{ borderRadius: 0 }}
+      />
+    ) : (
+      <img
+        src={displaySubjects[0]?.imageUrl ?? '/default-avatar.png'}
+        alt={displaySubjects[0]?.name ?? ''}
+        className="h-full w-full object-cover"
+      />
+    );
+
   const image = hasImage && (
     <div className="relative h-44 w-full flex-shrink-0">
-      {data.backgroundImageUrl ? (
+      {data.backgroundImageUrl && data.backgroundImageMode === 'behind' ? (
         <>
-          {displaySubjects.length > 1 ? (
-            <CollageGrid subjects={displaySubjects} />
-          ) : displaySubjects[0]?.type === 'user' && !displaySubjects[0]?.imageUrl ? (
-            <UserAvatar
-              username={displaySubjects[0].name}
-              imageUrl={displaySubjects[0].imageUrl}
-              iconColor={displaySubjects[0].iconColor}
-              className="h-full w-full"
-              style={{ borderRadius: 0 }}
-            />
-          ) : (
-            <img
-              src={displaySubjects[0]?.imageUrl ?? '/default-avatar.png'}
-              alt={displaySubjects[0]?.name ?? ''}
-              className="h-full w-full object-cover"
-            />
-          )}
+          <img
+            src={data.backgroundImageUrl}
+            alt=""
+            className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+          />
+          <div className="relative h-full w-full opacity-70">{subjectContent}</div>
+        </>
+      ) : data.backgroundImageUrl ? (
+        <>
+          {subjectContent}
           <img
             src={data.backgroundImageUrl}
             alt=""
@@ -165,22 +177,8 @@ export default function UserStatCard({ competitionId, data, onMatchClick, onLead
         </>
       ) : data.iconImageUrl ? (
         <img src={data.iconImageUrl} alt="" className="h-full w-full object-contain p-4" />
-      ) : displaySubjects.length > 1 ? (
-        <CollageGrid subjects={displaySubjects} />
-      ) : displaySubjects[0]?.type === 'user' && !displaySubjects[0]?.imageUrl ? (
-        <UserAvatar
-          username={displaySubjects[0].name}
-          imageUrl={displaySubjects[0].imageUrl}
-          iconColor={displaySubjects[0].iconColor}
-          className="h-full w-full"
-          style={{ borderRadius: 0 }}
-        />
       ) : (
-        <img
-          src={displaySubjects[0]?.imageUrl ?? '/default-avatar.png'}
-          alt={displaySubjects[0]?.name ?? ''}
-          className="h-full w-full object-cover"
-        />
+        subjectContent
       )}
       {data.overlayImageUrl && !data.backgroundImageUrl && (
         <img

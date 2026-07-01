@@ -190,6 +190,9 @@ export interface UserStatCardData {
   backgroundImagePosition?: 'center' | 'right' | null;
   backgroundImageFilter?: string | null;
   backgroundImageBlend?: 'multiply' | 'screen' | null;
+  // 'blend' (default) layers backgroundImageUrl on top of the subject via blend mode;
+  // 'behind' renders it as a plain full-bleed backdrop with the subject shown semi-transparent on top.
+  backgroundImageMode?: 'blend' | 'behind' | null;
   distributionData?: { value: number; count: number }[] | null;
   distributionActualValue?: number | null;
 }
