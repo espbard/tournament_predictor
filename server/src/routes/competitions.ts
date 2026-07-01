@@ -7,7 +7,7 @@ import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { CreateCompetitionSchema, CreatePredictionSchema, SaveBracketPredictionsSchema, DEFAULT_SCORING_CONFIG, SaveBonusAnswerSchema, resolveFirstRoundSlots } from '@tournament-predictor/shared';
 import type { UserStatCardData, ScoringConfig, KnockoutConfig, BracketPredictions, LeaderboardProgressionMatch, LeaderboardProgressionResponse } from '@tournament-predictor/shared';
 import { recalculateAllScoresForTournament } from '../lib/scoringTrigger.js';
-import { computeGroupStandings, calculateMatchPoints, getUserPredictedTeamForKnockoutSlot, calculateGroupPositionPoints, calculateKnockoutPoints, type KnockoutMatchSlot, type FirstRoundPredTeams, type CompletedKnockoutMatch } from '../lib/scoring.js';
+import { computeGroupStandings, calculateMatchPoints, getUserPredictedTeamForKnockoutSlot, getUserPredictedBronzeFinalTeam, calculateGroupPositionPoints, calculateKnockoutPoints, type KnockoutMatchSlot, type FirstRoundPredTeams, type CompletedKnockoutMatch } from '../lib/scoring.js';
 import { subscribeLeaderboard, unsubscribeLeaderboard } from '../lib/leaderboardEvents.js';
 
 const router = Router();
@@ -1202,6 +1202,12 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
             if (bracketStage === firstRound) {
               predHomeTeamId = firstRoundPredTeams[bracketKey]?.predHomeId ?? null;
               predAwayTeamId = firstRoundPredTeams[bracketKey]?.predAwayId ?? null;
+            } else if (bracketStage === 'bronze_final') {
+              // Bronze final isn't part of the win-progression tree, so it isn't reachable
+              // through getUserPredictedTeamForKnockoutSlot's recursion. Its occupants are
+              // the losers of the two predicted semifinals (mirrors client bronzeTeams logic).
+              predHomeTeamId = getUserPredictedBronzeFinalTeam('home', firstRound, matchesByStageForPred, bpPreds);
+              predAwayTeamId = getUserPredictedBronzeFinalTeam('away', firstRound, matchesByStageForPred, bpPreds);
             } else {
               predHomeTeamId = getUserPredictedTeamForKnockoutSlot(bracketStage, matchIdx, 'home', firstRound, matchesByStageForPred, bpPreds);
               predAwayTeamId = getUserPredictedTeamForKnockoutSlot(bracketStage, matchIdx, 'away', firstRound, matchesByStageForPred, bpPreds);
