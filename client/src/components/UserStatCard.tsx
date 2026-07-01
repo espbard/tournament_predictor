@@ -190,11 +190,11 @@ export default function UserStatCard({ competitionId, data, onMatchClick, onLead
         />
       )}
       {data.id === 'matchMadeInHeaven' ? (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center z-20">
-          <span className={`text-5xl leading-none select-none opacity-90 -mr-1 ${EMOJI_SHADOW}`} style={{ transform: 'scaleX(-1)' }}>
+        <div className="pointer-events-none absolute inset-0 flex items-start justify-start pt-2 pl-2 z-20">
+          <span className={`text-5xl leading-none select-none opacity-90 mr-1 ${EMOJI_SHADOW}`} style={{ transform: 'scaleX(-1)' }}>
             🪽
           </span>
-          <span className={`text-5xl leading-none select-none opacity-90 -ml-1 ${EMOJI_SHADOW}`}>🪽</span>
+          <span className={`text-5xl leading-none select-none opacity-90 ${EMOJI_SHADOW}`}>🪽</span>
         </div>
       ) : (
         cardEmoji && (

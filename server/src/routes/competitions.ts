@@ -1693,12 +1693,6 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     // Knockout predictions are stored per-competition in bracketPredictions (not per-match
     // in predictions); `activeRowsWithKo`/`allCompletedMatchesByRecency` above resolve those
     // into the same per-match shape so the "recent 5" / drought window spans both stages.
-    // `completedMatches` (group-only) is kept separate below for the Knockout Specialist card,
-    // which needs a group-stage-only game count.
-    const completedMatches = await db
-      .select({ id: matches.id, scheduledAt: matches.scheduledAt })
-      .from(matches)
-      .where(and(eq(matches.tournamentId, competition.tournamentId), eq(matches.status, 'completed'), eq(matches.stage, 'group')));
     const completedMatchesByRecency = allCompletedMatchesByRecency;
     const last5MatchIds = new Set(completedMatchesByRecency.slice(0, 5).map(m => m.id));
 
@@ -2234,13 +2228,19 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         // totals (see scoringTrigger.ts), so they can't be used to isolate group-stage points.
         // Sum `rows` (group-only predictions) and `koStatRows` (per-KO-match totals, which
         // already include exact score/correct result plus all knockout bonus categories) instead.
+        // Also track how many games each user actually predicted (rather than the total
+        // number of completed games), since late-addition users may be missing some.
         const groupPointsByUserId = new Map<string, number>();
+        const groupGamesByUserId = new Map<string, number>();
         for (const row of rows) {
           groupPointsByUserId.set(row.userId, (groupPointsByUserId.get(row.userId) ?? 0) + (row.points ?? 0));
+          groupGamesByUserId.set(row.userId, (groupGamesByUserId.get(row.userId) ?? 0) + 1);
         }
         const koPointsByUserId = new Map<string, number>();
+        const koGamesByUserId = new Map<string, number>();
         for (const row of koStatRows) {
           koPointsByUserId.set(row.userId, (koPointsByUserId.get(row.userId) ?? 0) + (row.points ?? 0));
+          koGamesByUserId.set(row.userId, (koGamesByUserId.get(row.userId) ?? 0) + 1);
         }
 
         const withPoints = activeForKo.map(row => ({
@@ -2281,25 +2281,26 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
             // Representative: highest KO scorer among tied specialists (used for individual stat values)
             const rep = specialists[0];
 
-            // Group stage averages: all active users, per completed group game
-            const numGroupGames = completedMatches.length;
+            // Group stage averages: points per game each user actually predicted (not the
+            // total number of completed games), so late additions aren't penalized for
+            // games they joined too late to predict.
             const totalGroupPts = withPoints.reduce((s, u) => s + u.groupPoints, 0);
-            const groupOverallAvg = numGroupGames > 0 && withPoints.length > 0
-              ? totalGroupPts / (numGroupGames * withPoints.length)
-              : 0;
-            const repGroupAvg = numGroupGames > 0 ? rep.groupPoints / numGroupGames : 0;
+            const totalGroupGames = withPoints.reduce((s, u) => s + (groupGamesByUserId.get(u.userId) ?? 0), 0);
+            const groupOverallAvg = totalGroupGames > 0 ? totalGroupPts / totalGroupGames : 0;
+            const repGroupGames = groupGamesByUserId.get(rep.userId) ?? 0;
+            const repGroupAvg = repGroupGames > 0 ? rep.groupPoints / repGroupGames : 0;
 
-            // KO averages: active users who submitted bracket predictions, per completed KO game
-            const numKoGames = completedKoMatchesForLeader.length;
+            // KO averages: active users who submitted bracket predictions, points per KO
+            // game each user actually predicted.
             const activeKoUsers = withPoints.filter(u => {
               const preds = bracketPredMapForLeader.get(u.userId);
               return preds && Object.keys(preds).length > 0;
             });
             const totalKoPts = activeKoUsers.reduce((s, u) => s + u.koPoints, 0);
-            const koOverallAvg = numKoGames > 0 && activeKoUsers.length > 0
-              ? totalKoPts / (numKoGames * activeKoUsers.length)
-              : 0;
-            const repKoAvg = numKoGames > 0 ? rep.koPoints / numKoGames : 0;
+            const totalKoGames = activeKoUsers.reduce((s, u) => s + (koGamesByUserId.get(u.userId) ?? 0), 0);
+            const koOverallAvg = totalKoGames > 0 ? totalKoPts / totalKoGames : 0;
+            const repKoGames = koGamesByUserId.get(rep.userId) ?? 0;
+            const repKoAvg = repKoGames > 0 ? rep.koPoints / repKoGames : 0;
 
             const fmt = (n: number) => n.toFixed(1);
 
