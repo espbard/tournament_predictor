@@ -1161,6 +1161,7 @@ const V_ROW_GAP = 3;
 
 const VIZ_NARROW = { vHPad: 7,  vCardW: 23, baseIcon: 17, finalIcon: 29, finalHPad: 5, bronzeIcon: 21, bronzeHPad: 4 };
 const VIZ_WIDE   = { vHPad: 11, vCardW: 26, baseIcon: 20, finalIcon: 32, finalHPad: 5, bronzeIcon: 24, bronzeHPad: 4 };
+const VIZ_LARGE  = { vHPad: 16, vCardW: 34, baseIcon: 27, finalIcon: 44, finalHPad: 7, bronzeIcon: 32, bronzeHPad: 6 };
 
 export type VizTeam = { imageUrl: string | null; name: string | null };
 
@@ -1229,7 +1230,15 @@ export function KnockoutBracketVisualizer({
     return () => mq.removeEventListener('change', fn);
   }, []);
 
-  const cfg = isWide ? VIZ_WIDE : VIZ_NARROW;
+  const [isLarge, setIsLarge] = useState(() => window.matchMedia('(min-width: 1024px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const fn = (e: MediaQueryListEvent) => setIsLarge(e.matches);
+    mq.addEventListener('change', fn);
+    return () => mq.removeEventListener('change', fn);
+  }, []);
+
+  const cfg = isLarge ? VIZ_LARGE : isWide ? VIZ_WIDE : VIZ_NARROW;
   const V_HPAD = cfg.vHPad;
   const V_CARD_W = cfg.vCardW;
   const V_COL_W = V_CARD_W + V_HPAD * 2;
