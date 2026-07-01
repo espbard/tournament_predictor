@@ -119,6 +119,9 @@ const CARD_EMOJIS: Record<string, string> = {
   theOptimist: '☀️',
 };
 
+// Very small drop shadow so emoji overlays read clearly against any image behind them.
+const EMOJI_SHADOW = 'drop-shadow-[0_1px_1.5px_rgba(0,0,0,0.45)]';
+
 export default function UserStatCard({ competitionId, data, onMatchClick, onLeaderboardClick }: UserStatCardProps) {
   const { title, statistic, subjects } = data;
   const isDark = useThemeStore((s) => s.theme === 'dark');
@@ -186,14 +189,23 @@ export default function UserStatCard({ competitionId, data, onMatchClick, onLead
           className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-40"
         />
       )}
-      {cardEmoji && (
-        <div
-          className={`pointer-events-none absolute inset-0 flex z-20 ${
-            data.id === 'twinSpirits' ? 'items-center justify-center' : 'items-start justify-start pt-2 pl-2'
-          }`}
-        >
-          <span className="text-5xl leading-none select-none opacity-90">{cardEmoji}</span>
+      {data.id === 'matchMadeInHeaven' ? (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center z-20">
+          <span className={`text-5xl leading-none select-none opacity-90 -mr-1 ${EMOJI_SHADOW}`} style={{ transform: 'scaleX(-1)' }}>
+            🪽
+          </span>
+          <span className={`text-5xl leading-none select-none opacity-90 -ml-1 ${EMOJI_SHADOW}`}>🪽</span>
         </div>
+      ) : (
+        cardEmoji && (
+          <div
+            className={`pointer-events-none absolute inset-0 flex z-20 ${
+              data.id === 'twinSpirits' ? 'items-center justify-center' : 'items-start justify-start pt-2 pl-2'
+            }`}
+          >
+            <span className={`text-5xl leading-none select-none opacity-90 ${EMOJI_SHADOW}`}>{cardEmoji}</span>
+          </div>
+        )
       )}
     </div>
   );
