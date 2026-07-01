@@ -4,6 +4,7 @@ import {
   computeGroupStandings,
   calculateGroupPositionPoints,
   getUserPredictedTeamForKnockoutSlot,
+  getUserPredictedBronzeFinalTeam,
   calculateKnockoutPoints,
   type KnockoutMatchSlot,
 } from './scoring.js';
@@ -255,6 +256,49 @@ describe('getUserPredictedTeamForKnockoutSlot', () => {
       'semi_final', 0, 'home', 'round_of_16', matchesByStage, preds,
     );
     expect(result).toBe('team-a');
+  });
+});
+
+// ── getUserPredictedBronzeFinalTeam ───────────────────────────────────────────
+
+describe('getUserPredictedBronzeFinalTeam', () => {
+  // Tournament starts at the semifinal stage, so semi_final teams come directly
+  // from the actual draw (base case of getUserPredictedTeamForKnockoutSlot).
+  const sfMatches = [
+    { id: 'sf-0', stage: 'semi_final', homeTeamId: 'team-a', awayTeamId: 'team-b' },
+    { id: 'sf-1', stage: 'semi_final', homeTeamId: 'team-c', awayTeamId: 'team-d' },
+  ];
+  const matchesByStage = new Map<string, KnockoutMatchSlot[]>([
+    ['semi_final', sfMatches],
+  ]);
+
+  it('resolves the loser of the predicted semi_final_0 as the home slot', () => {
+    const preds: BracketPredictions = {
+      'semi_final_0': { homeScore: 2, awayScore: 1, progressingTeamId: null }, // team-a wins, team-b loses
+    };
+    const result = getUserPredictedBronzeFinalTeam('home', 'semi_final', matchesByStage, preds);
+    expect(result).toBe('team-b');
+  });
+
+  it('resolves the loser of the predicted semi_final_1 as the away slot', () => {
+    const preds: BracketPredictions = {
+      'semi_final_1': { homeScore: 0, awayScore: 2, progressingTeamId: null }, // team-d wins, team-c loses
+    };
+    const result = getUserPredictedBronzeFinalTeam('away', 'semi_final', matchesByStage, preds);
+    expect(result).toBe('team-c');
+  });
+
+  it('uses explicit progressingTeamId on a draw to find the loser', () => {
+    const preds: BracketPredictions = {
+      'semi_final_0': { homeScore: 1, awayScore: 1, progressingTeamId: 'team-a' }, // team-a progresses, team-b loses
+    };
+    const result = getUserPredictedBronzeFinalTeam('home', 'semi_final', matchesByStage, preds);
+    expect(result).toBe('team-b');
+  });
+
+  it('returns null when the semifinal has no prediction', () => {
+    const result = getUserPredictedBronzeFinalTeam('home', 'semi_final', matchesByStage, {});
+    expect(result).toBeNull();
   });
 });
 
