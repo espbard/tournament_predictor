@@ -695,7 +695,14 @@ router.get('/:id/leaderboard-progression', requireAuth, async (req, res) => {
       if (!b.scheduledAt) return -1;
       return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
     });
-    const completedKoMatches = allKoMatchesRaw.filter(m => m.status === 'completed');
+    const completedKoMatches = allKoMatchesRaw
+      .filter(m => m.status === 'completed')
+      .sort((a, b) => {
+        if (!a.scheduledAt && !b.scheduledAt) return 0;
+        if (!a.scheduledAt) return 1;
+        if (!b.scheduledAt) return -1;
+        return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
+      });
 
     // Fetch teams and groups for labels and standings
     const teamRows = await db.select().from(teams).where(eq(teams.tournamentId, competition.tournamentId));
@@ -851,11 +858,15 @@ router.get('/:id/leaderboard-progression', requireAuth, async (req, res) => {
     // Knockout milestones — compute calculateKnockoutPoints incrementally
     const prevKoTotals: Record<string, number> = {};
     for (const userId of memberIds) prevKoTotals[userId] = 0;
+    const processedKoMatchIds = new Set<string>();
 
     for (const match of completedKoMatches) {
-      const matchTime = match.scheduledAt ? new Date(match.scheduledAt).getTime() : Infinity;
+      processedKoMatchIds.add(match.id);
 
-      // Build filtered KO match list: completed only up to and including this match's scheduledAt
+      // Build filtered KO match list: completed only for matches processed so far.
+      // Using a Set of IDs (rather than a scheduledAt cutoff) keeps the cumulative total
+      // monotonically increasing even when bracketIndex order diverges from scheduledAt order
+      // (e.g. two R16 games on the same day where bracketIndex=0 kicks off later than bracketIndex=1).
       const filteredKoMatches: CompletedKnockoutMatch[] = allKoMatchesRaw.map(m => ({
         id: m.id,
         stage: m.stage,
@@ -864,9 +875,7 @@ router.get('/:id/leaderboard-progression', requireAuth, async (req, res) => {
         homeScore: m.homeScore ?? 0,
         awayScore: m.awayScore ?? 0,
         progressingTeamId: m.progressingTeamId,
-        status: m.status === 'completed' && m.scheduledAt && new Date(m.scheduledAt).getTime() <= matchTime
-          ? 'completed'
-          : 'scheduled',
+        status: processedKoMatchIds.has(m.id) ? 'completed' : 'scheduled',
       }));
 
       for (const member of memberRows) {
@@ -1836,7 +1845,14 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       if (!b.scheduledAt) return -1;
       return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
     });
-    const completedKoMatchesForLeader = allKoMatchesForLeader.filter(m => m.status === 'completed');
+    const completedKoMatchesForLeader = allKoMatchesForLeader
+      .filter(m => m.status === 'completed')
+      .sort((a, b) => {
+        if (!a.scheduledAt && !b.scheduledAt) return 0;
+        if (!a.scheduledAt) return 1;
+        if (!b.scheduledAt) return -1;
+        return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
+      });
 
     const memberUserIds = memberRows.map(m => m.userId);
     const [teamRowsForLeader, groupRowsForLeader, bracketPredRowsForLeader] = await Promise.all([
@@ -1913,14 +1929,14 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     // Knockout stage milestones — compute KO points incrementally per match
     const prevKoTotalsForStreak: Record<string, number> = {};
     for (const userId of leaderUserInfo.keys()) prevKoTotalsForStreak[userId] = 0;
+    const processedKoMatchIdsForLeader = new Set<string>();
 
     for (const match of completedKoMatchesForLeader) {
-      const matchTime = match.scheduledAt ? new Date(match.scheduledAt).getTime() : Infinity;
+      processedKoMatchIdsForLeader.add(match.id);
       const filteredKoMatches: CompletedKnockoutMatch[] = allKoMatchesForLeader.map(m => ({
         id: m.id, stage: m.stage, homeTeamId: m.homeTeamId, awayTeamId: m.awayTeamId,
         homeScore: m.homeScore ?? 0, awayScore: m.awayScore ?? 0, progressingTeamId: m.progressingTeamId,
-        status: m.status === 'completed' && m.scheduledAt && new Date(m.scheduledAt).getTime() <= matchTime
-          ? 'completed' : 'scheduled',
+        status: processedKoMatchIdsForLeader.has(m.id) ? 'completed' : 'scheduled',
       }));
 
       for (const userId of leaderUserInfo.keys()) {
