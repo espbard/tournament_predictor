@@ -2406,7 +2406,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
             const STAGE_LABELS: Record<string, { no: string; en: string; de: string }> = {
               round_of_32: { no: 'sekstendelsfinalen', en: 'the round of 32', de: 'der Runde der 32' },
-              round_of_16: { no: 'runde 16', en: 'the round of 16', de: 'dem Achtelfinale' },
+              round_of_16: { no: 'åttendelsfinalen', en: 'the round of 16', de: 'dem Achtelfinale' },
               quarter_final: { no: 'kvartfinalen', en: 'the quarterfinals', de: 'dem Viertelfinale' },
               semi_final: { no: 'semifinalen', en: 'the semifinals', de: 'dem Halbfinale' },
               final: { no: 'finalen', en: 'the final', de: 'dem Finale' },
@@ -3991,7 +3991,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           const stageLabelMap: Record<string, { no: string; en: string; de: string }> = {
             group: { no: 'gruppespillet', en: 'the group stage', de: 'der Gruppenphase' },
             round_of_32: { no: 'sekstendelsfinalen', en: 'the round of 32', de: 'der Runde der 32' },
-            round_of_16: { no: 'runde 16', en: 'the round of 16', de: 'dem Achtelfinale' },
+            round_of_16: { no: 'åttendelsfinalen', en: 'the round of 16', de: 'dem Achtelfinale' },
           };
           const stageLabelNo = stageLabelMap[minStage]?.no ?? minStage;
           const stageLabelEn = stageLabelMap[minStage]?.en ?? minStage;
