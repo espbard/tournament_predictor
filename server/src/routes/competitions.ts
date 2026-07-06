@@ -1388,6 +1388,15 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
     const activeRows = activeStatUserIds ? rows.filter(r => activeStatUserIds!.has(r.userId)) : rows;
 
+    // Resolved early (rather than at "The Patriot" card below) so it's in scope for the
+    // per-user knockout loop, which needs it to detect Norway in each user's own bracket
+    // predictions. Reused again later by several other stat cards.
+    const tournamentTeamsForPatriot = await db
+      .select({ id: teams.id, name: teams.name, imageUrl: teams.imageUrl })
+      .from(teams)
+      .where(eq(teams.tournamentId, competition.tournamentId));
+    const norwayTeam = tournamentTeamsForPatriot.find(t => ['norway', 'norge'].includes(t.name.trim().toLowerCase()));
+
     // ── Knockout-inclusive rows for per-match "form" stat cards ────────────────────
     // Knockout predictions live in `bracketPredictions` (one JSON blob per user) rather
     // than per-match in `predictions`, so completed knockout matches never appear in
@@ -1457,6 +1466,14 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       }
     }
     const justAsIPredictedCorrectByUser = new Map<string, number>();
+
+    // ── The Patriot: per-user knockout-stage Norway games, resolved from each user's own
+    // bracket predictions (not from which team actually played), populated in the per-user
+    // KO loop below alongside the other per-match resolutions.
+    const patriotKoStatsByUser = new Map<string, {
+      username: string; imageUrl: string | null; iconColor: string | null;
+      wins: number; gf: number; ga: number; games: number;
+    }>();
 
     const koStatRows: typeof rows = [];
     if (koBracketKeyToMatchForStats.size > 0) {
@@ -1602,6 +1619,33 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
             shouldFlip =
               (predictedHome !== null && predictedHome === m.awayTeamId) ||
               (predictedAway !== null && predictedAway === m.homeTeamId);
+          }
+
+          // The Patriot: does *this user's own* bracket prediction have Norway occupying
+          // either slot of this real, completed match? (bronze_final isn't part of the
+          // win-progression tree getUserPredictedTeamForKnockoutSlot traces, so it needs the
+          // dedicated loser-of-semifinals resolver instead — same as the fix applied to the
+          // all-match-predictions endpoint.)
+          if (norwayTeam) {
+            const patriotHome = bracketStage === 'bronze_final'
+              ? getUserPredictedBronzeFinalTeam('home', koFirstRoundForStats, matchesByStageForStats, bpPreds)
+              : predictedHome;
+            const patriotAway = bracketStage === 'bronze_final'
+              ? getUserPredictedBronzeFinalTeam('away', koFirstRoundForStats, matchesByStageForStats, bpPreds)
+              : predictedAway;
+
+            if (patriotHome === norwayTeam.id || patriotAway === norwayTeam.id) {
+              const norwayIsPredictedHome = patriotHome === norwayTeam.id;
+              const predNorwayGoals = norwayIsPredictedHome ? pred.homeScore : pred.awayScore;
+              const predOpponentGoals = norwayIsPredictedHome ? pred.awayScore : pred.homeScore;
+              const patriotEntry = patriotKoStatsByUser.get(userId)
+                ?? { username: info.username, imageUrl: info.imageUrl, iconColor: info.iconColor ?? null, wins: 0, gf: 0, ga: 0, games: 0 };
+              if (predNorwayGoals > predOpponentGoals) patriotEntry.wins += 1;
+              patriotEntry.gf += predNorwayGoals;
+              patriotEntry.ga += predOpponentGoals;
+              patriotEntry.games += 1;
+              patriotKoStatsByUser.set(userId, patriotEntry);
+            }
           }
 
           // Reuse the tested knockout scoring engine to get the total points this single
@@ -2816,87 +2860,100 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     }
 
     // ── The Patriot: most optimistic predictions for Norway's games ──
-    const tournamentTeamsForPatriot = await db
-      .select({ id: teams.id, name: teams.name, imageUrl: teams.imageUrl })
-      .from(teams)
-      .where(eq(teams.tournamentId, competition.tournamentId));
-    const norwayTeam = tournamentTeamsForPatriot.find(t => ['norway', 'norge'].includes(t.name.trim().toLowerCase()));
-
+    // Group-stage "Norway games" come from the real fixture list (unambiguous — group
+    // matchups are fixed and known in advance). Knockout-stage "Norway games" instead come
+    // from `patriotKoStatsByUser` (populated above, in the per-user KO loop), which counts a
+    // real completed match toward a user's tally only when *that user's own* bracket
+    // prediction had Norway occupying one of its slots — not merely because Norway actually
+    // played there.
     if (norwayTeam) {
-      const norwayMatches = await db
+      const norwayGroupMatches = await db
         .select({ id: matches.id, homeTeamId: matches.homeTeamId, awayTeamId: matches.awayTeamId })
         .from(matches)
         .where(
           and(
             eq(matches.tournamentId, competition.tournamentId),
+            eq(matches.stage, 'group'),
             eq(matches.status, 'completed'),
             or(eq(matches.homeTeamId, norwayTeam.id), eq(matches.awayTeamId, norwayTeam.id))
           )
         );
 
-      if (norwayMatches.length > 0) {
-        const norwayMatchIds = new Set(norwayMatches.map(m => m.id));
-        const norwayHomeByMatch = new Map(norwayMatches.map(m => [m.id, m.homeTeamId === norwayTeam.id]));
+      const norwayGroupMatchIds = new Set(norwayGroupMatches.map(m => m.id));
+      const norwayHomeByMatch = new Map(norwayGroupMatches.map(m => [m.id, m.homeTeamId === norwayTeam.id]));
 
-        const patriotStatsByUser = new Map<
-          string,
-          { username: string; imageUrl: string | null; iconColor: string | null; wins: number; gf: number; ga: number }
-        >();
-        for (const row of activeRows) {
-          if (!norwayMatchIds.has(row.matchId)) continue;
-          const norwayIsHome = norwayHomeByMatch.get(row.matchId);
-          const predNorwayGoals = norwayIsHome ? row.predHomeScore : row.predAwayScore;
-          const predOpponentGoals = norwayIsHome ? row.predAwayScore : row.predHomeScore;
-          const entry =
-            patriotStatsByUser.get(row.userId) ?? { username: row.username, imageUrl: row.imageUrl, iconColor: row.iconColor ?? null, wins: 0, gf: 0, ga: 0 };
-          if (predNorwayGoals > predOpponentGoals) entry.wins += 1;
-          entry.gf += predNorwayGoals;
-          entry.ga += predOpponentGoals;
-          patriotStatsByUser.set(row.userId, entry);
+      const patriotStatsByUser = new Map<
+        string,
+        { username: string; imageUrl: string | null; iconColor: string | null; wins: number; gf: number; ga: number; games: number }
+      >();
+      for (const row of activeRows) {
+        if (!norwayGroupMatchIds.has(row.matchId)) continue;
+        const norwayIsHome = norwayHomeByMatch.get(row.matchId);
+        const predNorwayGoals = norwayIsHome ? row.predHomeScore : row.predAwayScore;
+        const predOpponentGoals = norwayIsHome ? row.predAwayScore : row.predHomeScore;
+        const entry =
+          patriotStatsByUser.get(row.userId) ?? { username: row.username, imageUrl: row.imageUrl, iconColor: row.iconColor ?? null, wins: 0, gf: 0, ga: 0, games: 0 };
+        if (predNorwayGoals > predOpponentGoals) entry.wins += 1;
+        entry.gf += predNorwayGoals;
+        entry.ga += predOpponentGoals;
+        entry.games += 1;
+        patriotStatsByUser.set(row.userId, entry);
+      }
+
+      for (const [userId, koEntry] of patriotKoStatsByUser) {
+        if (activeStatUserIds && !activeStatUserIds.has(userId)) continue; // same activity gating as activeRowsWithKo
+        const base = patriotStatsByUser.get(userId);
+        if (base) {
+          base.wins += koEntry.wins;
+          base.gf += koEntry.gf;
+          base.ga += koEntry.ga;
+          base.games += koEntry.games;
+        } else {
+          patriotStatsByUser.set(userId, { username: koEntry.username, imageUrl: koEntry.imageUrl, iconColor: koEntry.iconColor, wins: koEntry.wins, gf: koEntry.gf, ga: koEntry.ga, games: koEntry.games });
         }
+      }
 
-        if (patriotStatsByUser.size > 0) {
-          let patriotGroup = [...patriotStatsByUser.entries()].map(([userId, entry]) => ({
-            userId,
-            ...entry,
-            gd: entry.gf - entry.ga,
-          }));
-          const maxWins = Math.max(...patriotGroup.map(p => p.wins));
-          patriotGroup = patriotGroup.filter(p => p.wins === maxWins);
-          const maxGd = Math.max(...patriotGroup.map(p => p.gd));
-          patriotGroup = patriotGroup.filter(p => p.gd === maxGd);
-          const maxGf = Math.max(...patriotGroup.map(p => p.gf));
-          patriotGroup = patriotGroup.filter(p => p.gf === maxGf);
-          patriotGroup.sort((a, b) => a.username.localeCompare(b.username));
+      if (patriotStatsByUser.size > 0) {
+        let patriotGroup = [...patriotStatsByUser.entries()].map(([userId, entry]) => ({
+          userId,
+          ...entry,
+          gd: entry.gf - entry.ga,
+        }));
+        const maxWins = Math.max(...patriotGroup.map(p => p.wins));
+        patriotGroup = patriotGroup.filter(p => p.wins === maxWins);
+        const maxGd = Math.max(...patriotGroup.map(p => p.gd));
+        patriotGroup = patriotGroup.filter(p => p.gd === maxGd);
+        const maxGf = Math.max(...patriotGroup.map(p => p.gf));
+        patriotGroup = patriotGroup.filter(p => p.gf === maxGf);
+        patriotGroup.sort((a, b) => a.username.localeCompare(b.username));
 
-          const winner = patriotGroup[0];
-          const concededClause =
-            winner.ga > 0
-              ? lang === 'no'
-                ? `sluppet inn bare ${winner.ga}!`
-                : lang === 'de'
-                  ? `nur ${winner.ga} Gegentore kassiert!`
-                  : `conceded only ${winner.ga}!`
-              : lang === 'no'
-                ? 'uten å slippe inn ett eneste mål!'
-                : lang === 'de'
-                  ? 'kein einziges Gegentor kassiert!'
-                  : 'without conceding a single goal!';
+        const winner = patriotGroup[0];
+        const concededClause =
+          winner.ga > 0
+            ? lang === 'no'
+              ? `sluppet inn bare ${winner.ga}!`
+              : lang === 'de'
+                ? `nur ${winner.ga} Gegentore kassiert!`
+                : `conceded only ${winner.ga}!`
+            : lang === 'no'
+              ? 'uten å slippe inn ett eneste mål!'
+              : lang === 'de'
+                ? 'kein einziges Gegentor kassiert!'
+                : 'without conceding a single goal!';
 
-          thePatriotCard = {
-            id: 'thePatriot',
-            title: lang === 'no' ? 'Patrioten 🇳🇴' : lang === 'de' ? 'Norwegen-Fanatiker 🇳🇴' : 'The Patriot 🇳🇴',
-            statistic:
-              lang === 'no'
-                ? `${formatUserList(patriotGroup.map(u => u.username), lang)} er den største patrioten! De har tippet at Norge har vunnet ${winner.wins} av sine ${norwayMatches.length} kamper så langt! Og at de har scoret hele ${winner.gf} mål og ${concededClause}`
-                : lang === 'de'
-                  ? `${formatUserList(patriotGroup.map(u => u.username), lang)} ist der größte Norwegen-Fan von allen! Norwegen gewinnt laut ${patriotGroup.length === 1 ? 'ihm/ihr' : 'ihnen'} sage und schreibe ${winner.wins} von ${norwayMatches.length} Spielen und schießt dabei stolze ${winner.gf} Tore — und hat dabei ${concededClause}`
-                  : `${formatUserList(patriotGroup.map(u => u.username), lang)} ${patriotGroup.length === 1 ? 'is the biggest patriot' : 'are the biggest patriots'}! They've predicted that Norway has won ${winner.wins} of their ${norwayMatches.length} games so far! And that they've scored a whopping ${winner.gf} goals and ${concededClause}`,
-            subjects: patriotGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
-            linkType: 'user',
-            overlayImageUrl: norwayTeam.imageUrl ?? null,
-          };
-        }
+        thePatriotCard = {
+          id: 'thePatriot',
+          title: lang === 'no' ? 'Patrioten 🇳🇴' : lang === 'de' ? 'Norwegen-Fanatiker 🇳🇴' : 'The Patriot 🇳🇴',
+          statistic:
+            lang === 'no'
+              ? `${formatUserList(patriotGroup.map(u => u.username), lang)} er den største patrioten! De har tippet at Norge har vunnet ${winner.wins} av sine ${winner.games} kamper så langt! Og at de har scoret hele ${winner.gf} mål og ${concededClause}`
+              : lang === 'de'
+                ? `${formatUserList(patriotGroup.map(u => u.username), lang)} ist der größte Norwegen-Fan von allen! Norwegen gewinnt laut ${patriotGroup.length === 1 ? 'ihm/ihr' : 'ihnen'} sage und schreibe ${winner.wins} von ${winner.games} Spielen und schießt dabei stolze ${winner.gf} Tore — und hat dabei ${concededClause}`
+                : `${formatUserList(patriotGroup.map(u => u.username), lang)} ${patriotGroup.length === 1 ? 'is the biggest patriot' : 'are the biggest patriots'}! They've predicted that Norway has won ${winner.wins} of their ${winner.games} games so far! And that they've scored a whopping ${winner.gf} goals and ${concededClause}`,
+          subjects: patriotGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
+          linkType: 'user',
+          overlayImageUrl: norwayTeam.imageUrl ?? null,
+        };
       }
     }
 
