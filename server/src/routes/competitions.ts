@@ -6,7 +6,7 @@ import { competitions, competitionMembers, users, tournaments, predictions, matc
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { CreateCompetitionSchema, CreatePredictionSchema, SaveBracketPredictionsSchema, AdminSetBracketProgressingTeamSchema, DEFAULT_SCORING_CONFIG, SaveBonusAnswerSchema, resolveFirstRoundSlots } from '@tournament-predictor/shared';
 import type { UserStatCardData, ScoringConfig, KnockoutConfig, BracketPredictions, LeaderboardProgressionMatch, LeaderboardProgressionResponse } from '@tournament-predictor/shared';
-import { recalculateAllScoresForTournament, loadKnockoutMatchesByStage } from '../lib/scoringTrigger.js';
+import { recalculateAllScoresForTournament, loadUserPredictedKnockoutMatchesByStage } from '../lib/scoringTrigger.js';
 import { computeGroupStandings, calculateMatchPoints, getUserPredictedTeamForKnockoutSlot, getUserPredictedBronzeFinalTeam, calculateGroupPositionPoints, calculateKnockoutPoints, BRACKET_STAGE_ORDER, type KnockoutMatchSlot, type FirstRoundPredTeams, type CompletedKnockoutMatch } from '../lib/scoring.js';
 import { subscribeLeaderboard, unsubscribeLeaderboard } from '../lib/leaderboardEvents.js';
 
@@ -4678,8 +4678,7 @@ router.get('/:id/admin/bracket-issues', requireAdmin, async (req, res) => {
     const memberIds = memberRows.map(r => r.userId);
     if (memberIds.length === 0) return res.json([]);
 
-    const [matchesByStage, teamRows, userRows, bracketRows] = await Promise.all([
-      loadKnockoutMatchesByStage(competition.tournamentId),
+    const [teamRows, userRows, bracketRows] = await Promise.all([
       db.select().from(teams).where(eq(teams.tournamentId, competition.tournamentId)),
       db.select({ id: users.id, username: users.username }).from(users).where(inArray(users.id, memberIds)),
       db
@@ -4701,6 +4700,13 @@ router.get('/:id/admin/bracket-issues', requireAdmin, async (req, res) => {
     for (const row of bracketRows) {
       const preds = row.predictions as BracketPredictions;
       const username = usernameMap.get(row.userId) ?? row.userId;
+
+      // Anchored to THIS user's own predicted first-round teams (mirrors the client's
+      // bracket editor), not the real/actual bracket — otherwise every slot where the
+      // user's predicted qualifiers differ from the real ones looks "unresolved" even
+      // though the user's own bracket view shows a team advancing just fine.
+      const matchesByStage = await loadUserPredictedKnockoutMatchesByStage(id, competition.tournamentId, row.userId);
+      if (!matchesByStage) continue;
 
       for (const stage of stagesToCheck) {
         const stageMatches = matchesByStage.get(stage) ?? [];
@@ -4794,7 +4800,8 @@ router.patch('/:id/admin/bracket-predictions/:userId', requireAdmin, async (req,
     const stage = keyMatch[1];
     const matchIndex = parseInt(keyMatch[2], 10);
 
-    const matchesByStage = await loadKnockoutMatchesByStage(competition.tournamentId);
+    const matchesByStage = await loadUserPredictedKnockoutMatchesByStage(id, competition.tournamentId, userId);
+    if (!matchesByStage) return res.status(400).json({ error: 'Tournament has no knockout config' });
 
     const [predictedHomeId, predictedAwayId] = stage === 'bronze_final'
       ? [

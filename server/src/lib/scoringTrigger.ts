@@ -64,6 +64,88 @@ export async function loadKnockoutMatchesByStage(tournamentId: string): Promise<
   return matchesByStage;
 }
 
+// Same as loadKnockoutMatchesByStage, but the first-round slots are replaced with the
+// occupants THIS USER predicted (from their own group-stage predictions + tiebreaker
+// choices), not the real/actual bracket. This mirrors what the client's bracket editor
+// shows while a user is filling in predictions (KnockoutStageContent.tsx's matchTeams,
+// which is built entirely from the user's own picks, group stage included) — as opposed
+// to getUserPredictedTeamForKnockoutSlot's own first-round base case, which anchors to
+// the actual bracket for scoring purposes. Later rounds only ever depend on the user's
+// own bracket picks either way, so only the first-round entries need swapping.
+export async function loadUserPredictedKnockoutMatchesByStage(
+  competitionId: string,
+  tournamentId: string,
+  userId: string,
+): Promise<Map<string, KnockoutMatchSlot[]> | null> {
+  const [tournamentRow] = await db
+    .select({ knockoutConfig: tournaments.knockoutConfig })
+    .from(tournaments)
+    .where(eq(tournaments.id, tournamentId));
+  const koCfg = tournamentRow?.knockoutConfig as KnockoutConfig | null;
+  if (!koCfg) return null;
+
+  const matchesByStageActual = await loadKnockoutMatchesByStage(tournamentId);
+  const { firstRound, bracketSlots, directQualifiers } = koCfg;
+  const firstRoundMatches = matchesByStageActual.get(firstRound) ?? [];
+
+  const [[memberRow], teamRows, groupRows, completedGroupMatches] = await Promise.all([
+    db.select({ groupDisciplinaryChoices: competitionMembers.groupDisciplinaryChoices, luckyLoserChoices: competitionMembers.luckyLoserChoices })
+      .from(competitionMembers)
+      .where(and(eq(competitionMembers.competitionId, competitionId), eq(competitionMembers.userId, userId))),
+    db.select({ id: teams.id, groupId: teams.groupId }).from(teams).where(eq(teams.tournamentId, tournamentId)),
+    db.select().from(groups).where(eq(groups.tournamentId, tournamentId)),
+    db.select({ id: matches.id, homeTeamId: matches.homeTeamId, awayTeamId: matches.awayTeamId })
+      .from(matches)
+      .where(and(eq(matches.tournamentId, tournamentId), eq(matches.stage, 'group'), eq(matches.status, 'completed'))),
+  ]);
+
+  const groupNameMap = new Map(groupRows.map(g => [g.id, g.name]));
+  const teamGroupMap = new Map<string, string>();
+  for (const t of teamRows) {
+    if (t.groupId) {
+      const gName = groupNameMap.get(t.groupId);
+      if (gName) teamGroupMap.set(t.id, gName);
+    }
+  }
+
+  const groupMatchIds = completedGroupMatches.map(m => m.id);
+  const userGroupPreds = groupMatchIds.length > 0
+    ? await db
+        .select({ matchId: predictions.matchId, homeScore: predictions.homeScore, awayScore: predictions.awayScore })
+        .from(predictions)
+        .where(and(eq(predictions.competitionId, competitionId), eq(predictions.userId, userId), inArray(predictions.matchId, groupMatchIds)))
+    : [];
+  const userGroupPredMap = new Map(userGroupPreds.map(p => [p.matchId, p]));
+
+  const simulatedMatches = completedGroupMatches
+    .filter(m => m.homeTeamId && m.awayTeamId)
+    .flatMap(m => {
+      const p = userGroupPredMap.get(m.id);
+      return p ? [{ homeTeamId: m.homeTeamId!, awayTeamId: m.awayTeamId!, homeScore: p.homeScore, awayScore: p.awayScore }] : [];
+    });
+
+  const predictedStandings = computeGroupStandings(
+    simulatedMatches, teamGroupMap, (memberRow?.groupDisciplinaryChoices ?? {}) as Record<string, string[]>,
+  );
+  const resolvedSlots = resolveFirstRoundSlots(
+    bracketSlots, predictedStandings, directQualifiers, firstRoundMatches.length,
+    (memberRow?.luckyLoserChoices ?? {}) as Record<string, string[]>,
+  );
+
+  const matchesByStageForPred = new Map<string, KnockoutMatchSlot[]>();
+  for (const [stage, ms] of matchesByStageActual) {
+    if (stage !== firstRound) { matchesByStageForPred.set(stage, ms); continue; }
+    matchesByStageForPred.set(stage, ms.map((m, i) => ({
+      id: m.id,
+      stage: m.stage,
+      homeTeamId: resolvedSlots[`m${i + 1}_home`] ?? null,
+      awayTeamId: resolvedSlots[`m${i + 1}_away`] ?? null,
+    })));
+  }
+
+  return matchesByStageForPred;
+}
+
 async function getMemberUserIds(competitionId: string): Promise<string[]> {
   const rows = await db
     .select({ userId: competitionMembers.userId })
