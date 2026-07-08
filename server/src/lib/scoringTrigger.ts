@@ -25,7 +25,7 @@ import {
 } from './scoring.js';
 import { resolveFirstRoundSlots, type KnockoutConfig, type BracketPredictions, type ScoringConfig } from '@tournament-predictor/shared';
 
-const KNOCKOUT_STAGES = [
+export const KNOCKOUT_STAGES = [
   'round_of_32',
   'round_of_16',
   'quarter_final',
@@ -35,6 +35,34 @@ const KNOCKOUT_STAGES = [
 ] as const;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+// Loads every knockout-stage match for a tournament, sorted the same way the client's
+// knockoutMatchMap sorts them (bracketIndex-first, then scheduledAt) and grouped by
+// stage, so `stage_N` bracket-prediction keys align with how users stored their picks.
+export async function loadKnockoutMatchesByStage(tournamentId: string): Promise<Map<string, KnockoutMatchSlot[]>> {
+  const allKoMatches = await db
+    .select()
+    .from(matches)
+    .where(and(eq(matches.tournamentId, tournamentId), inArray(matches.stage, [...KNOCKOUT_STAGES])));
+  allKoMatches.sort((a, b) => {
+    const aHasIdx = a.bracketIndex != null;
+    const bHasIdx = b.bracketIndex != null;
+    if (aHasIdx && bHasIdx && a.bracketIndex !== b.bracketIndex) return a.bracketIndex! - b.bracketIndex!;
+    if (aHasIdx && !bHasIdx) return -1;
+    if (!aHasIdx && bHasIdx) return 1;
+    if (!a.scheduledAt && !b.scheduledAt) return 0;
+    if (!a.scheduledAt) return 1;
+    if (!b.scheduledAt) return -1;
+    return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
+  });
+
+  const matchesByStage = new Map<string, KnockoutMatchSlot[]>();
+  for (const m of allKoMatches) {
+    if (!matchesByStage.has(m.stage)) matchesByStage.set(m.stage, []);
+    matchesByStage.get(m.stage)!.push(m);
+  }
+  return matchesByStage;
+}
 
 async function getMemberUserIds(competitionId: string): Promise<string[]> {
   const rows = await db

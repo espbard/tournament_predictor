@@ -57,6 +57,29 @@ interface PredBreakdown {
   correctWinner: number;
 }
 
+interface BracketIssue {
+  userId: string;
+  username: string;
+  stage: string;
+  matchIndex: number;
+  predKey: string;
+  homeTeamId: string;
+  homeTeamName: string;
+  awayTeamId: string;
+  awayTeamName: string;
+  homeScore: number;
+  awayScore: number;
+}
+
+const BRACKET_ISSUE_STAGE_LABELS: Record<string, string> = {
+  round_of_32: 'Round of 32',
+  round_of_16: 'Round of 16',
+  quarter_final: 'Quarter-final',
+  semi_final: 'Semi-final',
+  bronze_final: 'Bronze final',
+  final: 'Final',
+};
+
 interface MatchPredictionEntry {
   matchId: string;
   userId: string;
@@ -151,6 +174,21 @@ export default function CompetitionDetailPage() {
     queryKey: ['tournaments'],
     queryFn: () => api.get<Tournament[]>('/tournaments'),
     enabled: !!user?.isAdmin,
+  });
+
+  const { data: bracketIssues = [] } = useQuery({
+    queryKey: ['competitions', id, 'admin', 'bracket-issues'],
+    queryFn: () => api.get<BracketIssue[]>(`/competitions/${id}/admin/bracket-issues`),
+    enabled: !!competition && !!user?.isAdmin,
+  });
+
+  const resolveBracketIssueMutation = useMutation({
+    mutationFn: ({ userId, predKey, progressingTeamId }: { userId: string; predKey: string; progressingTeamId: string }) =>
+      api.patch(`/competitions/${id}/admin/bracket-predictions/${userId}`, { predKey, progressingTeamId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['competitions', id, 'admin', 'bracket-issues'] });
+      queryClient.invalidateQueries({ queryKey: ['competitions', id, 'leaderboard'] });
+    },
   });
 
   const { data: tournamentData } = useQuery({
@@ -1016,6 +1054,51 @@ export default function CompetitionDetailPage() {
           <p className="text-sm font-medium">{t('competitionDetail.inviteCode')}</p>
           <p className="mt-1 font-mono text-3xl font-bold tracking-widest">{competition.inviteCode}</p>
           <p className="mt-1 text-xs text-muted-foreground">{t('competitionDetail.shareCode')}</p>
+        </div>
+      )}
+
+      {/* Admin: knockout predictions needing a decision */}
+      {user?.isAdmin && bracketIssues.length > 0 && (
+        <div className="mb-8 rounded-lg border p-4 space-y-3">
+          <div>
+            <p className="text-sm font-medium">Knockout predictions needing a decision</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              These members predicted a draw for these matches but never picked who advances,
+              which leaves later rounds missing a team. Pick the team they meant.
+            </p>
+          </div>
+          <div className="space-y-2">
+            {bracketIssues.map(issue => {
+              const isSaving = resolveBracketIssueMutation.isPending &&
+                resolveBracketIssueMutation.variables?.userId === issue.userId &&
+                resolveBracketIssueMutation.variables?.predKey === issue.predKey;
+              return (
+                <div key={`${issue.userId}_${issue.predKey}`} className="rounded-md border bg-muted/20 p-3">
+                  <p className="text-xs text-muted-foreground">
+                    {issue.username} · {BRACKET_ISSUE_STAGE_LABELS[issue.stage] ?? issue.stage} · {issue.homeScore}-{issue.awayScore}
+                  </p>
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      type="button"
+                      disabled={isSaving}
+                      onClick={() => resolveBracketIssueMutation.mutate({ userId: issue.userId, predKey: issue.predKey, progressingTeamId: issue.homeTeamId })}
+                      className="flex-1 rounded-md border px-2 py-1.5 text-xs font-medium hover:bg-muted disabled:opacity-50"
+                    >
+                      {tn(issue.homeTeamName)}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isSaving}
+                      onClick={() => resolveBracketIssueMutation.mutate({ userId: issue.userId, predKey: issue.predKey, progressingTeamId: issue.awayTeamId })}
+                      className="flex-1 rounded-md border px-2 py-1.5 text-xs font-medium hover:bg-muted disabled:opacity-50"
+                    >
+                      {tn(issue.awayTeamName)}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 

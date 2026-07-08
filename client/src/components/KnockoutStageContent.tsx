@@ -423,10 +423,12 @@ function FocusedMatchCard({
     const a = newAwayStr === '' ? null : parseInt(newAwayStr);
     if (h === null || a === null || isNaN(h) || isNaN(a)) return;
 
+    // Default to whatever was already picked. A decisive score always assigns the
+    // winner; a tie keeps the existing pick (or null, if none was made yet) instead of
+    // wiping out a prior "who advances" selection every time the score fields are edited.
     let progressingTeamId: string | null = prediction?.progressingTeamId ?? null;
     if (h > a) progressingTeamId = homeTeam?.teamId ?? null;
     else if (a > h) progressingTeamId = awayTeam?.teamId ?? null;
-    else progressingTeamId = null;
 
     onUpdate(matchKey, { homeScore: h, awayScore: a, progressingTeamId });
   }
