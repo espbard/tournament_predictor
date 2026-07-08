@@ -153,6 +153,12 @@ export function resolveFirstRoundSlots(
     luckyLoserDisciplinaryChoices,
   );
 
+  // Only the top-N ranked third-place teams (N = number of lucky-loser slots) ever
+  // qualify — that determination is purely rank-based per the real tournament rule.
+  // The eligibility-matching below only decides *which* slot a qualified team fills,
+  // never whether a lower-ranked team can bump a higher-ranked one into a slot.
+  const qualifiedLL = allLL.slice(0, llSlots.length);
+
   function solve(slotIdx: number, available: Array<GroupStandingTeam & { group: string }>): void {
     if (slotIdx === llSlots.length) return;
     const { slotId, groups } = llSlots[slotIdx];
@@ -171,6 +177,6 @@ export function resolveFirstRoundSlots(
     solve(slotIdx + 1, available);
   }
 
-  solve(0, allLL);
+  solve(0, qualifiedLL);
   return resolved;
 }

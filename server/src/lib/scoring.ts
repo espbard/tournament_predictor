@@ -252,6 +252,36 @@ export function getUserPredictedTeamForKnockoutSlot(
   return null;
 }
 
+/**
+ * Resolves which team the user predicted would occupy the bronze-final slot
+ * (home = loser of semi_final_0, away = loser of semi_final_1), mirroring the
+ * client's bronzeTeams logic in KnockoutStageContent.tsx.
+ */
+export function getUserPredictedBronzeFinalTeam(
+  slot: 'home' | 'away',
+  firstRound: string,
+  matchesByStage: Map<string, KnockoutMatchSlot[]>,
+  userBracketPredictions: BracketPredictions,
+): string | null {
+  const semiFinalIndex = slot === 'home' ? 0 : 1;
+  const pred = userBracketPredictions[`semi_final_${semiFinalIndex}`];
+  if (!pred) return null;
+
+  const predictedHome = getUserPredictedTeamForKnockoutSlot(
+    'semi_final', semiFinalIndex, 'home', firstRound, matchesByStage, userBracketPredictions,
+  );
+  const predictedAway = getUserPredictedTeamForKnockoutSlot(
+    'semi_final', semiFinalIndex, 'away', firstRound, matchesByStage, userBracketPredictions,
+  );
+
+  // Loser is the inverse of the winner logic above.
+  if (pred.homeScore > pred.awayScore) return predictedAway;
+  if (pred.awayScore > pred.homeScore) return predictedHome;
+  if (pred.progressingTeamId === predictedHome) return predictedAway;
+  if (pred.progressingTeamId === predictedAway) return predictedHome;
+  return null;
+}
+
 export type CompletedKnockoutMatch = KnockoutMatchSlot & {
   homeScore: number;
   awayScore: number;

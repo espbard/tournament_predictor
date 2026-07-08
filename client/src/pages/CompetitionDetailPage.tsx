@@ -2422,8 +2422,8 @@ export default function CompetitionDetailPage() {
 
                       <button
                         type="button"
-                        onClick={() => setCurrentPredMatchIdx(i => Math.min(completedMatchesWithResults.length - 1, i + 1))}
-                        disabled={safePredMatchIdx === completedMatchesWithResults.length - 1}
+                        onClick={() => setCurrentPredMatchIdx(i => Math.min(allMatchesSorted.length - 1, i + 1))}
+                        disabled={safePredMatchIdx === allMatchesSorted.length - 1}
                         className="hidden sm:flex flex-shrink-0 h-10 w-10 rounded-full border items-center justify-center transition-opacity disabled:opacity-20 dark:border-blue-400 dark:text-blue-400"
                         aria-label="Next match"
                       >→</button>
