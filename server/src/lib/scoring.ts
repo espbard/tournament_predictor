@@ -193,7 +193,7 @@ export type KnockoutMatchSlot = {
 };
 
 // Bracket stage order — bronze_final is outside the progression tree
-const BRACKET_STAGE_ORDER = [
+export const BRACKET_STAGE_ORDER = [
   'round_of_32',
   'round_of_16',
   'quarter_final',

@@ -123,6 +123,13 @@ export const SaveBracketPredictionsSchema = z.object({
 
 export type SaveBracketPredictionsInput = z.infer<typeof SaveBracketPredictionsSchema>;
 
+export const AdminSetBracketProgressingTeamSchema = z.object({
+  predKey: z.string().min(1),
+  progressingTeamId: z.string().min(1),
+});
+
+export type AdminSetBracketProgressingTeamInput = z.infer<typeof AdminSetBracketProgressingTeamSchema>;
+
 export const CreateBonusQuestionSchema = z.object({
   question: z.string().min(1).max(500),
   answerType: z.enum(['number', 'player', 'team', 'yes_no']),

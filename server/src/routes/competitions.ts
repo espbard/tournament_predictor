@@ -4,10 +4,10 @@ import { generateId } from 'lucia';
 import { db } from '../db/client.js';
 import { competitions, competitionMembers, users, tournaments, predictions, matches, teams, groups, bracketPredictions, bonusQuestions, bonusAnswers, players } from '../db/schema.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
-import { CreateCompetitionSchema, CreatePredictionSchema, SaveBracketPredictionsSchema, DEFAULT_SCORING_CONFIG, SaveBonusAnswerSchema, resolveFirstRoundSlots } from '@tournament-predictor/shared';
+import { CreateCompetitionSchema, CreatePredictionSchema, SaveBracketPredictionsSchema, AdminSetBracketProgressingTeamSchema, DEFAULT_SCORING_CONFIG, SaveBonusAnswerSchema, resolveFirstRoundSlots } from '@tournament-predictor/shared';
 import type { UserStatCardData, ScoringConfig, KnockoutConfig, BracketPredictions, LeaderboardProgressionMatch, LeaderboardProgressionResponse } from '@tournament-predictor/shared';
-import { recalculateAllScoresForTournament } from '../lib/scoringTrigger.js';
-import { computeGroupStandings, calculateMatchPoints, getUserPredictedTeamForKnockoutSlot, getUserPredictedBronzeFinalTeam, calculateGroupPositionPoints, calculateKnockoutPoints, type KnockoutMatchSlot, type FirstRoundPredTeams, type CompletedKnockoutMatch } from '../lib/scoring.js';
+import { recalculateAllScoresForTournament, loadUserPredictedKnockoutMatchesByStage } from '../lib/scoringTrigger.js';
+import { computeGroupStandings, calculateMatchPoints, getUserPredictedTeamForKnockoutSlot, getUserPredictedBronzeFinalTeam, calculateGroupPositionPoints, calculateKnockoutPoints, BRACKET_STAGE_ORDER, type KnockoutMatchSlot, type FirstRoundPredTeams, type CompletedKnockoutMatch } from '../lib/scoring.js';
 import { subscribeLeaderboard, unsubscribeLeaderboard } from '../lib/leaderboardEvents.js';
 
 const router = Router();
@@ -4654,6 +4654,190 @@ router.post('/:id/bracket-predictions', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Save bracket predictions error:', err);
     res.status(500).json({ error: 'Failed to save bracket predictions' });
+  }
+});
+
+// ── Admin: find bracket-prediction slots stuck on an unresolved tied score ───────
+
+router.get('/:id/admin/bracket-issues', requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
+    if (!competition) return res.status(404).json({ error: 'Competition not found' });
+
+    const [tournament] = await db.select().from(tournaments).where(eq(tournaments.id, competition.tournamentId));
+    const knockoutCfg = tournament?.knockoutConfig as KnockoutConfig | null;
+    if (!knockoutCfg) return res.json([]);
+    const firstRound = knockoutCfg.firstRound;
+
+    const memberRows = await db
+      .select({ userId: competitionMembers.userId })
+      .from(competitionMembers)
+      .where(eq(competitionMembers.competitionId, id));
+    const memberIds = memberRows.map(r => r.userId);
+    if (memberIds.length === 0) return res.json([]);
+
+    const [teamRows, userRows, bracketRows] = await Promise.all([
+      db.select().from(teams).where(eq(teams.tournamentId, competition.tournamentId)),
+      db.select({ id: users.id, username: users.username }).from(users).where(inArray(users.id, memberIds)),
+      db
+        .select()
+        .from(bracketPredictions)
+        .where(and(eq(bracketPredictions.competitionId, id), inArray(bracketPredictions.userId, memberIds))),
+    ]);
+
+    const teamMap = new Map(teamRows.map(t => [t.id, t]));
+    const usernameMap = new Map(userRows.map(u => [u.id, u.username]));
+    const stagesToCheck: string[] = [...BRACKET_STAGE_ORDER, 'bronze_final'];
+
+    const issues: Array<{
+      userId: string; username: string; stage: string; matchIndex: number; predKey: string;
+      homeTeamId: string; homeTeamName: string; awayTeamId: string; awayTeamName: string;
+      homeScore: number; awayScore: number;
+    }> = [];
+
+    for (const row of bracketRows) {
+      const preds = row.predictions as BracketPredictions;
+      const username = usernameMap.get(row.userId) ?? row.userId;
+
+      // Anchored to THIS user's own predicted first-round teams (mirrors the client's
+      // bracket editor), not the real/actual bracket — otherwise every slot where the
+      // user's predicted qualifiers differ from the real ones looks "unresolved" even
+      // though the user's own bracket view shows a team advancing just fine.
+      const matchesByStage = await loadUserPredictedKnockoutMatchesByStage(id, competition.tournamentId, row.userId);
+      if (!matchesByStage) continue;
+
+      for (const stage of stagesToCheck) {
+        const stageMatches = matchesByStage.get(stage) ?? [];
+        for (let matchIndex = 0; matchIndex < stageMatches.length; matchIndex++) {
+          const predKey = `${stage}_${matchIndex}`;
+          const pred = preds[predKey];
+          // Only a tied score can ever be unresolved — a decisive score always has a winner.
+          if (!pred || pred.homeScore !== pred.awayScore) continue;
+
+          const [predictedHomeId, predictedAwayId] = stage === 'bronze_final'
+            ? [
+                getUserPredictedBronzeFinalTeam('home', firstRound, matchesByStage, preds),
+                getUserPredictedBronzeFinalTeam('away', firstRound, matchesByStage, preds),
+              ]
+            : [
+                getUserPredictedTeamForKnockoutSlot(stage, matchIndex, 'home', firstRound, matchesByStage, preds),
+                getUserPredictedTeamForKnockoutSlot(stage, matchIndex, 'away', firstRound, matchesByStage, preds),
+              ];
+
+          if (!predictedHomeId || !predictedAwayId) continue;
+
+          // Resolved (not just "null") when progressingTeamId still refers to one of the
+          // two teams currently in this slot — mirrors getWinner()/getUserPredictedTeamForKnockoutSlot's
+          // tie-break rule. A stale pick left over from before the matchup was finalized
+          // (or an earlier round's prediction changed) no longer matches either team and
+          // needs the same manual resolution as a pick that was never made.
+          const isResolved = pred.progressingTeamId === predictedHomeId || pred.progressingTeamId === predictedAwayId;
+          if (isResolved) continue;
+
+          const homeTeam = teamMap.get(predictedHomeId);
+          const awayTeam = teamMap.get(predictedAwayId);
+          if (!homeTeam || !awayTeam) continue;
+
+          issues.push({
+            userId: row.userId,
+            username,
+            stage,
+            matchIndex,
+            predKey,
+            homeTeamId: homeTeam.id,
+            homeTeamName: homeTeam.name,
+            awayTeamId: awayTeam.id,
+            awayTeamName: awayTeam.name,
+            homeScore: pred.homeScore,
+            awayScore: pred.awayScore,
+          });
+        }
+      }
+    }
+
+    res.json(issues);
+  } catch (err) {
+    console.error('Get bracket issues error:', err);
+    res.status(500).json({ error: 'Failed to fetch bracket issues' });
+  }
+});
+
+router.patch('/:id/admin/bracket-predictions/:userId', requireAdmin, async (req, res) => {
+  try {
+    const { id, userId } = req.params;
+
+    const result = AdminSetBracketProgressingTeamSchema.safeParse(req.body);
+    if (!result.success) {
+      return res.status(400).json({ error: 'Validation failed', details: result.error.flatten() });
+    }
+    const { predKey, progressingTeamId } = result.data;
+
+    const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
+    if (!competition) return res.status(404).json({ error: 'Competition not found' });
+
+    const [tournament] = await db.select().from(tournaments).where(eq(tournaments.id, competition.tournamentId));
+    const knockoutCfg = tournament?.knockoutConfig as KnockoutConfig | null;
+    if (!knockoutCfg) return res.status(400).json({ error: 'Tournament has no knockout config' });
+    const firstRound = knockoutCfg.firstRound;
+
+    const [bracketRow] = await db
+      .select()
+      .from(bracketPredictions)
+      .where(and(eq(bracketPredictions.competitionId, id), eq(bracketPredictions.userId, userId)));
+    if (!bracketRow) return res.status(404).json({ error: 'No bracket predictions found for this user' });
+
+    const preds = bracketRow.predictions as BracketPredictions;
+    const pred = preds[predKey];
+    if (!pred) return res.status(404).json({ error: 'Prediction slot not found' });
+    if (pred.homeScore !== pred.awayScore) {
+      return res.status(400).json({ error: 'This slot is not a tied prediction' });
+    }
+
+    const keyMatch = predKey.match(/^(.+)_(\d+)$/);
+    if (!keyMatch) return res.status(400).json({ error: 'Invalid prediction key' });
+    const stage = keyMatch[1];
+    const matchIndex = parseInt(keyMatch[2], 10);
+
+    const matchesByStage = await loadUserPredictedKnockoutMatchesByStage(id, competition.tournamentId, userId);
+    if (!matchesByStage) return res.status(400).json({ error: 'Tournament has no knockout config' });
+
+    const [predictedHomeId, predictedAwayId] = stage === 'bronze_final'
+      ? [
+          getUserPredictedBronzeFinalTeam('home', firstRound, matchesByStage, preds),
+          getUserPredictedBronzeFinalTeam('away', firstRound, matchesByStage, preds),
+        ]
+      : [
+          getUserPredictedTeamForKnockoutSlot(stage, matchIndex, 'home', firstRound, matchesByStage, preds),
+          getUserPredictedTeamForKnockoutSlot(stage, matchIndex, 'away', firstRound, matchesByStage, preds),
+        ];
+
+    // Reject if it's already resolved (progressingTeamId matches one of the current teams)
+    // so this can't clobber a fine prediction out from under a stale admin screen.
+    if (pred.progressingTeamId === predictedHomeId || pred.progressingTeamId === predictedAwayId) {
+      return res.status(400).json({ error: 'This slot is already resolved' });
+    }
+
+    if (progressingTeamId !== predictedHomeId && progressingTeamId !== predictedAwayId) {
+      return res.status(400).json({ error: 'progressingTeamId does not match either predicted team for this slot' });
+    }
+
+    const updatedPreds: BracketPredictions = { ...preds, [predKey]: { ...pred, progressingTeamId } };
+
+    await db
+      .update(bracketPredictions)
+      .set({ predictions: updatedPreds, updatedAt: new Date() })
+      .where(and(eq(bracketPredictions.competitionId, id), eq(bracketPredictions.userId, userId)));
+
+    recalculateAllScoresForTournament(competition.tournamentId).catch(err =>
+      console.error('Scoring recalculate error (admin bracket fix):', err),
+    );
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Admin set bracket progressing team error:', err);
+    res.status(500).json({ error: 'Failed to update bracket prediction' });
   }
 });
 
