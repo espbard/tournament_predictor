@@ -4657,7 +4657,7 @@ router.post('/:id/bracket-predictions', requireAuth, async (req, res) => {
   }
 });
 
-// ── Admin: find bracket-prediction slots stuck on a tied score with no pick ──────
+// ── Admin: find bracket-prediction slots stuck on an unresolved tied score ───────
 
 router.get('/:id/admin/bracket-issues', requireAdmin, async (req, res) => {
   try {
@@ -4707,7 +4707,8 @@ router.get('/:id/admin/bracket-issues', requireAdmin, async (req, res) => {
         for (let matchIndex = 0; matchIndex < stageMatches.length; matchIndex++) {
           const predKey = `${stage}_${matchIndex}`;
           const pred = preds[predKey];
-          if (!pred || pred.homeScore !== pred.awayScore || pred.progressingTeamId != null) continue;
+          // Only a tied score can ever be unresolved — a decisive score always has a winner.
+          if (!pred || pred.homeScore !== pred.awayScore) continue;
 
           const [predictedHomeId, predictedAwayId] = stage === 'bronze_final'
             ? [
@@ -4720,6 +4721,15 @@ router.get('/:id/admin/bracket-issues', requireAdmin, async (req, res) => {
               ];
 
           if (!predictedHomeId || !predictedAwayId) continue;
+
+          // Resolved (not just "null") when progressingTeamId still refers to one of the
+          // two teams currently in this slot — mirrors getWinner()/getUserPredictedTeamForKnockoutSlot's
+          // tie-break rule. A stale pick left over from before the matchup was finalized
+          // (or an earlier round's prediction changed) no longer matches either team and
+          // needs the same manual resolution as a pick that was never made.
+          const isResolved = pred.progressingTeamId === predictedHomeId || pred.progressingTeamId === predictedAwayId;
+          if (isResolved) continue;
+
           const homeTeam = teamMap.get(predictedHomeId);
           const awayTeam = teamMap.get(predictedAwayId);
           if (!homeTeam || !awayTeam) continue;
@@ -4775,8 +4785,8 @@ router.patch('/:id/admin/bracket-predictions/:userId', requireAdmin, async (req,
     const preds = bracketRow.predictions as BracketPredictions;
     const pred = preds[predKey];
     if (!pred) return res.status(404).json({ error: 'Prediction slot not found' });
-    if (pred.homeScore !== pred.awayScore || pred.progressingTeamId != null) {
-      return res.status(400).json({ error: 'This slot is no longer an unresolved draw' });
+    if (pred.homeScore !== pred.awayScore) {
+      return res.status(400).json({ error: 'This slot is not a tied prediction' });
     }
 
     const keyMatch = predKey.match(/^(.+)_(\d+)$/);
@@ -4795,6 +4805,12 @@ router.patch('/:id/admin/bracket-predictions/:userId', requireAdmin, async (req,
           getUserPredictedTeamForKnockoutSlot(stage, matchIndex, 'home', firstRound, matchesByStage, preds),
           getUserPredictedTeamForKnockoutSlot(stage, matchIndex, 'away', firstRound, matchesByStage, preds),
         ];
+
+    // Reject if it's already resolved (progressingTeamId matches one of the current teams)
+    // so this can't clobber a fine prediction out from under a stale admin screen.
+    if (pred.progressingTeamId === predictedHomeId || pred.progressingTeamId === predictedAwayId) {
+      return res.status(400).json({ error: 'This slot is already resolved' });
+    }
 
     if (progressingTeamId !== predictedHomeId && progressingTeamId !== predictedAwayId) {
       return res.status(400).json({ error: 'progressingTeamId does not match either predicted team for this slot' });
