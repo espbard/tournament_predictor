@@ -1584,8 +1584,8 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         if (justAsIPredictedStage && Object.keys(bpPreds).length > 0) {
           const predictedRoundTeamIds = new Set<string>();
           for (let idx = 0; idx < justAsIPredictedStageMatchCount; idx++) {
-            const homeId = getUserPredictedTeamForKnockoutSlot(justAsIPredictedStage, idx, 'home', koFirstRoundForStats, matchesByStageForStats, bpPreds);
-            const awayId = getUserPredictedTeamForKnockoutSlot(justAsIPredictedStage, idx, 'away', koFirstRoundForStats, matchesByStageForStats, bpPreds);
+            const homeId = getUserPredictedTeamForKnockoutSlot(justAsIPredictedStage, idx, 'home', koFirstRoundForStats, matchesByStageActualForStats, bpPreds);
+            const awayId = getUserPredictedTeamForKnockoutSlot(justAsIPredictedStage, idx, 'away', koFirstRoundForStats, matchesByStageActualForStats, bpPreds);
             if (homeId) predictedRoundTeamIds.add(homeId);
             if (awayId) predictedRoundTeamIds.add(awayId);
           }
@@ -1612,8 +1612,12 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
               predictedHome = firstRoundPredTeams[bracketKey]?.predHomeId ?? null;
               predictedAway = firstRoundPredTeams[bracketKey]?.predAwayId ?? null;
             } else {
-              predictedHome = getUserPredictedTeamForKnockoutSlot(bracketStage, matchIdx, 'home', koFirstRoundForStats, matchesByStageForStats, bpPreds);
-              predictedAway = getUserPredictedTeamForKnockoutSlot(bracketStage, matchIdx, 'away', koFirstRoundForStats, matchesByStageForStats, bpPreds);
+              // Trajectory tracing beyond the first round must resolve against the actual
+              // (confirmed) first-round teams, not the user's own predicted qualifiers —
+              // once the group stage is over, "who's in this semi-final" is fact, not a
+              // guess, and the scoring engine (calculateKnockoutPoints) traces the same way.
+              predictedHome = getUserPredictedTeamForKnockoutSlot(bracketStage, matchIdx, 'home', koFirstRoundForStats, matchesByStageActualForStats, bpPreds);
+              predictedAway = getUserPredictedTeamForKnockoutSlot(bracketStage, matchIdx, 'away', koFirstRoundForStats, matchesByStageActualForStats, bpPreds);
             }
           }
 
