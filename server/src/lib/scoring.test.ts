@@ -89,6 +89,24 @@ describe('calculateMatchPoints', () => {
     );
     expect(result.breakdown.correctTeamProgresses).toBe(0);
   });
+
+  it('does not award correct_team_progresses for the final (has its own categories)', () => {
+    const result = calculateMatchPoints(
+      { homeScore: 1, awayScore: 1, progressingTeamId: 'team-a' },
+      { homeScore: 1, awayScore: 1, stage: 'final', actualProgressingTeamId: 'team-a' },
+      CONFIG,
+    );
+    expect(result.breakdown.correctTeamProgresses).toBe(0);
+  });
+
+  it('does not award correct_team_progresses for the bronze final', () => {
+    const result = calculateMatchPoints(
+      { homeScore: 1, awayScore: 1, progressingTeamId: 'team-a' },
+      { homeScore: 1, awayScore: 1, stage: 'bronze_final', actualProgressingTeamId: 'team-a' },
+      CONFIG,
+    );
+    expect(result.breakdown.correctTeamProgresses).toBe(0);
+  });
 });
 
 // ── computeGroupStandings ─────────────────────────────────────────────────────

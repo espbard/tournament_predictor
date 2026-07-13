@@ -45,7 +45,11 @@ export function calculateMatchPoints(
     breakdown.correctResult = config.correct_result;
   }
 
-  if (match.stage !== 'group' && match.actualProgressingTeamId) {
+  // The final and bronze final each have their own dedicated categories for
+  // "who progresses" (correct_winner / correct_team_in_final) — correct_team_progresses
+  // only applies to ties before that, where advancing is a separate question from
+  // correctly identifying the two teams.
+  if (match.stage !== 'group' && match.stage !== 'final' && match.stage !== 'bronze_final' && match.actualProgressingTeamId) {
     if (prediction.progressingTeamId === match.actualProgressingTeamId) {
       breakdown.correctTeamProgresses = config.correct_team_progresses;
     }
