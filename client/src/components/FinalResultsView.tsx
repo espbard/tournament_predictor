@@ -154,6 +154,15 @@ function TeamIcon({ team, size, correct }: { team: TeamInfo | null | undefined; 
   );
 }
 
+// Longer answers shrink to fit their allocated width before wrapping onto a second line.
+function answerFontSizeClass(text: string): string {
+  const len = text.length;
+  if (len <= 8) return 'text-lg sm:text-2xl';
+  if (len <= 14) return 'text-base sm:text-xl';
+  if (len <= 22) return 'text-sm sm:text-lg';
+  return 'text-xs sm:text-base';
+}
+
 const BAR_COLOR_PALETTE = [
   '#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#22c55e',
   '#10b981', '#14b8a6', '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6',
@@ -214,6 +223,27 @@ export default function FinalResultsView({
   const [showOverlay, setShowOverlay] = useState(false);
 
   const barColors = useMemo(() => assignBarColors(users), [users]);
+
+  // Points/answers should surface in the empty gap between the header and the bars,
+  // not at a fixed percentage of the (much taller) bars container — so measure the
+  // header's actual bottom edge and position the reveal just below it.
+  const headerRef = useRef<HTMLDivElement>(null);
+  const barsContainerRef = useRef<HTMLDivElement>(null);
+  const [revealTopPx, setRevealTopPx] = useState(24);
+
+  useEffect(() => {
+    function recompute() {
+      const header = headerRef.current;
+      const container = barsContainerRef.current;
+      if (!header || !container) return;
+      const headerBottom = header.getBoundingClientRect().bottom;
+      const containerTop = container.getBoundingClientRect().top;
+      setRevealTopPx(headerBottom + 16 - containerTop);
+    }
+    recompute();
+    window.addEventListener('resize', recompute);
+    return () => window.removeEventListener('resize', recompute);
+  }, [sourceIdx, showIntro]);
 
   useEffect(() => {
     if (pointSources.length === 0) return;
@@ -313,6 +343,7 @@ export default function FinalResultsView({
       ) : (
         <>
           <div
+            ref={headerRef}
             className={`absolute inset-x-0 top-4 z-10 px-4 text-center transition-opacity duration-500 sm:top-6 ${
               showHeader ? 'opacity-100' : 'opacity-0'
             }`}
@@ -333,7 +364,7 @@ export default function FinalResultsView({
             )}
           </div>
 
-          <div className="absolute left-4 right-4 top-56 bottom-20 sm:left-8 sm:right-8 sm:top-64">
+          <div ref={barsContainerRef} className="absolute left-4 right-4 top-56 bottom-20 sm:left-8 sm:right-8 sm:top-64">
             {users.map(user => {
               const total = totals[user.userId] ?? 0;
               const pct = Math.min((total / maxTotal) * 100, 100);
@@ -353,13 +384,17 @@ export default function FinalResultsView({
                   {showReveal && (
                     <div
                       key={`${currentSource?.id}-reveal`}
-                      className={`absolute left-1/2 z-20 flex -translate-x-1/2 flex-col items-center gap-1.5 whitespace-nowrap ${
+                      className={`absolute left-1/2 z-20 flex -translate-x-1/2 flex-col items-center gap-1.5 ${
                         isFalling ? 'animate-points-fall' : ''
                       }`}
-                      style={isFalling ? undefined : { top: '8%', opacity: 1 }}
+                      style={
+                        isFalling
+                          ? ({ ['--fall-start' as string]: `${revealTopPx}px` } as React.CSSProperties)
+                          : { top: revealTopPx, opacity: 1 }
+                      }
                     >
                       {sourceAnswer !== undefined && (
-                        <span className={`max-w-[130px] truncate text-lg font-semibold sm:max-w-[220px] sm:text-2xl ${isCorrect ? 'text-green-400' : 'text-gray-400'}`}>
+                        <span className={`max-w-[150px] whitespace-normal break-words text-center leading-tight font-semibold sm:max-w-[260px] ${answerFontSizeClass(sourceAnswer || '—')} ${isCorrect ? 'text-green-400' : 'text-gray-400'}`}>
                           {sourceAnswer || '—'}
                         </span>
                       )}

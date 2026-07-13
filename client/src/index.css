@@ -29,7 +29,7 @@
 }
 
 @keyframes points-fall {
-  0%   { top: 8%; }
+  0%   { top: var(--fall-start, 8%); }
   100% { top: calc(100% - 96px); }
 }
 
