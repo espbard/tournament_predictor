@@ -113,6 +113,20 @@ interface BonusAnswerEntry {
   points: number | null;
 }
 
+// Tracks, per browser, whether a user has already been auto-navigated to the Final
+// Results reveal for a given competition, so we only force it on them once.
+function finalResultsSeenKey(competitionId: string, userId: string): string {
+  return `final-results-seen:${competitionId}:${userId}`;
+}
+
+function hasSeenFinalResults(competitionId: string, userId: string): boolean {
+  return localStorage.getItem(finalResultsSeenKey(competitionId, userId)) === '1';
+}
+
+function markFinalResultsSeen(competitionId: string, userId: string): void {
+  localStorage.setItem(finalResultsSeenKey(competitionId, userId), '1');
+}
+
 export default function CompetitionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuthStore();
@@ -208,6 +222,9 @@ export default function CompetitionDetailPage() {
     queryKey: ['tournament', competition?.tournamentId],
     queryFn: () => api.get<Tournament>(`/tournaments/${competition!.tournamentId}`),
     enabled: !!competition && !user?.isAdmin,
+    // Poll while the page is open so a tournament flipping to completed while a user is
+    // already viewing it is picked up without requiring a manual refresh.
+    refetchInterval: 30_000,
   });
 
   const { data: matchList = [], isLoading: matchListLoading } = useQuery({
@@ -635,19 +652,37 @@ export default function CompetitionDetailPage() {
 
   useEffect(() => {
     if (tabParam || user?.isLeaderboardUser || user?.isAdmin || !tournament) return;
+    // Defer to the Final Results redirect effect below when it's about to fire, so the
+    // two don't race to set the tab search param on the same render.
+    if (tournament.status === 'completed' && user?.id && id && !hasSeenFinalResults(id, user.id)) return;
     if (tournament.status === 'active' || tournament.status === 'completed') {
       setSearchParams(
         prev => { const n = new URLSearchParams(prev); n.set('tab', 'leaderboard'); return n; },
         { replace: true }
       );
     }
-  }, [tournament?.status, tabParam, user?.isLeaderboardUser, user?.isAdmin, setSearchParams]);
+  }, [tournament?.status, tabParam, user?.isLeaderboardUser, user?.isAdmin, user?.id, id, setSearchParams]);
 
   useEffect(() => {
     if (activeTab === 'finalResults' && tournament && tournament.status !== 'completed') {
       setActiveTab('leaderboard');
     }
   }, [activeTab, tournament]);
+
+  // The first time a user encounters a completed tournament — whether that's on page
+  // load or because it flips to completed while they already have the page open — send
+  // them straight to the Final Results reveal, once per competition per browser.
+  useEffect(() => {
+    if (!tournament || !user || user.isAdmin || !id) return;
+    if (tournament.status !== 'completed') return;
+    if (activeTab === 'finalResults') {
+      markFinalResultsSeen(id, user.id);
+      return;
+    }
+    if (hasSeenFinalResults(id, user.id)) return;
+    markFinalResultsSeen(id, user.id);
+    setActiveTab('finalResults');
+  }, [tournament?.status, user?.id, user?.isAdmin, id, activeTab]);
 
   const directQualifiers = tournament?.knockoutConfig?.directQualifiers ?? 2;
 
