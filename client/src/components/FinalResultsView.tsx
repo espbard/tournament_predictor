@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { X, Pause, Play, FastForward } from 'lucide-react';
+import { X, Pause, Play, FastForward, RotateCcw } from 'lucide-react';
 import { UserAvatar } from '@/components/UserAvatar';
 
 interface DisplayUser {
@@ -38,6 +38,7 @@ interface FinalResultsViewProps {
   pauseLabel: string;
   playLabel: string;
   fastForwardLabel: string;
+  replayLabel: string;
   onGoToLeaderboard: () => void;
 }
 
@@ -237,6 +238,7 @@ export default function FinalResultsView({
   pauseLabel,
   playLabel,
   fastForwardLabel,
+  replayLabel,
   onGoToLeaderboard,
 }: FinalResultsViewProps) {
   useEffect(() => {
@@ -253,6 +255,7 @@ export default function FinalResultsView({
   const [showOverlay, setShowOverlay] = useState(false);
   const [paused, setPaused] = useState(false);
   const [fastForward, setFastForward] = useState(false);
+  const [replayCount, setReplayCount] = useState(0);
 
   const pausedRef = useRef(false);
   const speedRef = useRef(1);
@@ -336,7 +339,7 @@ export default function FinalResultsView({
 
     run();
     return () => { cancelled = true; };
-  }, [pointSources]);
+  }, [pointSources, replayCount]);
 
   const maxTotal = useMemo(() => {
     let max = 0;
@@ -421,7 +424,7 @@ export default function FinalResultsView({
         <>
           <div
             ref={headerRef}
-            className={`absolute inset-x-0 top-4 z-10 px-4 text-center transition-opacity sm:top-6 ${
+            className={`absolute inset-x-0 top-16 z-10 px-4 text-center transition-opacity sm:top-6 ${
               showHeader ? 'opacity-100' : 'opacity-0'
             }`}
             style={{ transitionDuration: `${headerTransitionMs}ms` }}
@@ -518,7 +521,14 @@ export default function FinalResultsView({
       )}
 
       {done && (
-        <div className="absolute inset-x-0 bottom-4 z-[150] flex justify-center">
+        <div className="absolute inset-x-0 bottom-4 z-[150] flex items-center justify-center gap-3">
+          <button
+            onClick={() => setReplayCount(c => c + 1)}
+            aria-label={replayLabel}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur hover:bg-white/20"
+          >
+            <RotateCcw size={18} />
+          </button>
           <button
             onClick={onGoToLeaderboard}
             className="rounded-full bg-white/10 px-5 py-2 text-sm font-medium text-white backdrop-blur hover:bg-white/20 sm:text-base"

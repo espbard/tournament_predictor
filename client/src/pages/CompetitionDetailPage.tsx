@@ -2793,6 +2793,7 @@ export default function CompetitionDetailPage() {
           pauseLabel={t('competitionDetail.finalResults.pause')}
           playLabel={t('competitionDetail.finalResults.play')}
           fastForwardLabel={t('competitionDetail.finalResults.fastForward')}
+          replayLabel={t('competitionDetail.finalResults.replay')}
           onGoToLeaderboard={() => setActiveTab('leaderboard')}
         />
       )}

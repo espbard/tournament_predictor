@@ -131,6 +131,7 @@ const translations = {
         pause: 'Pause',
         play: 'Play',
         fastForward: 'Fast forward',
+        replay: 'Replay',
       },
       leaderboard: {
         player: 'Player',
@@ -644,6 +645,7 @@ const translations = {
         pause: 'Pause',
         play: 'Spill av',
         fastForward: 'Spol frem',
+        replay: 'Spill av på nytt',
       },
       leaderboard: {
         player: 'Spiller',
@@ -1155,6 +1157,7 @@ const translations = {
         pause: 'Pause',
         play: 'Abspielen',
         fastForward: 'Vorspulen',
+        replay: 'Wiederholen',
       },
       leaderboard: {
         player: 'Spieler',
