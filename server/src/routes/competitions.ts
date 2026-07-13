@@ -1209,8 +1209,12 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
               predHomeTeamId = getUserPredictedBronzeFinalTeam('home', firstRound, matchesByStageForPred, bpPreds);
               predAwayTeamId = getUserPredictedBronzeFinalTeam('away', firstRound, matchesByStageForPred, bpPreds);
             } else {
-              predHomeTeamId = getUserPredictedTeamForKnockoutSlot(bracketStage, matchIdx, 'home', firstRound, matchesByStageForPred, bpPreds);
-              predAwayTeamId = getUserPredictedTeamForKnockoutSlot(bracketStage, matchIdx, 'away', firstRound, matchesByStageForPred, bpPreds);
+              // Trajectory tracing beyond the first round must resolve against the actual
+              // (confirmed) first-round teams, not the user's own predicted qualifiers —
+              // once the group stage is over, "who's in this semi-final" is fact, not a
+              // guess, and the scoring engine (calculateKnockoutPoints) traces the same way.
+              predHomeTeamId = getUserPredictedTeamForKnockoutSlot(bracketStage, matchIdx, 'home', firstRound, matchesByStageActual, bpPreds);
+              predAwayTeamId = getUserPredictedTeamForKnockoutSlot(bracketStage, matchIdx, 'away', firstRound, matchesByStageActual, bpPreds);
             }
           }
 
