@@ -116,6 +116,11 @@ const translations = {
         userStats: 'Stats',
         finalResults: 'Final Results',
       },
+      finalResults: {
+        groupStageRound: 'Group Stage — Round {{n}}',
+        correctResultPoints: 'Correct Result Points',
+        perfectScorePoints: 'Perfect Score Points',
+      },
       leaderboard: {
         player: 'Player',
         total: 'Total',
@@ -611,6 +616,11 @@ const translations = {
         userStats: 'Statistikk',
         finalResults: 'Sluttresultater',
       },
+      finalResults: {
+        groupStageRound: 'Gruppespill — Runde {{n}}',
+        correctResultPoints: 'Poeng for riktig resultat',
+        perfectScorePoints: 'Poeng for perfekt resultat',
+      },
       leaderboard: {
         player: 'Spiller',
         total: 'Totalt',
@@ -1103,6 +1113,11 @@ const translations = {
         pointProgression: 'Punkteentwicklung',
         userStats: 'Statistiken',
         finalResults: 'Endergebnisse',
+      },
+      finalResults: {
+        groupStageRound: 'Gruppenphase — Runde {{n}}',
+        correctResultPoints: 'Punkte für richtiges Ergebnis',
+        perfectScorePoints: 'Punkte für perfektes Ergebnis',
       },
       leaderboard: {
         player: 'Spieler',

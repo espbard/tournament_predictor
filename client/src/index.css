@@ -28,6 +28,16 @@
   animation: edge-pulse 3s ease-in-out infinite;
 }
 
+@keyframes points-fall {
+  0%   { top: 8%; opacity: 0; }
+  10%  { opacity: 1; }
+  100% { top: calc(100% - 96px); opacity: 1; }
+}
+
+.animate-points-fall {
+  animation: points-fall 1s cubic-bezier(0.55, 0, 1, 0.45) forwards;
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;

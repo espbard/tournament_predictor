@@ -14,6 +14,7 @@ import { SoccerKickAnimation } from '@/components/SoccerKickAnimation';
 import { CryingPlayerAnimation } from '@/components/CryingPlayerAnimation';
 import BonusQuestionsTab from './BonusQuestionsTab';
 import FinalResultsView from '@/components/FinalResultsView';
+import { buildGroupStageRoundPointSources } from '@/lib/pointSources';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import BackButton from '@/components/BackButton';
 import { useT } from '@/lib/useT';
@@ -237,7 +238,7 @@ export default function CompetitionDetailPage() {
   const { data: allMatchPredictions = [] } = useQuery({
     queryKey: ['competitions', id, 'all-match-predictions', showComparisonUsers],
     queryFn: () => api.get<MatchPredictionEntry[]>(`/competitions/${id}/all-match-predictions${showComparisonUsers ? '?includeComparison=true' : ''}`),
-    enabled: !!competition && !user?.isAdmin && (activeTab === 'leaderboard' || !!user?.isLeaderboardUser),
+    enabled: !!competition && !user?.isAdmin && (activeTab === 'leaderboard' || activeTab === 'finalResults' || !!user?.isLeaderboardUser),
   });
 
   const { data: leaderboardProgression } = useQuery({
@@ -978,6 +979,25 @@ export default function CompetitionDetailPage() {
     };
     return map[stage];
   };
+
+  const finalResultsUsers = useMemo(
+    () => leaderboard.filter(e => !e.isComparisonUser).slice(0, 20),
+    [leaderboard]
+  );
+
+  const finalResultsPointSources = useMemo(
+    () => buildGroupStageRoundPointSources(
+      matchList,
+      allMatchPredictions,
+      finalResultsUsers.map(u => u.userId),
+      {
+        round: (n) => t('competitionDetail.finalResults.groupStageRound', { n }),
+        correctResult: t('competitionDetail.finalResults.correctResultPoints'),
+        exactScore: t('competitionDetail.finalResults.perfectScorePoints'),
+      }
+    ),
+    [matchList, allMatchPredictions, finalResultsUsers, t]
+  );
 
   if (isLoading) return <LoadingSpinner />;
   if (error) {
@@ -2721,7 +2741,7 @@ export default function CompetitionDetailPage() {
       )}
 
       {activeTab === 'finalResults' && (
-        <FinalResultsView leaderboard={leaderboard} />
+        <FinalResultsView users={finalResultsUsers} pointSources={finalResultsPointSources} />
       )}
 
       {/* Clear predictions confirm */}
