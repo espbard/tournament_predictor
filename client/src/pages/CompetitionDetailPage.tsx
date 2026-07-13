@@ -124,8 +124,8 @@ export default function CompetitionDetailPage() {
   const [saveErrors, setSaveErrors] = useState<Record<string, string>>({});
 
   const [searchParams, setSearchParams] = useSearchParams();
-  type TabId = 'group' | 'tables' | 'knockout' | 'bonus' | 'leaderboard' | 'pointProgression' | 'userStats';
-  const VALID_TABS: TabId[] = ['group', 'tables', 'knockout', 'bonus', 'leaderboard', 'pointProgression', 'userStats'];
+  type TabId = 'group' | 'tables' | 'knockout' | 'bonus' | 'leaderboard' | 'pointProgression' | 'userStats' | 'finalResults';
+  const VALID_TABS: TabId[] = ['group', 'tables', 'knockout', 'bonus', 'leaderboard', 'pointProgression', 'userStats', 'finalResults'];
   const tabParam = searchParams.get('tab') as TabId | null;
   const activeTab: TabId = VALID_TABS.includes(tabParam!)
     ? tabParam!
@@ -617,6 +617,12 @@ export default function CompetitionDetailPage() {
       );
     }
   }, [tournament?.status, tabParam, user?.isLeaderboardUser, user?.isAdmin, setSearchParams]);
+
+  useEffect(() => {
+    if (activeTab === 'finalResults' && tournament && tournament.status !== 'completed') {
+      setActiveTab('leaderboard');
+    }
+  }, [activeTab, tournament]);
 
   const directQualifiers = tournament?.knockoutConfig?.directQualifiers ?? 2;
 
@@ -2711,6 +2717,10 @@ export default function CompetitionDetailPage() {
             return <div key={stat.id} className="break-inside-avoid mb-6">{cardEl}</div>;
           })}
         </div>
+      )}
+
+      {activeTab === 'finalResults' && (
+        <div />
       )}
 
       {/* Clear predictions confirm */}

@@ -114,6 +114,7 @@ const translations = {
         leaderboard: 'Leaderboard',
         pointProgression: 'Point Progression',
         userStats: 'Stats',
+        finalResults: 'Final Results',
       },
       leaderboard: {
         player: 'Player',
@@ -608,6 +609,7 @@ const translations = {
         leaderboard: 'Ledertavle',
         pointProgression: 'Poengutvikling',
         userStats: 'Statistikk',
+        finalResults: 'Sluttresultater',
       },
       leaderboard: {
         player: 'Spiller',
@@ -1100,6 +1102,7 @@ const translations = {
         leaderboard: 'Rangliste der Sieger',
         pointProgression: 'Punkteentwicklung',
         userStats: 'Statistiken',
+        finalResults: 'Endergebnisse',
       },
       leaderboard: {
         player: 'Spieler',
