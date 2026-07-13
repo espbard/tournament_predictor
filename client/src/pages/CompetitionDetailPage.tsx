@@ -14,7 +14,7 @@ import { SoccerKickAnimation } from '@/components/SoccerKickAnimation';
 import { CryingPlayerAnimation } from '@/components/CryingPlayerAnimation';
 import BonusQuestionsTab from './BonusQuestionsTab';
 import FinalResultsView from '@/components/FinalResultsView';
-import { buildGroupStageRoundPointSources } from '@/lib/pointSources';
+import { buildFinalResultsPointSources } from '@/lib/pointSources';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import BackButton from '@/components/BackButton';
 import { useT } from '@/lib/useT';
@@ -986,17 +986,27 @@ export default function CompetitionDetailPage() {
   );
 
   const finalResultsPointSources = useMemo(
-    () => buildGroupStageRoundPointSources(
+    () => buildFinalResultsPointSources(
       matchList,
       allMatchPredictions,
+      leaderboard,
       finalResultsUsers.map(u => u.userId),
       {
-        round: (n) => t('competitionDetail.finalResults.groupStageRound', { n }),
-        correctResult: t('competitionDetail.finalResults.correctResultPoints'),
-        exactScore: t('competitionDetail.finalResults.perfectScorePoints'),
+        groupRound: (n) => t('competitionDetail.finalResults.groupStageRound', { n }),
+        groupRoundCorrectResult: t('competitionDetail.finalResults.correctResultPoints'),
+        groupRoundExactScore: t('competitionDetail.finalResults.perfectScorePoints'),
+        groupTablePosition: t('competitionDetail.finalResults.groupTablePosition'),
+        knockoutStage: {
+          round_of_32: t('stages.round_of_32'),
+          round_of_16: t('stages.round_of_16'),
+          quarter_final: t('stages.quarter_final'),
+          semi_final: t('stages.semi_final'),
+          final: t('stages.final'),
+        },
+        bonusQuestions: t('competitionDetail.tabs.bonusQuestions'),
       }
     ),
-    [matchList, allMatchPredictions, finalResultsUsers, t]
+    [matchList, allMatchPredictions, leaderboard, finalResultsUsers, t]
   );
 
   if (isLoading) return <LoadingSpinner />;

@@ -13,16 +13,51 @@ interface MatchLike {
   awayTeamId: string | null;
 }
 
+interface PredictionBreakdown {
+  exactScore: number;
+  correctResult: number;
+  correctTeamProgresses: number;
+  correctTeamInKnockoutTie: number;
+  correctTeamInFinal: number;
+  correctWinner: number;
+}
+
 interface PredictionLike {
   matchId: string;
   userId: string;
-  breakdown: { correctResult: number; exactScore: number };
+  breakdown: PredictionBreakdown;
+}
+
+interface LeaderboardLike {
+  userId: string;
+  breakdown: {
+    correctGroupPositionPoints: number;
+    bonusQuestionPoints: number;
+  };
+}
+
+const KNOCKOUT_STAGE_ORDER = ['round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'final'] as const;
+type KnockoutStage = typeof KNOCKOUT_STAGE_ORDER[number];
+
+export interface FinalResultsLabels {
+  groupRound: (n: number) => string;
+  groupRoundCorrectResult: string;
+  groupRoundExactScore: string;
+  groupTablePosition: string;
+  knockoutStage: Record<KnockoutStage, string>;
+  bonusQuestions: string;
 }
 
 function completedGroupMatches(matches: MatchLike[]): MatchLike[] {
   return matches.filter(
     m => m.stage === 'group' && m.status === 'completed' && m.homeTeamId && m.awayTeamId && m.scheduledAt
   );
+}
+
+function zeroFilled(userIds: string[]): Record<string, number> {
+  const result: Record<string, number> = {};
+  for (const uid of userIds) result[uid] = 0;
+  return result;
 }
 
 // Group stage "rounds" aren't a stored concept — infer them from how many group
@@ -98,12 +133,8 @@ export function buildGroupStageRoundPointSources(
   const sources: PointSource[] = [];
   for (let r = 1; r <= numRounds; r++) {
     const matchIds = roundMatchIds.get(r) ?? new Set<string>();
-    const correctResultPoints: Record<string, number> = {};
-    const exactScorePoints: Record<string, number> = {};
-    for (const uid of userIds) {
-      correctResultPoints[uid] = 0;
-      exactScorePoints[uid] = 0;
-    }
+    const correctResultPoints = zeroFilled(userIds);
+    const exactScorePoints = zeroFilled(userIds);
     for (const matchId of matchIds) {
       for (const p of predictionsByMatch.get(matchId) ?? []) {
         if (!(p.userId in correctResultPoints)) continue;
@@ -123,4 +154,78 @@ export function buildGroupStageRoundPointSources(
     });
   }
   return sources;
+}
+
+function buildGroupTablePositionSource(leaderboard: LeaderboardLike[], userIds: string[], label: string): PointSource {
+  const pointsByUser = zeroFilled(userIds);
+  for (const entry of leaderboard) {
+    if (entry.userId in pointsByUser) pointsByUser[entry.userId] = entry.breakdown.correctGroupPositionPoints ?? 0;
+  }
+  return { id: 'group-table-position', label, pointsByUser };
+}
+
+function buildBonusQuestionsSource(leaderboard: LeaderboardLike[], userIds: string[], label: string): PointSource {
+  const pointsByUser = zeroFilled(userIds);
+  for (const entry of leaderboard) {
+    if (entry.userId in pointsByUser) pointsByUser[entry.userId] = entry.breakdown.bonusQuestionPoints ?? 0;
+  }
+  return { id: 'bonus-questions', label, pointsByUser };
+}
+
+// Knockout rounds award points for several categories at once (correct result, exact
+// score, correct team advancing, correct team in the tie/final, correct final winner) —
+// unlike the group stage, these aren't split into separate reveal steps.
+function buildKnockoutRoundPointSources(
+  matches: MatchLike[],
+  predictions: PredictionLike[],
+  userIds: string[],
+  stageLabels: Record<KnockoutStage, string>,
+): PointSource[] {
+  const predictionsByMatch = new Map<string, PredictionLike[]>();
+  for (const p of predictions) {
+    if (!predictionsByMatch.has(p.matchId)) predictionsByMatch.set(p.matchId, []);
+    predictionsByMatch.get(p.matchId)!.push(p);
+  }
+
+  const sources: PointSource[] = [];
+  for (const stage of KNOCKOUT_STAGE_ORDER) {
+    const stageMatchIds = matches.filter(m => m.stage === stage).map(m => m.id);
+    if (stageMatchIds.length === 0) continue;
+
+    const pointsByUser = zeroFilled(userIds);
+    for (const matchId of stageMatchIds) {
+      for (const p of predictionsByMatch.get(matchId) ?? []) {
+        if (!(p.userId in pointsByUser)) continue;
+        const b = p.breakdown;
+        pointsByUser[p.userId] +=
+          (b.correctResult ?? 0) +
+          (b.exactScore ?? 0) +
+          (b.correctTeamProgresses ?? 0) +
+          (b.correctTeamInKnockoutTie ?? 0) +
+          (b.correctTeamInFinal ?? 0) +
+          (b.correctWinner ?? 0);
+      }
+    }
+    sources.push({ id: `ko-${stage}`, label: stageLabels[stage], pointsByUser });
+  }
+  return sources;
+}
+
+export function buildFinalResultsPointSources(
+  matches: MatchLike[],
+  predictions: PredictionLike[],
+  leaderboard: LeaderboardLike[],
+  userIds: string[],
+  labels: FinalResultsLabels,
+): PointSource[] {
+  return [
+    ...buildGroupStageRoundPointSources(matches, predictions, userIds, {
+      round: labels.groupRound,
+      correctResult: labels.groupRoundCorrectResult,
+      exactScore: labels.groupRoundExactScore,
+    }),
+    buildGroupTablePositionSource(leaderboard, userIds, labels.groupTablePosition),
+    ...buildKnockoutRoundPointSources(matches, predictions, userIds, labels.knockoutStage),
+    buildBonusQuestionsSource(leaderboard, userIds, labels.bonusQuestions),
+  ];
 }

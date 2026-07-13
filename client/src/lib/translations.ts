@@ -120,6 +120,7 @@ const translations = {
         groupStageRound: 'Group Stage — Round {{n}}',
         correctResultPoints: 'Correct Result Points',
         perfectScorePoints: 'Perfect Score Points',
+        groupTablePosition: 'Group Table — Correct Position',
       },
       leaderboard: {
         player: 'Player',
@@ -620,6 +621,7 @@ const translations = {
         groupStageRound: 'Gruppespill — Runde {{n}}',
         correctResultPoints: 'Poeng for riktig resultat',
         perfectScorePoints: 'Poeng for perfekt resultat',
+        groupTablePosition: 'Gruppetabell — Riktig plassering',
       },
       leaderboard: {
         player: 'Spiller',
@@ -1118,6 +1120,7 @@ const translations = {
         groupStageRound: 'Gruppenphase — Runde {{n}}',
         correctResultPoints: 'Punkte für richtiges Ergebnis',
         perfectScorePoints: 'Punkte für perfektes Ergebnis',
+        groupTablePosition: 'Gruppentabelle — Richtige Platzierung',
       },
       leaderboard: {
         player: 'Spieler',
