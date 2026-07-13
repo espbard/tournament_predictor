@@ -2781,6 +2781,7 @@ export default function CompetitionDetailPage() {
         <FinalResultsView
           users={finalResultsUsers}
           pointSources={finalResultsPointSources}
+          introText={t('competitionDetail.finalResults.intro')}
           winnerLabel={(name) => t('competitionDetail.finalResults.winner', { name })}
           toLeaderboardLabel={t('competitionDetail.finalResults.toLeaderboard')}
           closeLabel={t('competitionDetail.finalResults.close')}

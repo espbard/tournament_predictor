@@ -21,13 +21,15 @@ interface PointSource {
 interface FinalResultsViewProps {
   users: DisplayUser[];
   pointSources: PointSource[];
+  introText: string;
   winnerLabel: (name: string) => string;
   toLeaderboardLabel: string;
   closeLabel: string;
   onGoToLeaderboard: () => void;
 }
 
-const LABEL_MS = 900;
+const INTRO_MS = 4000;
+const LABEL_MS = 1800;
 const FALL_MS = 1000;
 const PAUSE_MS = 900;
 
@@ -71,6 +73,7 @@ function assignBarColors(users: DisplayUser[]): Record<string, string> {
 export default function FinalResultsView({
   users,
   pointSources,
+  introText,
   winnerLabel,
   toLeaderboardLabel,
   closeLabel,
@@ -82,6 +85,7 @@ export default function FinalResultsView({
     return () => { document.body.style.overflow = prevOverflow; };
   }, []);
 
+  const [showIntro, setShowIntro] = useState(true);
   const [sourceIdx, setSourceIdx] = useState(-1);
   const [phase, setPhase] = useState<'idle' | 'label' | 'falling' | 'landed'>('idle');
   const [totals, setTotals] = useState<Record<string, number>>({});
@@ -95,9 +99,13 @@ export default function FinalResultsView({
     let cancelled = false;
 
     async function run() {
+      setShowIntro(true);
       setTotals({});
       setDone(false);
       setShowOverlay(false);
+      await wait(INTRO_MS);
+      if (cancelled) return;
+      setShowIntro(false);
       for (let i = 0; i < pointSources.length; i++) {
         if (cancelled) return;
         setSourceIdx(i);
@@ -163,74 +171,82 @@ export default function FinalResultsView({
     <div className="fixed inset-0 z-[200] bg-black overflow-hidden">
       <div className="pointer-events-none absolute inset-0 animate-edge-pulse" />
 
-      <div
-        className={`absolute inset-x-0 top-4 z-10 px-4 text-center transition-opacity duration-500 sm:top-6 ${
-          showHeader ? 'opacity-100' : 'opacity-0'
-        }`}
-      >
-        {currentSource?.eyebrow && (
-          <div className="text-xs font-medium uppercase tracking-wide text-white/60 sm:text-sm">{currentSource.eyebrow}</div>
-        )}
-        <div className="text-base font-semibold tracking-wide text-white sm:text-xl">{currentSource?.label}</div>
-        {currentSource?.subLabel && (
-          <div className="mt-1 text-xs text-white/70 sm:text-sm">{currentSource.subLabel}</div>
-        )}
-      </div>
+      {showIntro ? (
+        <div className="absolute inset-0 flex items-center justify-center px-6 text-center">
+          <p className="text-2xl font-bold leading-snug text-white sm:text-4xl md:text-5xl">{introText}</p>
+        </div>
+      ) : (
+        <>
+          <div
+            className={`absolute inset-x-0 top-4 z-10 px-4 text-center transition-opacity duration-500 sm:top-6 ${
+              showHeader ? 'opacity-100' : 'opacity-0'
+            }`}
+          >
+            {currentSource?.eyebrow && (
+              <div className="text-sm font-medium uppercase tracking-wide text-white/60 sm:text-lg">{currentSource.eyebrow}</div>
+            )}
+            <div className="text-xl font-semibold tracking-wide text-white sm:text-3xl">{currentSource?.label}</div>
+            {currentSource?.subLabel && (
+              <div className="mt-1 text-sm text-white/70 sm:text-lg">{currentSource.subLabel}</div>
+            )}
+          </div>
 
-      <div className="absolute left-4 right-4 top-24 bottom-20 sm:left-8 sm:right-8">
-        {users.map(user => {
-          const total = totals[user.userId] ?? 0;
-          const pct = Math.min((total / maxTotal) * 100, 100);
-          const sourcePoints = currentSource?.pointsByUser[user.userId] ?? 0;
-          const sourceAnswer = currentSource?.answerByUser?.[user.userId];
-          const color = barColors[user.userId] ?? '#4b5563';
-          const rank = rankByUserId.get(user.userId) ?? 0;
+          <div className="absolute left-4 right-4 top-40 bottom-20 sm:left-8 sm:right-8 sm:top-44">
+            {users.map(user => {
+              const total = totals[user.userId] ?? 0;
+              const pct = Math.min((total / maxTotal) * 100, 100);
+              const sourcePoints = currentSource?.pointsByUser[user.userId] ?? 0;
+              const sourceAnswer = currentSource?.answerByUser?.[user.userId];
+              const color = barColors[user.userId] ?? '#4b5563';
+              const rank = rankByUserId.get(user.userId) ?? 0;
 
-          return (
-            <div
-              key={user.userId}
-              className="absolute inset-y-0 flex flex-col items-center justify-end transition-[left] duration-700 ease-in-out"
-              style={{ left: `${rank * widthPct}%`, width: `${widthPct}%` }}
-            >
-              {showFalling && (
+              return (
                 <div
-                  key={`${currentSource?.id}-fall`}
-                  className="animate-points-fall absolute left-1/2 z-20 flex -translate-x-1/2 flex-col items-center whitespace-nowrap"
+                  key={user.userId}
+                  className="absolute inset-y-0 flex flex-col items-center justify-end transition-[left] duration-700 ease-in-out"
+                  style={{ left: `${rank * widthPct}%`, width: `${widthPct}%` }}
                 >
-                  {sourceAnswer !== undefined && (
-                    <span className="max-w-[90px] truncate text-[10px] text-white/80 sm:max-w-[120px] sm:text-xs">
-                      {sourceAnswer || '—'}
-                    </span>
+                  {showFalling && (
+                    <div
+                      key={`${currentSource?.id}-fall`}
+                      className="animate-points-fall absolute left-1/2 z-20 flex -translate-x-1/2 flex-col items-center whitespace-nowrap"
+                    >
+                      {sourceAnswer !== undefined && (
+                        <span className="max-w-[90px] truncate text-[10px] text-white/80 sm:max-w-[120px] sm:text-xs">
+                          {sourceAnswer || '—'}
+                        </span>
+                      )}
+                      <span className={`text-sm font-bold sm:text-base ${sourcePoints > 0 ? 'text-green-400' : 'text-gray-500'}`}>
+                        {sourcePoints > 0 ? `+${sourcePoints}` : '0'}
+                      </span>
+                    </div>
                   )}
-                  <span className={`text-sm font-bold sm:text-base ${sourcePoints > 0 ? 'text-green-400' : 'text-gray-500'}`}>
-                    {sourcePoints > 0 ? `+${sourcePoints}` : '0'}
-                  </span>
-                </div>
-              )}
 
-              <div className="flex w-full flex-1 items-end px-1 sm:px-1.5">
-                <div
-                  className="w-full rounded-t-sm transition-[height] duration-700 ease-out"
-                  style={{ height: `${pct}%`, background: `linear-gradient(to top, ${color}, ${color}99)` }}
-                />
-              </div>
-              <div className="mt-2 flex max-w-full flex-col items-center gap-1">
-                <UserAvatar
-                  username={user.username}
-                  imageUrl={user.imageUrl}
-                  iconColor={user.iconColor}
-                  className="h-8 w-8 sm:h-10 sm:w-10"
-                  resizeWidth={96}
-                />
-                <span className="max-w-full truncate text-[10px] font-medium text-white sm:text-xs">
-                  {user.username}
-                </span>
-                <span className="text-xs font-bold text-white sm:text-sm">{total}</span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+                  <div className="flex w-full flex-1 items-end px-1 sm:px-1.5">
+                    <div
+                      className="w-full rounded-t-sm transition-[height] duration-700 ease-out"
+                      style={{ height: `${pct}%`, background: `linear-gradient(to top, ${color}, ${color}99)` }}
+                    />
+                  </div>
+                  <div className="mt-2 flex max-w-full flex-col items-center gap-1">
+                    <UserAvatar
+                      username={user.username}
+                      imageUrl={user.imageUrl}
+                      iconColor={user.iconColor}
+                      className="h-8 w-8 sm:h-10 sm:w-10"
+                      resizeWidth={96}
+                    />
+                    <span className="max-w-full truncate text-[10px] font-medium text-white sm:text-xs">
+                      {user.username}
+                    </span>
+                    <span className="text-xs font-bold text-white sm:text-sm">{total}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
 
       {done && (
         <div className="absolute inset-x-0 bottom-4 z-[150] flex justify-center">
