@@ -1253,12 +1253,11 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
                 if (!actualTeamId) continue;
                 if (predHomeTeamId !== actualTeamId && predAwayTeamId !== actualTeamId) continue;
                 if (koMatchData.stage === 'final') {
+                  koPoints += scoringConfig.correct_team_in_final;
+                  koBd.correctTeamInFinal += scoringConfig.correct_team_in_final;
                   if (actualTeamId === koMatchData.progressingTeamId && actualTeamId === userPredictedWinner) {
                     koPoints += scoringConfig.correct_winner;
                     koBd.correctWinner += scoringConfig.correct_winner;
-                  } else {
-                    koPoints += scoringConfig.correct_team_in_final;
-                    koBd.correctTeamInFinal += scoringConfig.correct_team_in_final;
                   }
                 } else {
                   koPoints += scoringConfig.correct_team_in_knockout_tie;
