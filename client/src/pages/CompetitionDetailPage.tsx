@@ -1029,6 +1029,7 @@ export default function CompetitionDetailPage() {
           bronze_final: t('stages.bronze_final'),
           final: t('stages.final'),
         },
+        bonusQuestionEyebrow: t('competitionDetail.finalResults.bonusQuestionEyebrow'),
         bonusCorrectAnswer: t('bonusQuestions.correctAnswer'),
       }
     ),
@@ -2777,7 +2778,14 @@ export default function CompetitionDetailPage() {
       )}
 
       {activeTab === 'finalResults' && (
-        <FinalResultsView users={finalResultsUsers} pointSources={finalResultsPointSources} />
+        <FinalResultsView
+          users={finalResultsUsers}
+          pointSources={finalResultsPointSources}
+          winnerLabel={(name) => t('competitionDetail.finalResults.winner', { name })}
+          toLeaderboardLabel={t('competitionDetail.finalResults.toLeaderboard')}
+          closeLabel={t('competitionDetail.finalResults.close')}
+          onGoToLeaderboard={() => setActiveTab('leaderboard')}
+        />
       )}
 
       {/* Clear predictions confirm */}

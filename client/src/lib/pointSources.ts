@@ -1,6 +1,7 @@
 export interface PointSource {
   id: string;
   label: string;
+  eyebrow?: string;
   subLabel?: string;
   pointsByUser: Record<string, number>;
   answerByUser?: Record<string, string>;
@@ -59,6 +60,7 @@ export interface FinalResultsLabels {
   groupRoundExactScore: string;
   groupTablePosition: string;
   knockoutStage: Record<KnockoutStage, string>;
+  bonusQuestionEyebrow: string;
   bonusCorrectAnswer: string;
 }
 
@@ -234,6 +236,7 @@ function buildBonusQuestionPointSources(
   questions: BonusQuestionLike[],
   answers: BonusAnswerLike[],
   userIds: string[],
+  eyebrow: string,
   correctAnswerLabel: string,
 ): PointSource[] {
   const answersByQuestion = new Map<string, BonusAnswerLike[]>();
@@ -254,6 +257,7 @@ function buildBonusQuestionPointSources(
     return {
       id: `bonus-${q.id}`,
       label: q.question,
+      eyebrow,
       subLabel: correctAnswers.length > 0 ? `${correctAnswerLabel}: ${correctAnswers.join(' / ')}` : undefined,
       pointsByUser,
       answerByUser,
@@ -278,6 +282,6 @@ export function buildFinalResultsPointSources(
     }),
     buildGroupTablePositionSource(leaderboard, userIds, labels.groupTablePosition),
     ...buildKnockoutRoundPointSources(matches, predictions, userIds, labels.knockoutStage),
-    ...buildBonusQuestionPointSources(bonusQuestions, bonusAnswers, userIds, labels.bonusCorrectAnswer),
+    ...buildBonusQuestionPointSources(bonusQuestions, bonusAnswers, userIds, labels.bonusQuestionEyebrow, labels.bonusCorrectAnswer),
   ];
 }

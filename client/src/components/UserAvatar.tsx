@@ -4,11 +4,18 @@ interface UserAvatarProps {
   iconColor?: string | null;
   className?: string;
   style?: React.CSSProperties;
+  /** Pixel width to request from the image proxy (avoids downloading full-resolution uploads for tiny thumbnails). */
+  resizeWidth?: number;
 }
 
-export function UserAvatar({ username, imageUrl, iconColor, className = '', style }: UserAvatarProps) {
+function withResize(url: string, width?: number): string {
+  if (!width || !url.startsWith('/api/images/')) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}w=${width}`;
+}
+
+export function UserAvatar({ username, imageUrl, iconColor, className = '', style, resizeWidth }: UserAvatarProps) {
   if (imageUrl) {
-    return <img src={imageUrl} alt={username} className={`object-cover rounded-full ${className}`} style={style} />;
+    return <img src={withResize(imageUrl, resizeWidth)} alt={username} className={`object-cover rounded-full ${className}`} style={style} />;
   }
 
   const initial = username.charAt(0).toUpperCase();

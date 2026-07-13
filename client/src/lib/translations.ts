@@ -121,6 +121,10 @@ const translations = {
         correctResultPoints: 'Correct Result Points',
         perfectScorePoints: 'Perfect Score Points',
         groupTablePosition: 'Group Table — Correct Position',
+        bonusQuestionEyebrow: 'Bonus Question:',
+        winner: '{{name}} wins!',
+        toLeaderboard: 'To leaderboard →',
+        close: 'Close',
       },
       leaderboard: {
         player: 'Player',
@@ -622,6 +626,10 @@ const translations = {
         correctResultPoints: 'Poeng for riktig resultat',
         perfectScorePoints: 'Poeng for perfekt resultat',
         groupTablePosition: 'Gruppetabell — Riktig plassering',
+        bonusQuestionEyebrow: 'Bonusspørsmål:',
+        winner: '{{name}} vinner!',
+        toLeaderboard: 'Til ledertavlen →',
+        close: 'Lukk',
       },
       leaderboard: {
         player: 'Spiller',
@@ -1121,6 +1129,10 @@ const translations = {
         correctResultPoints: 'Punkte für richtiges Ergebnis',
         perfectScorePoints: 'Punkte für perfektes Ergebnis',
         groupTablePosition: 'Gruppentabelle — Richtige Platzierung',
+        bonusQuestionEyebrow: 'Bonusfrage:',
+        winner: '{{name}} gewinnt!',
+        toLeaderboard: 'Zur Rangliste →',
+        close: 'Schließen',
       },
       leaderboard: {
         player: 'Spieler',
