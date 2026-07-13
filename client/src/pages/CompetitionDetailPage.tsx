@@ -2829,6 +2829,13 @@ export default function CompetitionDetailPage() {
           playLabel={t('competitionDetail.finalResults.play')}
           fastForwardLabel={t('competitionDetail.finalResults.fastForward')}
           replayLabel={t('competitionDetail.finalResults.replay')}
+          downloadLabel={t('competitionDetail.finalResults.download')}
+          downloadPromptTitle={t('competitionDetail.finalResults.downloadPromptTitle')}
+          downloadPromptBody={t('competitionDetail.finalResults.downloadPromptBody')}
+          startRecordingLabel={t('competitionDetail.finalResults.startRecording')}
+          cancelLabel={t('common.cancel')}
+          recordingLabel={t('competitionDetail.finalResults.recording')}
+          recordingFailedLabel={t('competitionDetail.finalResults.recordingFailed')}
           onGoToLeaderboard={() => setActiveTab('leaderboard')}
         />
       )}

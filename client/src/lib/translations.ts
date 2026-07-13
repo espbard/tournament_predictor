@@ -132,6 +132,13 @@ const translations = {
         play: 'Play',
         fastForward: 'Fast forward',
         replay: 'Replay',
+        download: 'Download as video',
+        downloadPromptTitle: 'Record this reveal as a video?',
+        downloadPromptBody:
+          "Your browser will ask you to share this tab, then the whole reveal will replay from the start while it records. When it's done, the video downloads straight to your device — nothing is uploaded or stored anywhere. This works best in Chrome, Edge, or Firefox on desktop, and may not work in other browsers.",
+        startRecording: 'Start recording',
+        recording: 'Recording…',
+        recordingFailed: "Couldn't start recording — permission was denied, or this browser doesn't support it.",
       },
       leaderboard: {
         player: 'Player',
@@ -646,6 +653,13 @@ const translations = {
         play: 'Spill av',
         fastForward: 'Spol frem',
         replay: 'Spill av på nytt',
+        download: 'Last ned som video',
+        downloadPromptTitle: 'Ta opp denne visningen som video?',
+        downloadPromptBody:
+          'Nettleseren din vil be deg om å dele denne fanen, og deretter spilles hele visningen av på nytt fra starten mens den tas opp. Når det er ferdig, lastes videoen automatisk ned til enheten din — ingenting lastes opp eller lagres noe sted. Dette fungerer best i Chrome, Edge eller Firefox på datamaskin, og fungerer kanskje ikke i andre nettlesere.',
+        startRecording: 'Start opptak',
+        recording: 'Tar opp…',
+        recordingFailed: 'Kunne ikke starte opptak — tillatelse ble avvist, eller nettleseren støtter det ikke.',
       },
       leaderboard: {
         player: 'Spiller',
@@ -1158,6 +1172,13 @@ const translations = {
         play: 'Abspielen',
         fastForward: 'Vorspulen',
         replay: 'Wiederholen',
+        download: 'Als Video herunterladen',
+        downloadPromptTitle: 'Diese Anzeige als Video aufnehmen?',
+        downloadPromptBody:
+          'Dein Browser wird dich bitten, diesen Tab freizugeben. Danach wird die gesamte Anzeige von Anfang an wiederholt, während sie aufgenommen wird. Am Ende wird das Video automatisch heruntergeladen — es wird nichts hochgeladen oder gespeichert. Das funktioniert am besten in Chrome, Edge oder Firefox auf dem Desktop und möglicherweise nicht in anderen Browsern.',
+        startRecording: 'Aufnahme starten',
+        recording: 'Aufnahme läuft…',
+        recordingFailed: 'Aufnahme konnte nicht gestartet werden — Berechtigung wurde verweigert, oder dieser Browser unterstützt dies nicht.',
       },
       leaderboard: {
         player: 'Spieler',

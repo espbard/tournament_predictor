@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { X, Pause, Play, FastForward, RotateCcw } from 'lucide-react';
+import { X, Pause, Play, FastForward, RotateCcw, Download, Video } from 'lucide-react';
 import { UserAvatar } from '@/components/UserAvatar';
 
 interface DisplayUser {
@@ -39,8 +39,20 @@ interface FinalResultsViewProps {
   playLabel: string;
   fastForwardLabel: string;
   replayLabel: string;
+  downloadLabel: string;
+  downloadPromptTitle: string;
+  downloadPromptBody: string;
+  startRecordingLabel: string;
+  cancelLabel: string;
+  recordingLabel: string;
+  recordingFailedLabel: string;
   onGoToLeaderboard: () => void;
 }
+
+// getDisplayMedia's own options type doesn't include preferCurrentTab (it's only typed on
+// the older MediaStreamConstraints in this repo's pinned TS/DOM lib), but it's a real,
+// widely-supported Chrome/Edge hint that pre-selects "this tab" in the share picker.
+type DisplayMediaOptions = DisplayMediaStreamOptions & { preferCurrentTab?: boolean };
 
 const INTRO_MS = 4000;
 const LABEL_MS = 1200;
@@ -200,6 +212,22 @@ function pausableWait(
   });
 }
 
+// Video-only mimeTypes, most-preferred first — the resulting stream never has an audio
+// track (we always request audio: false), so audio codecs are deliberately left out.
+function pickSupportedMimeType(): string | null {
+  if (typeof MediaRecorder === 'undefined') return null;
+  for (const type of ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']) {
+    if (MediaRecorder.isTypeSupported(type)) return type;
+  }
+  return null;
+}
+
+function isRecordingSupported(): boolean {
+  return typeof navigator !== 'undefined'
+    && !!navigator.mediaDevices?.getDisplayMedia
+    && typeof MediaRecorder !== 'undefined';
+}
+
 // Users with a custom photo don't have an "icon color" of their own, so their bar
 // gets a random color that doesn't collide with any color already in use.
 function assignBarColors(users: DisplayUser[]): Record<string, string> {
@@ -239,6 +267,13 @@ export default function FinalResultsView({
   playLabel,
   fastForwardLabel,
   replayLabel,
+  downloadLabel,
+  downloadPromptTitle,
+  downloadPromptBody,
+  startRecordingLabel,
+  cancelLabel,
+  recordingLabel,
+  recordingFailedLabel,
   onGoToLeaderboard,
 }: FinalResultsViewProps) {
   useEffect(() => {
@@ -256,11 +291,102 @@ export default function FinalResultsView({
   const [paused, setPaused] = useState(false);
   const [fastForward, setFastForward] = useState(false);
   const [replayCount, setReplayCount] = useState(0);
+  const [showDownloadPrompt, setShowDownloadPrompt] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordError, setRecordError] = useState<string | null>(null);
 
   const pausedRef = useRef(false);
   const speedRef = useRef(1);
   useEffect(() => { pausedRef.current = paused; }, [paused]);
   useEffect(() => { speedRef.current = fastForward ? FAST_FORWARD_MULTIPLIER : 1; }, [fastForward]);
+
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+
+  function stopRecording() {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+  }
+
+  async function handleStartRecording() {
+    if (isRecording) return;
+    if (!isRecordingSupported()) {
+      setRecordError(recordingFailedLabel);
+      return;
+    }
+
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: 30, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: false,
+        preferCurrentTab: true,
+      } as DisplayMediaOptions);
+    } catch {
+      setRecordError(recordingFailedLabel);
+      return;
+    }
+
+    const mimeType = pickSupportedMimeType();
+    if (!mimeType) {
+      stream.getTracks().forEach(t => t.stop());
+      setRecordError(recordingFailedLabel);
+      return;
+    }
+
+    recordedChunksRef.current = [];
+    const recorder = new MediaRecorder(stream, { mimeType });
+    recorder.ondataavailable = e => {
+      if (e.data.size > 0) recordedChunksRef.current.push(e.data);
+    };
+    recorder.onstop = () => {
+      const blob = new Blob(recordedChunksRef.current, { type: mimeType });
+      recordedChunksRef.current = [];
+      stream.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+      mediaRecorderRef.current = null;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `final-results-${Date.now()}.webm`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      setIsRecording(false);
+    };
+
+    // Handles the user clicking the browser's own native "Stop sharing" control —
+    // whatever was captured up to that point still gets downloaded via onstop above.
+    stream.getVideoTracks()[0].addEventListener('ended', stopRecording);
+
+    mediaRecorderRef.current = recorder;
+    streamRef.current = stream;
+    recorder.start(1000);
+    setIsRecording(true);
+    setRecordError(null);
+    setShowDownloadPrompt(false);
+    // Restart the whole reveal from the intro so the recording captures it in full.
+    setReplayCount(c => c + 1);
+  }
+
+  // A few seconds after the winner overlay appears, the celebratory moment has had time
+  // to play out (winner card + a couple of fireworks bursts) — stop recording there.
+  useEffect(() => {
+    if (!isRecording || !showOverlay) return;
+    const timer = setTimeout(stopRecording, 4000);
+    return () => clearTimeout(timer);
+  }, [isRecording, showOverlay]);
+
+  // Safety net: don't leave a screen-share dangling if the component unmounts mid-recording.
+  useEffect(() => {
+    return () => {
+      stopRecording();
+      streamRef.current?.getTracks().forEach(t => t.stop());
+    };
+  }, []);
 
   const barColors = useMemo(() => assignBarColors(users), [users]);
 
@@ -388,7 +514,7 @@ export default function FinalResultsView({
       {!showOverlay && (
         <div className="absolute left-4 top-4 z-[210] flex items-center gap-2 sm:left-6 sm:top-6">
           <button
-            onClick={onGoToLeaderboard}
+            onClick={() => { stopRecording(); onGoToLeaderboard(); }}
             aria-label={exitLabel}
             className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur hover:bg-white/20"
           >
@@ -401,6 +527,20 @@ export default function FinalResultsView({
           >
             {paused ? <Play size={18} /> : <Pause size={18} />}
           </button>
+          {isRecording ? (
+            <span className="flex items-center gap-1.5 rounded-full bg-red-500/20 px-3 py-1.5 text-xs font-medium text-red-300">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
+              {recordingLabel}
+            </span>
+          ) : (
+            <button
+              onClick={() => setShowDownloadPrompt(true)}
+              aria-label={downloadLabel}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur hover:bg-white/20"
+            >
+              <Download size={18} />
+            </button>
+          )}
         </div>
       )}
 
@@ -520,7 +660,7 @@ export default function FinalResultsView({
         </>
       )}
 
-      {done && (
+      {done && !isRecording && (
         <div className="absolute inset-x-0 bottom-4 z-[150] flex items-center justify-center gap-3">
           <button
             onClick={() => setReplayCount(c => c + 1)}
@@ -535,6 +675,38 @@ export default function FinalResultsView({
           >
             {toLeaderboardLabel}
           </button>
+        </div>
+      )}
+
+      {showDownloadPrompt && (
+        <div className="fixed inset-0 z-[310] flex items-center justify-center bg-black/70 p-4">
+          <div className="relative w-full max-w-sm rounded-xl border border-white/10 bg-neutral-900 p-6 text-center shadow-2xl">
+            <button
+              onClick={() => { setShowDownloadPrompt(false); setRecordError(null); }}
+              aria-label={closeLabel}
+              className="absolute right-3 top-3 text-white/60 hover:text-white"
+            >
+              <X size={20} />
+            </button>
+            <Video size={28} className="mx-auto mb-3 text-white/80" />
+            <p className="text-lg font-bold text-white">{downloadPromptTitle}</p>
+            <p className="mt-2 text-sm text-white/70">{downloadPromptBody}</p>
+            {recordError && <p className="mt-3 text-sm text-red-400">{recordError}</p>}
+            <div className="mt-5 flex justify-center gap-3">
+              <button
+                onClick={() => { setShowDownloadPrompt(false); setRecordError(null); }}
+                className="rounded-full border border-white/20 px-4 py-2 text-sm font-medium text-white hover:bg-white/10"
+              >
+                {cancelLabel}
+              </button>
+              <button
+                onClick={handleStartRecording}
+                className="rounded-full bg-white px-4 py-2 text-sm font-medium text-black hover:bg-white/90"
+              >
+                {startRecordingLabel}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
