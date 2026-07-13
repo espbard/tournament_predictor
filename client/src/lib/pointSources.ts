@@ -29,12 +29,14 @@ interface PredictionLike {
   matchId: string;
   userId: string;
   breakdown: PredictionBreakdown;
+  isReplacement?: boolean;
 }
 
 interface LeaderboardLike {
   userId: string;
   breakdown: {
     correctGroupPositionPoints: number;
+    lateAdditionPoints: number;
   };
 }
 
@@ -62,11 +64,12 @@ export interface FinalResultsLabels {
   knockoutStage: Record<KnockoutStage, string>;
   bonusQuestionEyebrow: string;
   bonusCorrectAnswer: string;
+  lateAdditionBonus: string;
 }
 
 function completedGroupMatches(matches: MatchLike[]): MatchLike[] {
   return matches.filter(
-    m => m.stage === 'group' && m.status === 'completed' && m.homeTeamId && m.awayTeamId && m.scheduledAt
+    m => m.stage === 'group' && m.status === 'completed' && m.homeTeamId && m.awayTeamId
   );
 }
 
@@ -74,6 +77,16 @@ function zeroFilled(userIds: string[]): Record<string, number> {
   const result: Record<string, number> = {};
   for (const uid of userIds) result[uid] = 0;
   return result;
+}
+
+// Matches without a scheduled time (supported elsewhere in the app, e.g. the
+// "no date" bucket on the competition page) sort after any dated match, so
+// they still land in a round instead of being excluded from ordering entirely.
+function compareByScheduledAt(a: MatchLike, b: MatchLike): number {
+  if (!a.scheduledAt && !b.scheduledAt) return 0;
+  if (!a.scheduledAt) return 1;
+  if (!b.scheduledAt) return -1;
+  return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
 }
 
 // Group stage "rounds" aren't a stored concept — infer them from how many group
@@ -100,6 +113,9 @@ function groupStageRoundCount(groupMatches: MatchLike[]): number {
   return bestCount;
 }
 
+// Every completed group match ends up in exactly one round bucket — a team
+// that played more matches than the modal count has its extras folded into
+// the last round rather than dropped, so no match's points ever go uncounted.
 function groupStageRoundMatchIds(groupMatches: MatchLike[], numRounds: number): Map<number, Set<string>> {
   const matchesByTeam = new Map<string, MatchLike[]>();
   for (const m of groupMatches) {
@@ -109,7 +125,7 @@ function groupStageRoundMatchIds(groupMatches: MatchLike[], numRounds: number): 
     }
   }
   for (const list of matchesByTeam.values()) {
-    list.sort((a, b) => new Date(a.scheduledAt!).getTime() - new Date(b.scheduledAt!).getTime());
+    list.sort(compareByScheduledAt);
   }
 
   const roundByMatchId = new Map<string, number>();
@@ -118,8 +134,8 @@ function groupStageRoundMatchIds(groupMatches: MatchLike[], numRounds: number): 
     let idx = (matchesByTeam.get(m.homeTeamId!) ?? []).findIndex(hm => hm.id === m.id);
     if (idx === -1) idx = (matchesByTeam.get(m.awayTeamId!) ?? []).findIndex(am => am.id === m.id);
     if (idx === -1) continue;
-    const round = idx + 1;
-    if (round >= 1 && round <= numRounds) roundByMatchId.set(m.id, round);
+    const round = Math.min(idx + 1, numRounds);
+    roundByMatchId.set(m.id, round);
   }
 
   const result = new Map<number, Set<string>>();
@@ -178,6 +194,38 @@ function buildGroupTablePositionSource(leaderboard: LeaderboardLike[], userIds: 
     if (entry.userId in pointsByUser) pointsByUser[entry.userId] = entry.breakdown.correctGroupPositionPoints ?? 0;
   }
   return { id: 'group-table-position', label, pointsByUser };
+}
+
+// A late-added user's first own (non-replacement) group prediction marks the
+// round they joined in — that's where their late-addition credit gets revealed.
+// Users with no identifiable own group prediction (e.g. joined after the group
+// stage finished) fall back to the last round.
+function computeJoinRoundByUser(
+  roundByMatchId: Map<string, number>,
+  predictions: PredictionLike[],
+): Map<string, number> {
+  const result = new Map<string, number>();
+  for (const p of predictions) {
+    if (p.isReplacement) continue;
+    const round = roundByMatchId.get(p.matchId);
+    if (round === undefined) continue;
+    const current = result.get(p.userId);
+    if (current === undefined || round < current) result.set(p.userId, round);
+  }
+  return result;
+}
+
+function buildLateAdditionSource(
+  id: string,
+  label: string,
+  userIds: string[],
+  eligibleUserIds: string[],
+  lateAdditionByUser: Record<string, number>,
+): PointSource | null {
+  if (eligibleUserIds.length === 0) return null;
+  const pointsByUser = zeroFilled(userIds);
+  for (const uid of eligibleUserIds) pointsByUser[uid] = lateAdditionByUser[uid] ?? 0;
+  return { id, label, pointsByUser };
 }
 
 // Knockout rounds award points for several categories at once (correct result, exact
@@ -274,14 +322,44 @@ export function buildFinalResultsPointSources(
   userIds: string[],
   labels: FinalResultsLabels,
 ): PointSource[] {
-  return [
-    ...buildGroupStageRoundPointSources(matches, predictions, userIds, {
+  const lateAdditionByUser = zeroFilled(userIds);
+  for (const entry of leaderboard) {
+    if (entry.userId in lateAdditionByUser) lateAdditionByUser[entry.userId] = entry.breakdown.lateAdditionPoints ?? 0;
+  }
+  const lateAdditionUserIds = userIds.filter(uid => lateAdditionByUser[uid] > 0);
+
+  const groupMatches = completedGroupMatches(matches);
+  const numRounds = groupStageRoundCount(groupMatches);
+
+  const sources: PointSource[] = [];
+
+  if (numRounds === 0) {
+    // No group rounds to anchor a "joined in round N" moment to — reveal any
+    // late-addition credit up front instead of dropping it.
+    const source = buildLateAdditionSource('late-addition', labels.lateAdditionBonus, userIds, lateAdditionUserIds, lateAdditionByUser);
+    if (source) sources.push(source);
+  } else {
+    const roundMatchIds = groupStageRoundMatchIds(groupMatches, numRounds);
+    const roundByMatchId = new Map<string, number>();
+    for (const [round, ids] of roundMatchIds) for (const id of ids) roundByMatchId.set(id, round);
+    const joinRoundByUser = lateAdditionUserIds.length > 0 ? computeJoinRoundByUser(roundByMatchId, predictions) : new Map<string, number>();
+
+    const groupRoundSources = buildGroupStageRoundPointSources(matches, predictions, userIds, {
       round: labels.groupRound,
       correctResult: labels.groupRoundCorrectResult,
       exactScore: labels.groupRoundExactScore,
-    }),
-    buildGroupTablePositionSource(leaderboard, userIds, labels.groupTablePosition),
-    ...buildKnockoutRoundPointSources(matches, predictions, userIds, labels.knockoutStage),
-    ...buildBonusQuestionPointSources(bonusQuestions, bonusAnswers, userIds, labels.bonusQuestionEyebrow, labels.bonusCorrectAnswer),
-  ];
+    });
+
+    for (let r = 1; r <= numRounds; r++) {
+      sources.push(groupRoundSources[2 * (r - 1)], groupRoundSources[2 * (r - 1) + 1]);
+      const joinedThisRound = lateAdditionUserIds.filter(uid => (joinRoundByUser.get(uid) ?? numRounds) === r);
+      const source = buildLateAdditionSource(`late-addition-r${r}`, labels.lateAdditionBonus, userIds, joinedThisRound, lateAdditionByUser);
+      if (source) sources.push(source);
+    }
+  }
+
+  sources.push(buildGroupTablePositionSource(leaderboard, userIds, labels.groupTablePosition));
+  sources.push(...buildKnockoutRoundPointSources(matches, predictions, userIds, labels.knockoutStage));
+  sources.push(...buildBonusQuestionPointSources(bonusQuestions, bonusAnswers, userIds, labels.bonusQuestionEyebrow, labels.bonusCorrectAnswer));
+  return sources;
 }

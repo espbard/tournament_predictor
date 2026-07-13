@@ -1021,6 +1021,7 @@ export default function CompetitionDetailPage() {
         groupRoundCorrectResult: t('competitionDetail.finalResults.correctResultPoints'),
         groupRoundExactScore: t('competitionDetail.finalResults.perfectScorePoints'),
         groupTablePosition: t('competitionDetail.finalResults.groupTablePosition'),
+        lateAdditionBonus: t('competitionDetail.finalResults.lateAdditionBonus'),
         knockoutStage: {
           round_of_32: t('stages.round_of_32'),
           round_of_16: t('stages.round_of_16'),
