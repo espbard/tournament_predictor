@@ -500,6 +500,11 @@ export default function FinalResultsView({
   const isFalling = phase === 'falling';
   const widthPct = users.length > 0 ? 100 / users.length : 100;
 
+  // Screen recording is a desktop-only browser capability (no mobile browser implements
+  // getDisplayMedia) — hide the download entry point entirely rather than showing a
+  // button that can only ever fail.
+  const recordingSupported = isRecordingSupported();
+
   // Fast-forward shrinks CSS transition/animation durations to match the sped-up JS timings.
   const speed = fastForward ? FAST_FORWARD_MULTIPLIER : 1;
   const headerTransitionMs = 500 / speed;
@@ -527,7 +532,7 @@ export default function FinalResultsView({
           >
             {paused ? <Play size={18} /> : <Pause size={18} />}
           </button>
-          {isRecording ? (
+          {!recordingSupported ? null : isRecording ? (
             <span className="flex items-center gap-1.5 rounded-full bg-red-500/20 px-3 py-1.5 text-xs font-medium text-red-300">
               <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
               {recordingLabel}
