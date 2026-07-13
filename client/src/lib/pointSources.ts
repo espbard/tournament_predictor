@@ -64,6 +64,7 @@ interface BonusQuestionLike {
   id: string;
   question: string;
   correctAnswer: string | null;
+  answerType: string;
 }
 
 interface BonusAnswerLike {
@@ -86,6 +87,8 @@ export interface FinalResultsLabels {
   bonusCorrectAnswer: string;
   lateAdditionBonus: string;
   winnerCategory: string;
+  yesAnswer: string;
+  noAnswer: string;
 }
 
 function completedGroupMatches(matches: MatchLike[]): MatchLike[] {
@@ -371,6 +374,15 @@ function parseAnswerList(raw: string | null): string[] {
   return [raw];
 }
 
+// Yes/No answers are stored as the literal strings "Yes"/"No" regardless of the
+// competition's language, so they need translating for display just like any other label.
+function translateYesNo(answerType: string, value: string, yesLabel: string, noLabel: string): string {
+  if (answerType !== 'yes_no') return value;
+  if (value === 'Yes') return yesLabel;
+  if (value === 'No') return noLabel;
+  return value;
+}
+
 // One point source per bonus question, so the reveal can show the question itself,
 // the correct answer, and what each user answered alongside their points.
 function buildBonusQuestionPointSources(
@@ -379,6 +391,8 @@ function buildBonusQuestionPointSources(
   userIds: string[],
   eyebrow: string,
   correctAnswerLabel: string,
+  yesLabel: string,
+  noLabel: string,
 ): PointSource[] {
   const answersByQuestion = new Map<string, BonusAnswerLike[]>();
   for (const a of answers) {
@@ -392,9 +406,9 @@ function buildBonusQuestionPointSources(
     for (const a of answersByQuestion.get(q.id) ?? []) {
       if (!(a.userId in pointsByUser)) continue;
       pointsByUser[a.userId] = a.points ?? 0;
-      answerByUser[a.userId] = a.answer;
+      answerByUser[a.userId] = translateYesNo(q.answerType, a.answer, yesLabel, noLabel);
     }
-    const correctAnswers = parseAnswerList(q.correctAnswer);
+    const correctAnswers = parseAnswerList(q.correctAnswer).map(a => translateYesNo(q.answerType, a, yesLabel, noLabel));
     return {
       id: `bonus-${q.id}`,
       label: q.question,
@@ -455,6 +469,6 @@ export function buildFinalResultsPointSources(
 
   sources.push(buildGroupTablePositionSource(leaderboard, userIds, labels.groupTablePosition));
   sources.push(...buildKnockoutRoundPointSources(matches, predictions, userIds, labels.knockoutStage, teamsById, labels.winnerCategory));
-  sources.push(...buildBonusQuestionPointSources(bonusQuestions, bonusAnswers, userIds, labels.bonusQuestionEyebrow, labels.bonusCorrectAnswer));
+  sources.push(...buildBonusQuestionPointSources(bonusQuestions, bonusAnswers, userIds, labels.bonusQuestionEyebrow, labels.bonusCorrectAnswer, labels.yesAnswer, labels.noAnswer));
   return sources;
 }

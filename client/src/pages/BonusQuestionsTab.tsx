@@ -393,7 +393,7 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
                                   : 'hover:bg-muted'
                               }`}
                             >
-                              {opt === 'Yes' ? t('common.yes') : t('common.no')}
+                              {opt === 'Yes' ? t('bonusQuestions.yesAnswer') : t('bonusQuestions.noAnswer')}
                             </button>
                           ))}
                         </div>
@@ -559,7 +559,7 @@ export default function BonusQuestionsTab({ competitionId, tournamentId, deadlin
                                   : 'hover:bg-muted'
                               }`}
                             >
-                              {opt === 'Yes' ? t('common.yes') : t('common.no')}
+                              {opt === 'Yes' ? t('bonusQuestions.yesAnswer') : t('bonusQuestions.noAnswer')}
                             </button>
                           ))}
                         </div>
@@ -687,7 +687,15 @@ function SaveRow({
   );
 }
 
+function displayYesNo(type: BonusAnswerType | string, value: string, t: ReturnType<typeof useT>['t']): string {
+  if (type !== 'yes_no') return value;
+  if (value === 'Yes') return t('bonusQuestions.yesAnswer');
+  if (value === 'No') return t('bonusQuestions.noAnswer');
+  return value;
+}
+
 function CorrectAnswerDisplay({ type, value, teams, correctAnswerLabel }: { type: BonusAnswerType | string; value: string; teams: Team[]; correctAnswerLabel: string }) {
+  const { t } = useT();
   const answers = parseCorrectAnswers(value);
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground border-t pt-2">
@@ -700,7 +708,7 @@ function CorrectAnswerDisplay({ type, value, teams, correctAnswerLabel }: { type
             {teamObj?.imageUrl && (
               <img src={teamObj.imageUrl} alt="" className="h-4 w-4 rounded-full object-cover" />
             )}
-            <span className="font-medium text-foreground">{answer}</span>
+            <span className="font-medium text-foreground">{displayYesNo(type, answer, t)}</span>
           </span>
         );
       })}
@@ -709,14 +717,15 @@ function CorrectAnswerDisplay({ type, value, teams, correctAnswerLabel }: { type
 }
 
 function AnswerReadOnly({ type, value, teams, noAnswerLabel }: { type: BonusAnswerType | string; value: string; teams: Team[]; noAnswerLabel: string }) {
+  const { t } = useT();
   if (!value) return <p className="text-sm text-muted-foreground">{noAnswerLabel}</p>;
-  const teamObj = type === 'team' ? teams.find(t => t.name === value) : null;
+  const teamObj = type === 'team' ? teams.find(tm => tm.name === value) : null;
   return (
     <div className="flex items-center gap-2 rounded-md border bg-muted px-3 py-2">
       {teamObj?.imageUrl && (
         <img src={teamObj.imageUrl} alt="" className="h-5 w-5 rounded-full object-cover flex-shrink-0" />
       )}
-      <span className="text-sm text-muted-foreground">{value}</span>
+      <span className="text-sm text-muted-foreground">{displayYesNo(type, value, t)}</span>
     </div>
   );
 }
