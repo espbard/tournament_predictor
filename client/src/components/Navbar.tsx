@@ -1,5 +1,5 @@
 import { Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Moon, Sun, ChevronDown, LogOut, Settings, Home } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
@@ -8,6 +8,7 @@ import { useLanguageStore } from '@/store/languageStore';
 import { useThemeStore } from '@/store/themeStore';
 import { useT } from '@/lib/useT';
 import { UserAvatar } from '@/components/UserAvatar';
+import type { Competition, Tournament } from '@tournament-predictor/shared';
 
 const LANGUAGES = [
   { code: 'no', label: 'Norsk', flag: '/flag-no.png' },
@@ -59,6 +60,20 @@ export default function Navbar() {
   const showTabs = isOnCompetitionPage || isOnPredictionsPage;
   const competitionId = location.pathname.match(/^\/competitions\/([^/]+)/)?.[1];
 
+  const { data: navCompetition } = useQuery({
+    queryKey: ['competitions', competitionId],
+    queryFn: () => api.get<Competition>(`/competitions/${competitionId}`),
+    enabled: !!competitionId && showTabs,
+  });
+
+  const { data: navTournament } = useQuery({
+    queryKey: ['tournament', navCompetition?.tournamentId],
+    queryFn: () => api.get<Tournament>(`/tournaments/${navCompetition!.tournamentId}`),
+    enabled: !!navCompetition && !user?.isAdmin,
+  });
+
+  const tournamentCompleted = navTournament?.status === 'completed';
+
   const activeTab = searchParams.get('tab') ?? (user?.isLeaderboardUser || user?.isAdmin ? 'leaderboard' : 'group');
 
   const setTab = (tab: string) => {
@@ -86,7 +101,7 @@ export default function Navbar() {
     `w-full text-left px-4 py-2 lg:py-2.5 text-sm lg:text-[0.9rem] hover:bg-muted ${active ? 'text-primary dark:text-blue-400 font-medium' : 'text-foreground'}`;
 
   const predictionsActive = activeTab === 'group' || activeTab === 'tables' || activeTab === 'knockout' || activeTab === 'bonus';
-  const standingsActive = activeTab === 'leaderboard' || activeTab === 'pointProgression';
+  const standingsActive = activeTab === 'leaderboard' || activeTab === 'pointProgression' || activeTab === 'finalResults';
 
   return (
     <nav className="bg-background border-b border-border">
@@ -160,6 +175,11 @@ export default function Navbar() {
                       <button onClick={() => setTab('pointProgression')} className={dropItemCls(activeTab === 'pointProgression')}>
                         {t('competitionDetail.tabs.pointProgression')}
                       </button>
+                      {tournamentCompleted && (
+                        <button onClick={() => setTab('finalResults')} className={dropItemCls(activeTab === 'finalResults')}>
+                          {t('competitionDetail.tabs.finalResults')}
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>

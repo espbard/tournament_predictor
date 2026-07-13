@@ -1,0 +1,474 @@
+export interface TeamInfo {
+  id: string;
+  name: string | null;
+  imageUrl: string | null;
+}
+
+export interface PointSource {
+  id: string;
+  label: string;
+  eyebrow?: string;
+  subLabel?: string;
+  pointsByUser: Record<string, number>;
+  answerByUser?: Record<string, string>;
+  kind?: 'winner';
+  actualTeam?: TeamInfo | null;
+  predictedTeamByUser?: Record<string, TeamInfo | null>;
+}
+
+interface MatchLike {
+  id: string;
+  stage: string;
+  scheduledAt: string | null;
+  status: string;
+  homeTeamId: string | null;
+  awayTeamId: string | null;
+  homeTeamName?: string | null;
+  awayTeamName?: string | null;
+  homeTeamImageUrl?: string | null;
+  awayTeamImageUrl?: string | null;
+  progressingTeamId?: string | null;
+}
+
+interface PredictionBreakdown {
+  exactScore: number;
+  correctResult: number;
+  correctTeamProgresses: number;
+  correctTeamInKnockoutTie: number;
+  correctTeamInFinal: number;
+  correctWinner: number;
+}
+
+interface PredictionLike {
+  matchId: string;
+  userId: string;
+  breakdown: PredictionBreakdown;
+  isReplacement?: boolean;
+  homeScore?: number;
+  awayScore?: number;
+  progressingTeamId?: string | null;
+  flipped?: boolean;
+  predHomeTeamId?: string | null;
+  predAwayTeamId?: string | null;
+}
+
+interface LeaderboardLike {
+  userId: string;
+  breakdown: {
+    correctGroupPositionPoints: number;
+    lateAdditionPoints: number;
+  };
+}
+
+interface BonusQuestionLike {
+  id: string;
+  question: string;
+  correctAnswer: string | null;
+  answerType: string;
+}
+
+interface BonusAnswerLike {
+  questionId: string;
+  userId: string;
+  answer: string;
+  points: number | null;
+}
+
+const KNOCKOUT_STAGE_ORDER = ['round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'bronze_final', 'final'] as const;
+type KnockoutStage = typeof KNOCKOUT_STAGE_ORDER[number];
+
+export interface FinalResultsLabels {
+  groupRound: (n: number) => string;
+  groupRoundCorrectResult: string;
+  groupRoundExactScore: string;
+  groupTablePosition: string;
+  knockoutStage: Record<KnockoutStage, string>;
+  bonusQuestionEyebrow: string;
+  bonusCorrectAnswer: string;
+  lateAdditionBonus: string;
+  winnerCategory: string;
+  yesAnswer: string;
+  noAnswer: string;
+}
+
+function completedGroupMatches(matches: MatchLike[]): MatchLike[] {
+  return matches.filter(
+    m => m.stage === 'group' && m.status === 'completed' && m.homeTeamId && m.awayTeamId
+  );
+}
+
+function zeroFilled(userIds: string[]): Record<string, number> {
+  const result: Record<string, number> = {};
+  for (const uid of userIds) result[uid] = 0;
+  return result;
+}
+
+// Matches without a scheduled time (supported elsewhere in the app, e.g. the
+// "no date" bucket on the competition page) sort after any dated match, so
+// they still land in a round instead of being excluded from ordering entirely.
+function compareByScheduledAt(a: MatchLike, b: MatchLike): number {
+  if (!a.scheduledAt && !b.scheduledAt) return 0;
+  if (!a.scheduledAt) return 1;
+  if (!b.scheduledAt) return -1;
+  return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
+}
+
+// Group stage "rounds" aren't a stored concept — infer them from how many group
+// matches each team has played, then bucket each team's matches chronologically
+// into that many rounds (one match per team per round, as in a round-robin).
+function groupStageRoundCount(groupMatches: MatchLike[]): number {
+  const matchCountByTeam = new Map<string, number>();
+  for (const m of groupMatches) {
+    matchCountByTeam.set(m.homeTeamId!, (matchCountByTeam.get(m.homeTeamId!) ?? 0) + 1);
+    matchCountByTeam.set(m.awayTeamId!, (matchCountByTeam.get(m.awayTeamId!) ?? 0) + 1);
+  }
+  const freqByCount = new Map<number, number>();
+  for (const count of matchCountByTeam.values()) {
+    freqByCount.set(count, (freqByCount.get(count) ?? 0) + 1);
+  }
+  let bestCount = 0;
+  let bestFreq = -1;
+  for (const [count, freq] of freqByCount) {
+    if (freq > bestFreq) {
+      bestCount = count;
+      bestFreq = freq;
+    }
+  }
+  return bestCount;
+}
+
+// Every completed group match ends up in exactly one round bucket — a team
+// that played more matches than the modal count has its extras folded into
+// the last round rather than dropped, so no match's points ever go uncounted.
+function groupStageRoundMatchIds(groupMatches: MatchLike[], numRounds: number): Map<number, Set<string>> {
+  const matchesByTeam = new Map<string, MatchLike[]>();
+  for (const m of groupMatches) {
+    for (const teamId of [m.homeTeamId!, m.awayTeamId!]) {
+      if (!matchesByTeam.has(teamId)) matchesByTeam.set(teamId, []);
+      matchesByTeam.get(teamId)!.push(m);
+    }
+  }
+  for (const list of matchesByTeam.values()) {
+    list.sort(compareByScheduledAt);
+  }
+
+  const roundByMatchId = new Map<string, number>();
+  for (const m of groupMatches) {
+    if (roundByMatchId.has(m.id)) continue;
+    let idx = (matchesByTeam.get(m.homeTeamId!) ?? []).findIndex(hm => hm.id === m.id);
+    if (idx === -1) idx = (matchesByTeam.get(m.awayTeamId!) ?? []).findIndex(am => am.id === m.id);
+    if (idx === -1) continue;
+    const round = Math.min(idx + 1, numRounds);
+    roundByMatchId.set(m.id, round);
+  }
+
+  const result = new Map<number, Set<string>>();
+  for (let r = 1; r <= numRounds; r++) result.set(r, new Set());
+  for (const [matchId, round] of roundByMatchId) result.get(round)!.add(matchId);
+  return result;
+}
+
+export function buildGroupStageRoundPointSources(
+  matches: MatchLike[],
+  predictions: PredictionLike[],
+  userIds: string[],
+  labels: { round: (n: number) => string; correctResult: string; exactScore: string },
+): PointSource[] {
+  const groupMatches = completedGroupMatches(matches);
+  const numRounds = groupStageRoundCount(groupMatches);
+  if (numRounds === 0) return [];
+
+  const roundMatchIds = groupStageRoundMatchIds(groupMatches, numRounds);
+
+  const predictionsByMatch = new Map<string, PredictionLike[]>();
+  for (const p of predictions) {
+    if (!predictionsByMatch.has(p.matchId)) predictionsByMatch.set(p.matchId, []);
+    predictionsByMatch.get(p.matchId)!.push(p);
+  }
+
+  const sources: PointSource[] = [];
+  for (let r = 1; r <= numRounds; r++) {
+    const matchIds = roundMatchIds.get(r) ?? new Set<string>();
+    const correctResultPoints = zeroFilled(userIds);
+    const exactScorePoints = zeroFilled(userIds);
+    for (const matchId of matchIds) {
+      for (const p of predictionsByMatch.get(matchId) ?? []) {
+        if (!(p.userId in correctResultPoints)) continue;
+        correctResultPoints[p.userId] += p.breakdown.correctResult ?? 0;
+        exactScorePoints[p.userId] += p.breakdown.exactScore ?? 0;
+      }
+    }
+    sources.push({
+      id: `group-r${r}-result`,
+      label: `${labels.round(r)} — ${labels.correctResult}`,
+      pointsByUser: correctResultPoints,
+    });
+    sources.push({
+      id: `group-r${r}-exact`,
+      label: `${labels.round(r)} — ${labels.exactScore}`,
+      pointsByUser: exactScorePoints,
+    });
+  }
+  return sources;
+}
+
+function buildGroupTablePositionSource(leaderboard: LeaderboardLike[], userIds: string[], label: string): PointSource {
+  const pointsByUser = zeroFilled(userIds);
+  for (const entry of leaderboard) {
+    if (entry.userId in pointsByUser) pointsByUser[entry.userId] = entry.breakdown.correctGroupPositionPoints ?? 0;
+  }
+  return { id: 'group-table-position', label, pointsByUser };
+}
+
+// A late-added user's first own (non-replacement) group prediction marks the
+// round they joined in — that's where their late-addition credit gets revealed.
+// Users with no identifiable own group prediction (e.g. joined after the group
+// stage finished) fall back to the last round.
+function computeJoinRoundByUser(
+  roundByMatchId: Map<string, number>,
+  predictions: PredictionLike[],
+): Map<string, number> {
+  const result = new Map<string, number>();
+  for (const p of predictions) {
+    if (p.isReplacement) continue;
+    const round = roundByMatchId.get(p.matchId);
+    if (round === undefined) continue;
+    const current = result.get(p.userId);
+    if (current === undefined || round < current) result.set(p.userId, round);
+  }
+  return result;
+}
+
+function buildLateAdditionSource(
+  id: string,
+  label: string,
+  userIds: string[],
+  eligibleUserIds: string[],
+  lateAdditionByUser: Record<string, number>,
+): PointSource | null {
+  if (eligibleUserIds.length === 0) return null;
+  const pointsByUser = zeroFilled(userIds);
+  for (const uid of eligibleUserIds) pointsByUser[uid] = lateAdditionByUser[uid] ?? 0;
+  return { id, label, pointsByUser };
+}
+
+// One team entry per team seen across any match, keyed by id — built once from the
+// full match list so predicted/actual finalists can be resolved to a name + icon.
+function buildTeamsById(matches: MatchLike[]): Map<string, TeamInfo> {
+  const map = new Map<string, TeamInfo>();
+  for (const m of matches) {
+    if (m.homeTeamId && !map.has(m.homeTeamId)) {
+      map.set(m.homeTeamId, { id: m.homeTeamId, name: m.homeTeamName ?? null, imageUrl: m.homeTeamImageUrl ?? null });
+    }
+    if (m.awayTeamId && !map.has(m.awayTeamId)) {
+      map.set(m.awayTeamId, { id: m.awayTeamId, name: m.awayTeamName ?? null, imageUrl: m.awayTeamImageUrl ?? null });
+    }
+  }
+  return map;
+}
+
+function teamInfo(teamsById: Map<string, TeamInfo>, teamId: string | null | undefined): TeamInfo | null {
+  if (!teamId) return null;
+  return teamsById.get(teamId) ?? { id: teamId, name: null, imageUrl: null };
+}
+
+// Which team this user predicted would win the final — progressingTeamId is the
+// primary source (mirrors the server's calculateMatchPoints), falling back to a
+// flip-aware score comparison for older predictions that never set it.
+function predictedWinnerTeamId(pred: PredictionLike): string | null {
+  if (pred.progressingTeamId) return pred.progressingTeamId;
+  const homeScore = pred.homeScore ?? 0;
+  const awayScore = pred.awayScore ?? 0;
+  const predHomeTeamId = pred.predHomeTeamId ?? null;
+  const predAwayTeamId = pred.predAwayTeamId ?? null;
+  if (!pred.flipped) {
+    if (homeScore > awayScore) return predHomeTeamId;
+    if (awayScore > homeScore) return predAwayTeamId;
+  } else {
+    if (homeScore > awayScore) return predAwayTeamId;
+    if (awayScore > homeScore) return predHomeTeamId;
+  }
+  return null;
+}
+
+// Knockout rounds award points for several categories at once (correct result, exact
+// score, correct team advancing, correct team in the tie/final, correct final winner) —
+// unlike the group stage, these aren't split into separate reveal steps. The final is
+// the one exception: its "correct winner" points get their own dedicated reveal step
+// (with team icons), split out from the rest of the final's points.
+function buildKnockoutRoundPointSources(
+  matches: MatchLike[],
+  predictions: PredictionLike[],
+  userIds: string[],
+  stageLabels: Record<KnockoutStage, string>,
+  teamsById: Map<string, TeamInfo>,
+  winnerCategoryLabel: string,
+): PointSource[] {
+  const predictionsByMatch = new Map<string, PredictionLike[]>();
+  for (const p of predictions) {
+    if (!predictionsByMatch.has(p.matchId)) predictionsByMatch.set(p.matchId, []);
+    predictionsByMatch.get(p.matchId)!.push(p);
+  }
+
+  const sources: PointSource[] = [];
+  for (const stage of KNOCKOUT_STAGE_ORDER) {
+    const stageMatches = matches.filter(m => m.stage === stage);
+    if (stageMatches.length === 0) continue;
+
+    if (stage === 'final') {
+      const finalMatch = stageMatches[0];
+      const finalPoints = zeroFilled(userIds);
+      const winnerPoints = zeroFilled(userIds);
+      const predictedTeamByUser: Record<string, TeamInfo | null> = {};
+      for (const p of predictionsByMatch.get(finalMatch.id) ?? []) {
+        if (!(p.userId in finalPoints)) continue;
+        const b = p.breakdown;
+        finalPoints[p.userId] =
+          (b.correctResult ?? 0) +
+          (b.exactScore ?? 0) +
+          (b.correctTeamProgresses ?? 0) +
+          (b.correctTeamInKnockoutTie ?? 0) +
+          (b.correctTeamInFinal ?? 0);
+        winnerPoints[p.userId] = b.correctWinner ?? 0;
+        predictedTeamByUser[p.userId] = teamInfo(teamsById, predictedWinnerTeamId(p));
+      }
+      sources.push({ id: 'ko-final', label: stageLabels.final, pointsByUser: finalPoints });
+      sources.push({
+        id: 'ko-final-winner',
+        label: winnerCategoryLabel,
+        kind: 'winner',
+        pointsByUser: winnerPoints,
+        actualTeam: teamInfo(teamsById, finalMatch.progressingTeamId),
+        predictedTeamByUser,
+      });
+      continue;
+    }
+
+    const pointsByUser = zeroFilled(userIds);
+    for (const m of stageMatches) {
+      for (const p of predictionsByMatch.get(m.id) ?? []) {
+        if (!(p.userId in pointsByUser)) continue;
+        const b = p.breakdown;
+        pointsByUser[p.userId] +=
+          (b.correctResult ?? 0) +
+          (b.exactScore ?? 0) +
+          (b.correctTeamProgresses ?? 0) +
+          (b.correctTeamInKnockoutTie ?? 0) +
+          (b.correctTeamInFinal ?? 0) +
+          (b.correctWinner ?? 0);
+      }
+    }
+    sources.push({ id: `ko-${stage}`, label: stageLabels[stage], pointsByUser });
+  }
+  return sources;
+}
+
+function parseAnswerList(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed.filter(Boolean);
+  } catch {
+    // not JSON — a plain single answer
+  }
+  return [raw];
+}
+
+// Yes/No answers are stored as the literal strings "Yes"/"No" regardless of the
+// competition's language, so they need translating for display just like any other label.
+function translateYesNo(answerType: string, value: string, yesLabel: string, noLabel: string): string {
+  if (answerType !== 'yes_no') return value;
+  if (value === 'Yes') return yesLabel;
+  if (value === 'No') return noLabel;
+  return value;
+}
+
+// One point source per bonus question, so the reveal can show the question itself,
+// the correct answer, and what each user answered alongside their points.
+function buildBonusQuestionPointSources(
+  questions: BonusQuestionLike[],
+  answers: BonusAnswerLike[],
+  userIds: string[],
+  eyebrow: string,
+  correctAnswerLabel: string,
+  yesLabel: string,
+  noLabel: string,
+): PointSource[] {
+  const answersByQuestion = new Map<string, BonusAnswerLike[]>();
+  for (const a of answers) {
+    if (!answersByQuestion.has(a.questionId)) answersByQuestion.set(a.questionId, []);
+    answersByQuestion.get(a.questionId)!.push(a);
+  }
+
+  return questions.map(q => {
+    const pointsByUser = zeroFilled(userIds);
+    const answerByUser: Record<string, string> = {};
+    for (const a of answersByQuestion.get(q.id) ?? []) {
+      if (!(a.userId in pointsByUser)) continue;
+      pointsByUser[a.userId] = a.points ?? 0;
+      answerByUser[a.userId] = translateYesNo(q.answerType, a.answer, yesLabel, noLabel);
+    }
+    const correctAnswers = parseAnswerList(q.correctAnswer).map(a => translateYesNo(q.answerType, a, yesLabel, noLabel));
+    return {
+      id: `bonus-${q.id}`,
+      label: q.question,
+      eyebrow,
+      subLabel: correctAnswers.length > 0 ? `${correctAnswerLabel}: ${correctAnswers.join(' / ')}` : undefined,
+      pointsByUser,
+      answerByUser,
+    };
+  });
+}
+
+export function buildFinalResultsPointSources(
+  matches: MatchLike[],
+  predictions: PredictionLike[],
+  leaderboard: LeaderboardLike[],
+  bonusQuestions: BonusQuestionLike[],
+  bonusAnswers: BonusAnswerLike[],
+  userIds: string[],
+  labels: FinalResultsLabels,
+): PointSource[] {
+  const lateAdditionByUser = zeroFilled(userIds);
+  for (const entry of leaderboard) {
+    if (entry.userId in lateAdditionByUser) lateAdditionByUser[entry.userId] = entry.breakdown.lateAdditionPoints ?? 0;
+  }
+  const lateAdditionUserIds = userIds.filter(uid => lateAdditionByUser[uid] > 0);
+
+  const groupMatches = completedGroupMatches(matches);
+  const numRounds = groupStageRoundCount(groupMatches);
+
+  const sources: PointSource[] = [];
+
+  if (numRounds === 0) {
+    // No group rounds to anchor a "joined in round N" moment to — reveal any
+    // late-addition credit up front instead of dropping it.
+    const source = buildLateAdditionSource('late-addition', labels.lateAdditionBonus, userIds, lateAdditionUserIds, lateAdditionByUser);
+    if (source) sources.push(source);
+  } else {
+    const roundMatchIds = groupStageRoundMatchIds(groupMatches, numRounds);
+    const roundByMatchId = new Map<string, number>();
+    for (const [round, ids] of roundMatchIds) for (const id of ids) roundByMatchId.set(id, round);
+    const joinRoundByUser = lateAdditionUserIds.length > 0 ? computeJoinRoundByUser(roundByMatchId, predictions) : new Map<string, number>();
+
+    const groupRoundSources = buildGroupStageRoundPointSources(matches, predictions, userIds, {
+      round: labels.groupRound,
+      correctResult: labels.groupRoundCorrectResult,
+      exactScore: labels.groupRoundExactScore,
+    });
+
+    for (let r = 1; r <= numRounds; r++) {
+      sources.push(groupRoundSources[2 * (r - 1)], groupRoundSources[2 * (r - 1) + 1]);
+      const joinedThisRound = lateAdditionUserIds.filter(uid => (joinRoundByUser.get(uid) ?? numRounds) === r);
+      const source = buildLateAdditionSource(`late-addition-r${r}`, labels.lateAdditionBonus, userIds, joinedThisRound, lateAdditionByUser);
+      if (source) sources.push(source);
+    }
+  }
+
+  const teamsById = buildTeamsById(matches);
+
+  sources.push(buildGroupTablePositionSource(leaderboard, userIds, labels.groupTablePosition));
+  sources.push(...buildKnockoutRoundPointSources(matches, predictions, userIds, labels.knockoutStage, teamsById, labels.winnerCategory));
+  sources.push(...buildBonusQuestionPointSources(bonusQuestions, bonusAnswers, userIds, labels.bonusQuestionEyebrow, labels.bonusCorrectAnswer, labels.yesAnswer, labels.noAnswer));
+  return sources;
+}

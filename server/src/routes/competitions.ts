@@ -1209,8 +1209,12 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
               predHomeTeamId = getUserPredictedBronzeFinalTeam('home', firstRound, matchesByStageForPred, bpPreds);
               predAwayTeamId = getUserPredictedBronzeFinalTeam('away', firstRound, matchesByStageForPred, bpPreds);
             } else {
-              predHomeTeamId = getUserPredictedTeamForKnockoutSlot(bracketStage, matchIdx, 'home', firstRound, matchesByStageForPred, bpPreds);
-              predAwayTeamId = getUserPredictedTeamForKnockoutSlot(bracketStage, matchIdx, 'away', firstRound, matchesByStageForPred, bpPreds);
+              // Trajectory tracing beyond the first round must resolve against the actual
+              // (confirmed) first-round teams, not the user's own predicted qualifiers —
+              // once the group stage is over, "who's in this semi-final" is fact, not a
+              // guess, and the scoring engine (calculateKnockoutPoints) traces the same way.
+              predHomeTeamId = getUserPredictedTeamForKnockoutSlot(bracketStage, matchIdx, 'home', firstRound, matchesByStageActual, bpPreds);
+              predAwayTeamId = getUserPredictedTeamForKnockoutSlot(bracketStage, matchIdx, 'away', firstRound, matchesByStageActual, bpPreds);
             }
           }
 
@@ -1253,12 +1257,11 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
                 if (!actualTeamId) continue;
                 if (predHomeTeamId !== actualTeamId && predAwayTeamId !== actualTeamId) continue;
                 if (koMatchData.stage === 'final') {
+                  koPoints += scoringConfig.correct_team_in_final;
+                  koBd.correctTeamInFinal += scoringConfig.correct_team_in_final;
                   if (actualTeamId === koMatchData.progressingTeamId && actualTeamId === userPredictedWinner) {
                     koPoints += scoringConfig.correct_winner;
                     koBd.correctWinner += scoringConfig.correct_winner;
-                  } else {
-                    koPoints += scoringConfig.correct_team_in_final;
-                    koBd.correctTeamInFinal += scoringConfig.correct_team_in_final;
                   }
                 } else {
                   koPoints += scoringConfig.correct_team_in_knockout_tie;
@@ -1581,8 +1584,8 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         if (justAsIPredictedStage && Object.keys(bpPreds).length > 0) {
           const predictedRoundTeamIds = new Set<string>();
           for (let idx = 0; idx < justAsIPredictedStageMatchCount; idx++) {
-            const homeId = getUserPredictedTeamForKnockoutSlot(justAsIPredictedStage, idx, 'home', koFirstRoundForStats, matchesByStageForStats, bpPreds);
-            const awayId = getUserPredictedTeamForKnockoutSlot(justAsIPredictedStage, idx, 'away', koFirstRoundForStats, matchesByStageForStats, bpPreds);
+            const homeId = getUserPredictedTeamForKnockoutSlot(justAsIPredictedStage, idx, 'home', koFirstRoundForStats, matchesByStageActualForStats, bpPreds);
+            const awayId = getUserPredictedTeamForKnockoutSlot(justAsIPredictedStage, idx, 'away', koFirstRoundForStats, matchesByStageActualForStats, bpPreds);
             if (homeId) predictedRoundTeamIds.add(homeId);
             if (awayId) predictedRoundTeamIds.add(awayId);
           }
@@ -1609,8 +1612,12 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
               predictedHome = firstRoundPredTeams[bracketKey]?.predHomeId ?? null;
               predictedAway = firstRoundPredTeams[bracketKey]?.predAwayId ?? null;
             } else {
-              predictedHome = getUserPredictedTeamForKnockoutSlot(bracketStage, matchIdx, 'home', koFirstRoundForStats, matchesByStageForStats, bpPreds);
-              predictedAway = getUserPredictedTeamForKnockoutSlot(bracketStage, matchIdx, 'away', koFirstRoundForStats, matchesByStageForStats, bpPreds);
+              // Trajectory tracing beyond the first round must resolve against the actual
+              // (confirmed) first-round teams, not the user's own predicted qualifiers —
+              // once the group stage is over, "who's in this semi-final" is fact, not a
+              // guess, and the scoring engine (calculateKnockoutPoints) traces the same way.
+              predictedHome = getUserPredictedTeamForKnockoutSlot(bracketStage, matchIdx, 'home', koFirstRoundForStats, matchesByStageActualForStats, bpPreds);
+              predictedAway = getUserPredictedTeamForKnockoutSlot(bracketStage, matchIdx, 'away', koFirstRoundForStats, matchesByStageActualForStats, bpPreds);
             }
           }
 
@@ -5053,6 +5060,48 @@ router.get('/:id/bonus-answers/:userId', requireAuth, async (req, res) => {
     res.json(answers);
   } catch (err) {
     console.error('Get user bonus answers error:', err);
+    res.status(500).json({ error: 'Failed to fetch bonus answers' });
+  }
+});
+
+router.get('/:id/all-bonus-answers', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = res.locals.user;
+    const includeComparison = req.query.includeComparison === 'true';
+
+    const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
+    if (!competition) return res.status(404).json({ error: 'Competition not found' });
+
+    if (!user.isAdmin) {
+      const [membership] = await db
+        .select()
+        .from(competitionMembers)
+        .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
+      if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+    }
+
+    const rows = await db
+      .select({
+        questionId: bonusAnswers.questionId,
+        userId: bonusAnswers.userId,
+        username: users.username,
+        imageUrl: users.imageUrl,
+        iconColor: users.iconColor,
+        isComparisonUser: users.isComparisonUser,
+        answer: bonusAnswers.answer,
+        points: bonusAnswers.points,
+      })
+      .from(bonusAnswers)
+      .innerJoin(users, eq(bonusAnswers.userId, users.id))
+      .where(
+        includeComparison
+          ? and(eq(bonusAnswers.competitionId, id), eq(users.isLeaderboardUser, false))
+          : and(eq(bonusAnswers.competitionId, id), eq(users.isLeaderboardUser, false), eq(users.isComparisonUser, false))
+      );
+    res.json(rows);
+  } catch (err) {
+    console.error('Get all bonus answers error:', err);
     res.status(500).json({ error: 'Failed to fetch bonus answers' });
   }
 });

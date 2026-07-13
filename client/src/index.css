@@ -19,6 +19,24 @@
   box-shadow: 0 0 8px 3px rgba(180, 100, 30, 0.45);
 }
 
+@keyframes edge-pulse {
+  0%, 100% { box-shadow: inset 0 0 40px 4px rgba(255, 255, 255, 0.06); }
+  50%      { box-shadow: inset 0 0 90px 12px rgba(255, 255, 255, 0.15); }
+}
+
+.animate-edge-pulse {
+  animation: edge-pulse 6s ease-in-out infinite;
+}
+
+@keyframes points-fall {
+  0%   { top: var(--fall-start, 8%); }
+  100% { top: calc(100% - 96px); }
+}
+
+.animate-points-fall {
+  animation: points-fall 1s cubic-bezier(0.55, 0, 1, 0.45) forwards;
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;

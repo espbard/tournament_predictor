@@ -45,7 +45,11 @@ export function calculateMatchPoints(
     breakdown.correctResult = config.correct_result;
   }
 
-  if (match.stage !== 'group' && match.actualProgressingTeamId) {
+  // The final and bronze final each have their own dedicated categories for
+  // "who progresses" (correct_winner / correct_team_in_final) — correct_team_progresses
+  // only applies to ties before that, where advancing is a separate question from
+  // correctly identifying the two teams.
+  if (match.stage !== 'group' && match.stage !== 'final' && match.stage !== 'bronze_final' && match.actualProgressingTeamId) {
     if (prediction.progressingTeamId === match.actualProgressingTeamId) {
       breakdown.correctTeamProgresses = config.correct_team_progresses;
     }
@@ -243,8 +247,16 @@ export function getUserPredictedTeamForKnockoutSlot(
   // Score comparison takes precedence over progressingTeamId (matches client getWinner logic).
   // progressingTeamId can become stale if the user changes group-stage predictions after
   // filling in bracket picks, so it must not override a clear score-based winner.
-  if (pred.homeScore > pred.awayScore) return predictedHome;
-  if (pred.awayScore > pred.homeScore) return predictedAway;
+  // When flipped, pred.homeScore/awayScore are recorded relative to the user's displayed
+  // (swapped) orientation, so they correspond to predictedAway/predictedHome respectively.
+  const winnerIsHomeScoreSide = pred.flipped
+    ? pred.awayScore > pred.homeScore
+    : pred.homeScore > pred.awayScore;
+  const winnerIsAwayScoreSide = pred.flipped
+    ? pred.homeScore > pred.awayScore
+    : pred.awayScore > pred.homeScore;
+  if (winnerIsHomeScoreSide) return predictedHome;
+  if (winnerIsAwayScoreSide) return predictedAway;
   // Draw: only use progressingTeamId if it still refers to one of the predicted teams.
   if (pred.progressingTeamId === predictedHome || pred.progressingTeamId === predictedAway) {
     return pred.progressingTeamId;

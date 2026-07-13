@@ -13,11 +13,13 @@ import { UserAvatar } from '@/components/UserAvatar';
 import { SoccerKickAnimation } from '@/components/SoccerKickAnimation';
 import { CryingPlayerAnimation } from '@/components/CryingPlayerAnimation';
 import BonusQuestionsTab from './BonusQuestionsTab';
+import FinalResultsView from '@/components/FinalResultsView';
+import { buildFinalResultsPointSources } from '@/lib/pointSources';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import BackButton from '@/components/BackButton';
 import { useT } from '@/lib/useT';
 import { useTeamName } from '@/lib/teamTranslations';
-import type { Competition, Tournament, Prediction, MatchStage, LeaderboardEntry, BracketPredictions, BracketMatchPrediction, UserStatCardData, LeaderboardProgressionResponse } from '@tournament-predictor/shared';
+import type { Competition, Tournament, Prediction, MatchStage, LeaderboardEntry, BracketPredictions, BracketMatchPrediction, UserStatCardData, LeaderboardProgressionResponse, BonusQuestion } from '@tournament-predictor/shared';
 import {
   sortGroupTeams,
   sortLuckyLosers,
@@ -100,6 +102,31 @@ interface MatchPredictionEntry {
   predAwayTeamImageUrl?: string | null;
 }
 
+interface BonusAnswerEntry {
+  questionId: string;
+  userId: string;
+  username: string;
+  imageUrl: string | null;
+  iconColor?: string | null;
+  isComparisonUser?: boolean;
+  answer: string;
+  points: number | null;
+}
+
+// Tracks, per browser, whether a user has already been auto-navigated to the Final
+// Results reveal for a given competition, so we only force it on them once.
+function finalResultsSeenKey(competitionId: string, userId: string): string {
+  return `final-results-seen:${competitionId}:${userId}`;
+}
+
+function hasSeenFinalResults(competitionId: string, userId: string): boolean {
+  return localStorage.getItem(finalResultsSeenKey(competitionId, userId)) === '1';
+}
+
+function markFinalResultsSeen(competitionId: string, userId: string): void {
+  localStorage.setItem(finalResultsSeenKey(competitionId, userId), '1');
+}
+
 export default function CompetitionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuthStore();
@@ -124,8 +151,8 @@ export default function CompetitionDetailPage() {
   const [saveErrors, setSaveErrors] = useState<Record<string, string>>({});
 
   const [searchParams, setSearchParams] = useSearchParams();
-  type TabId = 'group' | 'tables' | 'knockout' | 'bonus' | 'leaderboard' | 'pointProgression' | 'userStats';
-  const VALID_TABS: TabId[] = ['group', 'tables', 'knockout', 'bonus', 'leaderboard', 'pointProgression', 'userStats'];
+  type TabId = 'group' | 'tables' | 'knockout' | 'bonus' | 'leaderboard' | 'pointProgression' | 'userStats' | 'finalResults';
+  const VALID_TABS: TabId[] = ['group', 'tables', 'knockout', 'bonus', 'leaderboard', 'pointProgression', 'userStats', 'finalResults'];
   const tabParam = searchParams.get('tab') as TabId | null;
   const activeTab: TabId = VALID_TABS.includes(tabParam!)
     ? tabParam!
@@ -195,6 +222,9 @@ export default function CompetitionDetailPage() {
     queryKey: ['tournament', competition?.tournamentId],
     queryFn: () => api.get<Tournament>(`/tournaments/${competition!.tournamentId}`),
     enabled: !!competition && !user?.isAdmin,
+    // Poll while the page is open so a tournament flipping to completed while a user is
+    // already viewing it is picked up without requiring a manual refresh.
+    refetchInterval: 30_000,
   });
 
   const { data: matchList = [], isLoading: matchListLoading } = useQuery({
@@ -230,13 +260,25 @@ export default function CompetitionDetailPage() {
   const { data: leaderboard = [], isLoading: leaderboardLoading } = useQuery({
     queryKey: ['competitions', id, 'leaderboard', showComparisonUsers],
     queryFn: () => api.get<LeaderboardEntry[]>(`/competitions/${id}/leaderboard${showComparisonUsers ? '?includeComparison=true' : ''}`),
-    enabled: !!competition && (activeTab === 'leaderboard' || (!user?.isAdmin && !!user?.isLeaderboardUser)),
+    enabled: !!competition && (activeTab === 'leaderboard' || activeTab === 'finalResults' || (!user?.isAdmin && !!user?.isLeaderboardUser)),
   });
 
   const { data: allMatchPredictions = [] } = useQuery({
     queryKey: ['competitions', id, 'all-match-predictions', showComparisonUsers],
     queryFn: () => api.get<MatchPredictionEntry[]>(`/competitions/${id}/all-match-predictions${showComparisonUsers ? '?includeComparison=true' : ''}`),
-    enabled: !!competition && !user?.isAdmin && (activeTab === 'leaderboard' || !!user?.isLeaderboardUser),
+    enabled: !!competition && !user?.isAdmin && (activeTab === 'leaderboard' || activeTab === 'finalResults' || !!user?.isLeaderboardUser),
+  });
+
+  const { data: finalResultsBonusQuestions = [] } = useQuery({
+    queryKey: ['competitions', id, 'bonus-questions'],
+    queryFn: () => api.get<BonusQuestion[]>(`/competitions/${id}/bonus-questions`),
+    enabled: !!competition && activeTab === 'finalResults',
+  });
+
+  const { data: finalResultsBonusAnswers = [] } = useQuery({
+    queryKey: ['competitions', id, 'all-bonus-answers'],
+    queryFn: () => api.get<BonusAnswerEntry[]>(`/competitions/${id}/all-bonus-answers`),
+    enabled: !!competition && activeTab === 'finalResults',
   });
 
   const { data: leaderboardProgression } = useQuery({
@@ -610,13 +652,37 @@ export default function CompetitionDetailPage() {
 
   useEffect(() => {
     if (tabParam || user?.isLeaderboardUser || user?.isAdmin || !tournament) return;
+    // Defer to the Final Results redirect effect below when it's about to fire, so the
+    // two don't race to set the tab search param on the same render.
+    if (tournament.status === 'completed' && user?.id && id && !hasSeenFinalResults(id, user.id)) return;
     if (tournament.status === 'active' || tournament.status === 'completed') {
       setSearchParams(
         prev => { const n = new URLSearchParams(prev); n.set('tab', 'leaderboard'); return n; },
         { replace: true }
       );
     }
-  }, [tournament?.status, tabParam, user?.isLeaderboardUser, user?.isAdmin, setSearchParams]);
+  }, [tournament?.status, tabParam, user?.isLeaderboardUser, user?.isAdmin, user?.id, id, setSearchParams]);
+
+  useEffect(() => {
+    if (activeTab === 'finalResults' && tournament && tournament.status !== 'completed') {
+      setActiveTab('leaderboard');
+    }
+  }, [activeTab, tournament]);
+
+  // The first time a user encounters a completed tournament — whether that's on page
+  // load or because it flips to completed while they already have the page open — send
+  // them straight to the Final Results reveal, once per competition per browser.
+  useEffect(() => {
+    if (!tournament || !user || user.isAdmin || !id) return;
+    if (tournament.status !== 'completed') return;
+    if (activeTab === 'finalResults') {
+      markFinalResultsSeen(id, user.id);
+      return;
+    }
+    if (hasSeenFinalResults(id, user.id)) return;
+    markFinalResultsSeen(id, user.id);
+    setActiveTab('finalResults');
+  }, [tournament?.status, user?.id, user?.isAdmin, id, activeTab]);
 
   const directQualifiers = tournament?.knockoutConfig?.directQualifiers ?? 2;
 
@@ -971,6 +1037,43 @@ export default function CompetitionDetailPage() {
     };
     return map[stage];
   };
+
+  const finalResultsUsers = useMemo(
+    () => leaderboard.filter(e => !e.isComparisonUser).slice(0, 20),
+    [leaderboard]
+  );
+
+  const finalResultsPointSources = useMemo(
+    () => buildFinalResultsPointSources(
+      matchList,
+      allMatchPredictions,
+      leaderboard,
+      finalResultsBonusQuestions,
+      finalResultsBonusAnswers,
+      finalResultsUsers.map(u => u.userId),
+      {
+        groupRound: (n) => t('competitionDetail.finalResults.groupStageRound', { n }),
+        groupRoundCorrectResult: t('competitionDetail.finalResults.correctResultPoints'),
+        groupRoundExactScore: t('competitionDetail.finalResults.perfectScorePoints'),
+        groupTablePosition: t('competitionDetail.finalResults.groupTablePosition'),
+        lateAdditionBonus: t('competitionDetail.finalResults.lateAdditionBonus'),
+        knockoutStage: {
+          round_of_32: t('stages.round_of_32'),
+          round_of_16: t('stages.round_of_16'),
+          quarter_final: t('stages.quarter_final'),
+          semi_final: t('stages.semi_final'),
+          bronze_final: t('stages.bronze_final'),
+          final: t('stages.final'),
+        },
+        bonusQuestionEyebrow: t('competitionDetail.finalResults.bonusQuestionEyebrow'),
+        bonusCorrectAnswer: t('bonusQuestions.correctAnswer'),
+        winnerCategory: t('competitionDetail.leaderboard.winner'),
+        yesAnswer: t('bonusQuestions.yesAnswer'),
+        noAnswer: t('bonusQuestions.noAnswer'),
+      }
+    ),
+    [matchList, allMatchPredictions, leaderboard, finalResultsBonusQuestions, finalResultsBonusAnswers, finalResultsUsers, t]
+  );
 
   if (isLoading) return <LoadingSpinner />;
   if (error) {
@@ -2711,6 +2814,30 @@ export default function CompetitionDetailPage() {
             return <div key={stat.id} className="break-inside-avoid mb-6">{cardEl}</div>;
           })}
         </div>
+      )}
+
+      {activeTab === 'finalResults' && (
+        <FinalResultsView
+          users={finalResultsUsers}
+          pointSources={finalResultsPointSources}
+          introText={t('competitionDetail.finalResults.intro', { name: tournament?.name ?? '' })}
+          winnerLabel={(name) => t('competitionDetail.finalResults.winner', { name })}
+          toLeaderboardLabel={t('competitionDetail.finalResults.toLeaderboard')}
+          closeLabel={t('competitionDetail.finalResults.close')}
+          exitLabel={t('competitionDetail.finalResults.exit')}
+          pauseLabel={t('competitionDetail.finalResults.pause')}
+          playLabel={t('competitionDetail.finalResults.play')}
+          fastForwardLabel={t('competitionDetail.finalResults.fastForward')}
+          replayLabel={t('competitionDetail.finalResults.replay')}
+          downloadLabel={t('competitionDetail.finalResults.download')}
+          downloadPromptTitle={t('competitionDetail.finalResults.downloadPromptTitle')}
+          downloadPromptBody={t('competitionDetail.finalResults.downloadPromptBody')}
+          startRecordingLabel={t('competitionDetail.finalResults.startRecording')}
+          cancelLabel={t('common.cancel')}
+          recordingLabel={t('competitionDetail.finalResults.recording')}
+          recordingFailedLabel={t('competitionDetail.finalResults.recordingFailed')}
+          onGoToLeaderboard={() => setActiveTab('leaderboard')}
+        />
       )}
 
       {/* Clear predictions confirm */}

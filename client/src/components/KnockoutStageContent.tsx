@@ -346,13 +346,15 @@ function FocusedMatchCard({
 
     const exactScore = predH === h && predA === a ? scoringConfig.exact_score : 0;
     const correctResult = Math.sign(predH - predA) === Math.sign(h - a) ? scoringConfig.correct_result : 0;
+    const isBronzeFinal = matchKey.startsWith('bronze_final');
+    // The final and bronze final each have their own dedicated categories for "who
+    // progresses" — correct_team_progresses only applies to ties before that.
     const correctTeamProgresses =
-      actualMatch.progressingTeamId && prediction.progressingTeamId === actualMatch.progressingTeamId
+      !isFinal && !isBronzeFinal && actualMatch.progressingTeamId && prediction.progressingTeamId === actualMatch.progressingTeamId
         ? scoringConfig.correct_team_progresses : 0;
 
     let correctTeamInKnockoutTie = 0, correctTeamInFinal = 0, correctWinner = 0;
     let isActualHomeTeamCorrect = false, isActualAwayTeamCorrect = false;
-    const isBronzeFinal = matchKey.startsWith('bronze_final');
 
     if (!isBronzeFinal) {
       // For the first knockout round, compare against predicted qualifiers derived from
@@ -366,8 +368,8 @@ function FocusedMatchCard({
           if (!teamId) continue;
           if (effectivePredHomeId !== teamId && effectivePredAwayId !== teamId) continue;
           if (isFinal) {
+            correctTeamInFinal += scoringConfig.correct_team_in_final;
             if (teamId === actualMatch.progressingTeamId && prediction.progressingTeamId === actualMatch.progressingTeamId) correctWinner = scoringConfig.correct_winner;
-            else correctTeamInFinal += scoringConfig.correct_team_in_final;
           } else if (!isFirstRound) {
             correctTeamInKnockoutTie += scoringConfig.correct_team_in_knockout_tie;
           }
