@@ -9,6 +9,12 @@ interface DisplayUser {
   iconColor?: string | null;
 }
 
+interface TeamInfo {
+  id: string;
+  name: string | null;
+  imageUrl: string | null;
+}
+
 interface PointSource {
   id: string;
   label: string;
@@ -16,6 +22,9 @@ interface PointSource {
   subLabel?: string;
   pointsByUser: Record<string, number>;
   answerByUser?: Record<string, string>;
+  kind?: 'winner';
+  actualTeam?: TeamInfo | null;
+  predictedTeamByUser?: Record<string, TeamInfo | null>;
 }
 
 interface FinalResultsViewProps {
@@ -29,9 +38,40 @@ interface FinalResultsViewProps {
 }
 
 const INTRO_MS = 4000;
-const LABEL_MS = 1800;
+const LABEL_MS = 1200;
+const PRE_REVEAL_MS = 700;
+const STATIC_MS = 1000;
 const FALL_MS = 1000;
 const PAUSE_MS = 900;
+
+function TeamIcon({ team, size, correct }: { team: TeamInfo | null | undefined; size: number; correct?: boolean }) {
+  const ring = correct ? 'ring-2 ring-offset-2 ring-offset-black ring-green-400' : '';
+  if (!team) {
+    return (
+      <div
+        className={`flex flex-shrink-0 items-center justify-center rounded-full bg-white/10 text-white/60 ${ring}`}
+        style={{ width: size, height: size, fontSize: Math.max(8, Math.round(size * 0.45)), fontWeight: 700 }}
+      >
+        ?
+      </div>
+    );
+  }
+  return team.imageUrl ? (
+    <img
+      src={team.imageUrl}
+      alt=""
+      className={`flex-shrink-0 rounded-full object-cover ${ring}`}
+      style={{ width: size, height: size }}
+    />
+  ) : (
+    <div
+      className={`flex flex-shrink-0 items-center justify-center rounded-full bg-white/10 font-bold text-white ${ring}`}
+      style={{ width: size, height: size, fontSize: Math.max(8, Math.round(size * 0.4)) }}
+    >
+      {team.name?.charAt(0) ?? '?'}
+    </div>
+  );
+}
 
 const BAR_COLOR_PALETTE = [
   '#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#22c55e',
@@ -87,7 +127,7 @@ export default function FinalResultsView({
 
   const [showIntro, setShowIntro] = useState(true);
   const [sourceIdx, setSourceIdx] = useState(-1);
-  const [phase, setPhase] = useState<'idle' | 'label' | 'falling' | 'landed'>('idle');
+  const [phase, setPhase] = useState<'idle' | 'label' | 'preReveal' | 'static' | 'falling' | 'landed'>('idle');
   const [totals, setTotals] = useState<Record<string, number>>({});
   const [done, setDone] = useState(false);
   const [showOverlay, setShowOverlay] = useState(false);
@@ -108,9 +148,19 @@ export default function FinalResultsView({
       setShowIntro(false);
       for (let i = 0; i < pointSources.length; i++) {
         if (cancelled) return;
+        const source = pointSources[i];
+        const hasPreReveal = !!source.answerByUser || source.kind === 'winner';
         setSourceIdx(i);
         setPhase('label');
         await wait(LABEL_MS);
+        if (cancelled) return;
+        if (hasPreReveal) {
+          setPhase('preReveal');
+          await wait(PRE_REVEAL_MS);
+          if (cancelled) return;
+        }
+        setPhase('static');
+        await wait(STATIC_MS);
         if (cancelled) return;
         setPhase('falling');
         await wait(FALL_MS);
@@ -163,8 +213,10 @@ export default function FinalResultsView({
   }, [done, users, totals]);
 
   const currentSource = sourceIdx >= 0 ? pointSources[sourceIdx] : null;
-  const showHeader = currentSource !== null && (phase === 'label' || phase === 'falling' || phase === 'landed');
-  const showFalling = currentSource !== null && phase === 'falling';
+  const showHeader = currentSource !== null && phase !== 'idle';
+  const showReveal = currentSource !== null && (phase === 'preReveal' || phase === 'static' || phase === 'falling');
+  const showPoints = currentSource !== null && (phase === 'static' || phase === 'falling');
+  const isFalling = phase === 'falling';
   const widthPct = users.length > 0 ? 100 / users.length : 100;
 
   return (
@@ -186,7 +238,14 @@ export default function FinalResultsView({
               <div className="text-sm font-medium uppercase tracking-wide text-white/60 sm:text-lg">{currentSource.eyebrow}</div>
             )}
             <div className="text-xl font-semibold tracking-wide text-white sm:text-3xl">{currentSource?.label}</div>
-            {currentSource?.subLabel && (
+            {currentSource?.kind === 'winner' ? (
+              <div className="mt-2 flex items-center justify-center gap-2">
+                <TeamIcon team={currentSource.actualTeam} size={40} />
+                {currentSource.actualTeam?.name && (
+                  <span className="text-lg font-semibold text-white sm:text-2xl">{currentSource.actualTeam.name}</span>
+                )}
+              </div>
+            ) : currentSource?.subLabel && (
               <div className="mt-1 text-sm text-white/70 sm:text-lg">{currentSource.subLabel}</div>
             )}
           </div>
@@ -197,6 +256,8 @@ export default function FinalResultsView({
               const pct = Math.min((total / maxTotal) * 100, 100);
               const sourcePoints = currentSource?.pointsByUser[user.userId] ?? 0;
               const sourceAnswer = currentSource?.answerByUser?.[user.userId];
+              const isCorrect = sourcePoints > 0;
+              const predictedTeam = currentSource?.predictedTeamByUser?.[user.userId];
               const color = barColors[user.userId] ?? '#4b5563';
               const rank = rankByUserId.get(user.userId) ?? 0;
 
@@ -206,19 +267,27 @@ export default function FinalResultsView({
                   className="absolute inset-y-0 flex flex-col items-center justify-end transition-[left] duration-700 ease-in-out"
                   style={{ left: `${rank * widthPct}%`, width: `${widthPct}%` }}
                 >
-                  {showFalling && (
+                  {showReveal && (
                     <div
-                      key={`${currentSource?.id}-fall`}
-                      className="animate-points-fall absolute left-1/2 z-20 flex -translate-x-1/2 flex-col items-center whitespace-nowrap"
+                      key={`${currentSource?.id}-reveal`}
+                      className={`absolute left-1/2 z-20 flex -translate-x-1/2 flex-col items-center gap-1.5 whitespace-nowrap ${
+                        isFalling ? 'animate-points-fall' : ''
+                      }`}
+                      style={isFalling ? undefined : { top: '8%', opacity: 1 }}
                     >
                       {sourceAnswer !== undefined && (
-                        <span className="max-w-[90px] truncate text-[10px] text-white/80 sm:max-w-[120px] sm:text-xs">
+                        <span className={`max-w-[90px] truncate text-xs font-semibold sm:max-w-[130px] sm:text-sm ${isCorrect ? 'text-green-400' : 'text-gray-400'}`}>
                           {sourceAnswer || '—'}
                         </span>
                       )}
-                      <span className={`text-sm font-bold sm:text-base ${sourcePoints > 0 ? 'text-green-400' : 'text-gray-500'}`}>
-                        {sourcePoints > 0 ? `+${sourcePoints}` : '0'}
-                      </span>
+                      {currentSource?.kind === 'winner' && (
+                        <TeamIcon team={predictedTeam} size={32} correct={isCorrect} />
+                      )}
+                      {showPoints && (
+                        <span className={`text-3xl font-extrabold sm:text-5xl ${sourcePoints > 0 ? 'text-green-400' : 'text-gray-500'}`}>
+                          {sourcePoints > 0 ? `+${sourcePoints}` : '0'}
+                        </span>
+                      )}
                     </div>
                   )}
 

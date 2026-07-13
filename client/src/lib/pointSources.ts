@@ -1,3 +1,9 @@
+export interface TeamInfo {
+  id: string;
+  name: string | null;
+  imageUrl: string | null;
+}
+
 export interface PointSource {
   id: string;
   label: string;
@@ -5,6 +11,9 @@ export interface PointSource {
   subLabel?: string;
   pointsByUser: Record<string, number>;
   answerByUser?: Record<string, string>;
+  kind?: 'winner';
+  actualTeam?: TeamInfo | null;
+  predictedTeamByUser?: Record<string, TeamInfo | null>;
 }
 
 interface MatchLike {
@@ -14,6 +23,11 @@ interface MatchLike {
   status: string;
   homeTeamId: string | null;
   awayTeamId: string | null;
+  homeTeamName?: string | null;
+  awayTeamName?: string | null;
+  homeTeamImageUrl?: string | null;
+  awayTeamImageUrl?: string | null;
+  progressingTeamId?: string | null;
 }
 
 interface PredictionBreakdown {
@@ -30,6 +44,12 @@ interface PredictionLike {
   userId: string;
   breakdown: PredictionBreakdown;
   isReplacement?: boolean;
+  homeScore?: number;
+  awayScore?: number;
+  progressingTeamId?: string | null;
+  flipped?: boolean;
+  predHomeTeamId?: string | null;
+  predAwayTeamId?: string | null;
 }
 
 interface LeaderboardLike {
@@ -65,6 +85,7 @@ export interface FinalResultsLabels {
   bonusQuestionEyebrow: string;
   bonusCorrectAnswer: string;
   lateAdditionBonus: string;
+  winnerCategory: string;
 }
 
 function completedGroupMatches(matches: MatchLike[]): MatchLike[] {
@@ -228,14 +249,57 @@ function buildLateAdditionSource(
   return { id, label, pointsByUser };
 }
 
+// One team entry per team seen across any match, keyed by id — built once from the
+// full match list so predicted/actual finalists can be resolved to a name + icon.
+function buildTeamsById(matches: MatchLike[]): Map<string, TeamInfo> {
+  const map = new Map<string, TeamInfo>();
+  for (const m of matches) {
+    if (m.homeTeamId && !map.has(m.homeTeamId)) {
+      map.set(m.homeTeamId, { id: m.homeTeamId, name: m.homeTeamName ?? null, imageUrl: m.homeTeamImageUrl ?? null });
+    }
+    if (m.awayTeamId && !map.has(m.awayTeamId)) {
+      map.set(m.awayTeamId, { id: m.awayTeamId, name: m.awayTeamName ?? null, imageUrl: m.awayTeamImageUrl ?? null });
+    }
+  }
+  return map;
+}
+
+function teamInfo(teamsById: Map<string, TeamInfo>, teamId: string | null | undefined): TeamInfo | null {
+  if (!teamId) return null;
+  return teamsById.get(teamId) ?? { id: teamId, name: null, imageUrl: null };
+}
+
+// Which team this user predicted would win the final — progressingTeamId is the
+// primary source (mirrors the server's calculateMatchPoints), falling back to a
+// flip-aware score comparison for older predictions that never set it.
+function predictedWinnerTeamId(pred: PredictionLike): string | null {
+  if (pred.progressingTeamId) return pred.progressingTeamId;
+  const homeScore = pred.homeScore ?? 0;
+  const awayScore = pred.awayScore ?? 0;
+  const predHomeTeamId = pred.predHomeTeamId ?? null;
+  const predAwayTeamId = pred.predAwayTeamId ?? null;
+  if (!pred.flipped) {
+    if (homeScore > awayScore) return predHomeTeamId;
+    if (awayScore > homeScore) return predAwayTeamId;
+  } else {
+    if (homeScore > awayScore) return predAwayTeamId;
+    if (awayScore > homeScore) return predHomeTeamId;
+  }
+  return null;
+}
+
 // Knockout rounds award points for several categories at once (correct result, exact
 // score, correct team advancing, correct team in the tie/final, correct final winner) —
-// unlike the group stage, these aren't split into separate reveal steps.
+// unlike the group stage, these aren't split into separate reveal steps. The final is
+// the one exception: its "correct winner" points get their own dedicated reveal step
+// (with team icons), split out from the rest of the final's points.
 function buildKnockoutRoundPointSources(
   matches: MatchLike[],
   predictions: PredictionLike[],
   userIds: string[],
   stageLabels: Record<KnockoutStage, string>,
+  teamsById: Map<string, TeamInfo>,
+  winnerCategoryLabel: string,
 ): PointSource[] {
   const predictionsByMatch = new Map<string, PredictionLike[]>();
   for (const p of predictions) {
@@ -245,12 +309,41 @@ function buildKnockoutRoundPointSources(
 
   const sources: PointSource[] = [];
   for (const stage of KNOCKOUT_STAGE_ORDER) {
-    const stageMatchIds = matches.filter(m => m.stage === stage).map(m => m.id);
-    if (stageMatchIds.length === 0) continue;
+    const stageMatches = matches.filter(m => m.stage === stage);
+    if (stageMatches.length === 0) continue;
+
+    if (stage === 'final') {
+      const finalMatch = stageMatches[0];
+      const finalPoints = zeroFilled(userIds);
+      const winnerPoints = zeroFilled(userIds);
+      const predictedTeamByUser: Record<string, TeamInfo | null> = {};
+      for (const p of predictionsByMatch.get(finalMatch.id) ?? []) {
+        if (!(p.userId in finalPoints)) continue;
+        const b = p.breakdown;
+        finalPoints[p.userId] =
+          (b.correctResult ?? 0) +
+          (b.exactScore ?? 0) +
+          (b.correctTeamProgresses ?? 0) +
+          (b.correctTeamInKnockoutTie ?? 0) +
+          (b.correctTeamInFinal ?? 0);
+        winnerPoints[p.userId] = b.correctWinner ?? 0;
+        predictedTeamByUser[p.userId] = teamInfo(teamsById, predictedWinnerTeamId(p));
+      }
+      sources.push({ id: 'ko-final', label: stageLabels.final, pointsByUser: finalPoints });
+      sources.push({
+        id: 'ko-final-winner',
+        label: winnerCategoryLabel,
+        kind: 'winner',
+        pointsByUser: winnerPoints,
+        actualTeam: teamInfo(teamsById, finalMatch.progressingTeamId),
+        predictedTeamByUser,
+      });
+      continue;
+    }
 
     const pointsByUser = zeroFilled(userIds);
-    for (const matchId of stageMatchIds) {
-      for (const p of predictionsByMatch.get(matchId) ?? []) {
+    for (const m of stageMatches) {
+      for (const p of predictionsByMatch.get(m.id) ?? []) {
         if (!(p.userId in pointsByUser)) continue;
         const b = p.breakdown;
         pointsByUser[p.userId] +=
@@ -358,8 +451,10 @@ export function buildFinalResultsPointSources(
     }
   }
 
+  const teamsById = buildTeamsById(matches);
+
   sources.push(buildGroupTablePositionSource(leaderboard, userIds, labels.groupTablePosition));
-  sources.push(...buildKnockoutRoundPointSources(matches, predictions, userIds, labels.knockoutStage));
+  sources.push(...buildKnockoutRoundPointSources(matches, predictions, userIds, labels.knockoutStage, teamsById, labels.winnerCategory));
   sources.push(...buildBonusQuestionPointSources(bonusQuestions, bonusAnswers, userIds, labels.bonusQuestionEyebrow, labels.bonusCorrectAnswer));
   return sources;
 }

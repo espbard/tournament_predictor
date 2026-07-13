@@ -1032,6 +1032,7 @@ export default function CompetitionDetailPage() {
         },
         bonusQuestionEyebrow: t('competitionDetail.finalResults.bonusQuestionEyebrow'),
         bonusCorrectAnswer: t('bonusQuestions.correctAnswer'),
+        winnerCategory: t('competitionDetail.leaderboard.winner'),
       }
     ),
     [matchList, allMatchPredictions, leaderboard, finalResultsBonusQuestions, finalResultsBonusAnswers, finalResultsUsers, t]
