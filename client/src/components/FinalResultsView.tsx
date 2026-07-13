@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { X } from 'lucide-react';
+import { X, Pause, Play, FastForward } from 'lucide-react';
 import { UserAvatar } from '@/components/UserAvatar';
 
 interface DisplayUser {
@@ -34,6 +34,10 @@ interface FinalResultsViewProps {
   winnerLabel: (name: string) => string;
   toLeaderboardLabel: string;
   closeLabel: string;
+  exitLabel: string;
+  pauseLabel: string;
+  playLabel: string;
+  fastForwardLabel: string;
   onGoToLeaderboard: () => void;
 }
 
@@ -44,6 +48,7 @@ const STATIC_MS = 1000;
 const FALL_MS = 1000;
 const PAUSE_MS = 900;
 const OVERLAY_DELAY_MS = 2800;
+const FAST_FORWARD_MULTIPLIER = 4;
 
 interface Particle {
   x: number;
@@ -169,8 +174,29 @@ const BAR_COLOR_PALETTE = [
   '#a855f7', '#ec4899',
 ];
 
-function wait(ms: number) {
-  return new Promise<void>(resolve => setTimeout(resolve, ms));
+// A wait() that can be paused/resumed and sped up mid-flight — it polls in small real-time
+// ticks, only counting down the virtual remaining duration while not paused, at a rate set
+// by the (live-read) speed multiplier, so toggling pause or fast-forward takes effect
+// immediately instead of only on the next wait() call.
+function pausableWait(
+  ms: number,
+  pausedRef: { current: boolean },
+  speedRef: { current: number },
+  isCancelled: () => boolean,
+): Promise<void> {
+  const TICK = 50;
+  return new Promise(resolve => {
+    let remaining = ms;
+    function step() {
+      if (isCancelled()) { resolve(); return; }
+      if (!pausedRef.current) {
+        remaining -= TICK * speedRef.current;
+      }
+      if (remaining <= 0) { resolve(); return; }
+      setTimeout(step, TICK);
+    }
+    setTimeout(step, TICK);
+  });
 }
 
 // Users with a custom photo don't have an "icon color" of their own, so their bar
@@ -207,6 +233,10 @@ export default function FinalResultsView({
   winnerLabel,
   toLeaderboardLabel,
   closeLabel,
+  exitLabel,
+  pauseLabel,
+  playLabel,
+  fastForwardLabel,
   onGoToLeaderboard,
 }: FinalResultsViewProps) {
   useEffect(() => {
@@ -221,6 +251,13 @@ export default function FinalResultsView({
   const [totals, setTotals] = useState<Record<string, number>>({});
   const [done, setDone] = useState(false);
   const [showOverlay, setShowOverlay] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [fastForward, setFastForward] = useState(false);
+
+  const pausedRef = useRef(false);
+  const speedRef = useRef(1);
+  useEffect(() => { pausedRef.current = paused; }, [paused]);
+  useEffect(() => { speedRef.current = fastForward ? FAST_FORWARD_MULTIPLIER : 1; }, [fastForward]);
 
   const barColors = useMemo(() => assignBarColors(users), [users]);
 
@@ -248,13 +285,15 @@ export default function FinalResultsView({
   useEffect(() => {
     if (pointSources.length === 0) return;
     let cancelled = false;
+    const isCancelled = () => cancelled;
+    const pw = (ms: number) => pausableWait(ms, pausedRef, speedRef, isCancelled);
 
     async function run() {
       setShowIntro(true);
       setTotals({});
       setDone(false);
       setShowOverlay(false);
-      await wait(INTRO_MS);
+      await pw(INTRO_MS);
       if (cancelled) return;
       setShowIntro(false);
       for (let i = 0; i < pointSources.length; i++) {
@@ -263,18 +302,18 @@ export default function FinalResultsView({
         const hasPreReveal = !!source.answerByUser || source.kind === 'winner';
         setSourceIdx(i);
         setPhase('label');
-        await wait(LABEL_MS);
+        await pw(LABEL_MS);
         if (cancelled) return;
         if (hasPreReveal) {
           setPhase('preReveal');
-          await wait(PRE_REVEAL_MS);
+          await pw(PRE_REVEAL_MS);
           if (cancelled) return;
         }
         setPhase('static');
-        await wait(STATIC_MS);
+        await pw(STATIC_MS);
         if (cancelled) return;
         setPhase('falling');
-        await wait(FALL_MS);
+        await pw(FALL_MS);
         if (cancelled) return;
         setTotals(prev => {
           const next = { ...prev };
@@ -284,12 +323,12 @@ export default function FinalResultsView({
           return next;
         });
         setPhase('landed');
-        await wait(PAUSE_MS);
+        await pw(PAUSE_MS);
       }
       if (!cancelled) {
         setPhase('idle');
         setDone(true);
-        await wait(OVERLAY_DELAY_MS);
+        await pw(OVERLAY_DELAY_MS);
         if (cancelled) return;
         setShowOverlay(true);
       }
@@ -332,9 +371,47 @@ export default function FinalResultsView({
   const isFalling = phase === 'falling';
   const widthPct = users.length > 0 ? 100 / users.length : 100;
 
+  // Fast-forward shrinks CSS transition/animation durations to match the sped-up JS timings.
+  const speed = fastForward ? FAST_FORWARD_MULTIPLIER : 1;
+  const headerTransitionMs = 500 / speed;
+  const columnTransitionMs = 700 / speed;
+  const barTransitionMs = 700 / speed;
+  const fallDurationMs = FALL_MS / speed;
+
   return (
     <div className="fixed inset-0 z-[200] bg-black overflow-hidden">
       <div className="pointer-events-none absolute inset-0 animate-edge-pulse" />
+
+      {!showOverlay && (
+        <div className="absolute left-4 top-4 z-[210] flex items-center gap-2 sm:left-6 sm:top-6">
+          <button
+            onClick={onGoToLeaderboard}
+            aria-label={exitLabel}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur hover:bg-white/20"
+          >
+            <X size={18} />
+          </button>
+          <button
+            onClick={() => setPaused(p => !p)}
+            aria-label={paused ? playLabel : pauseLabel}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur hover:bg-white/20"
+          >
+            {paused ? <Play size={18} /> : <Pause size={18} />}
+          </button>
+        </div>
+      )}
+
+      {!showOverlay && (
+        <button
+          onClick={() => setFastForward(f => !f)}
+          aria-label={fastForwardLabel}
+          className={`absolute right-4 top-4 z-[210] flex h-9 w-9 items-center justify-center rounded-full backdrop-blur transition-colors sm:right-6 sm:top-6 ${
+            fastForward ? 'bg-white/30 text-white' : 'bg-white/10 text-white hover:bg-white/20'
+          }`}
+        >
+          <FastForward size={18} />
+        </button>
+      )}
 
       {showIntro ? (
         <div className="absolute inset-0 flex items-center justify-center px-6 text-center">
@@ -344,9 +421,10 @@ export default function FinalResultsView({
         <>
           <div
             ref={headerRef}
-            className={`absolute inset-x-0 top-4 z-10 px-4 text-center transition-opacity duration-500 sm:top-6 ${
+            className={`absolute inset-x-0 top-4 z-10 px-4 text-center transition-opacity sm:top-6 ${
               showHeader ? 'opacity-100' : 'opacity-0'
             }`}
+            style={{ transitionDuration: `${headerTransitionMs}ms` }}
           >
             {currentSource?.eyebrow && (
               <div className="text-sm font-medium uppercase tracking-wide text-white/60 sm:text-lg">{currentSource.eyebrow}</div>
@@ -378,8 +456,8 @@ export default function FinalResultsView({
               return (
                 <div
                   key={user.userId}
-                  className="absolute inset-y-0 flex flex-col items-center justify-end transition-[left] duration-700 ease-in-out"
-                  style={{ left: `${rank * widthPct}%`, width: `${widthPct}%` }}
+                  className="absolute inset-y-0 flex flex-col items-center justify-end transition-[left] ease-in-out"
+                  style={{ left: `${rank * widthPct}%`, width: `${widthPct}%`, transitionDuration: `${columnTransitionMs}ms` }}
                 >
                   {showReveal && (
                     <div
@@ -389,7 +467,11 @@ export default function FinalResultsView({
                       }`}
                       style={
                         isFalling
-                          ? ({ ['--fall-start' as string]: `${revealTopPx}px` } as React.CSSProperties)
+                          ? ({
+                              ['--fall-start' as string]: `${revealTopPx}px`,
+                              animationDuration: `${fallDurationMs}ms`,
+                              animationPlayState: paused ? 'paused' : 'running',
+                            } as React.CSSProperties)
                           : { top: revealTopPx, opacity: 1 }
                       }
                     >
@@ -411,8 +493,8 @@ export default function FinalResultsView({
 
                   <div className="flex w-full flex-1 items-end px-1 sm:px-1.5">
                     <div
-                      className="w-full rounded-t-sm transition-[height] duration-700 ease-out"
-                      style={{ height: `${pct}%`, background: `linear-gradient(to top, ${color}, ${color}99)` }}
+                      className="w-full rounded-t-sm transition-[height] ease-out"
+                      style={{ height: `${pct}%`, background: `linear-gradient(to top, ${color}, ${color}99)`, transitionDuration: `${barTransitionMs}ms` }}
                     />
                   </div>
                   <div className="mt-2 flex max-w-full flex-col items-center gap-1">

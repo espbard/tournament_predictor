@@ -127,6 +127,10 @@ const translations = {
         winner: '{{name}} wins!',
         toLeaderboard: 'To leaderboard →',
         close: 'Close',
+        exit: 'Exit',
+        pause: 'Pause',
+        play: 'Play',
+        fastForward: 'Fast forward',
       },
       leaderboard: {
         player: 'Player',
@@ -636,6 +640,10 @@ const translations = {
         winner: '{{name}} vinner!',
         toLeaderboard: 'Til ledertavlen →',
         close: 'Lukk',
+        exit: 'Avslutt',
+        pause: 'Pause',
+        play: 'Spill av',
+        fastForward: 'Spol frem',
       },
       leaderboard: {
         player: 'Spiller',
@@ -1143,6 +1151,10 @@ const translations = {
         winner: '{{name}} gewinnt!',
         toLeaderboard: 'Zur Rangliste →',
         close: 'Schließen',
+        exit: 'Verlassen',
+        pause: 'Pause',
+        play: 'Abspielen',
+        fastForward: 'Vorspulen',
       },
       leaderboard: {
         player: 'Spieler',

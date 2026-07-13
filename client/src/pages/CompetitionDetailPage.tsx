@@ -2789,6 +2789,10 @@ export default function CompetitionDetailPage() {
           winnerLabel={(name) => t('competitionDetail.finalResults.winner', { name })}
           toLeaderboardLabel={t('competitionDetail.finalResults.toLeaderboard')}
           closeLabel={t('competitionDetail.finalResults.close')}
+          exitLabel={t('competitionDetail.finalResults.exit')}
+          pauseLabel={t('competitionDetail.finalResults.pause')}
+          playLabel={t('competitionDetail.finalResults.play')}
+          fastForwardLabel={t('competitionDetail.finalResults.fastForward')}
           onGoToLeaderboard={() => setActiveTab('leaderboard')}
         />
       )}
