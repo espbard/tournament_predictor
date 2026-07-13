@@ -1,7 +1,9 @@
 export interface PointSource {
   id: string;
   label: string;
+  subLabel?: string;
   pointsByUser: Record<string, number>;
+  answerByUser?: Record<string, string>;
 }
 
 interface MatchLike {
@@ -32,11 +34,23 @@ interface LeaderboardLike {
   userId: string;
   breakdown: {
     correctGroupPositionPoints: number;
-    bonusQuestionPoints: number;
   };
 }
 
-const KNOCKOUT_STAGE_ORDER = ['round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'final'] as const;
+interface BonusQuestionLike {
+  id: string;
+  question: string;
+  correctAnswer: string | null;
+}
+
+interface BonusAnswerLike {
+  questionId: string;
+  userId: string;
+  answer: string;
+  points: number | null;
+}
+
+const KNOCKOUT_STAGE_ORDER = ['round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'bronze_final', 'final'] as const;
 type KnockoutStage = typeof KNOCKOUT_STAGE_ORDER[number];
 
 export interface FinalResultsLabels {
@@ -45,7 +59,7 @@ export interface FinalResultsLabels {
   groupRoundExactScore: string;
   groupTablePosition: string;
   knockoutStage: Record<KnockoutStage, string>;
-  bonusQuestions: string;
+  bonusCorrectAnswer: string;
 }
 
 function completedGroupMatches(matches: MatchLike[]): MatchLike[] {
@@ -164,14 +178,6 @@ function buildGroupTablePositionSource(leaderboard: LeaderboardLike[], userIds: 
   return { id: 'group-table-position', label, pointsByUser };
 }
 
-function buildBonusQuestionsSource(leaderboard: LeaderboardLike[], userIds: string[], label: string): PointSource {
-  const pointsByUser = zeroFilled(userIds);
-  for (const entry of leaderboard) {
-    if (entry.userId in pointsByUser) pointsByUser[entry.userId] = entry.breakdown.bonusQuestionPoints ?? 0;
-  }
-  return { id: 'bonus-questions', label, pointsByUser };
-}
-
 // Knockout rounds award points for several categories at once (correct result, exact
 // score, correct team advancing, correct team in the tie/final, correct final winner) —
 // unlike the group stage, these aren't split into separate reveal steps.
@@ -211,10 +217,56 @@ function buildKnockoutRoundPointSources(
   return sources;
 }
 
+function parseAnswerList(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed.filter(Boolean);
+  } catch {
+    // not JSON — a plain single answer
+  }
+  return [raw];
+}
+
+// One point source per bonus question, so the reveal can show the question itself,
+// the correct answer, and what each user answered alongside their points.
+function buildBonusQuestionPointSources(
+  questions: BonusQuestionLike[],
+  answers: BonusAnswerLike[],
+  userIds: string[],
+  correctAnswerLabel: string,
+): PointSource[] {
+  const answersByQuestion = new Map<string, BonusAnswerLike[]>();
+  for (const a of answers) {
+    if (!answersByQuestion.has(a.questionId)) answersByQuestion.set(a.questionId, []);
+    answersByQuestion.get(a.questionId)!.push(a);
+  }
+
+  return questions.map(q => {
+    const pointsByUser = zeroFilled(userIds);
+    const answerByUser: Record<string, string> = {};
+    for (const a of answersByQuestion.get(q.id) ?? []) {
+      if (!(a.userId in pointsByUser)) continue;
+      pointsByUser[a.userId] = a.points ?? 0;
+      answerByUser[a.userId] = a.answer;
+    }
+    const correctAnswers = parseAnswerList(q.correctAnswer);
+    return {
+      id: `bonus-${q.id}`,
+      label: q.question,
+      subLabel: correctAnswers.length > 0 ? `${correctAnswerLabel}: ${correctAnswers.join(' / ')}` : undefined,
+      pointsByUser,
+      answerByUser,
+    };
+  });
+}
+
 export function buildFinalResultsPointSources(
   matches: MatchLike[],
   predictions: PredictionLike[],
   leaderboard: LeaderboardLike[],
+  bonusQuestions: BonusQuestionLike[],
+  bonusAnswers: BonusAnswerLike[],
   userIds: string[],
   labels: FinalResultsLabels,
 ): PointSource[] {
@@ -226,6 +278,6 @@ export function buildFinalResultsPointSources(
     }),
     buildGroupTablePositionSource(leaderboard, userIds, labels.groupTablePosition),
     ...buildKnockoutRoundPointSources(matches, predictions, userIds, labels.knockoutStage),
-    buildBonusQuestionsSource(leaderboard, userIds, labels.bonusQuestions),
+    ...buildBonusQuestionPointSources(bonusQuestions, bonusAnswers, userIds, labels.bonusCorrectAnswer),
   ];
 }

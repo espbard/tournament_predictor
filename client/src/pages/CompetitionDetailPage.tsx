@@ -19,7 +19,7 @@ import { LoadingSpinner } from '@/components/LoadingSpinner';
 import BackButton from '@/components/BackButton';
 import { useT } from '@/lib/useT';
 import { useTeamName } from '@/lib/teamTranslations';
-import type { Competition, Tournament, Prediction, MatchStage, LeaderboardEntry, BracketPredictions, BracketMatchPrediction, UserStatCardData, LeaderboardProgressionResponse } from '@tournament-predictor/shared';
+import type { Competition, Tournament, Prediction, MatchStage, LeaderboardEntry, BracketPredictions, BracketMatchPrediction, UserStatCardData, LeaderboardProgressionResponse, BonusQuestion } from '@tournament-predictor/shared';
 import {
   sortGroupTeams,
   sortLuckyLosers,
@@ -100,6 +100,17 @@ interface MatchPredictionEntry {
   predAwayTeamId?: string | null;
   predHomeTeamImageUrl?: string | null;
   predAwayTeamImageUrl?: string | null;
+}
+
+interface BonusAnswerEntry {
+  questionId: string;
+  userId: string;
+  username: string;
+  imageUrl: string | null;
+  iconColor?: string | null;
+  isComparisonUser?: boolean;
+  answer: string;
+  points: number | null;
 }
 
 export default function CompetitionDetailPage() {
@@ -239,6 +250,18 @@ export default function CompetitionDetailPage() {
     queryKey: ['competitions', id, 'all-match-predictions', showComparisonUsers],
     queryFn: () => api.get<MatchPredictionEntry[]>(`/competitions/${id}/all-match-predictions${showComparisonUsers ? '?includeComparison=true' : ''}`),
     enabled: !!competition && !user?.isAdmin && (activeTab === 'leaderboard' || activeTab === 'finalResults' || !!user?.isLeaderboardUser),
+  });
+
+  const { data: finalResultsBonusQuestions = [] } = useQuery({
+    queryKey: ['competitions', id, 'bonus-questions'],
+    queryFn: () => api.get<BonusQuestion[]>(`/competitions/${id}/bonus-questions`),
+    enabled: !!competition && activeTab === 'finalResults',
+  });
+
+  const { data: finalResultsBonusAnswers = [] } = useQuery({
+    queryKey: ['competitions', id, 'all-bonus-answers'],
+    queryFn: () => api.get<BonusAnswerEntry[]>(`/competitions/${id}/all-bonus-answers`),
+    enabled: !!competition && activeTab === 'finalResults',
   });
 
   const { data: leaderboardProgression } = useQuery({
@@ -990,6 +1013,8 @@ export default function CompetitionDetailPage() {
       matchList,
       allMatchPredictions,
       leaderboard,
+      finalResultsBonusQuestions,
+      finalResultsBonusAnswers,
       finalResultsUsers.map(u => u.userId),
       {
         groupRound: (n) => t('competitionDetail.finalResults.groupStageRound', { n }),
@@ -1001,12 +1026,13 @@ export default function CompetitionDetailPage() {
           round_of_16: t('stages.round_of_16'),
           quarter_final: t('stages.quarter_final'),
           semi_final: t('stages.semi_final'),
+          bronze_final: t('stages.bronze_final'),
           final: t('stages.final'),
         },
-        bonusQuestions: t('competitionDetail.tabs.bonusQuestions'),
+        bonusCorrectAnswer: t('bonusQuestions.correctAnswer'),
       }
     ),
-    [matchList, allMatchPredictions, leaderboard, finalResultsUsers, t]
+    [matchList, allMatchPredictions, leaderboard, finalResultsBonusQuestions, finalResultsBonusAnswers, finalResultsUsers, t]
   );
 
   if (isLoading) return <LoadingSpinner />;

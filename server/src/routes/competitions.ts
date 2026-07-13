@@ -5057,6 +5057,48 @@ router.get('/:id/bonus-answers/:userId', requireAuth, async (req, res) => {
   }
 });
 
+router.get('/:id/all-bonus-answers', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = res.locals.user;
+    const includeComparison = req.query.includeComparison === 'true';
+
+    const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
+    if (!competition) return res.status(404).json({ error: 'Competition not found' });
+
+    if (!user.isAdmin) {
+      const [membership] = await db
+        .select()
+        .from(competitionMembers)
+        .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
+      if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+    }
+
+    const rows = await db
+      .select({
+        questionId: bonusAnswers.questionId,
+        userId: bonusAnswers.userId,
+        username: users.username,
+        imageUrl: users.imageUrl,
+        iconColor: users.iconColor,
+        isComparisonUser: users.isComparisonUser,
+        answer: bonusAnswers.answer,
+        points: bonusAnswers.points,
+      })
+      .from(bonusAnswers)
+      .innerJoin(users, eq(bonusAnswers.userId, users.id))
+      .where(
+        includeComparison
+          ? and(eq(bonusAnswers.competitionId, id), eq(users.isLeaderboardUser, false))
+          : and(eq(bonusAnswers.competitionId, id), eq(users.isLeaderboardUser, false), eq(users.isComparisonUser, false))
+      );
+    res.json(rows);
+  } catch (err) {
+    console.error('Get all bonus answers error:', err);
+    res.status(500).json({ error: 'Failed to fetch bonus answers' });
+  }
+});
+
 router.post('/:id/bonus-answers', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;

@@ -11,7 +11,9 @@ interface DisplayUser {
 interface PointSource {
   id: string;
   label: string;
+  subLabel?: string;
   pointsByUser: Record<string, number>;
+  answerByUser?: Record<string, string>;
 }
 
 interface FinalResultsViewProps {
@@ -89,30 +91,39 @@ export default function FinalResultsView({ users, pointSources }: FinalResultsVi
       <div className="pointer-events-none absolute inset-0 animate-edge-pulse" />
 
       <div
-        className={`absolute inset-x-0 top-6 z-10 px-4 text-center text-lg font-semibold tracking-wide text-white transition-opacity duration-500 sm:top-8 sm:text-2xl ${
+        className={`absolute inset-x-0 top-4 z-10 px-4 text-center transition-opacity duration-500 sm:top-6 ${
           showHeader ? 'opacity-100' : 'opacity-0'
         }`}
       >
-        {currentSource?.label}
+        <div className="text-base font-semibold tracking-wide text-white sm:text-xl">{currentSource?.label}</div>
+        {currentSource?.subLabel && (
+          <div className="mt-1 text-xs text-white/70 sm:text-sm">{currentSource.subLabel}</div>
+        )}
       </div>
 
-      <div className="relative flex h-full w-full items-end justify-center gap-1 px-4 pb-8 pt-16 sm:gap-2 sm:px-8">
+      <div className="relative flex h-full w-full items-end justify-center gap-1 px-4 pb-8 pt-24 sm:gap-2 sm:px-8">
         {users.map(user => {
           const total = totals[user.userId] ?? 0;
           const pct = Math.min((total / maxTotal) * 100, 100);
           const sourcePoints = currentSource?.pointsByUser[user.userId] ?? 0;
+          const sourceAnswer = currentSource?.answerByUser?.[user.userId];
 
           return (
             <div key={user.userId} className="relative flex h-full min-w-0 flex-1 flex-col items-center justify-end">
               {showFalling && (
-                <span
+                <div
                   key={`${currentSource?.id}-fall`}
-                  className={`animate-points-fall absolute left-1/2 z-20 -translate-x-1/2 whitespace-nowrap text-sm font-bold sm:text-base ${
-                    sourcePoints > 0 ? 'text-green-400' : 'text-gray-500'
-                  }`}
+                  className="animate-points-fall absolute left-1/2 z-20 flex -translate-x-1/2 flex-col items-center whitespace-nowrap"
                 >
-                  {sourcePoints > 0 ? `+${sourcePoints}` : '0'}
-                </span>
+                  {sourceAnswer !== undefined && (
+                    <span className="max-w-[90px] truncate text-[10px] text-white/80 sm:max-w-[120px] sm:text-xs">
+                      {sourceAnswer || '—'}
+                    </span>
+                  )}
+                  <span className={`text-sm font-bold sm:text-base ${sourcePoints > 0 ? 'text-green-400' : 'text-gray-500'}`}>
+                    {sourcePoints > 0 ? `+${sourcePoints}` : '0'}
+                  </span>
+                </div>
               )}
 
               <div className="flex w-full flex-1 items-end">
