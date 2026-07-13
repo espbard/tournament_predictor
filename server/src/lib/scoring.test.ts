@@ -244,6 +244,18 @@ describe('getUserPredictedTeamForKnockoutSlot', () => {
     expect(result).toBe('team-b');
   });
 
+  it('accounts for flipped predictions when tracing the winner', () => {
+    // Raw score is 0-2 (looks like an away win), but flipped means the fields are
+    // swapped relative to the actual match sides, so team-a (home) really won.
+    const preds: BracketPredictions = {
+      'round_of_16_0': { homeScore: 0, awayScore: 2, progressingTeamId: null, flipped: true },
+    };
+    const result = getUserPredictedTeamForKnockoutSlot(
+      'quarter_final', 0, 'home', 'round_of_16', matchesByStage, preds,
+    );
+    expect(result).toBe('team-a');
+  });
+
   it('uses explicit progressingTeamId on a draw', () => {
     const preds: BracketPredictions = {
       'round_of_16_0': { homeScore: 1, awayScore: 1, progressingTeamId: 'team-b' },
@@ -524,5 +536,29 @@ describe('calculateKnockoutPoints', () => {
     // team-a: user didn't predict team-a to reach the final (user had team-d winning QF)
     expect(result.total).toBeGreaterThanOrEqual(5);
     expect(result.breakdown.correctTeamInFinal).toBeGreaterThanOrEqual(5);
+  });
+
+  it('does not double-count a single correct finalist when the feeding semi-final is flipped', () => {
+    // Regression test for a real production bug: a semi-final bracket prediction stored
+    // with flipped:true was scored as if it weren't flipped, making an incorrectly-guessed
+    // finalist look correct too — turning one genuinely correct finalist (5) into two (10).
+    const sfFirstRound = 'semi_final';
+    const sfMatches = [
+      { id: 'sf-0', stage: 'semi_final', homeTeamId: 'team-a', awayTeamId: 'team-d', homeScore: 3, awayScore: 0, progressingTeamId: 'team-a', status: 'completed' },
+      { id: 'sf-1', stage: 'semi_final', homeTeamId: 'team-b', awayTeamId: 'team-c', homeScore: 3, awayScore: 0, progressingTeamId: 'team-b', status: 'completed' },
+    ];
+    const finalMatch = { id: 'f-0', stage: 'final', homeTeamId: 'team-a', awayTeamId: 'team-b', homeScore: 3, awayScore: 0, progressingTeamId: 'team-a', status: 'completed' };
+    const matchesForTest = [...sfMatches, finalMatch];
+    const preds: BracketPredictions = {
+      // Stored flipped — the user's real pick was team-d (the actual away/losing team), not team-a.
+      'semi_final_0': { homeScore: 3, awayScore: 0, progressingTeamId: 'team-d', flipped: true },
+      // Correctly predicts team-b (unflipped).
+      'semi_final_1': { homeScore: 3, awayScore: 0, progressingTeamId: 'team-b' },
+      'final_0': { homeScore: 3, awayScore: 0, progressingTeamId: 'team-d' },
+    };
+    const result = calculateKnockoutPoints(matchesForTest, sfFirstRound, preds, CONFIG);
+    // Only team-b was genuinely predicted as a finalist — team-d isn't even in the final.
+    expect(result.breakdown.correctTeamInFinal).toBe(CONFIG.correct_team_in_final);
+    expect(result.breakdown.correctWinner).toBe(0);
   });
 });
