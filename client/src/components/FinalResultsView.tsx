@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { UserAvatar } from '@/components/UserAvatar';
 
@@ -43,6 +43,87 @@ const PRE_REVEAL_MS = 700;
 const STATIC_MS = 1000;
 const FALL_MS = 1000;
 const PAUSE_MS = 900;
+const OVERLAY_DELAY_MS = 2800;
+
+interface Particle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  color: string;
+}
+
+// Lightweight canvas fireworks, self-contained (no external libs) — bursts of
+// particles keep spawning for as long as this component stays mounted.
+function Fireworks() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) return;
+
+    function resize() {
+      canvas!.width = window.innerWidth;
+      canvas!.height = window.innerHeight;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    let particles: Particle[] = [];
+    let lastBurst = 0;
+    let raf = 0;
+
+    function spawnBurst() {
+      const x = canvas!.width * (0.15 + Math.random() * 0.7);
+      const y = canvas!.height * (0.1 + Math.random() * 0.4);
+      const hue = Math.floor(Math.random() * 360);
+      const count = 40;
+      for (let i = 0; i < count; i++) {
+        const angle = (Math.PI * 2 * i) / count + Math.random() * 0.15;
+        const speed = 2 + Math.random() * 2.5;
+        particles.push({
+          x, y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          life: 1,
+          color: `hsl(${hue}, 90%, 65%)`,
+        });
+      }
+    }
+
+    function frame(t: number) {
+      if (t - lastBurst > 750) {
+        spawnBurst();
+        lastBurst = t;
+      }
+      ctx!.clearRect(0, 0, canvas!.width, canvas!.height);
+      particles = particles.filter(p => p.life > 0);
+      for (const p of particles) {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.045;
+        p.life -= 0.014;
+        ctx!.globalAlpha = Math.max(p.life, 0);
+        ctx!.fillStyle = p.color;
+        ctx!.beginPath();
+        ctx!.arc(p.x, p.y, 2.5, 0, Math.PI * 2);
+        ctx!.fill();
+      }
+      ctx!.globalAlpha = 1;
+      raf = requestAnimationFrame(frame);
+    }
+    raf = requestAnimationFrame(frame);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', resize);
+    };
+  }, []);
+
+  return <canvas ref={canvasRef} className="pointer-events-none absolute inset-0" />;
+}
 
 function TeamIcon({ team, size, correct }: { team: TeamInfo | null | undefined; size: number; correct?: boolean }) {
   const ring = correct ? 'ring-2 ring-offset-2 ring-offset-black ring-green-400' : '';
@@ -178,6 +259,8 @@ export default function FinalResultsView({
       if (!cancelled) {
         setPhase('idle');
         setDone(true);
+        await wait(OVERLAY_DELAY_MS);
+        if (cancelled) return;
         setShowOverlay(true);
       }
     }
@@ -250,7 +333,7 @@ export default function FinalResultsView({
             )}
           </div>
 
-          <div className="absolute left-4 right-4 top-40 bottom-20 sm:left-8 sm:right-8 sm:top-44">
+          <div className="absolute left-4 right-4 top-56 bottom-20 sm:left-8 sm:right-8 sm:top-64">
             {users.map(user => {
               const total = totals[user.userId] ?? 0;
               const pct = Math.min((total / maxTotal) * 100, 100);
@@ -276,7 +359,7 @@ export default function FinalResultsView({
                       style={isFalling ? undefined : { top: '8%', opacity: 1 }}
                     >
                       {sourceAnswer !== undefined && (
-                        <span className={`max-w-[90px] truncate text-xs font-semibold sm:max-w-[130px] sm:text-sm ${isCorrect ? 'text-green-400' : 'text-gray-400'}`}>
+                        <span className={`max-w-[130px] truncate text-lg font-semibold sm:max-w-[220px] sm:text-2xl ${isCorrect ? 'text-green-400' : 'text-gray-400'}`}>
                           {sourceAnswer || '—'}
                         </span>
                       )}
@@ -330,6 +413,7 @@ export default function FinalResultsView({
 
       {showOverlay && winner && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/70 p-4">
+          <Fireworks />
           <div className="relative w-full max-w-sm rounded-xl border border-white/10 bg-neutral-900 p-6 text-center shadow-2xl">
             <button
               onClick={() => setShowOverlay(false)}
