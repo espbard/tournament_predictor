@@ -13,6 +13,7 @@ import { UserAvatar } from '@/components/UserAvatar';
 import { SoccerKickAnimation } from '@/components/SoccerKickAnimation';
 import { CryingPlayerAnimation } from '@/components/CryingPlayerAnimation';
 import BonusQuestionsTab from './BonusQuestionsTab';
+import FinalResultsView from '@/components/FinalResultsView';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import BackButton from '@/components/BackButton';
 import { useT } from '@/lib/useT';
@@ -230,7 +231,7 @@ export default function CompetitionDetailPage() {
   const { data: leaderboard = [], isLoading: leaderboardLoading } = useQuery({
     queryKey: ['competitions', id, 'leaderboard', showComparisonUsers],
     queryFn: () => api.get<LeaderboardEntry[]>(`/competitions/${id}/leaderboard${showComparisonUsers ? '?includeComparison=true' : ''}`),
-    enabled: !!competition && (activeTab === 'leaderboard' || (!user?.isAdmin && !!user?.isLeaderboardUser)),
+    enabled: !!competition && (activeTab === 'leaderboard' || activeTab === 'finalResults' || (!user?.isAdmin && !!user?.isLeaderboardUser)),
   });
 
   const { data: allMatchPredictions = [] } = useQuery({
@@ -2720,7 +2721,7 @@ export default function CompetitionDetailPage() {
       )}
 
       {activeTab === 'finalResults' && (
-        <div />
+        <FinalResultsView leaderboard={leaderboard} />
       )}
 
       {/* Clear predictions confirm */}
