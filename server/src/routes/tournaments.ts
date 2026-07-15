@@ -18,7 +18,8 @@ import {
   UpdatePlayerSchema,
 } from '@tournament-predictor/shared';
 import type { KnockoutConfig } from '@tournament-predictor/shared';
-import { triggerScoringForMatch, triggerBonusScoring, recalculateAllScoresForTournament } from '../lib/scoringTrigger';
+import { triggerScoringForMatch, triggerBonusScoring, recalculateAllScoresForTournament, scoreAllBonusQuestionsForTournament } from '../lib/scoringTrigger';
+import { redactBonusQuestions } from '../lib/bonusVisibility';
 import { generateId } from 'lucia';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -705,6 +706,13 @@ tournamentsRouter.patch('/:id', requireAdmin, async (req, res) => {
       .where(eq(tournaments.id, req.params.id))
       .returning();
     if (!updated) return res.status(404).json({ error: 'Tournament not found' });
+
+    if (updates.status === 'completed') {
+      scoreAllBonusQuestionsForTournament(updated.id).catch(err =>
+        console.error('Bonus scoring error on tournament completion:', err),
+      );
+    }
+
     return res.json(updated);
   } catch (err: any) {
     if (err?.name === 'ZodError') return res.status(400).json({ error: 'Invalid input', details: err.errors });
@@ -1493,11 +1501,19 @@ tournamentsRouter.delete('/:id/groups/:groupId', requireAdmin, async (req, res) 
 
 tournamentsRouter.get('/:id/bonus-questions', requireAuth, async (req, res) => {
   try {
+    const [tournament] = await db
+      .select({ status: tournaments.status })
+      .from(tournaments)
+      .where(eq(tournaments.id, req.params.id))
+      .limit(1);
+    if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
+
     const questions = await db
       .select()
       .from(bonusQuestions)
       .where(eq(bonusQuestions.tournamentId, req.params.id));
-    return res.json(questions);
+    const user = res.locals.user;
+    return res.json(redactBonusQuestions(questions, user.isAdmin, tournament.status === 'completed'));
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'Internal server error' });

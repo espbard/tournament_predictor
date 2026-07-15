@@ -7,6 +7,7 @@ import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { CreateCompetitionSchema, CreatePredictionSchema, SaveBracketPredictionsSchema, AdminSetBracketProgressingTeamSchema, DEFAULT_SCORING_CONFIG, SaveBonusAnswerSchema, resolveFirstRoundSlots } from '@tournament-predictor/shared';
 import type { UserStatCardData, ScoringConfig, KnockoutConfig, BracketPredictions, LeaderboardProgressionMatch, LeaderboardProgressionResponse } from '@tournament-predictor/shared';
 import { recalculateAllScoresForTournament, loadUserPredictedKnockoutMatchesByStage } from '../lib/scoringTrigger.js';
+import { redactBonusQuestions, redactBonusAnswerPoints } from '../lib/bonusVisibility.js';
 import { computeGroupStandings, calculateMatchPoints, getUserPredictedTeamForKnockoutSlot, getUserPredictedBronzeFinalTeam, calculateGroupPositionPoints, calculateKnockoutPoints, BRACKET_STAGE_ORDER, type KnockoutMatchSlot, type FirstRoundPredTeams, type CompletedKnockoutMatch } from '../lib/scoring.js';
 import { subscribeLeaderboard, unsubscribeLeaderboard } from '../lib/leaderboardEvents.js';
 
@@ -5014,16 +5015,32 @@ router.get('/:id/bonus-questions', requireAuth, async (req, res) => {
       if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
     }
 
+    const [tournament] = await db
+      .select({ status: tournaments.status })
+      .from(tournaments)
+      .where(eq(tournaments.id, competition.tournamentId))
+      .limit(1);
+
     const questions = await db
       .select()
       .from(bonusQuestions)
       .where(eq(bonusQuestions.tournamentId, competition.tournamentId));
-    res.json(questions);
+    res.json(redactBonusQuestions(questions, user.isAdmin, tournament?.status === 'completed'));
   } catch (err) {
     console.error('Get bonus questions error:', err);
     res.status(500).json({ error: 'Failed to fetch bonus questions' });
   }
 });
+
+async function isCompetitionTournamentCompleted(competitionId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ status: tournaments.status })
+    .from(competitions)
+    .innerJoin(tournaments, eq(tournaments.id, competitions.tournamentId))
+    .where(eq(competitions.id, competitionId))
+    .limit(1);
+  return row?.status === 'completed';
+}
 
 router.get('/:id/bonus-answers', requireAuth, async (req, res) => {
   try {
@@ -5042,7 +5059,8 @@ router.get('/:id/bonus-answers', requireAuth, async (req, res) => {
       .select()
       .from(bonusAnswers)
       .where(and(eq(bonusAnswers.competitionId, id), eq(bonusAnswers.userId, user.id)));
-    res.json(answers);
+    const tournamentCompleted = await isCompetitionTournamentCompleted(id);
+    res.json(redactBonusAnswerPoints(answers, user.isAdmin, tournamentCompleted));
   } catch (err) {
     console.error('Get bonus answers error:', err);
     res.status(500).json({ error: 'Failed to fetch bonus answers' });
@@ -5066,7 +5084,8 @@ router.get('/:id/bonus-answers/:userId', requireAuth, async (req, res) => {
       .select()
       .from(bonusAnswers)
       .where(and(eq(bonusAnswers.competitionId, id), eq(bonusAnswers.userId, userId)));
-    res.json(answers);
+    const tournamentCompleted = await isCompetitionTournamentCompleted(id);
+    res.json(redactBonusAnswerPoints(answers, viewer.isAdmin, tournamentCompleted));
   } catch (err) {
     console.error('Get user bonus answers error:', err);
     res.status(500).json({ error: 'Failed to fetch bonus answers' });
@@ -5108,7 +5127,12 @@ router.get('/:id/all-bonus-answers', requireAuth, async (req, res) => {
           ? and(eq(bonusAnswers.competitionId, id), eq(users.isLeaderboardUser, false))
           : and(eq(bonusAnswers.competitionId, id), eq(users.isLeaderboardUser, false), eq(users.isComparisonUser, false))
       );
-    res.json(rows);
+    const [tournament] = await db
+      .select({ status: tournaments.status })
+      .from(tournaments)
+      .where(eq(tournaments.id, competition.tournamentId))
+      .limit(1);
+    res.json(redactBonusAnswerPoints(rows, user.isAdmin, tournament?.status === 'completed'));
   } catch (err) {
     console.error('Get all bonus answers error:', err);
     res.status(500).json({ error: 'Failed to fetch bonus answers' });

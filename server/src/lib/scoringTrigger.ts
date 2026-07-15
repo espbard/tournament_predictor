@@ -571,19 +571,16 @@ function parseCorrectAnswers(raw: string): string[] {
   return [raw];
 }
 
-export async function triggerBonusScoring(questionId: string, tournamentId: string): Promise<void> {
-  const [question] = await db
-    .select()
-    .from(bonusQuestions)
-    .where(eq(bonusQuestions.id, questionId))
-    .limit(1);
-  if (!question || !question.correctAnswer) return;
+// Scores a single bonus question's answers, unconditionally. Callers are
+// responsible for only invoking this once the tournament is completed —
+// bonus points must never be awarded before then.
+async function scoreBonusQuestion(question: typeof bonusQuestions.$inferSelect): Promise<void> {
+  if (!question.correctAnswer) return;
 
-  // Score answers for this question across all competitions in the tournament
   const allAnswers = await db
     .select()
     .from(bonusAnswers)
-    .where(eq(bonusAnswers.questionId, questionId));
+    .where(eq(bonusAnswers.questionId, question.id));
 
   const correctAnswers = parseCorrectAnswers(question.correctAnswer);
   for (const answer of allAnswers) {
@@ -593,27 +590,72 @@ export async function triggerBonusScoring(questionId: string, tournamentId: stri
       .set({ points: isCorrect ? question.points : 0 })
       .where(eq(bonusAnswers.id, answer.id));
   }
+}
 
-  // Recalculate bonusQuestionPoints for all affected competitions
-  const allComps = await db
-    .select()
-    .from(competitions)
-    .where(eq(competitions.tournamentId, tournamentId));
-
-  for (const comp of allComps) {
-    const memberIds = await getMemberUserIds(comp.id);
+// Recomputes the bonusQuestionPoints rollup for every member of the given
+// competitions from their current bonusAnswers rows.
+async function recomputeBonusQuestionPointsRollup(competitionIds: string[]): Promise<void> {
+  for (const compId of competitionIds) {
+    const memberIds = await getMemberUserIds(compId);
     for (const userId of memberIds) {
       const bonusRows = await db
         .select({ points: bonusAnswers.points })
         .from(bonusAnswers)
-        .where(and(eq(bonusAnswers.competitionId, comp.id), eq(bonusAnswers.userId, userId)));
+        .where(and(eq(bonusAnswers.competitionId, compId), eq(bonusAnswers.userId, userId)));
       const bonusPts = bonusRows.reduce((sum, r) => sum + (r.points ?? 0), 0);
 
       await db
         .update(competitionMembers)
         .set({ bonusQuestionPoints: bonusPts })
-        .where(and(eq(competitionMembers.competitionId, comp.id), eq(competitionMembers.userId, userId)));
+        .where(and(eq(competitionMembers.competitionId, compId), eq(competitionMembers.userId, userId)));
     }
   }
-  notifyLeaderboardUpdate(allComps.map(c => c.id));
+}
+
+// Called whenever an admin sets/changes a bonus question's correct answer.
+// Bonus points are only ever awarded once the tournament has been marked
+// completed — until then this is a no-op (the answer is stored, but scoring
+// is deferred to scoreAllBonusQuestionsForTournament).
+export async function triggerBonusScoring(questionId: string, tournamentId: string): Promise<void> {
+  const [tournament] = await db
+    .select({ status: tournaments.status })
+    .from(tournaments)
+    .where(eq(tournaments.id, tournamentId))
+    .limit(1);
+  if (!tournament || tournament.status !== 'completed') return;
+
+  const [question] = await db
+    .select()
+    .from(bonusQuestions)
+    .where(eq(bonusQuestions.id, questionId))
+    .limit(1);
+  if (!question) return;
+
+  await scoreBonusQuestion(question);
+
+  const compIds = (
+    await db.select({ id: competitions.id }).from(competitions).where(eq(competitions.tournamentId, tournamentId))
+  ).map(c => c.id);
+  await recomputeBonusQuestionPointsRollup(compIds);
+  notifyLeaderboardUpdate(compIds);
+}
+
+// Called when a tournament transitions to 'completed'. Scores every bonus
+// question that already has a correct answer recorded, awarding the points
+// that were withheld while the tournament was still upcoming/active.
+export async function scoreAllBonusQuestionsForTournament(tournamentId: string): Promise<void> {
+  const questions = await db
+    .select()
+    .from(bonusQuestions)
+    .where(eq(bonusQuestions.tournamentId, tournamentId));
+
+  for (const question of questions) {
+    await scoreBonusQuestion(question);
+  }
+
+  const compIds = (
+    await db.select({ id: competitions.id }).from(competitions).where(eq(competitions.tournamentId, tournamentId))
+  ).map(c => c.id);
+  await recomputeBonusQuestionPointsRollup(compIds);
+  notifyLeaderboardUpdate(compIds);
 }
