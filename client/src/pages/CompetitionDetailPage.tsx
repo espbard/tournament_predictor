@@ -128,8 +128,8 @@ function markFinalResultsSeen(competitionId: string, userId: string): void {
 }
 
 // The final-results intro text reads better without a trailing year/edition
-// number (e.g. "Office Tips 2026" -> "Office Tips") since "over for i år" /
-// "over for this year" already conveys that.
+// number (e.g. "FIFA World Cup 2026" -> "FIFA World Cup") since "over for i
+// år" / "over for this year" already conveys that.
 function stripDigitsFromName(name: string): string {
   return name.replace(/\d+/g, '').replace(/\s{2,}/g, ' ').trim();
 }
@@ -2833,7 +2833,7 @@ export default function CompetitionDetailPage() {
           users={finalResultsUsers}
           pointSources={finalResultsPointSources}
           introText={t('competitionDetail.finalResults.intro', {
-            competitionNameNoNumbers: stripDigitsFromName(competition?.name ?? ''),
+            tournamentNameNoNumbers: stripDigitsFromName(tournament?.name ?? ''),
             competitionName: competition?.name ?? '',
             finalWinner: finalMatchWinnerName,
           })}
