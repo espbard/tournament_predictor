@@ -421,7 +421,19 @@ export default function FinalResultsView({
   // header's actual bottom edge and position the reveal just below it.
   const headerRef = useRef<HTMLDivElement>(null);
   const barsContainerRef = useRef<HTMLDivElement>(null);
+  const crawlTextRef = useRef<HTMLDivElement>(null);
   const [revealTopPx, setRevealTopPx] = useState(24);
+
+  // Changing a running CSS animation's `animation-duration` recomputes its progress as
+  // (elapsed time / duration), which makes it jump to a different point in the crawl the
+  // instant fast-forward is toggled — so instead the duration stays fixed and the Web
+  // Animations API's `playbackRate` speeds up/slows down playback from wherever it
+  // currently is, with no jump.
+  useEffect(() => {
+    if (!crawlStarted) return;
+    const anim = crawlTextRef.current?.getAnimations()[0];
+    if (anim) anim.playbackRate = fastForward ? FAST_FORWARD_MULTIPLIER : 1;
+  }, [fastForward, crawlStarted]);
 
   useEffect(() => {
     function recompute() {
@@ -559,7 +571,6 @@ export default function FinalResultsView({
   const columnTransitionMs = 700 / speed;
   const barTransitionMs = 700 / speed;
   const fallDurationMs = FALL_MS / speed;
-  const introCrawlMs = INTRO_CRAWL_MS / speed;
   const introLogoFadeMs = INTRO_LOGO_FADE_MS / speed;
   const tournamentLogoSrc = tournamentLogoUrl || TOURNAMENT_LOGO_PLACEHOLDER;
   const competitionLogoSrc = competitionLogoUrl || COMPETITION_LOGO_PLACEHOLDER;
@@ -643,8 +654,9 @@ export default function FinalResultsView({
             <div className="intro-crawl-container px-1 sm:px-6">
               <div className="intro-crawl-stage">
                 <div
+                  ref={crawlTextRef}
                   className="animate-intro-crawl text-center text-3xl font-black uppercase leading-tight tracking-wide text-[#ffe81f] sm:text-7xl lg:text-9xl"
-                  style={{ animationDuration: `${introCrawlMs}ms`, animationPlayState: paused ? 'paused' : 'running' }}
+                  style={{ animationDuration: `${INTRO_CRAWL_MS}ms`, animationPlayState: paused ? 'paused' : 'running' }}
                 >
                   {introText.split('\n\n').map((paragraph, i) => (
                     <p key={i} className="mb-10 last:mb-0 sm:mb-16">{paragraph}</p>
