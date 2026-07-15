@@ -7,6 +7,7 @@ import {
   getUserPredictedBronzeFinalTeam,
   calculateKnockoutPoints,
   type KnockoutMatchSlot,
+  type FirstRoundPredTeams,
 } from './scoring.js';
 import type { ScoringConfig, BracketPredictions } from '@tournament-predictor/shared';
 
@@ -560,5 +561,42 @@ describe('calculateKnockoutPoints', () => {
     // Only team-b was genuinely predicted as a finalist — team-d isn't even in the final.
     expect(result.breakdown.correctTeamInFinal).toBe(CONFIG.correct_team_in_final);
     expect(result.breakdown.correctWinner).toBe(0);
+  });
+
+  it('traces later-round trajectories against predictedFirstRoundTeams when supplied, matching the knockout card', () => {
+    // The knockout prediction card (KnockoutStageContent.tsx pointsInfo) always scores
+    // later rounds against the user's own predicted first-round teams, never the real
+    // bracket. When predictedFirstRoundTeams is supplied, the canonical engine must do
+    // the same, so the leaderboard total agrees with what the card shows.
+    const sfFirstRound = 'semi_final';
+    // Real bracket: team-x (real SF-0 home) beats team-q; team-p (real SF-1 home) beats team-m.
+    const sfMatches = [
+      { id: 'sf-0', stage: 'semi_final', homeTeamId: 'team-x', awayTeamId: 'team-q', homeScore: 1, awayScore: 0, progressingTeamId: 'team-x', status: 'completed' },
+      { id: 'sf-1', stage: 'semi_final', homeTeamId: 'team-p', awayTeamId: 'team-m', homeScore: 1, awayScore: 0, progressingTeamId: 'team-p', status: 'completed' },
+    ];
+    const finalMatch = { id: 'f-0', stage: 'final', homeTeamId: 'team-x', awayTeamId: 'team-p', homeScore: 1, awayScore: 0, progressingTeamId: 'team-x', status: 'completed' };
+    const matchesForTest = [...sfMatches, finalMatch];
+    // User picks "home side advances" in both semis and the final — structurally correct
+    // against the real bracket (home really does advance in both semis).
+    const preds: BracketPredictions = {
+      'semi_final_0': { homeScore: 1, awayScore: 0, progressingTeamId: null },
+      'semi_final_1': { homeScore: 1, awayScore: 0, progressingTeamId: null },
+      'final_0': { homeScore: 1, awayScore: 0, progressingTeamId: null },
+    };
+    // User's own group prediction swapped team-x/team-m's group order, so their predicted
+    // first round has team-m (not team-x) in SF-0's home slot, and team-x in SF-1's away slot.
+    const predictedFirstRoundTeams: FirstRoundPredTeams = {
+      'semi_final_0': { predHomeId: 'team-m', predAwayId: 'team-q' },
+      'semi_final_1': { predHomeId: 'team-p', predAwayId: 'team-x' },
+    };
+
+    const withoutPredicted = calculateKnockoutPoints(matchesForTest, sfFirstRound, preds, CONFIG);
+    // Actual-bracket tracing: both real finalists (team-x, team-p) correctly identified.
+    expect(withoutPredicted.breakdown.correctTeamInFinal).toBe(CONFIG.correct_team_in_final * 2);
+
+    const withPredicted = calculateKnockoutPoints(matchesForTest, sfFirstRound, preds, CONFIG, predictedFirstRoundTeams);
+    // Predicted-bracket tracing (matching the card): final resolves to team-m vs team-p,
+    // so only team-p matches the real final — one correct finalist, not two.
+    expect(withPredicted.breakdown.correctTeamInFinal).toBe(CONFIG.correct_team_in_final);
   });
 });

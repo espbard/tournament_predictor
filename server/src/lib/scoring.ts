@@ -349,6 +349,26 @@ export function calculateKnockoutPoints(
     matchesByStage.get(m.stage)!.push(m);
   }
 
+  // Later-round trajectory tracing must use the same baseline as the knockout prediction
+  // card's own pointsInfo calculation: the user's own predicted first-round teams, not the
+  // real/confirmed bracket — so a match is scored consistently regardless of whether the
+  // user's group-stage guesses turned out right.
+  let matchesByStageForPred = matchesByStage;
+  if (predictedFirstRoundTeams) {
+    const modMatchesByStage = new Map<string, KnockoutMatchSlot[]>();
+    for (const [stage, stageMatches] of matchesByStage) {
+      if (stage !== firstRound) {
+        modMatchesByStage.set(stage, stageMatches);
+        continue;
+      }
+      modMatchesByStage.set(stage, stageMatches.map((sm, i) => {
+        const slot = predictedFirstRoundTeams[`${firstRound}_${i}`];
+        return slot ? { ...sm, homeTeamId: slot.predHomeId, awayTeamId: slot.predAwayId } : sm;
+      }));
+    }
+    matchesByStageForPred = modMatchesByStage;
+  }
+
   for (const m of allKnockoutMatches) {
     if (m.status !== 'completed') continue;
 
@@ -379,10 +399,10 @@ export function calculateKnockoutPoints(
         }
       } else {
         predictedHome = getUserPredictedTeamForKnockoutSlot(
-          stage, matchIndex, 'home', firstRound, matchesByStage, userBracketPredictions,
+          stage, matchIndex, 'home', firstRound, matchesByStageForPred, userBracketPredictions,
         );
         predictedAway = getUserPredictedTeamForKnockoutSlot(
-          stage, matchIndex, 'away', firstRound, matchesByStage, userBracketPredictions,
+          stage, matchIndex, 'away', firstRound, matchesByStageForPred, userBracketPredictions,
         );
       }
 
