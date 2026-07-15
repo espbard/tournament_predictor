@@ -60,7 +60,7 @@ const INTRO_DARK_MS = 1000;
 const INTRO_LOGO_FADE_MS = 1800;
 const INTRO_LOGO_HOLD_MS = 2200;
 const INTRO_TEXT_DELAY_MS = 900;
-const INTRO_CRAWL_MS = 14000;
+const INTRO_CRAWL_MS = 21000;
 const TOURNAMENT_LOGO_PLACEHOLDER = '/tournament-logo-placeholder.png';
 const COMPETITION_LOGO_PLACEHOLDER = '/competition-logo-placeholder.jpg';
 const LABEL_MS = 1200;
@@ -618,7 +618,7 @@ export default function FinalResultsView({
             <div className="intro-crawl-container absolute inset-0 overflow-hidden px-6">
               <div className="intro-crawl-tilt">
                 <div
-                  className="animate-intro-crawl text-center text-4xl font-black uppercase leading-tight tracking-wide text-[#ffe81f] sm:text-6xl md:text-8xl"
+                  className="animate-intro-crawl text-center text-5xl font-black uppercase leading-tight tracking-wide text-[#ffe81f] sm:text-7xl md:text-9xl"
                   style={{ animationDuration: `${introCrawlMs}ms` }}
                 >
                   {introText}
