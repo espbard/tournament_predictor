@@ -2821,6 +2821,8 @@ export default function CompetitionDetailPage() {
           users={finalResultsUsers}
           pointSources={finalResultsPointSources}
           introText={t('competitionDetail.finalResults.intro', { name: tournament?.name ?? '' })}
+          tournamentLogoUrl={tournament?.imageUrl}
+          competitionLogoUrl={competition?.imageUrl}
           winnerLabel={(name) => t('competitionDetail.finalResults.winner', { name })}
           toLeaderboardLabel={t('competitionDetail.finalResults.toLeaderboard')}
           closeLabel={t('competitionDetail.finalResults.close')}

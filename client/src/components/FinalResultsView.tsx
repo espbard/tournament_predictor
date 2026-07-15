@@ -31,6 +31,8 @@ interface FinalResultsViewProps {
   users: DisplayUser[];
   pointSources: PointSource[];
   introText: string;
+  tournamentLogoUrl?: string | null;
+  competitionLogoUrl?: string | null;
   winnerLabel: (name: string) => string;
   toLeaderboardLabel: string;
   closeLabel: string;
@@ -54,8 +56,10 @@ interface FinalResultsViewProps {
 // widely-supported Chrome/Edge hint that pre-selects "this tab" in the share picker.
 type DisplayMediaOptions = DisplayMediaStreamOptions & { preferCurrentTab?: boolean };
 
-const INTRO_MS = 14000;
 const INTRO_ARRIVE_MS = 3000;
+const INTRO_CRAWL_MS = 14000;
+const TOURNAMENT_LOGO_PLACEHOLDER = '/tournament-logo-placeholder.png';
+const COMPETITION_LOGO_PLACEHOLDER = '/competition-logo-placeholder.jpg';
 const LABEL_MS = 1200;
 const PRE_REVEAL_MS = 700;
 const STATIC_MS = 1000;
@@ -260,6 +264,8 @@ export default function FinalResultsView({
   users,
   pointSources,
   introText,
+  tournamentLogoUrl,
+  competitionLogoUrl,
   winnerLabel,
   toLeaderboardLabel,
   closeLabel,
@@ -428,7 +434,7 @@ export default function FinalResultsView({
       await pw(INTRO_ARRIVE_MS);
       if (cancelled) return;
       setIntroArrived(true);
-      await pw(INTRO_MS - INTRO_ARRIVE_MS);
+      await pw(INTRO_CRAWL_MS);
       if (cancelled) return;
       setShowIntro(false);
       for (let i = 0; i < pointSources.length; i++) {
@@ -517,7 +523,9 @@ export default function FinalResultsView({
   const columnTransitionMs = 700 / speed;
   const barTransitionMs = 700 / speed;
   const fallDurationMs = FALL_MS / speed;
-  const introCrawlMs = INTRO_MS / speed;
+  const introCrawlMs = INTRO_CRAWL_MS / speed;
+  const tournamentLogoSrc = tournamentLogoUrl || TOURNAMENT_LOGO_PLACEHOLDER;
+  const competitionLogoSrc = competitionLogoUrl || COMPETITION_LOGO_PLACEHOLDER;
 
   return (
     <div className="fixed inset-0 z-[200] bg-black overflow-hidden">
@@ -578,16 +586,33 @@ export default function FinalResultsView({
       )}
 
       {showIntro ? (
-        <div className="intro-crawl-container absolute inset-0 overflow-hidden px-6">
-          <div className="intro-crawl-tilt">
-            <div
-              className="animate-intro-crawl text-center text-4xl font-black uppercase leading-tight tracking-wide text-[#ffe81f] sm:text-6xl md:text-8xl"
-              style={{ animationDuration: `${introCrawlMs}ms` }}
-            >
-              {introText}
+        <>
+          <div
+            className={`absolute inset-0 flex items-center justify-center gap-6 px-6 transition-opacity duration-700 sm:gap-10 ${
+              introArrived ? 'pointer-events-none opacity-0' : 'opacity-100'
+            }`}
+          >
+            <div className="flex h-28 w-28 items-center justify-center rounded-2xl bg-white p-3 shadow-2xl sm:h-44 sm:w-44 sm:p-4 md:h-56 md:w-56">
+              <img src={tournamentLogoSrc} alt="" className="h-full w-full object-contain" />
+            </div>
+            <div className="flex h-28 w-28 items-center justify-center rounded-2xl bg-white p-3 shadow-2xl sm:h-44 sm:w-44 sm:p-4 md:h-56 md:w-56">
+              <img src={competitionLogoSrc} alt="" className="h-full w-full object-contain" />
             </div>
           </div>
-        </div>
+
+          {introArrived && (
+            <div className="intro-crawl-container absolute inset-0 overflow-hidden px-6">
+              <div className="intro-crawl-tilt">
+                <div
+                  className="animate-intro-crawl text-center text-4xl font-black uppercase leading-tight tracking-wide text-[#ffe81f] sm:text-6xl md:text-8xl"
+                  style={{ animationDuration: `${introCrawlMs}ms` }}
+                >
+                  {introText}
+                </div>
+              </div>
+            </div>
+          )}
+        </>
       ) : (
         <>
           <div
