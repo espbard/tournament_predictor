@@ -45,19 +45,22 @@
 
 /* The text starts positioned with its own top edge exactly at the container's
    bottom edge (`top: 100%`), so it's fully off-screen at rest no matter how
-   tall the content is — no guessed vh offset needed. It then rises by its
-   own full height plus one viewport height (`calc(-100vh - 100%)`, where the
-   `%` resolves against the element's own rendered height), which is exactly
-   the distance needed to carry it from fully below the screen to fully above
-   it — the literal bottom and top of the page, self-adjusting to content
-   length and viewport size instead of separately-tuned numbers per
-   breakpoint. `transform-origin` is pinned to the top so the shrink (via
-   `scale`) anchors there too, rather than the default center-origin pulling
-   the whole animation off relative to a very tall box. */
+   tall the content is — no guessed vh offset needed. `transform-origin` is
+   pinned to the top so the shrink (via `scale`) anchors there too, rather
+   than the default center-origin pulling the whole animation off relative
+   to a very tall box.
+   The translateY distance is `100vh` (clear the viewport) plus `30%` of the
+   element's own height — NOT its full height. Because the shrink to
+   `scale(0.3)` and the rise are both linear over the same 0%-100% span, the
+   box's own bottom edge is *also* shrinking toward its (fixed) top edge as
+   it travels; the `30%` term is exactly the end scale factor, which is the
+   distance needed for the bottom edge to land precisely at the top of the
+   viewport right as the animation reaches 100% (any other coefficient makes
+   it vanish — and go invisibly idle — before or after the animation ends). */
 @keyframes intro-crawl {
   0%   { transform: translateY(0) scale(1); opacity: 1; }
   90%  { opacity: 1; }
-  100% { transform: translateY(calc(-100vh - 100%)) scale(0.3); opacity: 0; }
+  100% { transform: translateY(calc(-100vh - 30%)) scale(0.3); opacity: 0; }
 }
 
 .animate-intro-crawl {
