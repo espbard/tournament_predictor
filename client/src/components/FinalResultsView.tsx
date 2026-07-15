@@ -55,6 +55,7 @@ interface FinalResultsViewProps {
 type DisplayMediaOptions = DisplayMediaStreamOptions & { preferCurrentTab?: boolean };
 
 const INTRO_MS = 14000;
+const INTRO_ARRIVE_MS = 3000;
 const LABEL_MS = 1200;
 const PRE_REVEAL_MS = 700;
 const STATIC_MS = 1000;
@@ -283,6 +284,7 @@ export default function FinalResultsView({
   }, []);
 
   const [showIntro, setShowIntro] = useState(true);
+  const [introArrived, setIntroArrived] = useState(false);
   const [sourceIdx, setSourceIdx] = useState(-1);
   const [phase, setPhase] = useState<'idle' | 'label' | 'preReveal' | 'static' | 'falling' | 'landed'>('idle');
   const [totals, setTotals] = useState<Record<string, number>>({});
@@ -419,10 +421,14 @@ export default function FinalResultsView({
 
     async function run() {
       setShowIntro(true);
+      setIntroArrived(false);
       setTotals({});
       setDone(false);
       setShowOverlay(false);
-      await pw(INTRO_MS);
+      await pw(INTRO_ARRIVE_MS);
+      if (cancelled) return;
+      setIntroArrived(true);
+      await pw(INTRO_MS - INTRO_ARRIVE_MS);
       if (cancelled) return;
       setShowIntro(false);
       for (let i = 0; i < pointSources.length; i++) {
@@ -515,7 +521,16 @@ export default function FinalResultsView({
 
   return (
     <div className="fixed inset-0 z-[200] bg-black overflow-hidden">
-      <div className={`pointer-events-none absolute inset-0 ${showIntro ? 'animate-edge-pulse-gold' : 'animate-edge-pulse'}`} />
+      <div
+        className={`pointer-events-none absolute inset-0 animate-edge-pulse-gold transition-opacity duration-[1500ms] ${
+          showIntro && !introArrived ? 'opacity-100' : 'opacity-0'
+        }`}
+      />
+      <div
+        className={`pointer-events-none absolute inset-0 animate-edge-pulse transition-opacity duration-1000 ${
+          showIntro ? 'opacity-0' : 'opacity-100'
+        }`}
+      />
 
       {!showOverlay && (
         <div className="absolute left-4 top-4 z-[210] flex items-center gap-2 sm:left-6 sm:top-6">

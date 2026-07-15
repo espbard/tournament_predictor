@@ -47,18 +47,25 @@
    text inside only ever animates its own `transform` (translateY + scale),
    moving within the wrapper's already-tilted, flattened plane — that's what
    keeps it from re-deriving (and flipping) the perspective angle frame by
-   frame the way animating a single element's `top` + `rotateX` together did. */
+   frame the way animating a single element's `top` + `rotateX` together did.
+   The wrapper is made much taller than the viewport (bottom-anchored) so its
+   own vanishing point sits at the very top edge of the screen instead of
+   partway down — with a viewport-height wrapper the horizon converges well
+   before the top, which is why text used to fade out mid-screen. */
 .intro-crawl-tilt {
   position: absolute;
-  inset: 0;
-  transform: rotateX(55deg);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 600%;
+  transform: rotateX(30deg);
   transform-origin: 50% 100%;
 }
 
 @keyframes intro-crawl {
-  0%   { transform: translateY(70vh) scale(1); opacity: 1; }
-  70%  { opacity: 1; }
-  100% { transform: translateY(-85vh) scale(0.2); opacity: 0; }
+  0%   { transform: translateY(60vh) scale(1); opacity: 1; }
+  75%  { opacity: 1; }
+  100% { transform: translateY(-300vh) scale(0.1); opacity: 0; }
 }
 
 .animate-intro-crawl {
