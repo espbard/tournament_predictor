@@ -1224,8 +1224,15 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
           const koMatchData = matchIdToKoData.get(matchId);
           let koPoints = 0;
           const koBd: PredBreakdown = { exactScore: 0, correctResult: 0, correctTeamProgresses: 0, correctTeamInKnockoutTie: 0, correctTeamInFinal: 0, correctWinner: 0 };
+          // Fresh, leaf-level flip: compare this match's already-resolved predicted teams
+          // against the real match's own home/away — the same rule calculateKnockoutPoints
+          // (scoring.ts) and the knockout card's pointsInfo both use. Do not read the stored
+          // pred.flipped: it can be stale relative to the current predicted-vs-actual
+          // baseline (see getUserPredictedTeamForKnockoutSlot).
+          const shouldFlip = !!(koMatchData &&
+            ((displayHomeTeamId !== null && displayHomeTeamId === koMatchData.awayTeamId) ||
+             (displayAwayTeamId !== null && displayAwayTeamId === koMatchData.homeTeamId)));
           if (koMatchData && koMatchData.homeScore !== null && koMatchData.awayScore !== null) {
-            const shouldFlip = pred.flipped ?? false;
             const scoredMatch = {
               homeScore: shouldFlip ? koMatchData.awayScore : koMatchData.homeScore,
               awayScore: shouldFlip ? koMatchData.homeScore : koMatchData.awayScore,
@@ -1286,7 +1293,7 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
             progressingTeamId: pred.progressingTeamId ?? null,
             points: koPoints,
             breakdown: koBd,
-            flipped: pred.flipped ?? false,
+            flipped: shouldFlip,
             predHomeTeamId: displayHomeTeamId,
             predAwayTeamId: displayAwayTeamId,
             predHomeTeamImageUrl: displayHomeTeamId ? (teamImageMap.get(displayHomeTeamId) ?? null) : null,
