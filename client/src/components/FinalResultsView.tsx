@@ -56,7 +56,10 @@ interface FinalResultsViewProps {
 // widely-supported Chrome/Edge hint that pre-selects "this tab" in the share picker.
 type DisplayMediaOptions = DisplayMediaStreamOptions & { preferCurrentTab?: boolean };
 
-const INTRO_ARRIVE_MS = 3000;
+const INTRO_DARK_MS = 2500;
+const INTRO_LOGO_FADE_MS = 1800;
+const INTRO_LOGO_HOLD_MS = 2200;
+const INTRO_TEXT_DELAY_MS = 900;
 const INTRO_CRAWL_MS = 14000;
 const TOURNAMENT_LOGO_PLACEHOLDER = '/tournament-logo-placeholder.png';
 const COMPETITION_LOGO_PLACEHOLDER = '/competition-logo-placeholder.jpg';
@@ -290,7 +293,8 @@ export default function FinalResultsView({
   }, []);
 
   const [showIntro, setShowIntro] = useState(true);
-  const [introArrived, setIntroArrived] = useState(false);
+  const [logosVisible, setLogosVisible] = useState(false);
+  const [crawlStarted, setCrawlStarted] = useState(false);
   const [sourceIdx, setSourceIdx] = useState(-1);
   const [phase, setPhase] = useState<'idle' | 'label' | 'preReveal' | 'static' | 'falling' | 'landed'>('idle');
   const [totals, setTotals] = useState<Record<string, number>>({});
@@ -427,13 +431,20 @@ export default function FinalResultsView({
 
     async function run() {
       setShowIntro(true);
-      setIntroArrived(false);
+      setLogosVisible(false);
+      setCrawlStarted(false);
       setTotals({});
       setDone(false);
       setShowOverlay(false);
-      await pw(INTRO_ARRIVE_MS);
+      await pw(INTRO_DARK_MS);
       if (cancelled) return;
-      setIntroArrived(true);
+      setLogosVisible(true);
+      await pw(INTRO_LOGO_FADE_MS + INTRO_LOGO_HOLD_MS);
+      if (cancelled) return;
+      setLogosVisible(false);
+      await pw(INTRO_LOGO_FADE_MS + INTRO_TEXT_DELAY_MS);
+      if (cancelled) return;
+      setCrawlStarted(true);
       await pw(INTRO_CRAWL_MS);
       if (cancelled) return;
       setShowIntro(false);
@@ -524,15 +535,17 @@ export default function FinalResultsView({
   const barTransitionMs = 700 / speed;
   const fallDurationMs = FALL_MS / speed;
   const introCrawlMs = INTRO_CRAWL_MS / speed;
+  const introLogoFadeMs = INTRO_LOGO_FADE_MS / speed;
   const tournamentLogoSrc = tournamentLogoUrl || TOURNAMENT_LOGO_PLACEHOLDER;
   const competitionLogoSrc = competitionLogoUrl || COMPETITION_LOGO_PLACEHOLDER;
 
   return (
     <div className="fixed inset-0 z-[200] bg-black overflow-hidden">
       <div
-        className={`pointer-events-none absolute inset-0 animate-edge-pulse-gold transition-opacity duration-[1500ms] ${
-          showIntro && !introArrived ? 'opacity-100' : 'opacity-0'
+        className={`pointer-events-none absolute inset-0 animate-edge-pulse-gold transition-opacity ${
+          logosVisible ? 'opacity-100' : 'opacity-0'
         }`}
+        style={{ transitionDuration: `${introLogoFadeMs}ms` }}
       />
       <div
         className={`pointer-events-none absolute inset-0 animate-edge-pulse transition-opacity duration-1000 ${
@@ -588,9 +601,10 @@ export default function FinalResultsView({
       {showIntro ? (
         <>
           <div
-            className={`absolute inset-0 flex items-center justify-center gap-6 px-6 transition-opacity duration-700 sm:gap-10 ${
-              introArrived ? 'pointer-events-none opacity-0' : 'opacity-100'
+            className={`absolute inset-0 flex items-center justify-center gap-6 px-6 transition-opacity sm:gap-10 ${
+              logosVisible ? 'opacity-100' : 'pointer-events-none opacity-0'
             }`}
+            style={{ transitionDuration: `${introLogoFadeMs}ms` }}
           >
             <div className="flex h-28 w-28 items-center justify-center rounded-2xl bg-white p-3 shadow-2xl sm:h-44 sm:w-44 sm:p-4 md:h-56 md:w-56">
               <img src={tournamentLogoSrc} alt="" className="h-full w-full object-contain" />
@@ -600,7 +614,7 @@ export default function FinalResultsView({
             </div>
           </div>
 
-          {introArrived && (
+          {crawlStarted && (
             <div className="intro-crawl-container absolute inset-0 overflow-hidden px-6">
               <div className="intro-crawl-tilt">
                 <div
@@ -625,7 +639,7 @@ export default function FinalResultsView({
             {currentSource?.eyebrow && (
               <div className="text-sm font-medium uppercase tracking-wide text-white/60 sm:text-lg">{currentSource.eyebrow}</div>
             )}
-            <div className="text-xl font-semibold tracking-wide text-white sm:text-3xl">{currentSource?.label}</div>
+            <div className="text-xl font-semibold tracking-wide text-[#ffe81f] sm:text-3xl">{currentSource?.label}</div>
             {currentSource?.kind === 'winner' ? (
               <div className="mt-2 flex items-center justify-center gap-2">
                 <TeamIcon team={currentSource.actualTeam} size={40} />
