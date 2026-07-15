@@ -56,7 +56,7 @@ interface FinalResultsViewProps {
 // widely-supported Chrome/Edge hint that pre-selects "this tab" in the share picker.
 type DisplayMediaOptions = DisplayMediaStreamOptions & { preferCurrentTab?: boolean };
 
-const INTRO_DARK_MS = 2500;
+const INTRO_DARK_MS = 1000;
 const INTRO_LOGO_FADE_MS = 1800;
 const INTRO_LOGO_HOLD_MS = 2200;
 const INTRO_TEXT_DELAY_MS = 900;
