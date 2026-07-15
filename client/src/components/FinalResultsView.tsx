@@ -54,7 +54,7 @@ interface FinalResultsViewProps {
 // widely-supported Chrome/Edge hint that pre-selects "this tab" in the share picker.
 type DisplayMediaOptions = DisplayMediaStreamOptions & { preferCurrentTab?: boolean };
 
-const INTRO_MS = 9000;
+const INTRO_MS = 14000;
 const LABEL_MS = 1200;
 const PRE_REVEAL_MS = 700;
 const STATIC_MS = 1000;
@@ -564,11 +564,13 @@ export default function FinalResultsView({
 
       {showIntro ? (
         <div className="intro-crawl-container absolute inset-0 overflow-hidden px-6">
-          <div
-            className="animate-intro-crawl text-center text-3xl font-black uppercase leading-tight tracking-wide text-[#ffe81f] sm:text-5xl md:text-7xl"
-            style={{ animationDuration: `${introCrawlMs}ms` }}
-          >
-            {introText}
+          <div className="intro-crawl-tilt">
+            <div
+              className="animate-intro-crawl text-center text-4xl font-black uppercase leading-tight tracking-wide text-[#ffe81f] sm:text-6xl md:text-8xl"
+              style={{ animationDuration: `${introCrawlMs}ms` }}
+            >
+              {introText}
+            </div>
           </div>
         </div>
       ) : (
