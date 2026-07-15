@@ -615,13 +615,15 @@ export default function FinalResultsView({
 
           {crawlStarted && (
             <div className="intro-crawl-container px-1 sm:px-6">
-              <div
-                className="animate-intro-crawl text-center text-3xl font-black uppercase leading-tight tracking-wide text-[#ffe81f] sm:text-7xl lg:text-9xl"
-                style={{ animationDuration: `${introCrawlMs}ms` }}
-              >
-                {introText.split('\n\n').map((paragraph, i) => (
-                  <p key={i} className="mb-10 last:mb-0 sm:mb-16">{paragraph}</p>
-                ))}
+              <div className="intro-crawl-stage">
+                <div
+                  className="animate-intro-crawl text-center text-3xl font-black uppercase leading-tight tracking-wide text-[#ffe81f] sm:text-7xl lg:text-9xl"
+                  style={{ animationDuration: `${introCrawlMs}ms` }}
+                >
+                  {introText.split('\n\n').map((paragraph, i) => (
+                    <p key={i} className="mb-10 last:mb-0 sm:mb-16">{paragraph}</p>
+                  ))}
+                </div>
               </div>
             </div>
           )}
