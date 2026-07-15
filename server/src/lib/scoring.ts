@@ -244,23 +244,23 @@ export function getUserPredictedTeamForKnockoutSlot(
     prevStage, feederIndex, 'away', firstRound, matchesByStage, userBracketPredictions,
   );
 
-  // Score comparison takes precedence over progressingTeamId (matches client getWinner logic).
-  // progressingTeamId can become stale if the user changes group-stage predictions after
-  // filling in bracket picks, so it must not override a clear score-based winner.
-  // When flipped, pred.homeScore/awayScore are recorded relative to the user's displayed
-  // (swapped) orientation, so they correspond to predictedAway/predictedHome respectively.
-  const winnerIsHomeScoreSide = pred.flipped
-    ? pred.awayScore > pred.homeScore
-    : pred.homeScore > pred.awayScore;
-  const winnerIsAwayScoreSide = pred.flipped
-    ? pred.homeScore > pred.awayScore
-    : pred.awayScore > pred.homeScore;
-  if (winnerIsHomeScoreSide) return predictedHome;
-  if (winnerIsAwayScoreSide) return predictedAway;
-  // Draw: only use progressingTeamId if it still refers to one of the predicted teams.
-  if (pred.progressingTeamId === predictedHome || pred.progressingTeamId === predictedAway) {
-    return pred.progressingTeamId;
-  }
+  // Direct score comparison determines the winner — mirrors the client's getWinner()
+  // exactly (KnockoutStageContent.tsx). progressingTeamId is only a tie-break for a
+  // drawn scoreline.
+  //
+  // pred.flipped must NOT be consulted here. It's a leaf-level, single-match concept —
+  // whether THIS match's own recorded score needs swapping to compare against the REAL
+  // match's home/away — computed once, at write time, against the actual/confirmed
+  // bracket (scoringTrigger.ts). predictedHome/predictedAway above are already resolved
+  // consistently against whichever baseline `matchesByStage` represents (actual, or the
+  // user's own predicted first-round teams). Reinterpreting them through a flag computed
+  // against a different baseline is a category error that can point this recursion at
+  // the wrong feeder team. The client's getWinner/getLoser never read `flipped` for this
+  // reason — do the same here.
+  if (pred.homeScore > pred.awayScore) return predictedHome;
+  if (pred.awayScore > pred.homeScore) return predictedAway;
+  if (pred.progressingTeamId === predictedHome) return predictedHome;
+  if (pred.progressingTeamId === predictedAway) return predictedAway;
   return null;
 }
 

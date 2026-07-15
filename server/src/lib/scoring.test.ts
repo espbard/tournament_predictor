@@ -245,16 +245,18 @@ describe('getUserPredictedTeamForKnockoutSlot', () => {
     expect(result).toBe('team-b');
   });
 
-  it('accounts for flipped predictions when tracing the winner', () => {
-    // Raw score is 0-2 (looks like an away win), but flipped means the fields are
-    // swapped relative to the actual match sides, so team-a (home) really won.
+  it('ignores a stored flipped flag and reads the score literally (matches client getWinner)', () => {
+    // flipped is a leaf-level, single-match display concept computed against a
+    // possibly different baseline than this recursion is tracing — honoring it here
+    // would be a category error, so it must be ignored. Score 0-2 is an away win,
+    // full stop, regardless of the stored flag.
     const preds: BracketPredictions = {
       'round_of_16_0': { homeScore: 0, awayScore: 2, progressingTeamId: null, flipped: true },
     };
     const result = getUserPredictedTeamForKnockoutSlot(
       'quarter_final', 0, 'home', 'round_of_16', matchesByStage, preds,
     );
-    expect(result).toBe('team-a');
+    expect(result).toBe('team-b');
   });
 
   it('uses explicit progressingTeamId on a draw', () => {
@@ -539,10 +541,12 @@ describe('calculateKnockoutPoints', () => {
     expect(result.breakdown.correctTeamInFinal).toBeGreaterThanOrEqual(5);
   });
 
-  it('does not double-count a single correct finalist when the feeding semi-final is flipped', () => {
-    // Regression test for a real production bug: a semi-final bracket prediction stored
-    // with flipped:true was scored as if it weren't flipped, making an incorrectly-guessed
-    // finalist look correct too — turning one genuinely correct finalist (5) into two (10).
+  it('reads a feeder\'s literal score regardless of a stored flipped flag', () => {
+    // semi_final_0 is stored with flipped:true, but the recursion now ignores that flag
+    // (it's a leaf-level display concept, not a trajectory-tracing one — see
+    // getUserPredictedTeamForKnockoutSlot) and reads the 3-0 score literally: home
+    // (team-a) advances. team-a genuinely is a real finalist here, so both real
+    // finalists (team-a, team-b) are correctly traced and both earn credit.
     const sfFirstRound = 'semi_final';
     const sfMatches = [
       { id: 'sf-0', stage: 'semi_final', homeTeamId: 'team-a', awayTeamId: 'team-d', homeScore: 3, awayScore: 0, progressingTeamId: 'team-a', status: 'completed' },
@@ -551,16 +555,59 @@ describe('calculateKnockoutPoints', () => {
     const finalMatch = { id: 'f-0', stage: 'final', homeTeamId: 'team-a', awayTeamId: 'team-b', homeScore: 3, awayScore: 0, progressingTeamId: 'team-a', status: 'completed' };
     const matchesForTest = [...sfMatches, finalMatch];
     const preds: BracketPredictions = {
-      // Stored flipped — the user's real pick was team-d (the actual away/losing team), not team-a.
       'semi_final_0': { homeScore: 3, awayScore: 0, progressingTeamId: 'team-d', flipped: true },
-      // Correctly predicts team-b (unflipped).
       'semi_final_1': { homeScore: 3, awayScore: 0, progressingTeamId: 'team-b' },
       'final_0': { homeScore: 3, awayScore: 0, progressingTeamId: 'team-d' },
     };
     const result = calculateKnockoutPoints(matchesForTest, sfFirstRound, preds, CONFIG);
-    // Only team-b was genuinely predicted as a finalist — team-d isn't even in the final.
-    expect(result.breakdown.correctTeamInFinal).toBe(CONFIG.correct_team_in_final);
+    expect(result.breakdown.correctTeamInFinal).toBe(CONFIG.correct_team_in_final * 2);
     expect(result.breakdown.correctWinner).toBe(0);
+  });
+
+  it('does not double-count a correct finalist when a depth-2 feeder carries a stale flipped flag and predicted first-round teams diverge from the real bracket', () => {
+    // Regression test for a real production bug: a semi-final prediction's `flipped` flag
+    // was computed at write time against the REAL bracket (scoringTrigger.ts), but read-time
+    // tracing here runs through the user's own PREDICTED first-round teams (their group-stage
+    // guess for quarter_final_1 was T9 vs T3, when the real QF-1 was T2 vs T3). Honoring the
+    // stale flag mixes the two baselines and produces a bogus second "correct finalist" credit.
+    const qfFirstRound = 'quarter_final';
+    const allStagesMatches = [
+      { id: 'qf-0', stage: 'quarter_final', homeTeamId: 'T0', awayTeamId: 'T1', homeScore: 2, awayScore: 1, progressingTeamId: 'T0', status: 'completed' },
+      { id: 'qf-1', stage: 'quarter_final', homeTeamId: 'T2', awayTeamId: 'T3', homeScore: 1, awayScore: 0, progressingTeamId: 'T2', status: 'completed' },
+      { id: 'qf-2', stage: 'quarter_final', homeTeamId: 'T4', awayTeamId: 'T5', homeScore: 3, awayScore: 1, progressingTeamId: 'T4', status: 'completed' },
+      { id: 'qf-3', stage: 'quarter_final', homeTeamId: 'T6', awayTeamId: 'T7', homeScore: 2, awayScore: 0, progressingTeamId: 'T6', status: 'completed' },
+      { id: 'sf-0', stage: 'semi_final', homeTeamId: 'T0', awayTeamId: 'T2', homeScore: 1, awayScore: 0, progressingTeamId: 'T0', status: 'completed' },
+      { id: 'sf-1', stage: 'semi_final', homeTeamId: 'T4', awayTeamId: 'T6', homeScore: 2, awayScore: 1, progressingTeamId: 'T4', status: 'completed' },
+      { id: 'f-0', stage: 'final', homeTeamId: 'T0', awayTeamId: 'T4', homeScore: 2, awayScore: 0, progressingTeamId: 'T0', status: 'completed' },
+    ];
+
+    // User's own predicted QF-1 diverges from the real bracket (T9 vs T3 instead of T2 vs T3)
+    // — this is the group-stage guess that turned out wrong.
+    const predictedFirstRoundTeams: FirstRoundPredTeams = {
+      'quarter_final_0': { predHomeId: 'T0', predAwayId: 'T1' },
+      'quarter_final_1': { predHomeId: 'T9', predAwayId: 'T3' },
+      'quarter_final_2': { predHomeId: 'T4', predAwayId: 'T5' },
+      'quarter_final_3': { predHomeId: 'T6', predAwayId: 'T7' },
+    };
+
+    const preds: BracketPredictions = {
+      'quarter_final_0': { homeScore: 2, awayScore: 1, progressingTeamId: null }, // predicts T0 (home)
+      'quarter_final_1': { homeScore: 0, awayScore: 2, progressingTeamId: null }, // predicts T3 (away)
+      'quarter_final_2': { homeScore: 3, awayScore: 1, progressingTeamId: null }, // predicts T4 (home)
+      'quarter_final_3': { homeScore: 2, awayScore: 0, progressingTeamId: null }, // predicts T6 (home)
+      // User's own predicted SF-0 is really "T0 vs T3" (their QF picks above) — but this
+      // prediction was stored with a stale flipped:true (computed at write time by tracing
+      // the REAL SF-0, T0 vs T2, not the user's predicted T0 vs T3).
+      'semi_final_0': { homeScore: 0, awayScore: 2, progressingTeamId: null, flipped: true },
+      'semi_final_1': { homeScore: 2, awayScore: 0, progressingTeamId: null }, // predicts T4 (home) — genuinely correct
+      'final_0': { homeScore: 0, awayScore: 1, progressingTeamId: null },
+    };
+
+    const result = calculateKnockoutPoints(allStagesMatches, qfFirstRound, preds, CONFIG, predictedFirstRoundTeams);
+
+    // The user's literal SF-0 score (0-2) predicts T3 (their predicted away team) to win —
+    // T3 never reaches the real final, so only T4 (via SF-1) is a genuinely correct finalist.
+    expect(result.breakdown.correctTeamInFinal).toBe(CONFIG.correct_team_in_final); // 5, not 10
   });
 
   it('traces later-round trajectories against predictedFirstRoundTeams when supplied, matching the knockout card', () => {
