@@ -1191,12 +1191,18 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
           const pred = bpPreds[bracketKey];
           if (!pred) continue;
 
-          // Used for both what's shown to the user (team name/image) and for scoring
-          // (correct_team_in_knockout_tie / correct_team_in_final / correct_winner), matching
-          // the predicted-trajectory semantics of the knockout prediction cards
-          // (KnockoutStageContent.tsx matchTeams/pointsInfo) regardless of stage.
+          // Used for what's shown to the user (team name/image): matches the predicted-trajectory
+          // semantics of the knockout prediction cards (KnockoutStageContent.tsx matchTeams)
+          // regardless of stage.
           let displayHomeTeamId: string | null = null;
           let displayAwayTeamId: string | null = null;
+          // Used for scoring (correct_team_in_knockout_tie / correct_team_in_final / correct_winner).
+          // Must trace against the actual, confirmed bracket once it's known — tracing against the
+          // user's own predicted first-round teams makes a later-round pick's correctness depend on
+          // an unrelated group-stage guess, which can just as easily under- or over-count a genuinely
+          // correct pick as the real bracket diverges from the user's predicted one.
+          let predHomeTeamId: string | null = null;
+          let predAwayTeamId: string | null = null;
 
           if (koCfg) {
             const { firstRound } = koCfg;
@@ -1206,15 +1212,21 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
             if (bracketStage === firstRound) {
               displayHomeTeamId = firstRoundPredTeams[bracketKey]?.predHomeId ?? null;
               displayAwayTeamId = firstRoundPredTeams[bracketKey]?.predAwayId ?? null;
+              predHomeTeamId = displayHomeTeamId;
+              predAwayTeamId = displayAwayTeamId;
             } else if (bracketStage === 'bronze_final') {
               // Bronze final isn't part of the win-progression tree, so it isn't reachable
               // through getUserPredictedTeamForKnockoutSlot's recursion. Its occupants are
               // the losers of the two predicted semifinals (mirrors client bronzeTeams logic).
               displayHomeTeamId = getUserPredictedBronzeFinalTeam('home', firstRound, matchesByStageForPred, bpPreds);
               displayAwayTeamId = getUserPredictedBronzeFinalTeam('away', firstRound, matchesByStageForPred, bpPreds);
+              predHomeTeamId = displayHomeTeamId;
+              predAwayTeamId = displayAwayTeamId;
             } else {
               displayHomeTeamId = getUserPredictedTeamForKnockoutSlot(bracketStage, matchIdx, 'home', firstRound, matchesByStageForPred, bpPreds);
               displayAwayTeamId = getUserPredictedTeamForKnockoutSlot(bracketStage, matchIdx, 'away', firstRound, matchesByStageForPred, bpPreds);
+              predHomeTeamId = getUserPredictedTeamForKnockoutSlot(bracketStage, matchIdx, 'home', firstRound, matchesByStageActual, bpPreds);
+              predAwayTeamId = getUserPredictedTeamForKnockoutSlot(bracketStage, matchIdx, 'away', firstRound, matchesByStageActual, bpPreds);
             }
           }
 
@@ -1246,16 +1258,16 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
                 if (pred.progressingTeamId) {
                   userPredictedWinner = pred.progressingTeamId;
                 } else if (!shouldFlip) {
-                  if (pred.homeScore > pred.awayScore) userPredictedWinner = displayHomeTeamId;
-                  else if (pred.awayScore > pred.homeScore) userPredictedWinner = displayAwayTeamId;
+                  if (pred.homeScore > pred.awayScore) userPredictedWinner = predHomeTeamId;
+                  else if (pred.awayScore > pred.homeScore) userPredictedWinner = predAwayTeamId;
                 } else {
-                  if (pred.homeScore > pred.awayScore) userPredictedWinner = displayAwayTeamId;
-                  else if (pred.awayScore > pred.homeScore) userPredictedWinner = displayHomeTeamId;
+                  if (pred.homeScore > pred.awayScore) userPredictedWinner = predAwayTeamId;
+                  else if (pred.awayScore > pred.homeScore) userPredictedWinner = predHomeTeamId;
                 }
               }
               for (const actualTeamId of [koMatchData.homeTeamId, koMatchData.awayTeamId]) {
                 if (!actualTeamId) continue;
-                if (displayHomeTeamId !== actualTeamId && displayAwayTeamId !== actualTeamId) continue;
+                if (predHomeTeamId !== actualTeamId && predAwayTeamId !== actualTeamId) continue;
                 if (koMatchData.stage === 'final') {
                   koPoints += scoringConfig.correct_team_in_final;
                   koBd.correctTeamInFinal += scoringConfig.correct_team_in_final;
