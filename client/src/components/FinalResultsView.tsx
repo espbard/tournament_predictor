@@ -66,6 +66,7 @@ const LABEL_MS = 1200;
 const PRE_REVEAL_MS = 700;
 const STATIC_MS = 1000;
 const FALL_MS = 1000;
+const RESORT_DELAY_MS = 500;
 const PAUSE_MS = 900;
 const OVERLAY_DELAY_MS = 2800;
 const FAST_FORWARD_MULTIPLIER = 4;
@@ -307,6 +308,10 @@ export default function FinalResultsView({
   const [sourceIdx, setSourceIdx] = useState(-1);
   const [phase, setPhase] = useState<'idle' | 'label' | 'preReveal' | 'static' | 'falling' | 'landed'>('idle');
   const [totals, setTotals] = useState<Record<string, number>>({});
+  // Bars grow against `totals` the instant points land, but left-to-right order follows
+  // this lagging copy instead — updated `RESORT_DELAY_MS` later — so users can watch a
+  // bar grow before the whole lineup shuffles around it.
+  const [sortTotals, setSortTotals] = useState<Record<string, number>>({});
   const [done, setDone] = useState(false);
   const [showOverlay, setShowOverlay] = useState(false);
   const [paused, setPaused] = useState(false);
@@ -443,6 +448,7 @@ export default function FinalResultsView({
       setLogosVisible(false);
       setCrawlStarted(false);
       setTotals({});
+      setSortTotals({});
       setDone(false);
       setShowOverlay(false);
       await pw(INTRO_DARK_MS);
@@ -476,14 +482,18 @@ export default function FinalResultsView({
         setPhase('falling');
         await pw(FALL_MS);
         if (cancelled) return;
+        let newTotals: Record<string, number> = {};
         setTotals(prev => {
-          const next = { ...prev };
+          newTotals = { ...prev };
           for (const [uid, pts] of Object.entries(pointSources[i].pointsByUser)) {
-            next[uid] = (next[uid] ?? 0) + pts;
+            newTotals[uid] = (newTotals[uid] ?? 0) + pts;
           }
-          return next;
+          return newTotals;
         });
         setPhase('landed');
+        await pw(RESORT_DELAY_MS);
+        if (cancelled) return;
+        setSortTotals(newTotals);
         await pw(PAUSE_MS);
       }
       if (!cancelled) {
@@ -509,16 +519,18 @@ export default function FinalResultsView({
     return Math.max(max, 1);
   }, [users, pointSources]);
 
-  // Left-to-right order follows current standing — ties keep their prior relative
-  // order (stable sort + original-index tiebreaker) so nothing jitters at 0-0.
+  // Left-to-right order follows `sortTotals` (which lags `totals` by RESORT_DELAY_MS)
+  // rather than `totals` directly, so bars visibly grow before the lineup reshuffles.
+  // Ties keep their prior relative order (stable sort + original-index tiebreaker) so
+  // nothing jitters at 0-0.
   const rankByUserId = useMemo(() => {
     const ranked = users
-      .map((u, i) => ({ userId: u.userId, i, total: totals[u.userId] ?? 0 }))
+      .map((u, i) => ({ userId: u.userId, i, total: sortTotals[u.userId] ?? 0 }))
       .sort((a, b) => b.total - a.total || a.i - b.i);
     const m = new Map<string, number>();
     ranked.forEach((u, idx) => m.set(u.userId, idx));
     return m;
-  }, [users, totals]);
+  }, [users, sortTotals]);
 
   const winner = useMemo(() => {
     if (!done || users.length === 0) return null;
@@ -702,7 +714,7 @@ export default function FinalResultsView({
                     >
                       {sourceAnswer !== undefined && (
                         compactLayout ? (
-                          <span className={`max-h-28 [writing-mode:vertical-rl] rotate-180 overflow-hidden whitespace-nowrap text-ellipsis text-xs font-semibold leading-tight ${isCorrect ? 'text-[#ffe81f]' : 'text-gray-400'}`}>
+                          <span className={`h-28 [writing-mode:vertical-rl] rotate-180 overflow-hidden whitespace-nowrap text-ellipsis text-xs font-semibold leading-tight ${isCorrect ? 'text-[#ffe81f]' : 'text-gray-400'}`}>
                             {sourceAnswer || '—'}
                           </span>
                         ) : (
@@ -737,7 +749,7 @@ export default function FinalResultsView({
                       resizeWidth={96}
                     />
                     {compactLayout ? (
-                      <span className="max-h-16 [writing-mode:vertical-rl] rotate-180 overflow-hidden whitespace-nowrap text-ellipsis text-[9px] font-medium text-white">
+                      <span className="h-16 [writing-mode:vertical-rl] rotate-180 overflow-hidden whitespace-nowrap text-ellipsis text-[9px] font-medium text-white">
                         {user.username}
                       </span>
                     ) : (
