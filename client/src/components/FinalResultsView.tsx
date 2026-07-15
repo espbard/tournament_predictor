@@ -156,11 +156,21 @@ function Fireworks() {
 
 function TeamIcon({ team, size, correct }: { team: TeamInfo | null | undefined; size: number; correct?: boolean }) {
   const ring = correct ? 'ring-2 ring-offset-2 ring-offset-black ring-[#ffe81f]' : '';
+  // Pin both dimensions (not just width) and disable all flex grow/shrink so this can
+  // never be stretched into an oval — including when many of these end up packed
+  // together tighter than their own width and start overlapping.
+  const circleStyle: React.CSSProperties = {
+    width: size,
+    height: size,
+    minWidth: size,
+    minHeight: size,
+    aspectRatio: '1 / 1',
+  };
   if (!team) {
     return (
       <div
-        className={`flex flex-shrink-0 items-center justify-center rounded-full bg-white/10 text-[#ffe81f]/60 ${ring}`}
-        style={{ width: size, height: size, fontSize: Math.max(8, Math.round(size * 0.45)), fontWeight: 700 }}
+        className={`flex flex-shrink-0 flex-grow-0 items-center justify-center rounded-full bg-white/10 text-[#ffe81f]/60 ${ring}`}
+        style={{ ...circleStyle, fontSize: Math.max(8, Math.round(size * 0.45)), fontWeight: 700 }}
       >
         ?
       </div>
@@ -170,13 +180,13 @@ function TeamIcon({ team, size, correct }: { team: TeamInfo | null | undefined; 
     <img
       src={team.imageUrl}
       alt=""
-      className={`flex-shrink-0 rounded-full object-cover ${ring}`}
-      style={{ width: size, height: size }}
+      className={`flex-shrink-0 flex-grow-0 rounded-full object-cover ${ring}`}
+      style={circleStyle}
     />
   ) : (
     <div
-      className={`flex flex-shrink-0 items-center justify-center rounded-full bg-white/10 font-bold text-[#ffe81f] ${ring}`}
-      style={{ width: size, height: size, fontSize: Math.max(8, Math.round(size * 0.4)) }}
+      className={`flex flex-shrink-0 flex-grow-0 items-center justify-center rounded-full bg-white/10 font-bold text-[#ffe81f] ${ring}`}
+      style={{ ...circleStyle, fontSize: Math.max(8, Math.round(size * 0.4)) }}
     >
       {team.name?.charAt(0) ?? '?'}
     </div>
@@ -802,18 +812,23 @@ export default function FinalResultsView({
                   {showReveal && (
                     <div
                       key={`${currentSource?.id}-reveal`}
-                      className={`absolute left-1/2 z-20 flex -translate-x-1/2 flex-col items-center ${compactLayout ? 'gap-0.5' : 'gap-1.5'} ${
+                      className={`absolute left-1/2 flex -translate-x-1/2 flex-col items-center ${compactLayout ? 'gap-0.5' : 'gap-1.5'} ${
                         isFalling ? 'animate-points-fall' : ''
                       }`}
-                      style={
-                        isFalling
+                      style={{
+                        // Columns can be narrower than a fixed-size team icon once there
+                        // are many users, so neighbors end up overlapping. Stack them so the
+                        // leftmost user is always frontmost and the rightmost is backmost,
+                        // rather than an arbitrary DOM-order stack.
+                        zIndex: 20 + (users.length - rank),
+                        ...(isFalling
                           ? ({
                               ['--fall-start' as string]: `${revealTopPx}px`,
                               animationDuration: `${fallDurationMs}ms`,
                               animationPlayState: paused ? 'paused' : 'running',
                             } as React.CSSProperties)
-                          : { top: revealTopPx, opacity: 1 }
-                      }
+                          : { top: revealTopPx, opacity: 1 }),
+                      }}
                     >
                       {sourceAnswer !== undefined && (
                         verticalAnswerLayout ? (
