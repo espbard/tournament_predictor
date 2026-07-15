@@ -571,6 +571,20 @@ function parseCorrectAnswers(raw: string): string[] {
   return [raw];
 }
 
+// Pure scoring rule shared by the real (post-completion) scoring pass and the
+// test-account preview shown on the Final Results page before the tournament
+// is actually completed — the latter never writes to the database, it just
+// tells a privileged viewer what a submitted answer would be worth.
+export function computeBonusAnswerPoints(
+  question: Pick<typeof bonusQuestions.$inferSelect, 'correctAnswer' | 'points'>,
+  answerText: string,
+): number {
+  if (!question.correctAnswer) return 0;
+  const correctAnswers = parseCorrectAnswers(question.correctAnswer);
+  const isCorrect = correctAnswers.some(ca => answerText.trim().toLowerCase() === ca.trim().toLowerCase());
+  return isCorrect ? question.points : 0;
+}
+
 // Scores a single bonus question's answers, unconditionally. Callers are
 // responsible for only invoking this once the tournament is completed —
 // bonus points must never be awarded before then.
@@ -582,12 +596,11 @@ async function scoreBonusQuestion(question: typeof bonusQuestions.$inferSelect):
     .from(bonusAnswers)
     .where(eq(bonusAnswers.questionId, question.id));
 
-  const correctAnswers = parseCorrectAnswers(question.correctAnswer);
   for (const answer of allAnswers) {
-    const isCorrect = correctAnswers.some(ca => answer.answer.trim().toLowerCase() === ca.trim().toLowerCase());
+    const points = computeBonusAnswerPoints(question, answer.answer);
     await db
       .update(bonusAnswers)
-      .set({ points: isCorrect ? question.points : 0 })
+      .set({ points })
       .where(eq(bonusAnswers.id, answer.id));
   }
 }
