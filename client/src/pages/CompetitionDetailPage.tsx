@@ -671,10 +671,10 @@ export default function CompetitionDetailPage() {
   }, [tournament?.status, tabParam, user?.isLeaderboardUser, user?.isAdmin, user?.id, id, setSearchParams]);
 
   useEffect(() => {
-    if (activeTab === 'finalResults' && tournament && tournament.status !== 'completed') {
+    if (activeTab === 'finalResults' && tournament && tournament.status !== 'completed' && !user?.isTestAccount) {
       setActiveTab('leaderboard');
     }
-  }, [activeTab, tournament]);
+  }, [activeTab, tournament, user?.isTestAccount]);
 
   // The first time a user encounters a completed tournament — whether that's on page
   // load or because it flips to completed while they already have the page open — send

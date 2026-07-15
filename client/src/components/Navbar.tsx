@@ -175,7 +175,7 @@ export default function Navbar() {
                       <button onClick={() => setTab('pointProgression')} className={dropItemCls(activeTab === 'pointProgression')}>
                         {t('competitionDetail.tabs.pointProgression')}
                       </button>
-                      {tournamentCompleted && (
+                      {(tournamentCompleted || user?.isTestAccount) && (
                         <button onClick={() => setTab('finalResults')} className={dropItemCls(activeTab === 'finalResults')}>
                           {t('competitionDetail.tabs.finalResults')}
                         </button>
