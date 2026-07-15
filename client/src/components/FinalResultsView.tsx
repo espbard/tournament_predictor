@@ -614,10 +614,10 @@ export default function FinalResultsView({
           </div>
 
           {crawlStarted && (
-            <div className="intro-crawl-container absolute inset-0 overflow-hidden px-6">
+            <div className="intro-crawl-container absolute inset-0 overflow-hidden px-1 sm:px-6">
               <div className="intro-crawl-tilt">
                 <div
-                  className="animate-intro-crawl text-center text-5xl font-black uppercase leading-tight tracking-wide text-[#ffe81f] sm:text-7xl md:text-9xl"
+                  className="animate-intro-crawl text-center text-5xl font-black uppercase leading-tight tracking-wide text-[#ffe81f] sm:text-7xl lg:text-9xl"
                   style={{ animationDuration: `${introCrawlMs}ms` }}
                 >
                   {introText}

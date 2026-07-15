@@ -64,34 +64,36 @@
 
 /* How far below the screen the crawl starts has to scale with viewport shape:
    narrow phone screens wrap the (wide, large-font) text into many more lines
-   than a wide desktop window, so they need a much larger vh offset to stay
-   fully hidden at rest. A custom property (rather than baking a number into
-   the keyframes) lets each breakpoint supply its own value. */
+   than a wide desktop window, so they need a larger vh offset to stay fully
+   hidden at rest. A custom property (rather than baking a number into the
+   keyframes) lets each breakpoint supply its own value — the breakpoints here
+   match the text-size breakpoints below exactly (sm/lg), so a given tier's
+   font size and hide-offset are always calibrated together. */
 @keyframes intro-crawl {
-  0%   { transform: translateY(var(--crawl-start-y, 500vh)) scale(1); opacity: 1; }
+  0%   { transform: translateY(var(--crawl-start-y, 110vh)) scale(1); opacity: 1; }
   75%  { opacity: 1; }
   100% { transform: translateY(-450vh) scale(0.1); opacity: 0; }
 }
 
 .animate-intro-crawl {
   position: absolute;
-  left: 2%;
-  right: 2%;
+  left: 0;
+  right: 0;
   bottom: 0;
   margin: 0 auto;
   max-width: 90rem;
-  --crawl-start-y: 500vh;
+  --crawl-start-y: 110vh;
   animation-name: intro-crawl;
   animation-timing-function: linear;
   animation-fill-mode: forwards;
 }
 
 @media (min-width: 640px) {
-  .animate-intro-crawl { --crawl-start-y: 320vh; }
+  .animate-intro-crawl { --crawl-start-y: 170vh; }
 }
 
 @media (min-width: 1024px) {
-  .animate-intro-crawl { --crawl-start-y: 200vh; }
+  .animate-intro-crawl { --crawl-start-y: 230vh; }
 }
 
 @keyframes points-fall {
