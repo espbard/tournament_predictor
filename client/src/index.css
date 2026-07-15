@@ -37,13 +37,27 @@
   animation: edge-pulse-gold 2.5s ease-in-out infinite;
 }
 
-@keyframes intro-fade-in-down {
-  0%   { opacity: 0; transform: translateY(-40px); }
-  100% { opacity: 1; transform: translateY(0); }
+.intro-crawl-container {
+  perspective: 400px;
+  perspective-origin: 50% 100%;
 }
 
-.animate-intro-fade-in-down {
-  animation: intro-fade-in-down 2s ease-out forwards;
+@keyframes intro-crawl {
+  0%   { top: 100%; opacity: 1; }
+  80%  { opacity: 1; }
+  100% { top: -300%; opacity: 0; }
+}
+
+.animate-intro-crawl {
+  position: absolute;
+  left: 50%;
+  width: 90%;
+  max-width: 56rem;
+  transform: translateX(-50%) rotateX(25deg);
+  transform-origin: 50% 100%;
+  animation-name: intro-crawl;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
 }
 
 @keyframes points-fall {
