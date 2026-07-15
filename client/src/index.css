@@ -69,10 +69,15 @@
    keyframes) lets each breakpoint supply its own value — the breakpoints here
    match the text-size breakpoints below exactly (sm/lg), so a given tier's
    font size and hide-offset are always calibrated together. */
+/* The 0%-75% span keeps the same shape that was already tuned for a
+   readable pace; the last quarter then does an extra rise-and-shrink on
+   top of that (rather than spreading the whole climb evenly across 100%)
+   so the text vanishes noticeably higher up the screen instead of fading
+   out around mid-height. */
 @keyframes intro-crawl {
   0%   { transform: translateY(var(--crawl-start-y, 110vh)) scale(1); opacity: 1; }
-  75%  { opacity: 1; }
-  100% { transform: translateY(-450vh) scale(0.1); opacity: 0; }
+  75%  { transform: translateY(-450vh) scale(0.1); opacity: 1; }
+  100% { transform: translateY(-1500vh) scale(0.02); opacity: 0; }
 }
 
 .animate-intro-crawl {

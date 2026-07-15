@@ -151,11 +151,11 @@ function Fireworks() {
 }
 
 function TeamIcon({ team, size, correct }: { team: TeamInfo | null | undefined; size: number; correct?: boolean }) {
-  const ring = correct ? 'ring-2 ring-offset-2 ring-offset-black ring-green-400' : '';
+  const ring = correct ? 'ring-2 ring-offset-2 ring-offset-black ring-[#ffe81f]' : '';
   if (!team) {
     return (
       <div
-        className={`flex flex-shrink-0 items-center justify-center rounded-full bg-white/10 text-white/60 ${ring}`}
+        className={`flex flex-shrink-0 items-center justify-center rounded-full bg-white/10 text-[#ffe81f]/60 ${ring}`}
         style={{ width: size, height: size, fontSize: Math.max(8, Math.round(size * 0.45)), fontWeight: 700 }}
       >
         ?
@@ -171,7 +171,7 @@ function TeamIcon({ team, size, correct }: { team: TeamInfo | null | undefined; 
     />
   ) : (
     <div
-      className={`flex flex-shrink-0 items-center justify-center rounded-full bg-white/10 font-bold text-white ${ring}`}
+      className={`flex flex-shrink-0 items-center justify-center rounded-full bg-white/10 font-bold text-[#ffe81f] ${ring}`}
       style={{ width: size, height: size, fontSize: Math.max(8, Math.round(size * 0.4)) }}
     >
       {team.name?.charAt(0) ?? '?'}
@@ -557,14 +557,14 @@ export default function FinalResultsView({
           <button
             onClick={() => { stopRecording(); onGoToLeaderboard(); }}
             aria-label={exitLabel}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur hover:bg-white/20"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-[#ffe81f]/10 text-[#ffe81f] backdrop-blur hover:bg-[#ffe81f]/20"
           >
             <X size={18} />
           </button>
           <button
             onClick={() => setPaused(p => !p)}
             aria-label={paused ? playLabel : pauseLabel}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur hover:bg-white/20"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-[#ffe81f]/10 text-[#ffe81f] backdrop-blur hover:bg-[#ffe81f]/20"
           >
             {paused ? <Play size={18} /> : <Pause size={18} />}
           </button>
@@ -577,7 +577,7 @@ export default function FinalResultsView({
             <button
               onClick={() => setShowDownloadPrompt(true)}
               aria-label={downloadLabel}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur hover:bg-white/20"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-[#ffe81f]/10 text-[#ffe81f] backdrop-blur hover:bg-[#ffe81f]/20"
             >
               <Download size={18} />
             </button>
@@ -590,7 +590,7 @@ export default function FinalResultsView({
           onClick={() => setFastForward(f => !f)}
           aria-label={fastForwardLabel}
           className={`absolute right-4 top-4 z-[210] flex h-9 w-9 items-center justify-center rounded-full backdrop-blur transition-colors sm:right-6 sm:top-6 ${
-            fastForward ? 'bg-white/30 text-white' : 'bg-white/10 text-white hover:bg-white/20'
+            fastForward ? 'bg-[#ffe81f]/30 text-[#ffe81f]' : 'bg-[#ffe81f]/10 text-[#ffe81f] hover:bg-[#ffe81f]/20'
           }`}
         >
           <FastForward size={18} />
@@ -636,18 +636,18 @@ export default function FinalResultsView({
             style={{ transitionDuration: `${headerTransitionMs}ms` }}
           >
             {currentSource?.eyebrow && (
-              <div className="text-sm font-medium uppercase tracking-wide text-white/60 sm:text-lg">{currentSource.eyebrow}</div>
+              <div className="text-sm font-medium uppercase tracking-wide text-[#ffe81f]/60 sm:text-lg">{currentSource.eyebrow}</div>
             )}
             <div className="text-xl font-semibold tracking-wide text-[#ffe81f] sm:text-3xl">{currentSource?.label}</div>
             {currentSource?.kind === 'winner' ? (
               <div className="mt-2 flex items-center justify-center gap-2">
                 <TeamIcon team={currentSource.actualTeam} size={40} />
                 {currentSource.actualTeam?.name && (
-                  <span className="text-lg font-semibold text-white sm:text-2xl">{currentSource.actualTeam.name}</span>
+                  <span className="text-lg font-semibold text-[#ffe81f] sm:text-2xl">{currentSource.actualTeam.name}</span>
                 )}
               </div>
             ) : currentSource?.subLabel && (
-              <div className="mt-1 text-sm text-white/70 sm:text-lg">{currentSource.subLabel}</div>
+              <div className="mt-1 text-sm text-[#ffe81f]/70 sm:text-lg">{currentSource.subLabel}</div>
             )}
           </div>
 
@@ -685,7 +685,7 @@ export default function FinalResultsView({
                       }
                     >
                       {sourceAnswer !== undefined && (
-                        <span className={`max-w-[150px] whitespace-normal break-words text-center leading-tight font-semibold sm:max-w-[260px] ${answerFontSizeClass(sourceAnswer || '—')} ${isCorrect ? 'text-green-400' : 'text-gray-400'}`}>
+                        <span className={`max-w-[150px] whitespace-normal break-words text-center leading-tight font-semibold sm:max-w-[260px] ${answerFontSizeClass(sourceAnswer || '—')} ${isCorrect ? 'text-[#ffe81f]' : 'text-gray-400'}`}>
                           {sourceAnswer || '—'}
                         </span>
                       )}
@@ -693,7 +693,7 @@ export default function FinalResultsView({
                         <TeamIcon team={predictedTeam} size={32} correct={isCorrect} />
                       )}
                       {showPoints && (
-                        <span className={`text-3xl font-extrabold sm:text-5xl ${sourcePoints > 0 ? 'text-green-400' : 'text-gray-500'}`}>
+                        <span className={`text-3xl font-extrabold sm:text-5xl ${sourcePoints > 0 ? 'text-[#ffe81f]' : 'text-gray-500'}`}>
                           {sourcePoints > 0 ? `+${sourcePoints}` : '0'}
                         </span>
                       )}
@@ -731,13 +731,13 @@ export default function FinalResultsView({
           <button
             onClick={() => setReplayCount(c => c + 1)}
             aria-label={replayLabel}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur hover:bg-white/20"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-[#ffe81f]/10 text-[#ffe81f] backdrop-blur hover:bg-[#ffe81f]/20"
           >
             <RotateCcw size={18} />
           </button>
           <button
             onClick={onGoToLeaderboard}
-            className="rounded-full bg-white/10 px-5 py-2 text-sm font-medium text-white backdrop-blur hover:bg-white/20 sm:text-base"
+            className="rounded-full bg-[#ffe81f]/10 px-5 py-2 text-sm font-medium text-[#ffe81f] backdrop-blur hover:bg-[#ffe81f]/20 sm:text-base"
           >
             {toLeaderboardLabel}
           </button>
@@ -746,28 +746,28 @@ export default function FinalResultsView({
 
       {showDownloadPrompt && (
         <div className="fixed inset-0 z-[310] flex items-center justify-center bg-black/70 p-4">
-          <div className="relative w-full max-w-sm rounded-xl border border-white/10 bg-neutral-900 p-6 text-center shadow-2xl">
+          <div className="relative w-full max-w-sm rounded-xl border border-[#ffe81f]/20 bg-neutral-900 p-6 text-center shadow-2xl">
             <button
               onClick={() => { setShowDownloadPrompt(false); setRecordError(null); }}
               aria-label={closeLabel}
-              className="absolute right-3 top-3 text-white/60 hover:text-white"
+              className="absolute right-3 top-3 text-[#ffe81f]/60 hover:text-[#ffe81f]"
             >
               <X size={20} />
             </button>
-            <Video size={28} className="mx-auto mb-3 text-white/80" />
-            <p className="text-lg font-bold text-white">{downloadPromptTitle}</p>
+            <Video size={28} className="mx-auto mb-3 text-[#ffe81f]/80" />
+            <p className="text-lg font-bold text-[#ffe81f]">{downloadPromptTitle}</p>
             <p className="mt-2 text-sm text-white/70">{downloadPromptBody}</p>
             {recordError && <p className="mt-3 text-sm text-red-400">{recordError}</p>}
             <div className="mt-5 flex justify-center gap-3">
               <button
                 onClick={() => { setShowDownloadPrompt(false); setRecordError(null); }}
-                className="rounded-full border border-white/20 px-4 py-2 text-sm font-medium text-white hover:bg-white/10"
+                className="rounded-full border border-[#ffe81f]/30 px-4 py-2 text-sm font-medium text-[#ffe81f] hover:bg-[#ffe81f]/10"
               >
                 {cancelLabel}
               </button>
               <button
                 onClick={handleStartRecording}
-                className="rounded-full bg-white px-4 py-2 text-sm font-medium text-black hover:bg-white/90"
+                className="rounded-full bg-[#ffe81f] px-4 py-2 text-sm font-medium text-black hover:bg-[#ffe81f]/90"
               >
                 {startRecordingLabel}
               </button>
@@ -779,11 +779,11 @@ export default function FinalResultsView({
       {showOverlay && winner && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/70 p-4">
           <Fireworks />
-          <div className="relative w-full max-w-sm rounded-xl border border-white/10 bg-neutral-900 p-6 text-center shadow-2xl">
+          <div className="relative w-full max-w-sm rounded-xl border border-[#ffe81f]/20 bg-neutral-900 p-6 text-center shadow-2xl">
             <button
               onClick={() => setShowOverlay(false)}
               aria-label={closeLabel}
-              className="absolute right-3 top-3 text-white/60 hover:text-white"
+              className="absolute right-3 top-3 text-[#ffe81f]/60 hover:text-[#ffe81f]"
             >
               <X size={20} />
             </button>
@@ -795,8 +795,8 @@ export default function FinalResultsView({
               className="mx-auto h-16 w-16"
               resizeWidth={128}
             />
-            <p className="mt-3 text-lg font-bold text-white">{winnerLabel(winner.username)}</p>
-            <p className="text-sm text-white/60">{totals[winner.userId] ?? 0} pts</p>
+            <p className="mt-3 text-lg font-bold text-[#ffe81f]">{winnerLabel(winner.username)}</p>
+            <p className="text-sm text-[#ffe81f]/60">{totals[winner.userId] ?? 0} pts</p>
           </div>
         </div>
       )}
