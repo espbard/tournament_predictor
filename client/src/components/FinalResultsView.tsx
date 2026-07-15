@@ -188,6 +188,16 @@ function answerFontSizeClass(text: string): string {
   return 'text-xs sm:text-base';
 }
 
+// With more users, each bar's column gets narrower, so the "+N" points readout has to
+// shrink to keep fitting beside its neighbors instead of overlapping them.
+function pointsFontSizeClass(userCount: number): string {
+  if (userCount <= 6) return 'text-3xl sm:text-5xl';
+  if (userCount <= 9) return 'text-2xl sm:text-4xl';
+  if (userCount <= 12) return 'text-lg sm:text-3xl';
+  if (userCount <= 16) return 'text-sm sm:text-xl';
+  return 'text-xs sm:text-lg';
+}
+
 const BAR_COLOR_PALETTE = [
   '#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#22c55e',
   '#10b981', '#14b8a6', '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6',
@@ -521,6 +531,10 @@ export default function FinalResultsView({
   const showPoints = currentSource !== null && (phase === 'static' || phase === 'falling');
   const isFalling = phase === 'falling';
   const widthPct = users.length > 0 ? 100 / users.length : 100;
+  // Past this many users, each column is too narrow for a horizontal name or a
+  // wrapped multi-line answer to fit without overlapping its neighbors — switch
+  // those to running vertically down the column instead.
+  const compactLayout = users.length > 8;
 
   // Screen recording is a desktop-only browser capability (no mobile browser implements
   // getDisplayMedia) — hide the download entry point entirely rather than showing a
@@ -673,7 +687,7 @@ export default function FinalResultsView({
                   {showReveal && (
                     <div
                       key={`${currentSource?.id}-reveal`}
-                      className={`absolute left-1/2 z-20 flex -translate-x-1/2 flex-col items-center gap-1.5 ${
+                      className={`absolute left-1/2 z-20 flex -translate-x-1/2 flex-col items-center ${compactLayout ? 'gap-0.5' : 'gap-1.5'} ${
                         isFalling ? 'animate-points-fall' : ''
                       }`}
                       style={
@@ -687,38 +701,50 @@ export default function FinalResultsView({
                       }
                     >
                       {sourceAnswer !== undefined && (
-                        <span className={`max-w-[150px] whitespace-normal break-words text-center leading-tight font-semibold sm:max-w-[260px] ${answerFontSizeClass(sourceAnswer || '—')} ${isCorrect ? 'text-[#ffe81f]' : 'text-gray-400'}`}>
-                          {sourceAnswer || '—'}
-                        </span>
+                        compactLayout ? (
+                          <span className={`max-h-28 [writing-mode:vertical-rl] rotate-180 overflow-hidden whitespace-nowrap text-ellipsis text-xs font-semibold leading-tight ${isCorrect ? 'text-[#ffe81f]' : 'text-gray-400'}`}>
+                            {sourceAnswer || '—'}
+                          </span>
+                        ) : (
+                          <span className={`max-w-[150px] whitespace-normal break-words text-center leading-tight font-semibold sm:max-w-[260px] ${answerFontSizeClass(sourceAnswer || '—')} ${isCorrect ? 'text-[#ffe81f]' : 'text-gray-400'}`}>
+                            {sourceAnswer || '—'}
+                          </span>
+                        )
                       )}
                       {currentSource?.kind === 'winner' && (
-                        <TeamIcon team={predictedTeam} size={32} correct={isCorrect} />
+                        <TeamIcon team={predictedTeam} size={compactLayout ? 18 : 32} correct={isCorrect} />
                       )}
                       {showPoints && (
-                        <span className={`text-3xl font-extrabold sm:text-5xl ${sourcePoints > 0 ? 'text-[#ffe81f]' : 'text-gray-500'}`}>
+                        <span className={`font-extrabold ${pointsFontSizeClass(users.length)} ${sourcePoints > 0 ? 'text-[#ffe81f]' : 'text-gray-500'}`}>
                           {sourcePoints > 0 ? `+${sourcePoints}` : '0'}
                         </span>
                       )}
                     </div>
                   )}
 
-                  <div className="flex w-full flex-1 items-end px-1 sm:px-1.5">
+                  <div className={`flex w-full flex-1 items-end ${compactLayout ? 'px-px' : 'px-1 sm:px-1.5'}`}>
                     <div
                       className="w-full rounded-t-sm transition-[height] ease-out"
                       style={{ height: `${pct}%`, background: `linear-gradient(to top, ${color}, ${color}99)`, transitionDuration: `${barTransitionMs}ms` }}
                     />
                   </div>
-                  <div className="mt-2 flex max-w-full flex-col items-center gap-1">
+                  <div className={`mt-2 flex max-w-full flex-col items-center ${compactLayout ? 'gap-0.5' : 'gap-1'}`}>
                     <UserAvatar
                       username={user.username}
                       imageUrl={user.imageUrl}
                       iconColor={user.iconColor}
-                      className="h-8 w-8 sm:h-10 sm:w-10"
+                      className={compactLayout ? 'h-5 w-5 sm:h-6 sm:w-6' : 'h-8 w-8 sm:h-10 sm:w-10'}
                       resizeWidth={96}
                     />
-                    <span className="max-w-full truncate text-[10px] font-medium text-white sm:text-xs">
-                      {user.username}
-                    </span>
+                    {compactLayout ? (
+                      <span className="max-h-16 [writing-mode:vertical-rl] rotate-180 overflow-hidden whitespace-nowrap text-ellipsis text-[9px] font-medium text-white">
+                        {user.username}
+                      </span>
+                    ) : (
+                      <span className="max-w-full truncate text-[10px] font-medium text-white sm:text-xs">
+                        {user.username}
+                      </span>
+                    )}
                     <span className="text-xs font-bold text-white sm:text-sm">{total}</span>
                   </div>
                 </div>
