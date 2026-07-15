@@ -127,6 +127,13 @@ function markFinalResultsSeen(competitionId: string, userId: string): void {
   localStorage.setItem(finalResultsSeenKey(competitionId, userId), '1');
 }
 
+// The final-results intro text reads better without a trailing year/edition
+// number (e.g. "FIFA World Cup 2026" -> "FIFA World Cup") since "over for i
+// år" / "over for this year" already conveys that.
+function stripDigitsFromName(name: string): string {
+  return name.replace(/\d+/g, '').replace(/\s{2,}/g, ' ').trim();
+}
+
 export default function CompetitionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuthStore();
@@ -664,10 +671,10 @@ export default function CompetitionDetailPage() {
   }, [tournament?.status, tabParam, user?.isLeaderboardUser, user?.isAdmin, user?.id, id, setSearchParams]);
 
   useEffect(() => {
-    if (activeTab === 'finalResults' && tournament && tournament.status !== 'completed') {
+    if (activeTab === 'finalResults' && tournament && tournament.status !== 'completed' && !user?.isTestAccount) {
       setActiveTab('leaderboard');
     }
-  }, [activeTab, tournament]);
+  }, [activeTab, tournament, user?.isTestAccount]);
 
   // The first time a user encounters a completed tournament — whether that's on page
   // load or because it flips to completed while they already have the page open — send
@@ -1073,6 +1080,11 @@ export default function CompetitionDetailPage() {
       }
     ),
     [matchList, allMatchPredictions, leaderboard, finalResultsBonusQuestions, finalResultsBonusAnswers, finalResultsUsers, t]
+  );
+
+  const finalMatchWinnerName = useMemo(
+    () => finalResultsPointSources.find(s => s.kind === 'winner')?.actualTeam?.name ?? '',
+    [finalResultsPointSources]
   );
 
   if (isLoading) return <LoadingSpinner />;
@@ -2820,13 +2832,21 @@ export default function CompetitionDetailPage() {
         <FinalResultsView
           users={finalResultsUsers}
           pointSources={finalResultsPointSources}
-          introText={t('competitionDetail.finalResults.intro', { name: tournament?.name ?? '' })}
+          introText={t('competitionDetail.finalResults.intro', {
+            tournamentNameNoNumbers: stripDigitsFromName(tournament?.name ?? ''),
+            competitionName: competition?.name ?? '',
+            finalWinner: finalMatchWinnerName,
+          })}
+          tournamentLogoUrl={tournament?.imageUrl}
+          competitionLogoUrl={competition?.imageUrl}
           winnerLabel={(name) => t('competitionDetail.finalResults.winner', { name })}
           toLeaderboardLabel={t('competitionDetail.finalResults.toLeaderboard')}
           closeLabel={t('competitionDetail.finalResults.close')}
           exitLabel={t('competitionDetail.finalResults.exit')}
           pauseLabel={t('competitionDetail.finalResults.pause')}
           playLabel={t('competitionDetail.finalResults.play')}
+          previousLabel={t('competitionDetail.finalResults.previous')}
+          nextLabel={t('competitionDetail.finalResults.next')}
           fastForwardLabel={t('competitionDetail.finalResults.fastForward')}
           replayLabel={t('competitionDetail.finalResults.replay')}
           downloadLabel={t('competitionDetail.finalResults.download')}

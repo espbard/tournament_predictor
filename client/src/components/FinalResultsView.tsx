@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { X, Pause, Play, FastForward, RotateCcw, Download, Video } from 'lucide-react';
+import { X, Pause, Play, FastForward, SkipBack, SkipForward, RotateCcw, Download, Video } from 'lucide-react';
 import { UserAvatar } from '@/components/UserAvatar';
 
 interface DisplayUser {
@@ -22,6 +22,7 @@ interface PointSource {
   subLabel?: string;
   pointsByUser: Record<string, number>;
   answerByUser?: Record<string, string>;
+  answerType?: string;
   kind?: 'winner';
   actualTeam?: TeamInfo | null;
   predictedTeamByUser?: Record<string, TeamInfo | null>;
@@ -31,12 +32,16 @@ interface FinalResultsViewProps {
   users: DisplayUser[];
   pointSources: PointSource[];
   introText: string;
+  tournamentLogoUrl?: string | null;
+  competitionLogoUrl?: string | null;
   winnerLabel: (name: string) => string;
   toLeaderboardLabel: string;
   closeLabel: string;
   exitLabel: string;
   pauseLabel: string;
   playLabel: string;
+  previousLabel: string;
+  nextLabel: string;
   fastForwardLabel: string;
   replayLabel: string;
   downloadLabel: string;
@@ -54,11 +59,17 @@ interface FinalResultsViewProps {
 // widely-supported Chrome/Edge hint that pre-selects "this tab" in the share picker.
 type DisplayMediaOptions = DisplayMediaStreamOptions & { preferCurrentTab?: boolean };
 
-const INTRO_MS = 4000;
+const INTRO_DARK_MS = 1000;
+const INTRO_LOGO_FADE_MS = 1800;
+const INTRO_LOGO_HOLD_MS = 2200;
+const INTRO_CRAWL_MS = 72000;
+const TOURNAMENT_LOGO_PLACEHOLDER = '/tournament-logo-placeholder.png';
+const COMPETITION_LOGO_PLACEHOLDER = '/competition-logo-placeholder.jpg';
 const LABEL_MS = 1200;
 const PRE_REVEAL_MS = 700;
 const STATIC_MS = 1000;
 const FALL_MS = 1000;
+const RESORT_DELAY_MS = 500;
 const PAUSE_MS = 900;
 const OVERLAY_DELAY_MS = 2800;
 const FAST_FORWARD_MULTIPLIER = 4;
@@ -144,11 +155,11 @@ function Fireworks() {
 }
 
 function TeamIcon({ team, size, correct }: { team: TeamInfo | null | undefined; size: number; correct?: boolean }) {
-  const ring = correct ? 'ring-2 ring-offset-2 ring-offset-black ring-green-400' : '';
+  const ring = correct ? 'ring-2 ring-offset-2 ring-offset-black ring-[#ffe81f]' : '';
   if (!team) {
     return (
       <div
-        className={`flex flex-shrink-0 items-center justify-center rounded-full bg-white/10 text-white/60 ${ring}`}
+        className={`flex flex-shrink-0 items-center justify-center rounded-full bg-white/10 text-[#ffe81f]/60 ${ring}`}
         style={{ width: size, height: size, fontSize: Math.max(8, Math.round(size * 0.45)), fontWeight: 700 }}
       >
         ?
@@ -164,7 +175,7 @@ function TeamIcon({ team, size, correct }: { team: TeamInfo | null | undefined; 
     />
   ) : (
     <div
-      className={`flex flex-shrink-0 items-center justify-center rounded-full bg-white/10 font-bold text-white ${ring}`}
+      className={`flex flex-shrink-0 items-center justify-center rounded-full bg-white/10 font-bold text-[#ffe81f] ${ring}`}
       style={{ width: size, height: size, fontSize: Math.max(8, Math.round(size * 0.4)) }}
     >
       {team.name?.charAt(0) ?? '?'}
@@ -179,6 +190,16 @@ function answerFontSizeClass(text: string): string {
   if (len <= 14) return 'text-base sm:text-xl';
   if (len <= 22) return 'text-sm sm:text-lg';
   return 'text-xs sm:text-base';
+}
+
+// With more users, each bar's column gets narrower, so the "+N" points readout has to
+// shrink to keep fitting beside its neighbors instead of overlapping them.
+function pointsFontSizeClass(userCount: number): string {
+  if (userCount <= 6) return 'text-3xl sm:text-5xl';
+  if (userCount <= 9) return 'text-2xl sm:text-4xl';
+  if (userCount <= 12) return 'text-lg sm:text-3xl';
+  if (userCount <= 16) return 'text-sm sm:text-xl';
+  return 'text-xs sm:text-lg';
 }
 
 const BAR_COLOR_PALETTE = [
@@ -259,12 +280,16 @@ export default function FinalResultsView({
   users,
   pointSources,
   introText,
+  tournamentLogoUrl,
+  competitionLogoUrl,
   winnerLabel,
   toLeaderboardLabel,
   closeLabel,
   exitLabel,
   pauseLabel,
   playLabel,
+  previousLabel,
+  nextLabel,
   fastForwardLabel,
   replayLabel,
   downloadLabel,
@@ -283,9 +308,15 @@ export default function FinalResultsView({
   }, []);
 
   const [showIntro, setShowIntro] = useState(true);
+  const [logosVisible, setLogosVisible] = useState(false);
+  const [crawlStarted, setCrawlStarted] = useState(false);
   const [sourceIdx, setSourceIdx] = useState(-1);
   const [phase, setPhase] = useState<'idle' | 'label' | 'preReveal' | 'static' | 'falling' | 'landed'>('idle');
   const [totals, setTotals] = useState<Record<string, number>>({});
+  // Bars grow against `totals` the instant points land, but left-to-right order follows
+  // this lagging copy instead — updated `RESORT_DELAY_MS` later — so users can watch a
+  // bar grow before the whole lineup shuffles around it.
+  const [sortTotals, setSortTotals] = useState<Record<string, number>>({});
   const [done, setDone] = useState(false);
   const [showOverlay, setShowOverlay] = useState(false);
   const [paused, setPaused] = useState(false);
@@ -369,7 +400,7 @@ export default function FinalResultsView({
     setRecordError(null);
     setShowDownloadPrompt(false);
     // Restart the whole reveal from the intro so the recording captures it in full.
-    setReplayCount(c => c + 1);
+    restart();
   }
 
   // A few seconds after the winner overlay appears, the celebratory moment has had time
@@ -395,7 +426,19 @@ export default function FinalResultsView({
   // header's actual bottom edge and position the reveal just below it.
   const headerRef = useRef<HTMLDivElement>(null);
   const barsContainerRef = useRef<HTMLDivElement>(null);
+  const crawlTextRef = useRef<HTMLDivElement>(null);
   const [revealTopPx, setRevealTopPx] = useState(24);
+
+  // Changing a running CSS animation's `animation-duration` recomputes its progress as
+  // (elapsed time / duration), which makes it jump to a different point in the crawl the
+  // instant fast-forward is toggled — so instead the duration stays fixed and the Web
+  // Animations API's `playbackRate` speeds up/slows down playback from wherever it
+  // currently is, with no jump.
+  useEffect(() => {
+    if (!crawlStarted) return;
+    const anim = crawlTextRef.current?.getAnimations()[0];
+    if (anim) anim.playbackRate = fastForward ? FAST_FORWARD_MULTIPLIER : 1;
+  }, [fastForward, crawlStarted]);
 
   useEffect(() => {
     function recompute() {
@@ -411,61 +454,141 @@ export default function FinalResultsView({
     return () => window.removeEventListener('resize', recompute);
   }, [sourceIdx, showIntro]);
 
+  // The reveal is a `sourceIdx`-driven state machine so the Previous/Next buttons can
+  // jump straight to any point in it: -1 is the intro, 0..pointSources.length-1 is each
+  // point source's own reveal, and pointSources.length is the final "done" state. Each
+  // section recomputes totals from scratch (cumulative sum of every earlier source)
+  // rather than incrementing, so jumping around never leaves stale numbers on screen.
+  function cumulativeTotals(throughExclusive: number): Record<string, number> {
+    const result: Record<string, number> = {};
+    for (let i = 0; i < throughExclusive; i++) {
+      for (const [uid, pts] of Object.entries(pointSources[i].pointsByUser)) {
+        result[uid] = (result[uid] ?? 0) + pts;
+      }
+    }
+    return result;
+  }
+
+  // Section -1: the intro (dark -> logos -> crawl). Advances to section 0 on its own
+  // when the crawl finishes, but Next can cut it short at any point.
   useEffect(() => {
-    if (pointSources.length === 0) return;
+    if (pointSources.length === 0 || sourceIdx !== -1) return;
     let cancelled = false;
     const isCancelled = () => cancelled;
     const pw = (ms: number) => pausableWait(ms, pausedRef, speedRef, isCancelled);
 
+    setShowIntro(true);
+    setLogosVisible(false);
+    setCrawlStarted(false);
+    setDone(false);
+    setShowOverlay(false);
+    setTotals({});
+    setSortTotals({});
+
     async function run() {
-      setShowIntro(true);
-      setTotals({});
-      setDone(false);
-      setShowOverlay(false);
-      await pw(INTRO_MS);
+      await pw(INTRO_DARK_MS);
+      if (cancelled) return;
+      setLogosVisible(true);
+      await pw(INTRO_LOGO_FADE_MS + INTRO_LOGO_HOLD_MS);
+      if (cancelled) return;
+      setLogosVisible(false);
+      await pw(INTRO_LOGO_FADE_MS);
+      if (cancelled) return;
+      setCrawlStarted(true);
+      await pw(INTRO_CRAWL_MS);
       if (cancelled) return;
       setShowIntro(false);
-      for (let i = 0; i < pointSources.length; i++) {
-        if (cancelled) return;
-        const source = pointSources[i];
-        const hasPreReveal = !!source.answerByUser || source.kind === 'winner';
-        setSourceIdx(i);
-        setPhase('label');
-        await pw(LABEL_MS);
-        if (cancelled) return;
-        if (hasPreReveal) {
-          setPhase('preReveal');
-          await pw(PRE_REVEAL_MS);
-          if (cancelled) return;
-        }
-        setPhase('static');
-        await pw(STATIC_MS);
-        if (cancelled) return;
-        setPhase('falling');
-        await pw(FALL_MS);
-        if (cancelled) return;
-        setTotals(prev => {
-          const next = { ...prev };
-          for (const [uid, pts] of Object.entries(pointSources[i].pointsByUser)) {
-            next[uid] = (next[uid] ?? 0) + pts;
-          }
-          return next;
-        });
-        setPhase('landed');
-        await pw(PAUSE_MS);
-      }
-      if (!cancelled) {
-        setPhase('idle');
-        setDone(true);
-        await pw(OVERLAY_DELAY_MS);
-        if (cancelled) return;
-        setShowOverlay(true);
-      }
+      setSourceIdx(0);
     }
 
     run();
     return () => { cancelled = true; };
-  }, [pointSources, replayCount]);
+  }, [pointSources, replayCount, sourceIdx]);
+
+  // Sections 0..pointSources.length-1: one point source's own label -> reveal -> points
+  // -> resort sequence. Advances to sourceIdx + 1 on its own when it finishes.
+  useEffect(() => {
+    if (pointSources.length === 0 || sourceIdx < 0 || sourceIdx >= pointSources.length) return;
+    let cancelled = false;
+    const isCancelled = () => cancelled;
+    const pw = (ms: number) => pausableWait(ms, pausedRef, speedRef, isCancelled);
+    const idx = sourceIdx;
+    const source = pointSources[idx];
+    const hasPreReveal = !!source.answerByUser || source.kind === 'winner';
+
+    setShowIntro(false);
+    setDone(false);
+    setShowOverlay(false);
+    setTotals(cumulativeTotals(idx));
+    setSortTotals(cumulativeTotals(idx));
+
+    async function run() {
+      setPhase('label');
+      await pw(LABEL_MS);
+      if (cancelled) return;
+      if (hasPreReveal) {
+        setPhase('preReveal');
+        await pw(PRE_REVEAL_MS);
+        if (cancelled) return;
+      }
+      setPhase('static');
+      await pw(STATIC_MS);
+      if (cancelled) return;
+      setPhase('falling');
+      await pw(FALL_MS);
+      if (cancelled) return;
+      const newTotals = cumulativeTotals(idx + 1);
+      setTotals(newTotals);
+      setPhase('landed');
+      await pw(RESORT_DELAY_MS);
+      if (cancelled) return;
+      setSortTotals(newTotals);
+      await pw(PAUSE_MS);
+      if (cancelled) return;
+      setSourceIdx(idx + 1);
+    }
+
+    run();
+    return () => { cancelled = true; };
+  }, [pointSources, replayCount, sourceIdx]);
+
+  // Section pointSources.length: everything's revealed — show the final totals and,
+  // after a beat, the winner overlay.
+  useEffect(() => {
+    if (pointSources.length === 0 || sourceIdx !== pointSources.length) return;
+    let cancelled = false;
+    const isCancelled = () => cancelled;
+    const pw = (ms: number) => pausableWait(ms, pausedRef, speedRef, isCancelled);
+
+    setPhase('idle');
+    setTotals(cumulativeTotals(pointSources.length));
+    setSortTotals(cumulativeTotals(pointSources.length));
+    setDone(true);
+    setShowOverlay(false);
+
+    async function run() {
+      await pw(OVERLAY_DELAY_MS);
+      if (cancelled) return;
+      setShowOverlay(true);
+    }
+
+    run();
+    return () => { cancelled = true; };
+  }, [pointSources, replayCount, sourceIdx]);
+
+  // Previous/Next step one section at a time; clamped to the intro (-1) and the final
+  // "done" section (pointSources.length) at the ends.
+  function goToSection(target: number) {
+    setSourceIdx(Math.max(-1, Math.min(target, pointSources.length)));
+  }
+  const goToPrevious = () => goToSection(sourceIdx - 1);
+  const goToNext = () => goToSection(sourceIdx + 1);
+
+  // Restarts the whole reveal from the intro.
+  function restart() {
+    setSourceIdx(-1);
+    setReplayCount(c => c + 1);
+  }
 
   const maxTotal = useMemo(() => {
     let max = 0;
@@ -477,28 +600,38 @@ export default function FinalResultsView({
     return Math.max(max, 1);
   }, [users, pointSources]);
 
-  // Left-to-right order follows current standing — ties keep their prior relative
-  // order (stable sort + original-index tiebreaker) so nothing jitters at 0-0.
+  // Left-to-right order follows `sortTotals` (which lags `totals` by RESORT_DELAY_MS)
+  // rather than `totals` directly, so bars visibly grow before the lineup reshuffles.
+  // Ties keep their prior relative order (stable sort + original-index tiebreaker) so
+  // nothing jitters at 0-0.
   const rankByUserId = useMemo(() => {
     const ranked = users
-      .map((u, i) => ({ userId: u.userId, i, total: totals[u.userId] ?? 0 }))
+      .map((u, i) => ({ userId: u.userId, i, total: sortTotals[u.userId] ?? 0 }))
       .sort((a, b) => b.total - a.total || a.i - b.i);
     const m = new Map<string, number>();
     ranked.forEach((u, idx) => m.set(u.userId, idx));
     return m;
-  }, [users, totals]);
+  }, [users, sortTotals]);
 
   const winner = useMemo(() => {
     if (!done || users.length === 0) return null;
     return [...users].sort((a, b) => (totals[b.userId] ?? 0) - (totals[a.userId] ?? 0) )[0];
   }, [done, users, totals]);
 
-  const currentSource = sourceIdx >= 0 ? pointSources[sourceIdx] : null;
+  const currentSource = sourceIdx >= 0 && sourceIdx < pointSources.length ? pointSources[sourceIdx] : null;
   const showHeader = currentSource !== null && phase !== 'idle';
   const showReveal = currentSource !== null && (phase === 'preReveal' || phase === 'static' || phase === 'falling');
   const showPoints = currentSource !== null && (phase === 'static' || phase === 'falling');
   const isFalling = phase === 'falling';
   const widthPct = users.length > 0 ? 100 / users.length : 100;
+  // Past this many users, each column is too narrow for a horizontal name or a
+  // wrapped multi-line answer to fit without overlapping its neighbors — switch
+  // those to running vertically down the column instead.
+  const compactLayout = users.length > 8;
+  // Number and yes/no answers ("7", "Ja") are short enough to fit horizontally even in a
+  // narrow column, so they never need the vertical treatment.
+  const shortAnswerType = currentSource?.answerType === 'number' || currentSource?.answerType === 'yes_no';
+  const verticalAnswerLayout = compactLayout && !shortAnswerType;
 
   // Screen recording is a desktop-only browser capability (no mobile browser implements
   // getDisplayMedia) — hide the download entry point entirely rather than showing a
@@ -511,26 +644,32 @@ export default function FinalResultsView({
   const columnTransitionMs = 700 / speed;
   const barTransitionMs = 700 / speed;
   const fallDurationMs = FALL_MS / speed;
+  const introLogoFadeMs = INTRO_LOGO_FADE_MS / speed;
+  const tournamentLogoSrc = tournamentLogoUrl || TOURNAMENT_LOGO_PLACEHOLDER;
+  const competitionLogoSrc = competitionLogoUrl || COMPETITION_LOGO_PLACEHOLDER;
 
   return (
     <div className="fixed inset-0 z-[200] bg-black overflow-hidden">
-      <div className="pointer-events-none absolute inset-0 animate-edge-pulse" />
+      <div
+        className={`pointer-events-none absolute inset-0 animate-edge-pulse-gold transition-opacity ${
+          logosVisible ? 'opacity-100' : 'opacity-0'
+        }`}
+        style={{ transitionDuration: `${introLogoFadeMs}ms` }}
+      />
+      <div
+        className={`pointer-events-none absolute inset-0 animate-edge-pulse transition-opacity duration-1000 ${
+          showIntro ? 'opacity-0' : 'opacity-100'
+        }`}
+      />
 
       {!showOverlay && (
         <div className="absolute left-4 top-4 z-[210] flex items-center gap-2 sm:left-6 sm:top-6">
           <button
             onClick={() => { stopRecording(); onGoToLeaderboard(); }}
             aria-label={exitLabel}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur hover:bg-white/20"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-[#ffe81f]/10 text-[#ffe81f] backdrop-blur hover:bg-[#ffe81f]/20"
           >
             <X size={18} />
-          </button>
-          <button
-            onClick={() => setPaused(p => !p)}
-            aria-label={paused ? playLabel : pauseLabel}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur hover:bg-white/20"
-          >
-            {paused ? <Play size={18} /> : <Pause size={18} />}
           </button>
           {!recordingSupported ? null : isRecording ? (
             <span className="flex items-center gap-1.5 rounded-full bg-red-500/20 px-3 py-1.5 text-xs font-medium text-red-300">
@@ -541,7 +680,7 @@ export default function FinalResultsView({
             <button
               onClick={() => setShowDownloadPrompt(true)}
               aria-label={downloadLabel}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur hover:bg-white/20"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-[#ffe81f]/10 text-[#ffe81f] backdrop-blur hover:bg-[#ffe81f]/20"
             >
               <Download size={18} />
             </button>
@@ -550,21 +689,74 @@ export default function FinalResultsView({
       )}
 
       {!showOverlay && (
-        <button
-          onClick={() => setFastForward(f => !f)}
-          aria-label={fastForwardLabel}
-          className={`absolute right-4 top-4 z-[210] flex h-9 w-9 items-center justify-center rounded-full backdrop-blur transition-colors sm:right-6 sm:top-6 ${
-            fastForward ? 'bg-white/30 text-white' : 'bg-white/10 text-white hover:bg-white/20'
-          }`}
-        >
-          <FastForward size={18} />
-        </button>
+        <div className="absolute right-4 top-4 z-[210] flex items-center gap-2 sm:right-6 sm:top-6">
+          <button
+            onClick={goToPrevious}
+            disabled={sourceIdx <= -1}
+            aria-label={previousLabel}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-[#ffe81f]/10 text-[#ffe81f] backdrop-blur hover:bg-[#ffe81f]/20 disabled:opacity-30 disabled:hover:bg-[#ffe81f]/10"
+          >
+            <SkipBack size={18} />
+          </button>
+          <button
+            onClick={() => setPaused(p => !p)}
+            aria-label={paused ? playLabel : pauseLabel}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-[#ffe81f]/10 text-[#ffe81f] backdrop-blur hover:bg-[#ffe81f]/20"
+          >
+            {paused ? <Play size={18} /> : <Pause size={18} />}
+          </button>
+          <button
+            onClick={goToNext}
+            disabled={sourceIdx >= pointSources.length}
+            aria-label={nextLabel}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-[#ffe81f]/10 text-[#ffe81f] backdrop-blur hover:bg-[#ffe81f]/20 disabled:opacity-30 disabled:hover:bg-[#ffe81f]/10"
+          >
+            <SkipForward size={18} />
+          </button>
+          <button
+            onClick={() => setFastForward(f => !f)}
+            aria-label={fastForwardLabel}
+            className={`flex h-9 w-9 items-center justify-center rounded-full backdrop-blur transition-colors ${
+              fastForward ? 'bg-[#ffe81f]/30 text-[#ffe81f]' : 'bg-[#ffe81f]/10 text-[#ffe81f] hover:bg-[#ffe81f]/20'
+            }`}
+          >
+            <FastForward size={18} />
+          </button>
+        </div>
       )}
 
       {showIntro ? (
-        <div className="absolute inset-0 flex items-center justify-center px-6 text-center">
-          <p className="text-2xl font-bold leading-snug text-white sm:text-4xl md:text-5xl">{introText}</p>
-        </div>
+        <>
+          <div
+            className={`absolute inset-0 flex items-center justify-center gap-6 px-6 transition-opacity sm:gap-10 ${
+              logosVisible ? 'opacity-100' : 'pointer-events-none opacity-0'
+            }`}
+            style={{ transitionDuration: `${introLogoFadeMs}ms` }}
+          >
+            <div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-2xl sm:h-44 sm:w-44 md:h-56 md:w-56">
+              <img src={tournamentLogoSrc} alt="" className="h-full w-full object-cover" />
+            </div>
+            <div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-2xl sm:h-44 sm:w-44 md:h-56 md:w-56">
+              <img src={competitionLogoSrc} alt="" className="h-full w-full object-cover" />
+            </div>
+          </div>
+
+          {crawlStarted && (
+            <div className="intro-crawl-container px-1 sm:px-6">
+              <div className="intro-crawl-stage">
+                <div
+                  ref={crawlTextRef}
+                  className="animate-intro-crawl text-center text-3xl font-black uppercase leading-tight tracking-wide text-[#ffe81f] sm:text-7xl lg:text-9xl"
+                  style={{ animationDuration: `${INTRO_CRAWL_MS}ms`, animationPlayState: paused ? 'paused' : 'running' }}
+                >
+                  {introText.split('\n\n').map((paragraph, i) => (
+                    <p key={i} className="mb-10 last:mb-0 sm:mb-16">{paragraph}</p>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </>
       ) : (
         <>
           <div
@@ -575,18 +767,18 @@ export default function FinalResultsView({
             style={{ transitionDuration: `${headerTransitionMs}ms` }}
           >
             {currentSource?.eyebrow && (
-              <div className="text-sm font-medium uppercase tracking-wide text-white/60 sm:text-lg">{currentSource.eyebrow}</div>
+              <div className="text-sm font-medium uppercase tracking-wide text-[#ffe81f]/60 sm:text-lg">{currentSource.eyebrow}</div>
             )}
-            <div className="text-xl font-semibold tracking-wide text-white sm:text-3xl">{currentSource?.label}</div>
+            <div className="text-xl font-semibold tracking-wide text-[#ffe81f] sm:text-3xl">{currentSource?.label}</div>
             {currentSource?.kind === 'winner' ? (
               <div className="mt-2 flex items-center justify-center gap-2">
                 <TeamIcon team={currentSource.actualTeam} size={40} />
                 {currentSource.actualTeam?.name && (
-                  <span className="text-lg font-semibold text-white sm:text-2xl">{currentSource.actualTeam.name}</span>
+                  <span className="text-lg font-semibold text-[#ffe81f] sm:text-2xl">{currentSource.actualTeam.name}</span>
                 )}
               </div>
             ) : currentSource?.subLabel && (
-              <div className="mt-1 text-sm text-white/70 sm:text-lg">{currentSource.subLabel}</div>
+              <div className="mt-1 text-sm text-[#ffe81f]/70 sm:text-lg">{currentSource.subLabel}</div>
             )}
           </div>
 
@@ -610,7 +802,7 @@ export default function FinalResultsView({
                   {showReveal && (
                     <div
                       key={`${currentSource?.id}-reveal`}
-                      className={`absolute left-1/2 z-20 flex -translate-x-1/2 flex-col items-center gap-1.5 ${
+                      className={`absolute left-1/2 z-20 flex -translate-x-1/2 flex-col items-center ${compactLayout ? 'gap-0.5' : 'gap-1.5'} ${
                         isFalling ? 'animate-points-fall' : ''
                       }`}
                       style={
@@ -624,38 +816,50 @@ export default function FinalResultsView({
                       }
                     >
                       {sourceAnswer !== undefined && (
-                        <span className={`max-w-[150px] whitespace-normal break-words text-center leading-tight font-semibold sm:max-w-[260px] ${answerFontSizeClass(sourceAnswer || '—')} ${isCorrect ? 'text-green-400' : 'text-gray-400'}`}>
-                          {sourceAnswer || '—'}
-                        </span>
+                        verticalAnswerLayout ? (
+                          <span className={`h-28 [writing-mode:vertical-rl] rotate-180 overflow-hidden whitespace-nowrap text-ellipsis text-xs font-semibold leading-tight ${isCorrect ? 'text-[#ffe81f]' : 'text-gray-400'}`}>
+                            {sourceAnswer || '—'}
+                          </span>
+                        ) : (
+                          <span className={`max-w-[150px] whitespace-normal break-words text-center leading-tight font-semibold sm:max-w-[260px] ${answerFontSizeClass(sourceAnswer || '—')} ${isCorrect ? 'text-[#ffe81f]' : 'text-gray-400'}`}>
+                            {sourceAnswer || '—'}
+                          </span>
+                        )
                       )}
                       {currentSource?.kind === 'winner' && (
-                        <TeamIcon team={predictedTeam} size={32} correct={isCorrect} />
+                        <TeamIcon team={predictedTeam} size={compactLayout ? 18 : 32} correct={isCorrect} />
                       )}
                       {showPoints && (
-                        <span className={`text-3xl font-extrabold sm:text-5xl ${sourcePoints > 0 ? 'text-green-400' : 'text-gray-500'}`}>
+                        <span className={`font-extrabold ${pointsFontSizeClass(users.length)} ${sourcePoints > 0 ? 'text-[#ffe81f]' : 'text-gray-500'}`}>
                           {sourcePoints > 0 ? `+${sourcePoints}` : '0'}
                         </span>
                       )}
                     </div>
                   )}
 
-                  <div className="flex w-full flex-1 items-end px-1 sm:px-1.5">
+                  <div className={`flex w-full flex-1 items-end ${compactLayout ? 'px-px' : 'px-1 sm:px-1.5'}`}>
                     <div
                       className="w-full rounded-t-sm transition-[height] ease-out"
                       style={{ height: `${pct}%`, background: `linear-gradient(to top, ${color}, ${color}99)`, transitionDuration: `${barTransitionMs}ms` }}
                     />
                   </div>
-                  <div className="mt-2 flex max-w-full flex-col items-center gap-1">
+                  <div className={`mt-2 flex max-w-full flex-col items-center ${compactLayout ? 'gap-0.5' : 'gap-1'}`}>
                     <UserAvatar
                       username={user.username}
                       imageUrl={user.imageUrl}
                       iconColor={user.iconColor}
-                      className="h-8 w-8 sm:h-10 sm:w-10"
+                      className={compactLayout ? 'h-5 w-5 sm:h-6 sm:w-6' : 'h-8 w-8 sm:h-10 sm:w-10'}
                       resizeWidth={96}
                     />
-                    <span className="max-w-full truncate text-[10px] font-medium text-white sm:text-xs">
-                      {user.username}
-                    </span>
+                    {compactLayout ? (
+                      <span className="h-16 [writing-mode:vertical-rl] rotate-180 overflow-hidden whitespace-nowrap text-ellipsis text-[9px] font-medium text-white">
+                        {user.username}
+                      </span>
+                    ) : (
+                      <span className="max-w-full truncate text-[10px] font-medium text-white sm:text-xs">
+                        {user.username}
+                      </span>
+                    )}
                     <span className="text-xs font-bold text-white sm:text-sm">{total}</span>
                   </div>
                 </div>
@@ -668,15 +872,15 @@ export default function FinalResultsView({
       {done && !isRecording && (
         <div className="absolute inset-x-0 bottom-4 z-[150] flex items-center justify-center gap-3">
           <button
-            onClick={() => setReplayCount(c => c + 1)}
+            onClick={restart}
             aria-label={replayLabel}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur hover:bg-white/20"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-[#ffe81f]/10 text-[#ffe81f] backdrop-blur hover:bg-[#ffe81f]/20"
           >
             <RotateCcw size={18} />
           </button>
           <button
             onClick={onGoToLeaderboard}
-            className="rounded-full bg-white/10 px-5 py-2 text-sm font-medium text-white backdrop-blur hover:bg-white/20 sm:text-base"
+            className="rounded-full bg-[#ffe81f]/10 px-5 py-2 text-sm font-medium text-[#ffe81f] backdrop-blur hover:bg-[#ffe81f]/20 sm:text-base"
           >
             {toLeaderboardLabel}
           </button>
@@ -685,28 +889,28 @@ export default function FinalResultsView({
 
       {showDownloadPrompt && (
         <div className="fixed inset-0 z-[310] flex items-center justify-center bg-black/70 p-4">
-          <div className="relative w-full max-w-sm rounded-xl border border-white/10 bg-neutral-900 p-6 text-center shadow-2xl">
+          <div className="relative w-full max-w-sm rounded-xl border border-[#ffe81f]/20 bg-neutral-900 p-6 text-center shadow-2xl">
             <button
               onClick={() => { setShowDownloadPrompt(false); setRecordError(null); }}
               aria-label={closeLabel}
-              className="absolute right-3 top-3 text-white/60 hover:text-white"
+              className="absolute right-3 top-3 text-[#ffe81f]/60 hover:text-[#ffe81f]"
             >
               <X size={20} />
             </button>
-            <Video size={28} className="mx-auto mb-3 text-white/80" />
-            <p className="text-lg font-bold text-white">{downloadPromptTitle}</p>
+            <Video size={28} className="mx-auto mb-3 text-[#ffe81f]/80" />
+            <p className="text-lg font-bold text-[#ffe81f]">{downloadPromptTitle}</p>
             <p className="mt-2 text-sm text-white/70">{downloadPromptBody}</p>
             {recordError && <p className="mt-3 text-sm text-red-400">{recordError}</p>}
             <div className="mt-5 flex justify-center gap-3">
               <button
                 onClick={() => { setShowDownloadPrompt(false); setRecordError(null); }}
-                className="rounded-full border border-white/20 px-4 py-2 text-sm font-medium text-white hover:bg-white/10"
+                className="rounded-full border border-[#ffe81f]/30 px-4 py-2 text-sm font-medium text-[#ffe81f] hover:bg-[#ffe81f]/10"
               >
                 {cancelLabel}
               </button>
               <button
                 onClick={handleStartRecording}
-                className="rounded-full bg-white px-4 py-2 text-sm font-medium text-black hover:bg-white/90"
+                className="rounded-full bg-[#ffe81f] px-4 py-2 text-sm font-medium text-black hover:bg-[#ffe81f]/90"
               >
                 {startRecordingLabel}
               </button>
@@ -718,11 +922,11 @@ export default function FinalResultsView({
       {showOverlay && winner && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/70 p-4">
           <Fireworks />
-          <div className="relative w-full max-w-sm rounded-xl border border-white/10 bg-neutral-900 p-6 text-center shadow-2xl">
+          <div className="relative w-full max-w-sm rounded-xl border border-[#ffe81f]/20 bg-neutral-900 p-6 text-center shadow-2xl">
             <button
               onClick={() => setShowOverlay(false)}
               aria-label={closeLabel}
-              className="absolute right-3 top-3 text-white/60 hover:text-white"
+              className="absolute right-3 top-3 text-[#ffe81f]/60 hover:text-[#ffe81f]"
             >
               <X size={20} />
             </button>
@@ -734,8 +938,8 @@ export default function FinalResultsView({
               className="mx-auto h-16 w-16"
               resizeWidth={128}
             />
-            <p className="mt-3 text-lg font-bold text-white">{winnerLabel(winner.username)}</p>
-            <p className="text-sm text-white/60">{totals[winner.userId] ?? 0} pts</p>
+            <p className="mt-3 text-lg font-bold text-[#ffe81f]">{winnerLabel(winner.username)}</p>
+            <p className="text-sm text-[#ffe81f]/60">{totals[winner.userId] ?? 0} pts</p>
           </div>
         </div>
       )}

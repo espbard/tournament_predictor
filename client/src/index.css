@@ -28,6 +28,75 @@
   animation: edge-pulse 6s ease-in-out infinite;
 }
 
+@keyframes edge-pulse-gold {
+  0%, 100% { box-shadow: inset 0 0 55px 8px rgba(234, 179, 8, 0.22); }
+  50%      { box-shadow: inset 0 0 120px 22px rgba(234, 179, 8, 0.5); }
+}
+
+.animate-edge-pulse-gold {
+  animation: edge-pulse-gold 2.5s ease-in-out infinite;
+}
+
+.intro-crawl-container {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  /* The `perspective` lives on this static outer container (never animated) so
+     everything inside is viewed through one fixed "camera" — a real 3D scene
+     rather than a 2D shrink. `perspective-origin` at the bottom keeps the
+     camera roughly at ground level, looking up the receding stage. */
+  perspective: 1400px;
+  perspective-origin: 50% 100%;
+}
+
+/* The static, tilted "stage" the crawl text travels through. Unlike `scale()`,
+   this makes width narrow by *screen position*, not by *time* — text near the
+   top of the stage is genuinely further from the camera than text near the
+   bottom, so at any single instant the top of the visible crawl is narrower
+   than the bottom, exactly like the film effect. `transform-origin: 50% 100%`
+   pivots at the bottom edge, which is also where the crawl text starts
+   (`top: 100%` below), so the text begins essentially at the camera with no
+   perspective distortion and recedes as it rises. */
+.intro-crawl-stage {
+  position: absolute;
+  inset: 0;
+  transform: rotateX(28deg);
+  transform-origin: 50% 100%;
+  transform-style: preserve-3d;
+}
+
+/* The text starts positioned with its own top edge exactly at the stage's
+   bottom edge (`top: 100%`), so it's fully off-screen at rest no matter how
+   tall the content is — no guessed vh offset needed. It then rises by
+   `100vh` plus `100%` of its own height — the same "just clears the screen"
+   distance as the old flat (non-perspective) version. Perspective
+   foreshortens motion the further it recedes, so that distance no longer
+   lines up with an exact on-screen position the way it did in flat 2D — but
+   as long as the `perspective`/`rotateX` above give enough depth headroom
+   for that distance to stay on the *linear-ish* part of the projection curve
+   (rather than deep in the compression near the horizon, where motion
+   stalls and the tail drags out), it still reaches "shrunk to a sliver"
+   right around when the animation ends. Verified empirically across
+   breakpoints and content lengths — if the crawl ever needs to travel much
+   further (much taller intro text), `perspective` needs to grow with it. */
+@keyframes intro-crawl {
+  0%   { transform: translateY(0); opacity: 1; }
+  90%  { opacity: 1; }
+  100% { transform: translateY(calc(-100vh - 100%)); opacity: 0; }
+}
+
+.animate-intro-crawl {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  margin: 0 auto;
+  max-width: 90rem;
+  animation-name: intro-crawl;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
 @keyframes points-fall {
   0%   { top: var(--fall-start, 8%); }
   100% { top: calc(100% - 96px); }
