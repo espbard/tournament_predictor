@@ -193,13 +193,25 @@ function TeamIcon({ team, size, correct }: { team: TeamInfo | null | undefined; 
   );
 }
 
+const ANSWER_FONT_SIZES = [
+  'text-lg sm:text-2xl',
+  'text-base sm:text-xl',
+  'text-sm sm:text-lg',
+  'text-xs sm:text-base',
+  'text-[10px] sm:text-sm',
+  'text-[9px] sm:text-xs',
+];
+
 // Longer answers shrink to fit their allocated width before wrapping onto a second line.
-function answerFontSizeClass(text: string): string {
+// Short answers (yes/no, single-digit numbers) never wrap that way, so on their own they'd
+// stay at the largest size no matter how many users are packed into the chart — shrink
+// those too once columns get narrow, or their text overlaps the neighboring columns'.
+function answerFontSizeClass(text: string, userCount: number): string {
   const len = text.length;
-  if (len <= 8) return 'text-lg sm:text-2xl';
-  if (len <= 14) return 'text-base sm:text-xl';
-  if (len <= 22) return 'text-sm sm:text-lg';
-  return 'text-xs sm:text-base';
+  const lengthTier = len <= 8 ? 0 : len <= 14 ? 1 : len <= 22 ? 2 : 3;
+  const userCountTier = userCount <= 8 ? 0 : userCount <= 12 ? 1 : userCount <= 16 ? 2 : userCount <= 22 ? 3 : userCount <= 30 ? 4 : 5;
+  const tier = Math.min(ANSWER_FONT_SIZES.length - 1, Math.max(lengthTier, userCountTier));
+  return ANSWER_FONT_SIZES[tier];
 }
 
 // With more users, each bar's column gets narrower, so the "+N" points readout has to
@@ -836,7 +848,7 @@ export default function FinalResultsView({
                             {sourceAnswer || '—'}
                           </span>
                         ) : (
-                          <span className={`max-w-[150px] whitespace-normal break-words text-center leading-tight font-semibold sm:max-w-[260px] ${answerFontSizeClass(sourceAnswer || '—')} ${isCorrect ? 'text-[#ffe81f]' : 'text-gray-400'}`}>
+                          <span className={`max-w-[150px] whitespace-normal break-words text-center leading-tight font-semibold sm:max-w-[260px] ${answerFontSizeClass(sourceAnswer || '—', users.length)} ${isCorrect ? 'text-[#ffe81f]' : 'text-gray-400'}`}>
                             {sourceAnswer || '—'}
                           </span>
                         )
