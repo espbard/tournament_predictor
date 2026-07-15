@@ -127,6 +127,13 @@ function markFinalResultsSeen(competitionId: string, userId: string): void {
   localStorage.setItem(finalResultsSeenKey(competitionId, userId), '1');
 }
 
+// The final-results intro text reads better without a trailing year/edition
+// number (e.g. "Office Tips 2026" -> "Office Tips") since "over for i år" /
+// "over for this year" already conveys that.
+function stripDigitsFromName(name: string): string {
+  return name.replace(/\d+/g, '').replace(/\s{2,}/g, ' ').trim();
+}
+
 export default function CompetitionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuthStore();
@@ -1073,6 +1080,11 @@ export default function CompetitionDetailPage() {
       }
     ),
     [matchList, allMatchPredictions, leaderboard, finalResultsBonusQuestions, finalResultsBonusAnswers, finalResultsUsers, t]
+  );
+
+  const finalMatchWinnerName = useMemo(
+    () => finalResultsPointSources.find(s => s.kind === 'winner')?.actualTeam?.name ?? '',
+    [finalResultsPointSources]
   );
 
   if (isLoading) return <LoadingSpinner />;
@@ -2820,7 +2832,11 @@ export default function CompetitionDetailPage() {
         <FinalResultsView
           users={finalResultsUsers}
           pointSources={finalResultsPointSources}
-          introText={t('competitionDetail.finalResults.intro', { name: tournament?.name ?? '' })}
+          introText={t('competitionDetail.finalResults.intro', {
+            competitionNameNoNumbers: stripDigitsFromName(competition?.name ?? ''),
+            competitionName: competition?.name ?? '',
+            finalWinner: finalMatchWinnerName,
+          })}
           tournamentLogoUrl={tournament?.imageUrl}
           competitionLogoUrl={competition?.imageUrl}
           winnerLabel={(name) => t('competitionDetail.finalResults.winner', { name })}

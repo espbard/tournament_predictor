@@ -75,7 +75,7 @@
    so the text vanishes noticeably higher up the screen instead of fading
    out around mid-height. */
 @keyframes intro-crawl {
-  0%   { transform: translateY(var(--crawl-start-y, 110vh)) scale(1); opacity: 1; }
+  0%   { transform: translateY(var(--crawl-start-y, 380vh)) scale(1); opacity: 1; }
   75%  { transform: translateY(-450vh) scale(0.1); opacity: 1; }
   100% { transform: translateY(-1500vh) scale(0.02); opacity: 0; }
 }
@@ -87,18 +87,18 @@
   bottom: 0;
   margin: 0 auto;
   max-width: 90rem;
-  --crawl-start-y: 110vh;
+  --crawl-start-y: 380vh;
   animation-name: intro-crawl;
   animation-timing-function: linear;
   animation-fill-mode: forwards;
 }
 
 @media (min-width: 640px) {
-  .animate-intro-crawl { --crawl-start-y: 170vh; }
+  .animate-intro-crawl { --crawl-start-y: 950vh; }
 }
 
 @media (min-width: 1024px) {
-  .animate-intro-crawl { --crawl-start-y: 230vh; }
+  .animate-intro-crawl { --crawl-start-y: 1800vh; }
 }
 
 @keyframes points-fall {
