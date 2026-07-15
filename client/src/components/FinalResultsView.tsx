@@ -59,7 +59,7 @@ type DisplayMediaOptions = DisplayMediaStreamOptions & { preferCurrentTab?: bool
 const INTRO_DARK_MS = 1000;
 const INTRO_LOGO_FADE_MS = 1800;
 const INTRO_LOGO_HOLD_MS = 2200;
-const INTRO_CRAWL_MS = 21000;
+const INTRO_CRAWL_MS = 19000;
 const TOURNAMENT_LOGO_PLACEHOLDER = '/tournament-logo-placeholder.png';
 const COMPETITION_LOGO_PLACEHOLDER = '/competition-logo-placeholder.jpg';
 const LABEL_MS = 1200;
@@ -617,7 +617,7 @@ export default function FinalResultsView({
             <div className="intro-crawl-container absolute inset-0 overflow-hidden px-1 sm:px-6">
               <div className="intro-crawl-tilt">
                 <div
-                  className="animate-intro-crawl text-center text-5xl font-black uppercase leading-tight tracking-wide text-[#ffe81f] sm:text-7xl lg:text-9xl"
+                  className="animate-intro-crawl text-center text-3xl font-black uppercase leading-tight tracking-wide text-[#ffe81f] sm:text-7xl lg:text-9xl"
                   style={{ animationDuration: `${introCrawlMs}ms` }}
                 >
                   {introText}
