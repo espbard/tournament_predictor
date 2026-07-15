@@ -38,76 +38,39 @@
 }
 
 .intro-crawl-container {
-  perspective: 500px;
-  perspective-origin: 50% 100%;
-}
-
-/* The tilt lives on this wrapper as a static, never-animated transform, so
-   the apparent angle can't change over the course of the animation. The
-   text inside only ever animates its own `transform` (translateY + scale),
-   moving within the wrapper's already-tilted, flattened plane — that's what
-   keeps it from re-deriving (and flipping) the perspective angle frame by
-   frame the way animating a single element's `top` + `rotateX` together did.
-   The wrapper is made much taller than the viewport (bottom-anchored) so its
-   own vanishing point sits at the very top edge of the screen instead of
-   partway down — with a viewport-height wrapper the horizon converges well
-   before the top, which is why text used to fade out mid-screen. */
-.intro-crawl-tilt {
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 600%;
-  transform: rotateX(30deg);
-  transform-origin: 50% 100%;
+  inset: 0;
+  overflow: hidden;
 }
 
-/* The crawl's perspective compresses translateY so unevenly (large moves near
-   the "camera" at the start, tiny moves near the vanishing point) that a
-   simple two-point animation spends most of its duration on the invisible
-   approach and the post-content vanish, leaving only a small fraction of the
-   timeline for the actual readable text — which is why it used to blow past
-   at an unreadable pace despite a long total duration. Explicit "entered"
-   and "about to leave" checkpoints reserve most of the timeline (12%-88%)
-   for the readable content itself. Each breakpoint needs its own values
-   since how much a given vh offset reveals depends on how many lines the
-   text wraps into at that font size/width, not just the raw distance. */
+/* The text starts positioned with its own top edge exactly at the container's
+   bottom edge (`top: 100%`), so it's fully off-screen at rest no matter how
+   tall the content is — no guessed vh offset needed. It then rises by its
+   own full height plus one viewport height (`calc(-100vh - 100%)`, where the
+   `%` resolves against the element's own rendered height), which is exactly
+   the distance needed to carry it from fully below the screen to fully above
+   it — the literal bottom and top of the page, self-adjusting to content
+   length and viewport size instead of separately-tuned numbers per
+   breakpoint. `transform-origin` is pinned to the top so the shrink (via
+   `scale`) anchors there too, rather than the default center-origin pulling
+   the whole animation off relative to a very tall box. */
 @keyframes intro-crawl {
-  0%   { transform: translateY(var(--crawl-start-y, 380vh)) scale(1); opacity: 1; }
-  12%  { transform: translateY(var(--crawl-enter-y, 210vh)) scale(0.85); opacity: 1; }
-  88%  { transform: translateY(var(--crawl-exit-y, -90vh)) scale(0.55); opacity: 1; }
-  100% { transform: translateY(-1500vh) scale(0.02); opacity: 0; }
+  0%   { transform: translateY(0) scale(1); opacity: 1; }
+  90%  { opacity: 1; }
+  100% { transform: translateY(calc(-100vh - 100%)) scale(0.3); opacity: 0; }
 }
 
 .animate-intro-crawl {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 0;
+  top: 100%;
   margin: 0 auto;
   max-width: 90rem;
-  --crawl-start-y: 380vh;
-  --crawl-enter-y: 210vh;
-  --crawl-exit-y: -90vh;
+  transform-origin: 50% 0%;
   animation-name: intro-crawl;
   animation-timing-function: linear;
   animation-fill-mode: forwards;
-}
-
-@media (min-width: 640px) {
-  .animate-intro-crawl {
-    --crawl-start-y: 950vh;
-    --crawl-enter-y: 649vh;
-    --crawl-exit-y: 72vh;
-  }
-}
-
-@media (min-width: 1024px) {
-  .animate-intro-crawl {
-    --crawl-start-y: 1800vh;
-    --crawl-enter-y: 1305vh;
-    --crawl-exit-y: 315vh;
-  }
 }
 
 @keyframes points-fall {
