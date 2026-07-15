@@ -11,6 +11,7 @@ export interface PointSource {
   subLabel?: string;
   pointsByUser: Record<string, number>;
   answerByUser?: Record<string, string>;
+  answerType?: string;
   kind?: 'winner';
   actualTeam?: TeamInfo | null;
   predictedTeamByUser?: Record<string, TeamInfo | null>;
@@ -416,6 +417,7 @@ function buildBonusQuestionPointSources(
       subLabel: correctAnswers.length > 0 ? `${correctAnswerLabel}: ${correctAnswers.join(' / ')}` : undefined,
       pointsByUser,
       answerByUser,
+      answerType: q.answerType,
     };
   });
 }

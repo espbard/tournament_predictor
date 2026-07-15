@@ -22,6 +22,7 @@ interface PointSource {
   subLabel?: string;
   pointsByUser: Record<string, number>;
   answerByUser?: Record<string, string>;
+  answerType?: string;
   kind?: 'winner';
   actualTeam?: TeamInfo | null;
   predictedTeamByUser?: Record<string, TeamInfo | null>;
@@ -559,6 +560,10 @@ export default function FinalResultsView({
   // wrapped multi-line answer to fit without overlapping its neighbors — switch
   // those to running vertically down the column instead.
   const compactLayout = users.length > 8;
+  // Number and yes/no answers ("7", "Ja") are short enough to fit horizontally even in a
+  // narrow column, so they never need the vertical treatment.
+  const shortAnswerType = currentSource?.answerType === 'number' || currentSource?.answerType === 'yes_no';
+  const verticalAnswerLayout = compactLayout && !shortAnswerType;
 
   // Screen recording is a desktop-only browser capability (no mobile browser implements
   // getDisplayMedia) — hide the download entry point entirely rather than showing a
@@ -725,7 +730,7 @@ export default function FinalResultsView({
                       }
                     >
                       {sourceAnswer !== undefined && (
-                        compactLayout ? (
+                        verticalAnswerLayout ? (
                           <span className={`h-28 [writing-mode:vertical-rl] rotate-180 overflow-hidden whitespace-nowrap text-ellipsis text-xs font-semibold leading-tight ${isCorrect ? 'text-[#ffe81f]' : 'text-gray-400'}`}>
                             {sourceAnswer || '—'}
                           </span>
