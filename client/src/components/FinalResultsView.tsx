@@ -59,7 +59,7 @@ type DisplayMediaOptions = DisplayMediaStreamOptions & { preferCurrentTab?: bool
 const INTRO_DARK_MS = 1000;
 const INTRO_LOGO_FADE_MS = 1800;
 const INTRO_LOGO_HOLD_MS = 2200;
-const INTRO_CRAWL_MS = 80000;
+const INTRO_CRAWL_MS = 72000;
 const TOURNAMENT_LOGO_PLACEHOLDER = '/tournament-logo-placeholder.png';
 const COMPETITION_LOGO_PLACEHOLDER = '/competition-logo-placeholder.jpg';
 const LABEL_MS = 1200;
@@ -642,11 +642,11 @@ export default function FinalResultsView({
             }`}
             style={{ transitionDuration: `${introLogoFadeMs}ms` }}
           >
-            <div className="flex h-28 w-28 items-center justify-center rounded-2xl bg-white p-3 shadow-2xl sm:h-44 sm:w-44 sm:p-4 md:h-56 md:w-56">
-              <img src={tournamentLogoSrc} alt="" className="h-full w-full object-contain" />
+            <div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-2xl sm:h-44 sm:w-44 md:h-56 md:w-56">
+              <img src={tournamentLogoSrc} alt="" className="h-full w-full object-cover" />
             </div>
-            <div className="flex h-28 w-28 items-center justify-center rounded-2xl bg-white p-3 shadow-2xl sm:h-44 sm:w-44 sm:p-4 md:h-56 md:w-56">
-              <img src={competitionLogoSrc} alt="" className="h-full w-full object-contain" />
+            <div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-2xl sm:h-44 sm:w-44 md:h-56 md:w-56">
+              <img src={competitionLogoSrc} alt="" className="h-full w-full object-cover" />
             </div>
           </div>
 
