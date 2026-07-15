@@ -54,7 +54,7 @@ interface FinalResultsViewProps {
 // widely-supported Chrome/Edge hint that pre-selects "this tab" in the share picker.
 type DisplayMediaOptions = DisplayMediaStreamOptions & { preferCurrentTab?: boolean };
 
-const INTRO_MS = 4000;
+const INTRO_MS = 6000;
 const LABEL_MS = 1200;
 const PRE_REVEAL_MS = 700;
 const STATIC_MS = 1000;
@@ -511,10 +511,11 @@ export default function FinalResultsView({
   const columnTransitionMs = 700 / speed;
   const barTransitionMs = 700 / speed;
   const fallDurationMs = FALL_MS / speed;
+  const introFadeMs = 2000 / speed;
 
   return (
     <div className="fixed inset-0 z-[200] bg-black overflow-hidden">
-      <div className="pointer-events-none absolute inset-0 animate-edge-pulse" />
+      <div className={`pointer-events-none absolute inset-0 ${showIntro ? 'animate-edge-pulse-gold' : 'animate-edge-pulse'}`} />
 
       {!showOverlay && (
         <div className="absolute left-4 top-4 z-[210] flex items-center gap-2 sm:left-6 sm:top-6">
@@ -563,7 +564,12 @@ export default function FinalResultsView({
 
       {showIntro ? (
         <div className="absolute inset-0 flex items-center justify-center px-6 text-center">
-          <p className="text-2xl font-bold leading-snug text-white sm:text-4xl md:text-5xl">{introText}</p>
+          <p
+            className="animate-intro-fade-in-down text-2xl font-bold leading-snug text-white opacity-0 sm:text-4xl md:text-5xl"
+            style={{ animationDuration: `${introFadeMs}ms` }}
+          >
+            {introText}
+          </p>
         </div>
       ) : (
         <>
