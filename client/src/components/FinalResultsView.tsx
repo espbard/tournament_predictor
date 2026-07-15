@@ -59,7 +59,6 @@ type DisplayMediaOptions = DisplayMediaStreamOptions & { preferCurrentTab?: bool
 const INTRO_DARK_MS = 1000;
 const INTRO_LOGO_FADE_MS = 1800;
 const INTRO_LOGO_HOLD_MS = 2200;
-const INTRO_TEXT_DELAY_MS = 900;
 const INTRO_CRAWL_MS = 21000;
 const TOURNAMENT_LOGO_PLACEHOLDER = '/tournament-logo-placeholder.png';
 const COMPETITION_LOGO_PLACEHOLDER = '/competition-logo-placeholder.jpg';
@@ -442,7 +441,7 @@ export default function FinalResultsView({
       await pw(INTRO_LOGO_FADE_MS + INTRO_LOGO_HOLD_MS);
       if (cancelled) return;
       setLogosVisible(false);
-      await pw(INTRO_LOGO_FADE_MS + INTRO_TEXT_DELAY_MS);
+      await pw(INTRO_LOGO_FADE_MS);
       if (cancelled) return;
       setCrawlStarted(true);
       await pw(INTRO_CRAWL_MS);
