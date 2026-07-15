@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { X, Pause, Play, FastForward, RotateCcw, Download, Video } from 'lucide-react';
+import { X, Pause, Play, FastForward, SkipBack, SkipForward, RotateCcw, Download, Video } from 'lucide-react';
 import { UserAvatar } from '@/components/UserAvatar';
 
 interface DisplayUser {
@@ -40,6 +40,8 @@ interface FinalResultsViewProps {
   exitLabel: string;
   pauseLabel: string;
   playLabel: string;
+  previousLabel: string;
+  nextLabel: string;
   fastForwardLabel: string;
   replayLabel: string;
   downloadLabel: string;
@@ -286,6 +288,8 @@ export default function FinalResultsView({
   exitLabel,
   pauseLabel,
   playLabel,
+  previousLabel,
+  nextLabel,
   fastForwardLabel,
   replayLabel,
   downloadLabel,
@@ -396,7 +400,7 @@ export default function FinalResultsView({
     setRecordError(null);
     setShowDownloadPrompt(false);
     // Restart the whole reveal from the intro so the recording captures it in full.
-    setReplayCount(c => c + 1);
+    restart();
   }
 
   // A few seconds after the winner overlay appears, the celebratory moment has had time
@@ -450,20 +454,38 @@ export default function FinalResultsView({
     return () => window.removeEventListener('resize', recompute);
   }, [sourceIdx, showIntro]);
 
+  // The reveal is a `sourceIdx`-driven state machine so the Previous/Next buttons can
+  // jump straight to any point in it: -1 is the intro, 0..pointSources.length-1 is each
+  // point source's own reveal, and pointSources.length is the final "done" state. Each
+  // section recomputes totals from scratch (cumulative sum of every earlier source)
+  // rather than incrementing, so jumping around never leaves stale numbers on screen.
+  function cumulativeTotals(throughExclusive: number): Record<string, number> {
+    const result: Record<string, number> = {};
+    for (let i = 0; i < throughExclusive; i++) {
+      for (const [uid, pts] of Object.entries(pointSources[i].pointsByUser)) {
+        result[uid] = (result[uid] ?? 0) + pts;
+      }
+    }
+    return result;
+  }
+
+  // Section -1: the intro (dark -> logos -> crawl). Advances to section 0 on its own
+  // when the crawl finishes, but Next can cut it short at any point.
   useEffect(() => {
-    if (pointSources.length === 0) return;
+    if (pointSources.length === 0 || sourceIdx !== -1) return;
     let cancelled = false;
     const isCancelled = () => cancelled;
     const pw = (ms: number) => pausableWait(ms, pausedRef, speedRef, isCancelled);
 
+    setShowIntro(true);
+    setLogosVisible(false);
+    setCrawlStarted(false);
+    setDone(false);
+    setShowOverlay(false);
+    setTotals({});
+    setSortTotals({});
+
     async function run() {
-      setShowIntro(true);
-      setLogosVisible(false);
-      setCrawlStarted(false);
-      setTotals({});
-      setSortTotals({});
-      setDone(false);
-      setShowOverlay(false);
       await pw(INTRO_DARK_MS);
       if (cancelled) return;
       setLogosVisible(true);
@@ -476,51 +498,97 @@ export default function FinalResultsView({
       await pw(INTRO_CRAWL_MS);
       if (cancelled) return;
       setShowIntro(false);
-      for (let i = 0; i < pointSources.length; i++) {
-        if (cancelled) return;
-        const source = pointSources[i];
-        const hasPreReveal = !!source.answerByUser || source.kind === 'winner';
-        setSourceIdx(i);
-        setPhase('label');
-        await pw(LABEL_MS);
-        if (cancelled) return;
-        if (hasPreReveal) {
-          setPhase('preReveal');
-          await pw(PRE_REVEAL_MS);
-          if (cancelled) return;
-        }
-        setPhase('static');
-        await pw(STATIC_MS);
-        if (cancelled) return;
-        setPhase('falling');
-        await pw(FALL_MS);
-        if (cancelled) return;
-        let newTotals: Record<string, number> = {};
-        setTotals(prev => {
-          newTotals = { ...prev };
-          for (const [uid, pts] of Object.entries(pointSources[i].pointsByUser)) {
-            newTotals[uid] = (newTotals[uid] ?? 0) + pts;
-          }
-          return newTotals;
-        });
-        setPhase('landed');
-        await pw(RESORT_DELAY_MS);
-        if (cancelled) return;
-        setSortTotals(newTotals);
-        await pw(PAUSE_MS);
-      }
-      if (!cancelled) {
-        setPhase('idle');
-        setDone(true);
-        await pw(OVERLAY_DELAY_MS);
-        if (cancelled) return;
-        setShowOverlay(true);
-      }
+      setSourceIdx(0);
     }
 
     run();
     return () => { cancelled = true; };
-  }, [pointSources, replayCount]);
+  }, [pointSources, replayCount, sourceIdx]);
+
+  // Sections 0..pointSources.length-1: one point source's own label -> reveal -> points
+  // -> resort sequence. Advances to sourceIdx + 1 on its own when it finishes.
+  useEffect(() => {
+    if (pointSources.length === 0 || sourceIdx < 0 || sourceIdx >= pointSources.length) return;
+    let cancelled = false;
+    const isCancelled = () => cancelled;
+    const pw = (ms: number) => pausableWait(ms, pausedRef, speedRef, isCancelled);
+    const idx = sourceIdx;
+    const source = pointSources[idx];
+    const hasPreReveal = !!source.answerByUser || source.kind === 'winner';
+
+    setShowIntro(false);
+    setDone(false);
+    setShowOverlay(false);
+    setTotals(cumulativeTotals(idx));
+    setSortTotals(cumulativeTotals(idx));
+
+    async function run() {
+      setPhase('label');
+      await pw(LABEL_MS);
+      if (cancelled) return;
+      if (hasPreReveal) {
+        setPhase('preReveal');
+        await pw(PRE_REVEAL_MS);
+        if (cancelled) return;
+      }
+      setPhase('static');
+      await pw(STATIC_MS);
+      if (cancelled) return;
+      setPhase('falling');
+      await pw(FALL_MS);
+      if (cancelled) return;
+      const newTotals = cumulativeTotals(idx + 1);
+      setTotals(newTotals);
+      setPhase('landed');
+      await pw(RESORT_DELAY_MS);
+      if (cancelled) return;
+      setSortTotals(newTotals);
+      await pw(PAUSE_MS);
+      if (cancelled) return;
+      setSourceIdx(idx + 1);
+    }
+
+    run();
+    return () => { cancelled = true; };
+  }, [pointSources, replayCount, sourceIdx]);
+
+  // Section pointSources.length: everything's revealed — show the final totals and,
+  // after a beat, the winner overlay.
+  useEffect(() => {
+    if (pointSources.length === 0 || sourceIdx !== pointSources.length) return;
+    let cancelled = false;
+    const isCancelled = () => cancelled;
+    const pw = (ms: number) => pausableWait(ms, pausedRef, speedRef, isCancelled);
+
+    setPhase('idle');
+    setTotals(cumulativeTotals(pointSources.length));
+    setSortTotals(cumulativeTotals(pointSources.length));
+    setDone(true);
+    setShowOverlay(false);
+
+    async function run() {
+      await pw(OVERLAY_DELAY_MS);
+      if (cancelled) return;
+      setShowOverlay(true);
+    }
+
+    run();
+    return () => { cancelled = true; };
+  }, [pointSources, replayCount, sourceIdx]);
+
+  // Previous/Next step one section at a time; clamped to the intro (-1) and the final
+  // "done" section (pointSources.length) at the ends.
+  function goToSection(target: number) {
+    setSourceIdx(Math.max(-1, Math.min(target, pointSources.length)));
+  }
+  const goToPrevious = () => goToSection(sourceIdx - 1);
+  const goToNext = () => goToSection(sourceIdx + 1);
+
+  // Restarts the whole reveal from the intro.
+  function restart() {
+    setSourceIdx(-1);
+    setReplayCount(c => c + 1);
+  }
 
   const maxTotal = useMemo(() => {
     let max = 0;
@@ -550,7 +618,7 @@ export default function FinalResultsView({
     return [...users].sort((a, b) => (totals[b.userId] ?? 0) - (totals[a.userId] ?? 0) )[0];
   }, [done, users, totals]);
 
-  const currentSource = sourceIdx >= 0 ? pointSources[sourceIdx] : null;
+  const currentSource = sourceIdx >= 0 && sourceIdx < pointSources.length ? pointSources[sourceIdx] : null;
   const showHeader = currentSource !== null && phase !== 'idle';
   const showReveal = currentSource !== null && (phase === 'preReveal' || phase === 'static' || phase === 'falling');
   const showPoints = currentSource !== null && (phase === 'static' || phase === 'falling');
@@ -603,13 +671,6 @@ export default function FinalResultsView({
           >
             <X size={18} />
           </button>
-          <button
-            onClick={() => setPaused(p => !p)}
-            aria-label={paused ? playLabel : pauseLabel}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-[#ffe81f]/10 text-[#ffe81f] backdrop-blur hover:bg-[#ffe81f]/20"
-          >
-            {paused ? <Play size={18} /> : <Pause size={18} />}
-          </button>
           {!recordingSupported ? null : isRecording ? (
             <span className="flex items-center gap-1.5 rounded-full bg-red-500/20 px-3 py-1.5 text-xs font-medium text-red-300">
               <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
@@ -628,15 +689,40 @@ export default function FinalResultsView({
       )}
 
       {!showOverlay && (
-        <button
-          onClick={() => setFastForward(f => !f)}
-          aria-label={fastForwardLabel}
-          className={`absolute right-4 top-4 z-[210] flex h-9 w-9 items-center justify-center rounded-full backdrop-blur transition-colors sm:right-6 sm:top-6 ${
-            fastForward ? 'bg-[#ffe81f]/30 text-[#ffe81f]' : 'bg-[#ffe81f]/10 text-[#ffe81f] hover:bg-[#ffe81f]/20'
-          }`}
-        >
-          <FastForward size={18} />
-        </button>
+        <div className="absolute right-4 top-4 z-[210] flex items-center gap-2 sm:right-6 sm:top-6">
+          <button
+            onClick={goToPrevious}
+            disabled={sourceIdx <= -1}
+            aria-label={previousLabel}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-[#ffe81f]/10 text-[#ffe81f] backdrop-blur hover:bg-[#ffe81f]/20 disabled:opacity-30 disabled:hover:bg-[#ffe81f]/10"
+          >
+            <SkipBack size={18} />
+          </button>
+          <button
+            onClick={() => setPaused(p => !p)}
+            aria-label={paused ? playLabel : pauseLabel}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-[#ffe81f]/10 text-[#ffe81f] backdrop-blur hover:bg-[#ffe81f]/20"
+          >
+            {paused ? <Play size={18} /> : <Pause size={18} />}
+          </button>
+          <button
+            onClick={goToNext}
+            disabled={sourceIdx >= pointSources.length}
+            aria-label={nextLabel}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-[#ffe81f]/10 text-[#ffe81f] backdrop-blur hover:bg-[#ffe81f]/20 disabled:opacity-30 disabled:hover:bg-[#ffe81f]/10"
+          >
+            <SkipForward size={18} />
+          </button>
+          <button
+            onClick={() => setFastForward(f => !f)}
+            aria-label={fastForwardLabel}
+            className={`flex h-9 w-9 items-center justify-center rounded-full backdrop-blur transition-colors ${
+              fastForward ? 'bg-[#ffe81f]/30 text-[#ffe81f]' : 'bg-[#ffe81f]/10 text-[#ffe81f] hover:bg-[#ffe81f]/20'
+            }`}
+          >
+            <FastForward size={18} />
+          </button>
+        </div>
       )}
 
       {showIntro ? (
@@ -786,7 +872,7 @@ export default function FinalResultsView({
       {done && !isRecording && (
         <div className="absolute inset-x-0 bottom-4 z-[150] flex items-center justify-center gap-3">
           <button
-            onClick={() => setReplayCount(c => c + 1)}
+            onClick={restart}
             aria-label={replayLabel}
             className="flex h-9 w-9 items-center justify-center rounded-full bg-[#ffe81f]/10 text-[#ffe81f] backdrop-blur hover:bg-[#ffe81f]/20"
           >

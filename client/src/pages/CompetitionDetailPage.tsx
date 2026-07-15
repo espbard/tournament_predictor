@@ -2845,6 +2845,8 @@ export default function CompetitionDetailPage() {
           exitLabel={t('competitionDetail.finalResults.exit')}
           pauseLabel={t('competitionDetail.finalResults.pause')}
           playLabel={t('competitionDetail.finalResults.play')}
+          previousLabel={t('competitionDetail.finalResults.previous')}
+          nextLabel={t('competitionDetail.finalResults.next')}
           fastForwardLabel={t('competitionDetail.finalResults.fastForward')}
           replayLabel={t('competitionDetail.finalResults.replay')}
           downloadLabel={t('competitionDetail.finalResults.download')}
