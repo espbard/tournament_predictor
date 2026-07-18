@@ -20,6 +20,7 @@ import {
   calculateGroupPositionPoints,
   calculateKnockoutPoints,
   getUserPredictedTeamForKnockoutSlot,
+  getUserPredictedBronzeFinalTeam,
   type KnockoutMatchSlot,
   type FirstRoundPredTeams,
 } from './scoring.js';
@@ -378,7 +379,6 @@ async function recomputeAllMemberBreakdowns(
 
       for (const m of allKoMatches) {
         if (m.status !== 'completed' || !m.homeTeamId || !m.awayTeamId) continue;
-        if (m.stage === 'bronze_final') continue;
 
         const stageMatches = matchesByStageForFlip.get(m.stage) ?? [];
         const matchIdx = stageMatches.findIndex(sm => sm.id === m.id);
@@ -394,6 +394,13 @@ async function recomputeAllMemberBreakdowns(
         if (m.stage === firstRound) {
           predHome = firstRoundPredTeams[predKey]?.predHomeId ?? null;
           predAway = firstRoundPredTeams[predKey]?.predAwayId ?? null;
+        } else if (m.stage === 'bronze_final') {
+          predHome = getUserPredictedBronzeFinalTeam(
+            'home', firstRound, matchesByStageForFlip, updatedBracketPreds,
+          );
+          predAway = getUserPredictedBronzeFinalTeam(
+            'away', firstRound, matchesByStageForFlip, updatedBracketPreds,
+          );
         } else {
           predHome = getUserPredictedTeamForKnockoutSlot(
             m.stage, matchIdx, 'home', firstRound, matchesByStageForFlip, updatedBracketPreds,

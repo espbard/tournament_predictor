@@ -356,26 +356,27 @@ function FocusedMatchCard({
     let correctTeamInKnockoutTie = 0, correctTeamInFinal = 0, correctWinner = 0;
     let isActualHomeTeamCorrect = false, isActualAwayTeamCorrect = false;
 
-    if (!isBronzeFinal) {
-      // For the first knockout round, compare against predicted qualifiers derived from
-      // the user's group stage score predictions. For later rounds, use bracket trajectory.
-      const effectivePredHomeId = isFirstRound ? (predictedFirstRoundTeams?.predHomeId ?? null) : predHomeId;
-      const effectivePredAwayId = isFirstRound ? (predictedFirstRoundTeams?.predAwayId ?? null) : predAwayId;
-      const hasPreds = isFirstRound ? !!predictedFirstRoundTeams : true;
+    // For the first knockout round, compare against predicted qualifiers derived from
+    // the user's group stage score predictions. For later rounds — including the bronze
+    // final, whose homeTeam/awayTeam are already the predicted semifinal losers — use
+    // the bracket-trajectory teams (predHomeId/predAwayId) directly.
+    const useFirstRoundPreds = isFirstRound && !isBronzeFinal;
+    const effectivePredHomeId = useFirstRoundPreds ? (predictedFirstRoundTeams?.predHomeId ?? null) : predHomeId;
+    const effectivePredAwayId = useFirstRoundPreds ? (predictedFirstRoundTeams?.predAwayId ?? null) : predAwayId;
+    const hasPreds = useFirstRoundPreds ? !!predictedFirstRoundTeams : true;
 
-      if (hasPreds) {
-        for (const teamId of [actHomeId, actAwayId]) {
-          if (!teamId) continue;
-          if (effectivePredHomeId !== teamId && effectivePredAwayId !== teamId) continue;
-          if (isFinal) {
-            correctTeamInFinal += scoringConfig.correct_team_in_final;
-            if (teamId === actualMatch.progressingTeamId && prediction.progressingTeamId === actualMatch.progressingTeamId) correctWinner = scoringConfig.correct_winner;
-          } else if (!isFirstRound) {
-            correctTeamInKnockoutTie += scoringConfig.correct_team_in_knockout_tie;
-          }
-          if (teamId === actHomeId) isActualHomeTeamCorrect = true;
-          if (teamId === actAwayId) isActualAwayTeamCorrect = true;
+    if (hasPreds) {
+      for (const teamId of [actHomeId, actAwayId]) {
+        if (!teamId) continue;
+        if (effectivePredHomeId !== teamId && effectivePredAwayId !== teamId) continue;
+        if (isFinal) {
+          correctTeamInFinal += scoringConfig.correct_team_in_final;
+          if (teamId === actualMatch.progressingTeamId && prediction.progressingTeamId === actualMatch.progressingTeamId) correctWinner = scoringConfig.correct_winner;
+        } else if (!useFirstRoundPreds) {
+          correctTeamInKnockoutTie += scoringConfig.correct_team_in_knockout_tie;
         }
+        if (teamId === actHomeId) isActualHomeTeamCorrect = true;
+        if (teamId === actAwayId) isActualAwayTeamCorrect = true;
       }
     }
 

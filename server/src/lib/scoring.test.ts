@@ -498,6 +498,54 @@ describe('calculateKnockoutPoints', () => {
     });
   });
 
+  it('awards correct_team_in_knockout_tie for correctly predicted bronze final teams', () => {
+    const sfFirstRound = 'semi_final';
+    // Semifinals are left "scheduled" (not completed) so only the bronze final's own
+    // points show up in the breakdown — their homeTeamId/awayTeamId are still used to
+    // trace the user's predicted bronze-final occupants below.
+    const sfMatches = [
+      { id: 'sf-0', stage: 'semi_final', homeTeamId: 'team-a', awayTeamId: 'team-b', homeScore: 0, awayScore: 0, progressingTeamId: null, status: 'scheduled' },
+      { id: 'sf-1', stage: 'semi_final', homeTeamId: 'team-c', awayTeamId: 'team-d', homeScore: 0, awayScore: 0, progressingTeamId: null, status: 'scheduled' },
+    ];
+    // Bronze final: loser of sf-0 (team-b) vs loser of sf-1 (team-c) — matches the
+    // user's predicted losers below, so no flip.
+    const bronzeMatch = { id: 'bf-0', stage: 'bronze_final', homeTeamId: 'team-b', awayTeamId: 'team-c', homeScore: 2, awayScore: 1, progressingTeamId: 'team-b', status: 'completed' };
+    const matchesForTest = [...sfMatches, bronzeMatch];
+    const preds: BracketPredictions = {
+      'semi_final_0': { homeScore: 1, awayScore: 0, progressingTeamId: null }, // team-a wins, team-b loses
+      'semi_final_1': { homeScore: 0, awayScore: 1, progressingTeamId: null }, // team-d wins, team-c loses
+      'bronze_final_0': { homeScore: 2, awayScore: 1, progressingTeamId: null }, // exact match
+    };
+    const result = calculateKnockoutPoints(matchesForTest, sfFirstRound, preds, CONFIG);
+    expect(result.breakdown.exactScore).toBe(CONFIG.exact_score); // bronze final exact
+    expect(result.breakdown.correctResult).toBe(CONFIG.correct_result);
+    expect(result.breakdown.correctTeamInKnockoutTie).toBe(CONFIG.correct_team_in_knockout_tie * 2); // team-b + team-c
+    expect(result.breakdown.correctTeamProgresses).toBe(0); // bronze final has no progression category
+    expect(result.breakdown.correctTeamInFinal).toBe(0);
+    expect(result.breakdown.correctWinner).toBe(0);
+  });
+
+  it('awards correct_team_in_knockout_tie for bronze final even when the actual sides are flipped', () => {
+    const sfFirstRound = 'semi_final';
+    const sfMatches = [
+      { id: 'sf-0', stage: 'semi_final', homeTeamId: 'team-a', awayTeamId: 'team-b', homeScore: 0, awayScore: 0, progressingTeamId: null, status: 'scheduled' },
+      { id: 'sf-1', stage: 'semi_final', homeTeamId: 'team-c', awayTeamId: 'team-d', homeScore: 0, awayScore: 0, progressingTeamId: null, status: 'scheduled' },
+    ];
+    // Actual bronze final has team-c (predicted away) at home and team-b (predicted home) away — flipped.
+    const bronzeMatch = { id: 'bf-0', stage: 'bronze_final', homeTeamId: 'team-c', awayTeamId: 'team-b', homeScore: 1, awayScore: 2, progressingTeamId: 'team-b', status: 'completed' };
+    const matchesForTest = [...sfMatches, bronzeMatch];
+    const preds: BracketPredictions = {
+      'semi_final_0': { homeScore: 1, awayScore: 0, progressingTeamId: null }, // team-a wins, team-b loses
+      'semi_final_1': { homeScore: 0, awayScore: 1, progressingTeamId: null }, // team-d wins, team-c loses
+      'bronze_final_0': { homeScore: 2, awayScore: 1, progressingTeamId: null }, // predicts team-b (home) 2-1 team-c (away)
+    };
+    const result = calculateKnockoutPoints(matchesForTest, sfFirstRound, preds, CONFIG);
+    // Flipped evaluation: predicted 2-1 vs actual (flipped) 2-1 → still exact.
+    expect(result.breakdown.exactScore).toBe(CONFIG.exact_score);
+    expect(result.breakdown.correctResult).toBe(CONFIG.correct_result);
+    expect(result.breakdown.correctTeamInKnockoutTie).toBe(CONFIG.correct_team_in_knockout_tie * 2);
+  });
+
   it('does not award correct_winner when user predicted correct finalist but wrong winner', () => {
     const sfFirstRound = 'semi_final';
     const sfMatches = [
