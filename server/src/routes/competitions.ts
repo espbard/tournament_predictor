@@ -1250,7 +1250,7 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
             koBd.correctTeamProgresses = basicResult.breakdown.correctTeamProgresses;
 
             // correct_team_in_knockout_tie / correct_team_in_final / correct_winner
-            if (koCfg && koMatchData.stage !== koCfg.firstRound && koMatchData.stage !== 'bronze_final') {
+            if (koCfg && koMatchData.stage !== koCfg.firstRound) {
               let userPredictedWinner: string | null = null;
               if (koMatchData.stage === 'final') {
                 if (pred.progressingTeamId) {
@@ -1617,18 +1617,22 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
           let predictedHome: string | null = null;
           let predictedAway: string | null = null;
-          if (bracketStage !== 'bronze_final') {
-            if (bracketStage === koFirstRoundForStats) {
-              predictedHome = firstRoundPredTeams[bracketKey]?.predHomeId ?? null;
-              predictedAway = firstRoundPredTeams[bracketKey]?.predAwayId ?? null;
-            } else {
-              // Trajectory tracing beyond the first round must resolve against the actual
-              // (confirmed) first-round teams, not the user's own predicted qualifiers —
-              // once the group stage is over, "who's in this semi-final" is fact, not a
-              // guess, and the scoring engine (calculateKnockoutPoints) traces the same way.
-              predictedHome = getUserPredictedTeamForKnockoutSlot(bracketStage, matchIdx, 'home', koFirstRoundForStats, matchesByStageActualForStats, bpPreds);
-              predictedAway = getUserPredictedTeamForKnockoutSlot(bracketStage, matchIdx, 'away', koFirstRoundForStats, matchesByStageActualForStats, bpPreds);
-            }
+          if (bracketStage === koFirstRoundForStats) {
+            predictedHome = firstRoundPredTeams[bracketKey]?.predHomeId ?? null;
+            predictedAway = firstRoundPredTeams[bracketKey]?.predAwayId ?? null;
+          } else if (bracketStage === 'bronze_final') {
+            // Bronze final isn't part of the win-progression tree, so it isn't reachable
+            // through getUserPredictedTeamForKnockoutSlot's recursion. Its occupants are
+            // the losers of the two predicted semifinals.
+            predictedHome = getUserPredictedBronzeFinalTeam('home', koFirstRoundForStats, matchesByStageForStats, bpPreds);
+            predictedAway = getUserPredictedBronzeFinalTeam('away', koFirstRoundForStats, matchesByStageForStats, bpPreds);
+          } else {
+            // Trajectory tracing beyond the first round must resolve against the actual
+            // (confirmed) first-round teams, not the user's own predicted qualifiers —
+            // once the group stage is over, "who's in this semi-final" is fact, not a
+            // guess, and the scoring engine (calculateKnockoutPoints) traces the same way.
+            predictedHome = getUserPredictedTeamForKnockoutSlot(bracketStage, matchIdx, 'home', koFirstRoundForStats, matchesByStageActualForStats, bpPreds);
+            predictedAway = getUserPredictedTeamForKnockoutSlot(bracketStage, matchIdx, 'away', koFirstRoundForStats, matchesByStageActualForStats, bpPreds);
           }
 
           let shouldFlip = false;
@@ -1639,20 +1643,10 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           }
 
           // The Patriot: does *this user's own* bracket prediction have Norway occupying
-          // either slot of this real, completed match? (bronze_final isn't part of the
-          // win-progression tree getUserPredictedTeamForKnockoutSlot traces, so it needs the
-          // dedicated loser-of-semifinals resolver instead — same as the fix applied to the
-          // all-match-predictions endpoint.)
+          // either slot of this real, completed match?
           if (norwayTeam) {
-            const patriotHome = bracketStage === 'bronze_final'
-              ? getUserPredictedBronzeFinalTeam('home', koFirstRoundForStats, matchesByStageForStats, bpPreds)
-              : predictedHome;
-            const patriotAway = bracketStage === 'bronze_final'
-              ? getUserPredictedBronzeFinalTeam('away', koFirstRoundForStats, matchesByStageForStats, bpPreds)
-              : predictedAway;
-
-            if (patriotHome === norwayTeam.id || patriotAway === norwayTeam.id) {
-              const norwayIsPredictedHome = patriotHome === norwayTeam.id;
+            if (predictedHome === norwayTeam.id || predictedAway === norwayTeam.id) {
+              const norwayIsPredictedHome = predictedHome === norwayTeam.id;
               const predNorwayGoals = norwayIsPredictedHome ? pred.homeScore : pred.awayScore;
               const predOpponentGoals = norwayIsPredictedHome ? pred.awayScore : pred.homeScore;
               const patriotEntry = patriotKoStatsByUser.get(userId)

@@ -391,28 +391,36 @@ export function calculateKnockoutPoints(
     let predictedAway: string | null = null;
     let shouldFlip = false;
 
-    if (stage !== 'bronze_final') {
-      if (stage === firstRound) {
-        if (predictedFirstRoundTeams) {
-          predictedHome = predictedFirstRoundTeams[predKey]?.predHomeId ?? null;
-          predictedAway = predictedFirstRoundTeams[predKey]?.predAwayId ?? null;
-        }
-      } else {
-        predictedHome = getUserPredictedTeamForKnockoutSlot(
-          stage, matchIndex, 'home', firstRound, matchesByStageForPred, userBracketPredictions,
-        );
-        predictedAway = getUserPredictedTeamForKnockoutSlot(
-          stage, matchIndex, 'away', firstRound, matchesByStageForPred, userBracketPredictions,
-        );
+    if (stage === firstRound) {
+      if (predictedFirstRoundTeams) {
+        predictedHome = predictedFirstRoundTeams[predKey]?.predHomeId ?? null;
+        predictedAway = predictedFirstRoundTeams[predKey]?.predAwayId ?? null;
       }
+    } else if (stage === 'bronze_final') {
+      // Bronze final isn't part of the win-progression tree, so it isn't reachable
+      // through getUserPredictedTeamForKnockoutSlot's recursion. Its occupants are
+      // the losers of the two predicted semifinals.
+      predictedHome = getUserPredictedBronzeFinalTeam(
+        'home', firstRound, matchesByStageForPred, userBracketPredictions,
+      );
+      predictedAway = getUserPredictedBronzeFinalTeam(
+        'away', firstRound, matchesByStageForPred, userBracketPredictions,
+      );
+    } else {
+      predictedHome = getUserPredictedTeamForKnockoutSlot(
+        stage, matchIndex, 'home', firstRound, matchesByStageForPred, userBracketPredictions,
+      );
+      predictedAway = getUserPredictedTeamForKnockoutSlot(
+        stage, matchIndex, 'away', firstRound, matchesByStageForPred, userBracketPredictions,
+      );
+    }
 
-      if (m.homeTeamId && m.awayTeamId) {
-        // Flip when a team from the actual match is predicted on the wrong side:
-        // predicted home is actually the away team, OR predicted away is actually the home team.
-        shouldFlip =
-          (predictedHome !== null && predictedHome === m.awayTeamId) ||
-          (predictedAway !== null && predictedAway === m.homeTeamId);
-      }
+    if (m.homeTeamId && m.awayTeamId) {
+      // Flip when a team from the actual match is predicted on the wrong side:
+      // predicted home is actually the away team, OR predicted away is actually the home team.
+      shouldFlip =
+        (predictedHome !== null && predictedHome === m.awayTeamId) ||
+        (predictedAway !== null && predictedAway === m.homeTeamId);
     }
 
     // 1. Basic match scoring (exact_score, correct_result, correct_team_progresses)
@@ -426,8 +434,9 @@ export function calculateKnockoutPoints(
       breakdown.correctTeamProgresses += result.breakdown.correctTeamProgresses;
     }
 
-    // 2. Knockout tie scoring — skip first round (teams come from draw) and bronze_final
-    if (stage === firstRound || stage === 'bronze_final') continue;
+    // 2. Knockout tie scoring — skip first round (teams come from draw). The bronze final
+    // is included here (correct_team_in_knockout_tie), same as any other non-final tie.
+    if (stage === firstRound) continue;
 
     // Determine which team the user predicted to win the final (team identity, not home/away side).
     // Must match both: correct team in the final AND correct team to win.
