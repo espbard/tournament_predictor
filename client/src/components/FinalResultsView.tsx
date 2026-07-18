@@ -156,11 +156,21 @@ function Fireworks() {
 
 function TeamIcon({ team, size, correct }: { team: TeamInfo | null | undefined; size: number; correct?: boolean }) {
   const ring = correct ? 'ring-2 ring-offset-2 ring-offset-black ring-[#ffe81f]' : '';
+  // Pin both dimensions (not just width) and disable all flex grow/shrink so this can
+  // never be stretched into an oval — including when many of these end up packed
+  // together tighter than their own width and start overlapping.
+  const circleStyle: React.CSSProperties = {
+    width: size,
+    height: size,
+    minWidth: size,
+    minHeight: size,
+    aspectRatio: '1 / 1',
+  };
   if (!team) {
     return (
       <div
-        className={`flex flex-shrink-0 items-center justify-center rounded-full bg-white/10 text-[#ffe81f]/60 ${ring}`}
-        style={{ width: size, height: size, fontSize: Math.max(8, Math.round(size * 0.45)), fontWeight: 700 }}
+        className={`flex flex-shrink-0 flex-grow-0 items-center justify-center rounded-full bg-white/10 text-[#ffe81f]/60 ${ring}`}
+        style={{ ...circleStyle, fontSize: Math.max(8, Math.round(size * 0.45)), fontWeight: 700 }}
       >
         ?
       </div>
@@ -170,26 +180,38 @@ function TeamIcon({ team, size, correct }: { team: TeamInfo | null | undefined; 
     <img
       src={team.imageUrl}
       alt=""
-      className={`flex-shrink-0 rounded-full object-cover ${ring}`}
-      style={{ width: size, height: size }}
+      className={`flex-shrink-0 flex-grow-0 rounded-full object-cover ${ring}`}
+      style={circleStyle}
     />
   ) : (
     <div
-      className={`flex flex-shrink-0 items-center justify-center rounded-full bg-white/10 font-bold text-[#ffe81f] ${ring}`}
-      style={{ width: size, height: size, fontSize: Math.max(8, Math.round(size * 0.4)) }}
+      className={`flex flex-shrink-0 flex-grow-0 items-center justify-center rounded-full bg-white/10 font-bold text-[#ffe81f] ${ring}`}
+      style={{ ...circleStyle, fontSize: Math.max(8, Math.round(size * 0.4)) }}
     >
       {team.name?.charAt(0) ?? '?'}
     </div>
   );
 }
 
+const ANSWER_FONT_SIZES = [
+  'text-lg sm:text-2xl',
+  'text-base sm:text-xl',
+  'text-sm sm:text-lg',
+  'text-xs sm:text-base',
+  'text-[10px] sm:text-sm',
+  'text-[9px] sm:text-xs',
+];
+
 // Longer answers shrink to fit their allocated width before wrapping onto a second line.
-function answerFontSizeClass(text: string): string {
+// Short answers (yes/no, single-digit numbers) never wrap that way, so on their own they'd
+// stay at the largest size no matter how many users are packed into the chart — shrink
+// those too once columns get narrow, or their text overlaps the neighboring columns'.
+function answerFontSizeClass(text: string, userCount: number): string {
   const len = text.length;
-  if (len <= 8) return 'text-lg sm:text-2xl';
-  if (len <= 14) return 'text-base sm:text-xl';
-  if (len <= 22) return 'text-sm sm:text-lg';
-  return 'text-xs sm:text-base';
+  const lengthTier = len <= 8 ? 0 : len <= 14 ? 1 : len <= 22 ? 2 : 3;
+  const userCountTier = userCount <= 8 ? 0 : userCount <= 12 ? 1 : userCount <= 16 ? 2 : userCount <= 22 ? 3 : userCount <= 30 ? 4 : 5;
+  const tier = Math.min(ANSWER_FONT_SIZES.length - 1, Math.max(lengthTier, userCountTier));
+  return ANSWER_FONT_SIZES[tier];
 }
 
 // With more users, each bar's column gets narrower, so the "+N" points readout has to
@@ -802,18 +824,23 @@ export default function FinalResultsView({
                   {showReveal && (
                     <div
                       key={`${currentSource?.id}-reveal`}
-                      className={`absolute left-1/2 z-20 flex -translate-x-1/2 flex-col items-center ${compactLayout ? 'gap-0.5' : 'gap-1.5'} ${
+                      className={`absolute left-1/2 flex -translate-x-1/2 flex-col items-center ${compactLayout ? 'gap-0.5' : 'gap-1.5'} ${
                         isFalling ? 'animate-points-fall' : ''
                       }`}
-                      style={
-                        isFalling
+                      style={{
+                        // Columns can be narrower than a fixed-size team icon once there
+                        // are many users, so neighbors end up overlapping. Stack them so the
+                        // leftmost user is always frontmost and the rightmost is backmost,
+                        // rather than an arbitrary DOM-order stack.
+                        zIndex: 20 + (users.length - rank),
+                        ...(isFalling
                           ? ({
                               ['--fall-start' as string]: `${revealTopPx}px`,
                               animationDuration: `${fallDurationMs}ms`,
                               animationPlayState: paused ? 'paused' : 'running',
                             } as React.CSSProperties)
-                          : { top: revealTopPx, opacity: 1 }
-                      }
+                          : { top: revealTopPx, opacity: 1 }),
+                      }}
                     >
                       {sourceAnswer !== undefined && (
                         verticalAnswerLayout ? (
@@ -821,7 +848,7 @@ export default function FinalResultsView({
                             {sourceAnswer || '—'}
                           </span>
                         ) : (
-                          <span className={`max-w-[150px] whitespace-normal break-words text-center leading-tight font-semibold sm:max-w-[260px] ${answerFontSizeClass(sourceAnswer || '—')} ${isCorrect ? 'text-[#ffe81f]' : 'text-gray-400'}`}>
+                          <span className={`max-w-[150px] whitespace-normal break-words text-center leading-tight font-semibold sm:max-w-[260px] ${answerFontSizeClass(sourceAnswer || '—', users.length)} ${isCorrect ? 'text-[#ffe81f]' : 'text-gray-400'}`}>
                             {sourceAnswer || '—'}
                           </span>
                         )
