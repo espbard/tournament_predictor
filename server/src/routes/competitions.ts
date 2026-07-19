@@ -1453,6 +1453,11 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       }
     }
 
+    // Once knockout bracket shells exist, the tournament has moved into the knockout
+    // stage — "The Patriot" then counts every predicted Norway matchup across the whole
+    // bracket (not just completed ones), instead of only Norway's games so far.
+    const hasReachedKnockouts = koBracketKeyToMatchForStats.size > 0;
+
     // ── Just As I Predicted: find the latest KO round where every match has both actual
     // teams registered (bronze_final is a side branch, not part of the main progression).
     const MAIN_KO_STAGE_ORDER = ['round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'final'] as const;
@@ -1609,7 +1614,6 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         for (const [bracketKey, m] of koBracketKeyToMatchForStats) {
           const pred = bpPreds[bracketKey];
           if (!pred) continue;
-          if (m.status !== 'completed' || m.homeScore === null || m.awayScore === null) continue;
 
           const lastUnderscore = bracketKey.lastIndexOf('_');
           const bracketStage = bracketKey.slice(0, lastUnderscore);
@@ -1635,15 +1639,9 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
             predictedAway = getUserPredictedTeamForKnockoutSlot(bracketStage, matchIdx, 'away', koFirstRoundForStats, matchesByStageActualForStats, bpPreds);
           }
 
-          let shouldFlip = false;
-          if (m.homeTeamId && m.awayTeamId) {
-            shouldFlip =
-              (predictedHome !== null && predictedHome === m.awayTeamId) ||
-              (predictedAway !== null && predictedAway === m.homeTeamId);
-          }
-
           // The Patriot: does *this user's own* bracket prediction have Norway occupying
-          // either slot of this real, completed match?
+          // either slot of this match? Counted for every predicted matchup across the
+          // whole bracket, whether or not the match has actually been played yet.
           if (norwayTeam) {
             if (predictedHome === norwayTeam.id || predictedAway === norwayTeam.id) {
               const norwayIsPredictedHome = predictedHome === norwayTeam.id;
@@ -1657,6 +1655,15 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
               patriotEntry.games += 1;
               patriotKoStatsByUser.set(userId, patriotEntry);
             }
+          }
+
+          if (m.status !== 'completed' || m.homeScore === null || m.awayScore === null) continue;
+
+          let shouldFlip = false;
+          if (m.homeTeamId && m.awayTeamId) {
+            shouldFlip =
+              (predictedHome !== null && predictedHome === m.awayTeamId) ||
+              (predictedAway !== null && predictedAway === m.homeTeamId);
           }
 
           // Reuse the tested knockout scoring engine to get the total points this single
@@ -2873,10 +2880,10 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     // ── The Patriot: most optimistic predictions for Norway's games ──
     // Group-stage "Norway games" come from the real fixture list (unambiguous — group
     // matchups are fixed and known in advance). Knockout-stage "Norway games" instead come
-    // from `patriotKoStatsByUser` (populated above, in the per-user KO loop), which counts a
-    // real completed match toward a user's tally only when *that user's own* bracket
-    // prediction had Norway occupying one of its slots — not merely because Norway actually
-    // played there.
+    // from `patriotKoStatsByUser` (populated above, in the per-user KO loop), which counts
+    // every bracket match toward a user's tally when *that user's own* bracket prediction
+    // had Norway occupying one of its slots — regardless of whether that match has actually
+    // been played, and regardless of Norway's real fixtures.
     if (norwayTeam) {
       const norwayGroupMatches = await db
         .select({ id: matches.id, homeTeamId: matches.homeTeamId, awayTeamId: matches.awayTeamId })
@@ -2939,6 +2946,8 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         patriotGroup.sort((a, b) => a.username.localeCompare(b.username));
 
         const winner = patriotGroup[0];
+        const soFarNo = hasReachedKnockouts ? '' : ' så langt';
+        const soFarEn = hasReachedKnockouts ? '' : ' so far';
         const concededClause =
           winner.ga > 0
             ? lang === 'no'
@@ -2957,10 +2966,10 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           title: lang === 'no' ? 'Patrioten 🇳🇴' : lang === 'de' ? 'Norwegen-Fanatiker 🇳🇴' : 'The Patriot 🇳🇴',
           statistic:
             lang === 'no'
-              ? `${formatUserList(patriotGroup.map(u => u.username), lang)} er den største patrioten! De har tippet at Norge har vunnet ${winner.wins} av sine ${winner.games} kamper så langt! Og at de har scoret hele ${winner.gf} mål og ${concededClause}`
+              ? `${formatUserList(patriotGroup.map(u => u.username), lang)} er den største patrioten! De har tippet at Norge har vunnet ${winner.wins} av sine ${winner.games} kamper${soFarNo}! Og at de har scoret hele ${winner.gf} mål og ${concededClause}`
               : lang === 'de'
                 ? `${formatUserList(patriotGroup.map(u => u.username), lang)} ist der größte Norwegen-Fan von allen! Norwegen gewinnt laut ${patriotGroup.length === 1 ? 'ihm/ihr' : 'ihnen'} sage und schreibe ${winner.wins} von ${winner.games} Spielen und schießt dabei stolze ${winner.gf} Tore — und hat dabei ${concededClause}`
-                : `${formatUserList(patriotGroup.map(u => u.username), lang)} ${patriotGroup.length === 1 ? 'is the biggest patriot' : 'are the biggest patriots'}! They've predicted that Norway has won ${winner.wins} of their ${winner.games} games so far! And that they've scored a whopping ${winner.gf} goals and ${concededClause}`,
+                : `${formatUserList(patriotGroup.map(u => u.username), lang)} ${patriotGroup.length === 1 ? 'is the biggest patriot' : 'are the biggest patriots'}! They've predicted that Norway has won ${winner.wins} of their ${winner.games} games${soFarEn}! And that they've scored a whopping ${winner.gf} goals and ${concededClause}`,
           subjects: patriotGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
           linkType: 'user',
           overlayImageUrl: norwayTeam.imageUrl ?? null,
