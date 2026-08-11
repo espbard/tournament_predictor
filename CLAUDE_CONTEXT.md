@@ -20,7 +20,7 @@ There are two kinds of tournament. **They share nothing but the `users` / `sessi
 the auth middleware, image handling, and generic UI plumbing.** Treat them as two separate
 products living in one repo, and do not refactor one into the other.
 
-| | **Manual** (built, in production) | **Live / API-linked** (planned) |
+| | **Manual** (built, in production) | **Live / API-linked** (in progress — Phase 1 of 6 done) |
 |---|---|---|
 | Source of data | Admin types in teams, fixtures and every result | Pulled from an external football API |
 | Prediction deadline | One competition-wide `prediction_deadline` | Per fixture: **kickoff − 60 minutes** |
@@ -98,16 +98,19 @@ anything under a `live` prefix. A summary is in the "Live tournaments" section b
 │   └── src
 │       ├── index.ts                # Express entry: routers, boot migrations, defensive DDL, seeds
 │       ├── db/
-│       │   ├── client.ts           # connects at module import time — do not import in tests
+│       │   ├── client.ts           # merges schema + liveSchema; connects at module import
+│       │   │                       # time — do not import in tests
 │       │   ├── migrate.ts
 │       │   ├── schema.ts           # manual-type tables
-│       │   └── liveSchema.ts       # PLANNED — live-type tables, re-exported from schema.ts
+│       │   └── liveSchema.ts       # live-type tables (imports `users` from schema.ts)
 │       ├── lib/                    # scoring.ts, scoringTrigger.ts, leaderboardEvents.ts (SSE),
 │       │                           # bonusVisibility.ts, r2.ts, *.test.ts
-│       ├── live/                   # PLANNED — the entire live tournament type
-│       │   ├── providers/          # types.ts, footballData.ts, rateLimiter.ts, index.ts
-│       │   ├── routes/             # tournaments.ts, competitions.ts
-│       │   ├── sync.ts, scheduler.ts, scoring.ts, scoringTrigger.ts, liveEvents.ts
+│       ├── live/                   # the entire live tournament type
+│       │   ├── ensureSchema.ts     # idempotent boot-time DDL for the live_* tables
+│       │   ├── lock.test.ts        # covers shared/src/live/{lock,formats,presets}.ts
+│       │   ├── providers/          # PLANNED — types.ts, footballData.ts, rateLimiter.ts
+│       │   ├── routes/             # PLANNED — tournaments.ts, competitions.ts
+│       │   ├── sync.ts, scheduler.ts, scoring.ts, scoringTrigger.ts, liveEvents.ts  # PLANNED
 │       ├── middleware/auth.ts      # Lucia v3 — requireAuth / requireAdmin
 │       ├── routes/                 # auth, tournaments (1812), competitions (5448), upload,
 │       │                           # images, settings, feedback
@@ -115,11 +118,15 @@ anything under a `live` prefix. A summary is in the "Live tournaments" section b
 └── shared
     ├── package.json
     └── src
-        ├── index.ts                # re-exports everything
+        ├── index.ts                # re-exports everything, including ./live
         ├── types.ts, schemas.ts, bracketSlots.ts
-        └── live/                   # PLANNED — formats.ts, presets.ts, types.ts,
-                                    # schemas.ts, lock.ts
+        └── live/                   # types.ts, formats.ts, presets.ts, lock.ts,
+                                    # schemas.ts, index.ts
 ```
+
+Tests live in the `server` workspace only (`npm run test -w server`) — that is where Vitest is
+configured, so shared-package specs go under `server/src/` too. Existing examples:
+`server/src/lib/bracketSlots.test.ts` and `server/src/live/lock.test.ts`.
 
 ---
 
@@ -163,24 +170,42 @@ Architectural facts that trip people up:
 - `computeGroupStandings` / `sortGroupTeamsWithH2H` are duplicated verbatim between
   `lib/scoring.ts` and `routes/tournaments.ts`.
 
-### Live tournament type (planned)
+### Live tournament type (built in Phase 1)
 
-`server/src/db/liveSchema.ts` — `live_tournaments`, `live_teams`, `live_fixtures`,
-`live_standings`, `live_competitions`, `live_competition_members`, `live_predictions`.
-Full column definitions in [`docs/LIVE_TOURNAMENTS_PLAN.md`](docs/LIVE_TOURNAMENTS_PLAN.md) §5.
-Unlike the manual tables, every one of these gets proper primary keys and unique constraints —
-in particular `(live_competition_id, user_id, live_fixture_id)` on `live_predictions`.
+`server/src/db/liveSchema.ts` — 7 tables, all with real primary keys and the unique constraints
+the data requires, unlike their manual counterparts:
+
+| Table | Notes |
+|---|---|
+| `live_tournaments` | Provider binding (`provider` + `provider_competition_id` + `season`, unique together), `format`, `start_stage_key`, sync state |
+| `live_teams` | Unique on `(tournament, provider_team_id)`; `qualification_status` derived by the sync engine |
+| `live_fixtures` | Unique on `(tournament, provider_fixture_id)`. Nullable team FKs — knockout fixtures exist before the draw. Scores split into `normal_time_*` (the only score that awards points), `half_time_*`, `extra_time_*`, `penalties_*`, `final_*` |
+| `live_standings` | Stored verbatim from the provider, never recomputed. Unique on `(tournament, stage_key, team_id)` — `group_name` is excluded on purpose, being nullable |
+| `live_competitions` | **No `prediction_deadline` column** — the live type locks per fixture only |
+| `live_competition_members` | Membership + denormalised 3-source score aggregate |
+| `live_predictions` | Unique on `(competition, user, fixture)` — the constraint the manual `predictions` table lacks |
+
+`liveSchema.ts` imports `users` from `schema.ts`, so `schema.ts` deliberately does **not**
+re-export it. They are merged in `db/client.ts` and listed as an array in `drizzle.config.ts`.
+
+Shared code in `shared/src/live/`: `types.ts`, `formats.ts` (stage definitions per competition
+format + `resolveStageKey` / `isStageAtOrAfter` / `predictableStages`), `presets.ts` (the
+ready-made connections dropdown), `lock.ts` (the kickoff − 60 min rule, used by both client and
+server), `schemas.ts` (Zod).
 
 ### Migrations — read this before adding a column
 
 `server/drizzle/meta/_journal.json` is **out of sync** with the SQL files on disk: several
 migrations (`0011`, `0012`, `0015_maintenance_mode`, `0018`) exist but are not journaled, and
-meta snapshots stop at `0004`. That is why `server/src/index.ts` `start()` carries a long block
-of defensive `ALTER TABLE … ADD COLUMN IF NOT EXISTS` / `CREATE TABLE IF NOT EXISTS` statements
-that run on every boot.
+meta snapshots stop at `0004`.
 
-**Convention: any new schema change needs both** a generated migration file *and* an idempotent
-defensive statement in `start()`.
+**`npm run db:generate` is unsafe in this repo.** It would diff the current schema against the
+`0004` snapshot and emit a migration recreating half the database. Every migration from `0005`
+onward is hand-written, including `0023_live_tournaments.sql`.
+
+**Convention: any new schema change needs both** a hand-written migration file (plus its
+`_journal.json` entry) *and* an idempotent defensive statement that runs on boot — either in
+`start()` in `server/src/index.ts`, or in `server/src/live/ensureSchema.ts` for live tables.
 
 ---
 
@@ -377,9 +402,11 @@ past one replica.
 
 
 ### In Progress
-1. **Live (API-linked) tournament type** — design agreed, see
-   [`docs/LIVE_TOURNAMENTS_PLAN.md`](docs/LIVE_TOURNAMENTS_PLAN.md). Phase 0 (documentation)
-   done; Phases 1–6 pending.
+1. **Live (API-linked) tournament type** — see
+   [`docs/LIVE_TOURNAMENTS_PLAN.md`](docs/LIVE_TOURNAMENTS_PLAN.md).
+   Phase 0 (documentation) and Phase 1 (formats, presets, shared types, `live_*` schema) done.
+   Phases 2–6 pending. Nothing is wired to a provider or exposed over HTTP yet, so the feature
+   is invisible to users — the tables simply exist.
 2. Add multiple language support
 3. General improvements
 
@@ -422,16 +449,24 @@ past one replica.
 
 ### Next Session
 
-Start Phase 1 of [`docs/LIVE_TOURNAMENTS_PLAN.md`](docs/LIVE_TOURNAMENTS_PLAN.md) — formats,
-presets, shared types and the `live_*` schema.
+Phase 2 of [`docs/LIVE_TOURNAMENTS_PLAN.md`](docs/LIVE_TOURNAMENTS_PLAN.md) — the football-data
+provider adapter. **This is the go/no-go phase and it needs a real API key**
+(`FOOTBALL_DATA_API_KEY`, free from football-data.org). Four questions decide whether that
+provider is sufficient or whether the adapter should target API-Football instead:
 
-Phase 2 is the go/no-go: four questions answered with a real football-data.org API key decide
-whether that provider is sufficient or whether the adapter should target API-Football instead.
-Do it before building anything that depends on it.
+1. Do `GET /competitions/CL?season=2026` `availableStages` match the `ucl_swiss` mapping — in
+   particular, is the February knockout round really `PLAYOFFS` and the August qualifier
+   `PLAY_OFF_ROUND`?
+2. Does `/teams?season=2026` list the 29 automatic qualifiers *before* the 27 August draw?
+3. Does `/matches` expose `score.regularTime` on a finished extra-time match? The 90-minute
+   scoring rule depends on it.
+4. Does `/competitions/PL/matches?season=2026` return all 380 fixtures with matchdays?
+
+Answer these before writing anything that depends on them.
 
 ### Backlog (in order)
 
-1. Live tournaments Phases 1–6
+1. Live tournaments Phases 2–6
 2. Admin UI for editing scoring config (both tournament types)
 3. Bonus questions for live tournaments (deliberately out of scope for v1)
 

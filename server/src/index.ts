@@ -16,6 +16,7 @@ import { competitionsRouter } from './routes/competitions';
 import { settingsRouter } from './routes/settings';
 import { feedbackRouter } from './routes/feedback';
 import { recalculateAllScoresForTournament } from './lib/scoringTrigger';
+import { ensureLiveSchema } from './live/ensureSchema';
 
 const app = express();
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
@@ -139,6 +140,11 @@ async function start() {
       "goals_scored" integer NOT NULL DEFAULT 0
     )
   `);
+
+  // Defensive: ensure the live (API-linked) tournament tables exist regardless of
+  // migration state. See docs/LIVE_TOURNAMENTS_PLAN.md.
+  await ensureLiveSchema();
+
   console.log('Migrations complete.');
 
   // Defensive: fix any competitions still using correct_group_position=2 (old default).

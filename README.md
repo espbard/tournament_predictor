@@ -10,7 +10,7 @@ by design.
 
 | | **Manual** | **Live / API-linked** |
 |---|---|---|
-| Status | In production | Planned — see [`docs/LIVE_TOURNAMENTS_PLAN.md`](docs/LIVE_TOURNAMENTS_PLAN.md) |
+| Status | In production | In progress — schema and shared types built, provider not yet wired. See [`docs/LIVE_TOURNAMENTS_PLAN.md`](docs/LIVE_TOURNAMENTS_PLAN.md) |
 | Data | Admin enters teams, fixtures and results by hand | Pulled from an external football API |
 | Deadline | One competition-wide deadline | Per fixture: kickoff − 60 minutes |
 | Predicted matchups | Yes — full knockout bracket | No — only real fixtures with real teams |
@@ -198,13 +198,16 @@ The server reads `PORT` from the environment (Railway sets this automatically).
 - **feedback** — In-app feedback inbox
 - **appConfig** — Single-row app-wide settings (maintenance mode)
 
-The planned live tournament type adds seven `live_*` tables in `server/src/db/liveSchema.ts` —
-see [`docs/LIVE_TOURNAMENTS_PLAN.md`](docs/LIVE_TOURNAMENTS_PLAN.md).
+The live tournament type adds seven `live_*` tables in `server/src/db/liveSchema.ts` — see
+[`docs/LIVE_TOURNAMENTS_PLAN.md`](docs/LIVE_TOURNAMENTS_PLAN.md).
 
 > **Migrations caveat:** `server/drizzle/meta/_journal.json` is out of sync with the SQL files on
-> disk, so `server/src/index.ts` runs a block of idempotent `ADD COLUMN IF NOT EXISTS` /
-> `CREATE TABLE IF NOT EXISTS` statements on every boot. Any new schema change needs **both** a
-> generated migration and a defensive statement there.
+> disk and holds no snapshots past `0004`, so **`npm run db:generate` is unsafe here** — it would
+> emit a migration recreating half the database. Every migration from `0005` on is hand-written.
+> The server also runs idempotent `ADD COLUMN IF NOT EXISTS` / `CREATE TABLE IF NOT EXISTS`
+> statements on every boot to compensate. Any new schema change needs **both** a hand-written
+> migration (plus its `_journal.json` entry) and a defensive statement — in `server/src/index.ts`
+> for manual tables, or `server/src/live/ensureSchema.ts` for live ones.
 
 ---
 

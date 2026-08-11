@@ -1,7 +1,9 @@
 # Live (API-linked) tournaments — implementation plan
 
-> **Status:** planned, not yet implemented. This document is the agreed design and the
-> step-by-step build order. Update the phase checkboxes in §10 as work lands.
+> **Status:** Phase 1 landed — formats, presets, shared types and the `live_*` schema exist.
+> Nothing is wired to a provider or exposed over HTTP yet. This document is the agreed design
+> and the step-by-step build order; update the phase checkboxes in §13 as work lands, and
+> record any deviation in §16.
 
 ---
 
@@ -125,7 +127,9 @@ export interface LiveStageDef {
   kind: LiveStageKind;
   legs: 1 | 2;                    // two-legged ties are grouped in the UI
   order: number;                  // chronological ordinal, used for startStage filtering
-  providerStages: string[];       // raw provider stage strings that map here
+  // Raw provider stage strings that map here, keyed by provider — stage vocabularies are
+  // provider-specific, so a second adapter adds a key rather than forking the format.
+  providerStages: Partial<Record<LiveProviderId, string[]>>;
 }
 
 export interface LiveFormatDef {
@@ -135,12 +139,19 @@ export interface LiveFormatDef {
 }
 ```
 
+Helpers exported alongside: `getLiveFormat`, `getLiveStage`, `resolveStageKey`,
+`isStageAtOrAfter`, `predictableStages`.
+
 **`ucl_swiss`** — UEFA Champions League, current format (`tableScope: 'single'`, one 36-team table):
 
 | key | kind | legs | order | football-data stage strings |
 |---|---|---|---|---|
+| `qualifying_round_1` | knockout | 2 | 1 | `1ST_QUALIFYING_ROUND` |
+| `qualifying_round_2` | knockout | 2 | 2 | `2ND_QUALIFYING_ROUND` |
+| `qualifying_round_3` | knockout | 2 | 3 | `3RD_QUALIFYING_ROUND` |
+| `qualifying_playoff` | knockout | 2 | 4 | `PLAY_OFF_ROUND` |
 | `league_phase` | table | 1 | 10 | `LEAGUE_STAGE` |
-| `knockout_playoff` | knockout | 2 | 20 | `PLAYOFFS`, `PLAYOFF_ROUND` |
+| `knockout_playoff` | knockout | 2 | 20 | `PLAYOFFS` |
 | `round_of_16` | knockout | 2 | 30 | `LAST_16` |
 | `quarter_final` | knockout | 2 | 40 | `QUARTER_FINALS` |
 | `semi_final` | knockout | 2 | 50 | `SEMI_FINALS` |
@@ -152,12 +163,15 @@ export interface LiveFormatDef {
 |---|---|---|---|---|
 | `regular_season` | table | 1 | 10 | `REGULAR_SEASON` |
 
-> The CL competition also exposes `1ST_QUALIFYING_ROUND`, `2ND_QUALIFYING_ROUND`,
-> `3RD_QUALIFYING_ROUND` and `PLAY_OFF_ROUND` for the summer qualifiers. These sit *below*
-> `startStageKey` and so are ingested (they inform qualification status) but never predictable.
-> **Note the collision risk** between the qualifying `PLAY_OFF_ROUND` and the February knockout
-> `PLAYOFFS` — confirm the exact strings against a live API call in Phase 2 before trusting the
-> mapping.
+> The four summer qualifying rounds are mapped rather than left unknown, so their fixtures can
+> be ingested and used to derive qualification status. They sit *below* the usual
+> `startStageKey` of `league_phase` and so are never predictable.
+>
+> **Note the collision risk** between the August qualifier `PLAY_OFF_ROUND` (order 4) and the
+> February knockout `PLAYOFFS` (order 20). They are deliberately separate stages — mapping both
+> to one key would make summer qualifiers predictable. `server/src/live/lock.test.ts` asserts
+> they stay apart, but the exact provider strings still need confirming against a live API call
+> in Phase 2.
 
 Any fixture whose provider stage matches no entry is still stored, with `stageKey = null` and
 the raw string kept in `providerStage`. The admin detail page surfaces a warning listing
@@ -216,9 +230,21 @@ escape hatch for an unlisted competition stays a code change, which is the right
 
 ## 5. Database schema
 
-New file **`server/src/db/liveSchema.ts`**, re-exported from `server/src/db/schema.ts`
-(`export * from './liveSchema'`) so `db/client.ts` and Drizzle Kit pick it up without editing
-existing definitions.
+New file **`server/src/db/liveSchema.ts`**.
+
+It imports `users` from `./schema`, so `schema.ts` deliberately does **not** re-export it — that
+would be a circular import. The two are joined where they are consumed instead, keeping the
+dependency one-directional:
+
+```ts
+// server/src/db/client.ts
+import * as schema from './schema';
+import * as liveSchema from './liveSchema';
+export const db = drizzle(client, { schema: { ...schema, ...liveSchema } });
+
+// server/drizzle.config.ts
+schema: ['./src/db/schema.ts', './src/db/liveSchema.ts'],
+```
 
 ```ts
 export const liveProviderEnum = pgEnum('live_provider', ['football_data']);
@@ -263,7 +289,9 @@ bug diagnosable after the fact) · `providerLastUpdated` · `updatedAt`.
 `id` pk · `liveTournamentId` → cascade · `stageKey` · `groupName` nullable · `teamId` →
 `live_teams` · `position` · `played` · `won` · `drawn` · `lost` · `goalsFor` · `goalsAgainst` ·
 `goalDifference` · `points` · `form` · `updatedAt`.
-**Unique** `(live_tournament_id, stage_key, group_name, team_id)`.
+**Unique** `(live_tournament_id, stage_key, team_id)` — `group_name` is deliberately *not* part
+of the key. It is nullable, and Postgres treats NULLs as distinct, so including it would let
+duplicate rows through for single-table formats. A team appears once per stage regardless.
 
 Standings are stored **verbatim from the provider and never recomputed locally**. That
 deliberately avoids the tiebreaker duplication that bit the manual type (`computeGroupStandings`
@@ -290,12 +318,21 @@ matters doubly here because the UCL league phase has its own tiebreak rules.
 
 ### Migration mechanics
 
-This repo's migration state is messy — `server/drizzle/meta/_journal.json` does not list several
-hand-written SQL files, which is why `server/src/index.ts` carries a block of defensive DDL.
-Follow the same convention: run `npm run db:generate` for
-`server/drizzle/00NN_live_tournaments.sql`, **and** add idempotent
-`DO $$ … CREATE TYPE … EXCEPTION WHEN duplicate_object` blocks for the four enums plus
-`CREATE TABLE IF NOT EXISTS` for the seven tables in `start()`.
+This repo's migration state is messy — `server/drizzle/meta/_journal.json` lists entries through
+`0022` but `meta/` holds no snapshots past `0004`. **`npm run db:generate` is therefore unsafe
+here:** it would diff the current schema against a five-year-old snapshot and emit a migration
+that recreates half the database. Migrations `0005`–`0022` were all hand-written for this reason.
+
+Phase 1 followed the same convention:
+
+- `server/drizzle/0023_live_tournaments.sql` — hand-written, plus a matching `_journal.json`
+  entry so `migrate()` applies it.
+- `server/src/live/ensureSchema.ts` — the same statements with `IF NOT EXISTS` / `EXCEPTION WHEN
+  duplicate_object`, exported as `ensureLiveSchema()` and called from `start()` in
+  `server/src/index.ts`. Kept in its own file rather than inlined so the already-long defensive
+  block in `index.ts` does not keep growing.
+
+The two must stay in sync when columns are added.
 
 ---
 
@@ -658,13 +695,23 @@ points). The manual "Fotball-VM 2026" competition is unaffected at every phase.
 
 - [x] **Phase 0 — Documentation.** This file, plus `CLAUDE_CONTEXT.md` and `README.md` updates.
 
-- [ ] **Phase 1 — Formats, presets, schema, shared types.**
-  `shared/src/live/{formats,presets,types,schemas,lock}.ts` + `export *` from
-  `shared/src/index.ts`; `server/src/db/liveSchema.ts`; migration + defensive DDL.
-  *Verify:* `npm run db:generate` is clean, `npm run dev` boots and creates the tables,
-  `\d live_fixtures` shows the constraints. Existing pages untouched.
-  *Tests:* `shared/src/live/lock.test.ts` — exactly-60-min boundary, TBD kickoff, postponed,
-  in-play, finished.
+- [x] **Phase 1 — Formats, presets, schema, shared types.** *(done)*
+  `shared/src/live/{types,formats,presets,lock,schemas,index}.ts`, re-exported from
+  `shared/src/index.ts`; `server/src/db/liveSchema.ts`; `server/src/live/ensureSchema.ts`;
+  `server/drizzle/0023_live_tournaments.sql` + journal entry; `.env.example` keys;
+  `db/client.ts` and `drizzle.config.ts` wiring.
+  *Verified:* all 24 migrations applied in order to a fresh Postgres 16, `0023` last, no errors.
+  `\d live_fixtures` shows the expected columns, 4 indexes and 3 FKs. `ensureLiveSchema()` built
+  all 7 tables and 18 indexes from nothing on a database that skipped `0023`, and was a no-op on
+  the 2nd and 3rd run. Every unique constraint rejects duplicates; the same provider fixture id
+  is accepted under a different tournament; deleting a tournament cascades to its fixtures,
+  competitions and predictions. Full insert/select round-trip through the Drizzle table objects
+  and the relational query API, confirming column names match the SQL. Both workspaces
+  typecheck with no new errors (2 pre-existing ones in `routes/competitions.ts` remain), and
+  `npm run build` succeeds.
+  *Tests:* `server/src/live/lock.test.ts` — 39 specs. Note the location: Vitest is configured in
+  the `server` workspace only, so shared-package tests live there, exactly as
+  `server/src/lib/bracketSlots.test.ts` already tests `shared/src/bracketSlots.ts`.
 
 - [ ] **Phase 2 — Provider adapter, no DB writes. The go/no-go phase.**
   `server/src/live/providers/*` plus a throwaway `server/src/scripts/live-provider-smoke.ts`.
@@ -744,7 +791,26 @@ stage mapping, tie grouping — get Vitest coverage.
 
 ---
 
-## 15. References
+## 15. Deviations from the original plan
+
+Recorded as they happen, so the document stays trustworthy.
+
+**Phase 1**
+
+| Change | Why |
+|---|---|
+| `schema.ts` does not re-export `liveSchema.ts`; `client.ts` merges the two and `drizzle.config.ts` takes an array | `liveSchema.ts` imports `users` from `schema.ts`, so re-exporting would be a circular import |
+| Defensive DDL extracted to `server/src/live/ensureSchema.ts` instead of inlined in `index.ts` | The block in `index.ts` is already ~80 lines; keeping live code under `server/src/live/` also matches the separation rule |
+| Migration hand-written rather than generated with `npm run db:generate` | `meta/` has no snapshots past `0004`, so generate would emit a destructive diff. Same reason `0005`–`0022` are hand-written |
+| `providerStages` is `Partial<Record<LiveProviderId, string[]>>`, not `string[]` | Stage vocabularies are provider-specific; a second adapter should add a key, not fork the format |
+| The four UCL summer qualifying rounds are mapped as stages | They must be ingestible to derive qualification status. Mapping them also makes the `PLAY_OFF_ROUND` / `PLAYOFFS` split explicit instead of implicit |
+| `live_standings` unique key drops `group_name` | Nullable columns are distinct under Postgres unique constraints, so including it would allow duplicates in single-table formats |
+| Lock test lives at `server/src/live/lock.test.ts`, not `shared/src/live/lock.test.ts` | Vitest only runs in the `server` workspace; this matches `server/src/lib/bracketSlots.test.ts` testing shared code |
+| Added `minutesUntilLock()` and an explicit stale-kickoff rule for postponed fixtures | The countdown UI needs the former; the latter stops a provider's un-updated kickoff time from locking a match that was never played |
+
+---
+
+## 16. References
 
 - [2026/27 Champions League: teams, dates, draws, format](https://www.uefa.com/uefachampionsleague/news/02a6-20d57cfcd03e-407c22a7f465-1000--2026-27-champions-league-teams-dates-draws-format-final/)
 - [UEFA confirms date for the 2026/27 Champions League league phase draw](https://www.besoccer.com/new/uefa-confirms-date-for-the-202627-champions-league-league-phase-draw-1421299)

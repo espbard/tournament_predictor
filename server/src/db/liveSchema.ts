@@ -1,0 +1,355 @@
+import {
+  pgTable,
+  pgEnum,
+  text,
+  timestamp,
+  boolean,
+  integer,
+  json,
+  index,
+  uniqueIndex,
+} from 'drizzle-orm/pg-core';
+import { relations } from 'drizzle-orm';
+import type { LiveScoringConfig } from '@tournament-predictor/shared';
+import { users } from './schema';
+
+// ── Live (API-linked) tournaments ─────────────────────────────────────────────
+//
+// A completely separate tournament type from the tables in ./schema.ts. Nothing here
+// references tournaments / teams / matches / competitions / predictions; the only shared
+// table is `users`. See docs/LIVE_TOURNAMENTS_PLAN.md before changing anything.
+//
+// Unlike the manual tables, every table here has a real primary key and the unique
+// constraints the data actually requires — in particular on live_predictions, where the
+// manual `predictions` table relies on app-level enforcement.
+
+// ── Enums ─────────────────────────────────────────────────────────────────────
+
+export const liveProviderEnum = pgEnum('live_provider', ['football_data']);
+
+export const liveTournamentStatusEnum = pgEnum('live_tournament_status', [
+  'upcoming',
+  'active',
+  'completed',
+]);
+
+export const liveFixtureStatusEnum = pgEnum('live_fixture_status', [
+  'scheduled',
+  'in_play',
+  'paused',
+  'finished',
+  'postponed',
+  'suspended',
+  'cancelled',
+]);
+
+export const liveQualificationStatusEnum = pgEnum('live_qualification_status', [
+  'qualified',
+  'pending',
+  'eliminated',
+]);
+
+// ── Tables ────────────────────────────────────────────────────────────────────
+
+export const liveTournaments = pgTable(
+  'live_tournaments',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    imageUrl: text('image_url'),
+    /** Which entry of LIVE_TOURNAMENT_PRESETS this was created from. */
+    presetKey: text('preset_key'),
+    provider: liveProviderEnum('provider').notNull().default('football_data'),
+    providerCompetitionId: text('provider_competition_id').notNull(),
+    /** Season identifier as the provider expresses it — football-data uses the start year. */
+    season: text('season').notNull(),
+    /** LiveFormatKey — resolved through getLiveFormat() in shared/src/live/formats.ts. */
+    format: text('format').notNull(),
+    /** Stages before this one are ingested but never predictable. */
+    startStageKey: text('start_stage_key').notNull(),
+    status: liveTournamentStatusEnum('status').notNull().default('upcoming'),
+    syncEnabled: boolean('sync_enabled').notNull().default(true),
+    lastStructureSyncAt: timestamp('last_structure_sync_at'),
+    lastFixtureSyncAt: timestamp('last_fixture_sync_at'),
+    lastSyncError: text('last_sync_error'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  t => ({
+    providerSeasonUnique: uniqueIndex('live_tournaments_provider_competition_season_unique').on(
+      t.provider,
+      t.providerCompetitionId,
+      t.season,
+    ),
+  }),
+);
+
+export const liveTeams = pgTable(
+  'live_teams',
+  {
+    id: text('id').primaryKey(),
+    liveTournamentId: text('live_tournament_id')
+      .notNull()
+      .references(() => liveTournaments.id, { onDelete: 'cascade' }),
+    providerTeamId: text('provider_team_id').notNull(),
+    name: text('name').notNull(),
+    shortName: text('short_name'),
+    tla: text('tla'),
+    /** Mirrored into R2 during sync so it serves through /api/images/*. */
+    crestUrl: text('crest_url'),
+    groupName: text('group_name'),
+    /** Derived from provider data by the sync engine — never set by hand. */
+    qualificationStatus: liveQualificationStatusEnum('qualification_status')
+      .notNull()
+      .default('pending'),
+  },
+  t => ({
+    providerTeamUnique: uniqueIndex('live_teams_tournament_provider_team_unique').on(
+      t.liveTournamentId,
+      t.providerTeamId,
+    ),
+  }),
+);
+
+export const liveFixtures = pgTable(
+  'live_fixtures',
+  {
+    id: text('id').primaryKey(),
+    liveTournamentId: text('live_tournament_id')
+      .notNull()
+      .references(() => liveTournaments.id, { onDelete: 'cascade' }),
+    providerFixtureId: text('provider_fixture_id').notNull(),
+    // Nullable: knockout fixtures exist before the teams that will contest them are known.
+    homeTeamId: text('home_team_id').references(() => liveTeams.id, { onDelete: 'set null' }),
+    awayTeamId: text('away_team_id').references(() => liveTeams.id, { onDelete: 'set null' }),
+    kickoffAt: timestamp('kickoff_at'),
+    /** Provider distinguishes a provisional date from a confirmed kickoff time. */
+    kickoffConfirmed: boolean('kickoff_confirmed').notNull().default(false),
+    status: liveFixtureStatusEnum('status').notNull().default('scheduled'),
+    /** Internal stage key. Null when the provider stage is unmapped — surfaced as a warning. */
+    stageKey: text('stage_key'),
+    /** Raw provider stage string, kept so a provider rename is diagnosable. */
+    providerStage: text('provider_stage'),
+    groupName: text('group_name'),
+    matchday: integer('matchday'),
+    /** Groups the two legs of a two-legged tie. Null for single-leg fixtures. */
+    tieKey: text('tie_key'),
+    legNumber: integer('leg_number'),
+
+    // Score at the end of normal time (90 minutes plus stoppage). The ONLY score that
+    // awards points — extra time and penalties are stored for display but never scored.
+    normalTimeHome: integer('normal_time_home'),
+    normalTimeAway: integer('normal_time_away'),
+    halfTimeHome: integer('half_time_home'),
+    halfTimeAway: integer('half_time_away'),
+    extraTimeHome: integer('extra_time_home'),
+    extraTimeAway: integer('extra_time_away'),
+    penaltiesHome: integer('penalties_home'),
+    penaltiesAway: integer('penalties_away'),
+    /** Provider full-time score, including extra time. Display only. */
+    finalHome: integer('final_home'),
+    finalAway: integer('final_away'),
+
+    winner: text('winner'),
+    minute: integer('minute'),
+    /** The provider's score object verbatim, so any mapping bug stays diagnosable. */
+    providerScoreRaw: json('provider_score_raw'),
+    providerLastUpdated: timestamp('provider_last_updated'),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  t => ({
+    providerFixtureUnique: uniqueIndex('live_fixtures_tournament_provider_fixture_unique').on(
+      t.liveTournamentId,
+      t.providerFixtureId,
+    ),
+    kickoffIdx: index('live_fixtures_tournament_kickoff_idx').on(t.liveTournamentId, t.kickoffAt),
+    stageIdx: index('live_fixtures_tournament_stage_idx').on(t.liveTournamentId, t.stageKey),
+    statusIdx: index('live_fixtures_status_idx').on(t.status),
+  }),
+);
+
+export const liveStandings = pgTable(
+  'live_standings',
+  {
+    id: text('id').primaryKey(),
+    liveTournamentId: text('live_tournament_id')
+      .notNull()
+      .references(() => liveTournaments.id, { onDelete: 'cascade' }),
+    stageKey: text('stage_key').notNull(),
+    groupName: text('group_name'),
+    teamId: text('team_id')
+      .notNull()
+      .references(() => liveTeams.id, { onDelete: 'cascade' }),
+    position: integer('position').notNull(),
+    played: integer('played').notNull().default(0),
+    won: integer('won').notNull().default(0),
+    drawn: integer('drawn').notNull().default(0),
+    lost: integer('lost').notNull().default(0),
+    goalsFor: integer('goals_for').notNull().default(0),
+    goalsAgainst: integer('goals_against').notNull().default(0),
+    goalDifference: integer('goal_difference').notNull().default(0),
+    points: integer('points').notNull().default(0),
+    form: text('form'),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  t => ({
+    // A team appears once per stage. group_name is deliberately NOT part of the key —
+    // it is nullable, and Postgres treats NULLs as distinct, which would let duplicates
+    // through for single-table formats.
+    teamStageUnique: uniqueIndex('live_standings_tournament_stage_team_unique').on(
+      t.liveTournamentId,
+      t.stageKey,
+      t.teamId,
+    ),
+  }),
+);
+
+export const liveCompetitions = pgTable('live_competitions', {
+  id: text('id').primaryKey(),
+  liveTournamentId: text('live_tournament_id')
+    .notNull()
+    .references(() => liveTournaments.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  imageUrl: text('image_url'),
+  inviteCode: text('invite_code').notNull().unique(),
+  scoringConfig: json('scoring_config').notNull().$type<LiveScoringConfig>(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  // Deliberately no prediction_deadline column: the live type locks per fixture only.
+});
+
+export const liveCompetitionMembers = pgTable(
+  'live_competition_members',
+  {
+    id: text('id').primaryKey(),
+    liveCompetitionId: text('live_competition_id')
+      .notNull()
+      .references(() => liveCompetitions.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    joinedAt: timestamp('joined_at').notNull().defaultNow(),
+    // Denormalised score aggregate, recomputed by the scoring trigger.
+    correctOutcomePoints: integer('correct_outcome_points').notNull().default(0),
+    correctGoalDifferencePoints: integer('correct_goal_difference_points').notNull().default(0),
+    exactScorePoints: integer('exact_score_points').notNull().default(0),
+    totalPoints: integer('total_points').notNull().default(0),
+  },
+  t => ({
+    memberUnique: uniqueIndex('live_competition_members_competition_user_unique').on(
+      t.liveCompetitionId,
+      t.userId,
+    ),
+  }),
+);
+
+export const livePredictions = pgTable(
+  'live_predictions',
+  {
+    id: text('id').primaryKey(),
+    liveCompetitionId: text('live_competition_id')
+      .notNull()
+      .references(() => liveCompetitions.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    liveFixtureId: text('live_fixture_id')
+      .notNull()
+      .references(() => liveFixtures.id, { onDelete: 'cascade' }),
+    homeScore: integer('home_score').notNull(),
+    awayScore: integer('away_score').notNull(),
+    /** Null until the fixture finishes and scoring runs. */
+    points: integer('points'),
+    correctOutcomePoints: integer('correct_outcome_points').notNull().default(0),
+    correctGoalDifferencePoints: integer('correct_goal_difference_points').notNull().default(0),
+    exactScorePoints: integer('exact_score_points').notNull().default(0),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  t => ({
+    predictionUnique: uniqueIndex('live_predictions_competition_user_fixture_unique').on(
+      t.liveCompetitionId,
+      t.userId,
+      t.liveFixtureId,
+    ),
+    fixtureIdx: index('live_predictions_fixture_idx').on(t.liveFixtureId),
+  }),
+);
+
+// ── Relations ─────────────────────────────────────────────────────────────────
+
+export const liveTournamentsRelations = relations(liveTournaments, ({ many }) => ({
+  teams: many(liveTeams),
+  fixtures: many(liveFixtures),
+  standings: many(liveStandings),
+  competitions: many(liveCompetitions),
+}));
+
+export const liveTeamsRelations = relations(liveTeams, ({ one }) => ({
+  tournament: one(liveTournaments, {
+    fields: [liveTeams.liveTournamentId],
+    references: [liveTournaments.id],
+  }),
+}));
+
+export const liveFixturesRelations = relations(liveFixtures, ({ one, many }) => ({
+  tournament: one(liveTournaments, {
+    fields: [liveFixtures.liveTournamentId],
+    references: [liveTournaments.id],
+  }),
+  homeTeam: one(liveTeams, {
+    fields: [liveFixtures.homeTeamId],
+    references: [liveTeams.id],
+    relationName: 'liveFixtureHomeTeam',
+  }),
+  awayTeam: one(liveTeams, {
+    fields: [liveFixtures.awayTeamId],
+    references: [liveTeams.id],
+    relationName: 'liveFixtureAwayTeam',
+  }),
+  predictions: many(livePredictions),
+}));
+
+export const liveStandingsRelations = relations(liveStandings, ({ one }) => ({
+  tournament: one(liveTournaments, {
+    fields: [liveStandings.liveTournamentId],
+    references: [liveTournaments.id],
+  }),
+  team: one(liveTeams, {
+    fields: [liveStandings.teamId],
+    references: [liveTeams.id],
+  }),
+}));
+
+export const liveCompetitionsRelations = relations(liveCompetitions, ({ one, many }) => ({
+  tournament: one(liveTournaments, {
+    fields: [liveCompetitions.liveTournamentId],
+    references: [liveTournaments.id],
+  }),
+  members: many(liveCompetitionMembers),
+  predictions: many(livePredictions),
+}));
+
+export const liveCompetitionMembersRelations = relations(liveCompetitionMembers, ({ one }) => ({
+  competition: one(liveCompetitions, {
+    fields: [liveCompetitionMembers.liveCompetitionId],
+    references: [liveCompetitions.id],
+  }),
+  user: one(users, {
+    fields: [liveCompetitionMembers.userId],
+    references: [users.id],
+  }),
+}));
+
+export const livePredictionsRelations = relations(livePredictions, ({ one }) => ({
+  competition: one(liveCompetitions, {
+    fields: [livePredictions.liveCompetitionId],
+    references: [liveCompetitions.id],
+  }),
+  user: one(users, {
+    fields: [livePredictions.userId],
+    references: [users.id],
+  }),
+  fixture: one(liveFixtures, {
+    fields: [livePredictions.liveFixtureId],
+    references: [liveFixtures.id],
+  }),
+}));
