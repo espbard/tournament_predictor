@@ -14,6 +14,31 @@ A web application for predicting sports tournament outcomes. Used by a small pri
 
 ---
 
+## Tournament types
+
+There are two kinds of tournament. **They share nothing but the `users` / `sessions` tables,
+the auth middleware, image handling, and generic UI plumbing.** Treat them as two separate
+products living in one repo, and do not refactor one into the other.
+
+| | **Manual** (built, in production) | **Live / API-linked** (planned) |
+|---|---|---|
+| Source of data | Admin types in teams, fixtures and every result | Pulled from an external football API |
+| Prediction deadline | One competition-wide `prediction_deadline` | Per fixture: **kickoff − 60 minutes** |
+| Predicted matchups | Yes — users predict the whole knockout bracket | **No** — users only predict real fixtures with real teams |
+| Scoring | 8 sources (exact score, group position, bracket picks, bonus …) | 3 stacking tiers: outcome +1, goal difference +1, exact score +2 |
+| Stages | Hardcoded `match_stage` enum | Data-driven format definitions per competition |
+| Tables | `tournaments`, `teams`, `matches`, `competitions`, `predictions`, `bracket_predictions`, … | `live_tournaments`, `live_teams`, `live_fixtures`, `live_standings`, `live_competitions`, `live_predictions`, … |
+| API base | `/api/tournaments`, `/api/competitions` | `/api/live/*` |
+| Server code | `server/src/routes/`, `server/src/lib/` | `server/src/live/` |
+| Client code | `client/src/pages/*.tsx` | `client/src/pages/live/`, `client/src/components/live/` |
+| Shared code | `shared/src/types.ts`, `schemas.ts` | `shared/src/live/` |
+
+**The full design and step-by-step build order for the live type lives in
+[`docs/LIVE_TOURNAMENTS_PLAN.md`](docs/LIVE_TOURNAMENTS_PLAN.md).** Read it before touching
+anything under a `live` prefix. A summary is in the "Live tournaments" section below.
+
+---
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -44,309 +69,118 @@ A web application for predicting sports tournament outcomes. Used by a small pri
 ├── railway.toml
 ├── .env.example
 ├── .gitignore
+├── docs
+│   └── LIVE_TOURNAMENTS_PLAN.md    # design + build order for the live tournament type
 ├── client
-│   ├── components.json
-│   ├── index.html
-│   ├── package.json
-│   ├── postcss.config.js
-│   ├── tailwind.config.js
-│   ├── tsconfig.json
-│   ├── vite.config.ts
-│   ├── public
-│   │   ├── apple-touch-icon.png
-│   │   ├── crying-player.png
-│   │   ├── crying-tear.png
-│   │   ├── default-avatar.png
-│   │   ├── favicon-16x16.png
-│   │   ├── favicon-32x32.png
-│   │   ├── favicon.ico
-│   │   ├── haaland.jpg
-│   │   ├── soccer-ball.png
-│   │   └── soccer-player.png
+│   ├── components.json, index.html, package.json, tailwind.config.js, vite.config.ts, …
+│   ├── public/                     # favicons, flags, mascot images
 │   └── src
-│       ├── App.tsx
-│       ├── index.css
-│       ├── main.tsx
-│       ├── components
-│       │   ├── AppLayout.tsx
-│       │   ├── CryingPlayerAnimation.tsx
-│       │   ├── ImageUpload.tsx
-│       │   ├── KnockoutStageContent.tsx
-│       │   ├── Navbar.tsx
-│       │   ├── PlayerPodium.tsx
-│       │   ├── PlayerSearchInput.tsx
-│       │   ├── SoccerKickAnimation.tsx
-│       │   ├── TeamSelectInput.tsx
-│       │   └── UserStatCard.tsx
-│       ├── lib
-│       │   ├── api.ts
-│       │   ├── tiebreakers.ts
-│       │   ├── translations.ts
-│       │   ├── useT.ts
-│       │   └── utils.ts
-│       ├── pages
-│       │   ├── AdminHomePage.tsx
-│       │   ├── BonusQuestionsTab.tsx
-│       │   ├── CompetitionDetailPage.tsx
-│       │   ├── CompetitionsPage.tsx
-│       │   ├── EditTeamPage.tsx
-│       │   ├── EditTournamentPage.tsx
-│       │   ├── EditUserPage.tsx
-│       │   ├── HomePage.tsx
-│       │   ├── LoginPage.tsx
-│       │   ├── MaintenancePage.tsx
-│       │   ├── RegisterPage.tsx
-│       │   ├── TournamentDetailPage.tsx
-│       │   ├── TournamentKnockoutPage.tsx
-│       │   ├── TournamentsPage.tsx
-│       │   └── UserPredictionsPage.tsx
-│       └── store
-│           ├── authStore.ts
-│           ├── languageStore.ts
-│           └── themeStore.ts
+│       ├── App.tsx                 # all React Router routes + PrivateRoute / AdminRoute guards
+│       ├── main.tsx, index.css
+│       ├── components/             # AppLayout, Navbar, KnockoutStageContent (2156 lines),
+│       │                           # FinalResultsView, LeaderboardLineGraph, UserStatCard,
+│       │                           # ImageUpload, UserAvatar, LoadingSpinner, FeedbackButton, …
+│       │   └── live/               # PLANNED — LiveFixtureCard, LiveTieCard, LiveCountdown,
+│       │                           # LiveStandingsTable, LiveLeaderboard, LiveQualifiedTeamsPanel
+│       ├── lib/                    # api.ts (fetch wrapper), translations.ts (no/en/de), useT.ts,
+│       │                           # tiebreakers.ts, pointSources.ts, teamTranslations.ts, utils.ts
+│       │   └── liveApi.ts          # PLANNED
+│       ├── pages/                  # HomePage, AdminHomePage, Login/Register, CompetitionsPage,
+│       │                           # CompetitionDetailPage (2990 lines), UserPredictionsPage,
+│       │                           # TournamentsPage, TournamentDetailPage, TournamentKnockoutPage,
+│       │                           # BonusQuestionsTab, TeamPage, Edit*Page, AdminFeedbackPage
+│       │   └── live/               # PLANNED — LiveCompetitionDetailPage, AdminLiveTournamentsPage,
+│       │                           # AdminLiveTournamentDetailPage, AdminLiveCompetitionsPage
+│       └── store/                  # authStore, languageStore, themeStore (Zustand)
 ├── server
-│   ├── drizzle.config.ts
-│   ├── package.json
-│   ├── tsconfig.json
-│   ├── drizzle
-│   │   ├── 0000_amazing_killmonger.sql
-│   │   ├── 0001_little_blizzard.sql
-│   │   ├── 0002_easy_terrax.sql
-│   │   ├── 0003_puzzling_white_tiger.sql
-│   │   ├── 0004_eminent_silver_centurion.sql
-│   │   ├── 0005_knockout_config.sql
-│   │   ├── 0006_bracket_predictions.sql
-│   │   ├── 0007_group_stage_locked.sql
-│   │   ├── 0008_progressing_team_id.sql
-│   │   ├── 0009_bonus_questions.sql
-│   │   ├── 0010_scoring_columns.sql
-│   │   ├── 0011_tiebreak_choices.sql
-│   │   ├── 0012_knockout_complete_seen.sql
-│   │   ├── 0013_scoring_breakdown.sql
-│   │   ├── 0014_bonus_questions_tournament.sql
-│   │   ├── 0015_is_test_account.sql
-│   │   ├── 0015_maintenance_mode.sql
-│   │   ├── 0016_leaderboard_user.sql
-│   │   └── meta
-│   │       ├── 0000_snapshot.json
-│   │       ├── 0001_snapshot.json
-│   │       ├── 0002_snapshot.json
-│   │       ├── 0003_snapshot.json
-│   │       ├── 0004_snapshot.json
-│   │       └── _journal.json
+│   ├── drizzle.config.ts, package.json, tsconfig.json
+│   ├── drizzle/                    # 0000 … 0022_*.sql  (see "Migrations" caveat below)
 │   └── src
-│       ├── index.ts
-│       ├── db
-│       │   ├── client.ts
+│       ├── index.ts                # Express entry: routers, boot migrations, defensive DDL, seeds
+│       ├── db/
+│       │   ├── client.ts           # connects at module import time — do not import in tests
 │       │   ├── migrate.ts
-│       │   └── schema.ts
-│       ├── lib
-│       │   ├── bracketSlots.test.ts
-│       │   ├── leaderboardEvents.ts
-│       │   ├── r2.ts
-│       │   ├── scoring.test.ts
-│       │   ├── scoring.ts
-│       │   └── scoringTrigger.ts
-│       ├── middleware
-│       │   └── auth.ts
-│       ├── routes
-│       │   ├── auth.ts
-│       │   ├── competitions.ts
-│       │   ├── images.ts
-│       │   ├── settings.ts
-│       │   ├── tournaments.ts
-│       │   └── upload.ts
-│       └── scripts
-│           ├── migrate-image-urls.ts
-│           └── reset-points.ts
+│       │   ├── schema.ts           # manual-type tables
+│       │   └── liveSchema.ts       # PLANNED — live-type tables, re-exported from schema.ts
+│       ├── lib/                    # scoring.ts, scoringTrigger.ts, leaderboardEvents.ts (SSE),
+│       │                           # bonusVisibility.ts, r2.ts, *.test.ts
+│       ├── live/                   # PLANNED — the entire live tournament type
+│       │   ├── providers/          # types.ts, footballData.ts, rateLimiter.ts, index.ts
+│       │   ├── routes/             # tournaments.ts, competitions.ts
+│       │   ├── sync.ts, scheduler.ts, scoring.ts, scoringTrigger.ts, liveEvents.ts
+│       ├── middleware/auth.ts      # Lucia v3 — requireAuth / requireAdmin
+│       ├── routes/                 # auth, tournaments (1812), competitions (5448), upload,
+│       │                           # images, settings, feedback
+│       └── scripts/                # one-off maintenance scripts, run by hand with tsx
 └── shared
     ├── package.json
     └── src
-        ├── bracketSlots.ts
-        ├── index.ts
-        ├── schemas.ts
-        └── types.ts
+        ├── index.ts                # re-exports everything
+        ├── types.ts, schemas.ts, bracketSlots.ts
+        └── live/                   # PLANNED — formats.ts, presets.ts, types.ts,
+                                    # schemas.ts, lock.ts
 ```
 
 ---
 
 ## Database Schema
 
-[UPDATE AS YOU BUILD — paste your current Drizzle schema file(s) here]
+> **`server/src/db/schema.ts` is the single source of truth.** The summary below is a map, not a
+> copy — read the file for exact column definitions.
 
-```typescript
-import {
-  pgTable,
-  pgEnum,
-  text,
-  timestamp,
-  boolean,
-  integer,
-  json,
-} from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
-import type { ScoringConfig } from '@tournament-predictor/shared';
+### Manual tournament type (current, in production)
 
-// ── Enums ─────────────────────────────────────────────────────────────────────
+| Table | Purpose | Notes worth knowing |
+|---|---|---|
+| `users` | Registered players | Flags: `isAdmin`, `isTestAccount`, `isLeaderboardUser` (view-only), `isComparisonUser` (AI bot accounts), `isLateAddition`. Plus `imageUrl`, generated `iconColor` |
+| `sessions` | Lucia v3 | |
+| `app_config` | Single-row app settings | `maintenanceMode` |
+| `tournaments` | e.g. "Fotball-VM 2026" | `status`, `imageUrl`, `knockoutConfig` JSON |
+| `groups` | Named groups in a tournament | |
+| `teams` | Participating teams | `groupId` FK, `imageUrl` |
+| `matches` | Fixtures | `stage` enum, `scheduledAt`, `homeScore`/`awayScore`, `progressingTeamId`, `bracketIndex`, self-referencing `nextMatchId` |
+| `competitions` | A private prediction league on one tournament | `inviteCode`, `scoringConfig` JSON, `predictionDeadline`, `allowLateAdditions` |
+| `competition_members` | Membership **and** the per-user score aggregate | 8 denormalised `*_points` columns, `groupStageLocked`, tiebreak choice JSON, late-addition fields. **Has no primary key** |
+| `predictions` | Per-match score predictions | **No unique constraint** on (competition, user, match) — enforced only in app code |
+| `bracket_predictions` | Whole knockout bracket as one JSON blob | PK `(competitionId, userId)`; keys are `${stage}_${index}` |
+| `bonus_questions` / `bonus_answers` | Custom Q&A scoring | Question is tournament-scoped, answer is competition-scoped |
+| `players` | Named players, for `player`-type bonus answers | |
+| `feedback` | In-app feedback inbox | |
 
-export const tournamentStatusEnum = pgEnum('tournament_status', [
-  'upcoming',
-  'active',
-  'completed',
-]);
+Enums: `tournament_status`, `match_stage` (`group`, `round_of_32`, `round_of_16`,
+`quarter_final`, `semi_final`, `bronze_final`, `final`), `match_status`, `bonus_answer_type`,
+`feedback_type`, `feedback_status`.
 
-export const matchStageEnum = pgEnum('match_stage', [
-  'group',
-  'round_of_16',
-  'quarter_final',
-  'semi_final',
-  'final',
-]);
+Architectural facts that trip people up:
+- Group-stage predictions live in `predictions` rows keyed by `matchId`; **knockout predictions
+  do not** — they live entirely in the `bracket_predictions` JSON blob.
+- The bracket key index is derived by sorting knockout matches by `bracketIndex` (nulls last)
+  then `scheduledAt`. That sort is duplicated in `scoringTrigger.ts`, `competitions.ts` and
+  `TournamentKnockoutPage.tsx` and **must stay in sync** or every bracket key shifts.
+- Knockout scoring logic exists in three places that must agree: `lib/scoring.ts`, the
+  `all-match-predictions` handler in `routes/competitions.ts`, and `KnockoutStageContent.tsx`.
+  Several past bugfixes were divergence between them.
+- `computeGroupStandings` / `sortGroupTeamsWithH2H` are duplicated verbatim between
+  `lib/scoring.ts` and `routes/tournaments.ts`.
 
-export const matchStatusEnum = pgEnum('match_status', ['scheduled', 'completed']);
+### Live tournament type (planned)
 
-// ── Tables ────────────────────────────────────────────────────────────────────
+`server/src/db/liveSchema.ts` — `live_tournaments`, `live_teams`, `live_fixtures`,
+`live_standings`, `live_competitions`, `live_competition_members`, `live_predictions`.
+Full column definitions in [`docs/LIVE_TOURNAMENTS_PLAN.md`](docs/LIVE_TOURNAMENTS_PLAN.md) §5.
+Unlike the manual tables, every one of these gets proper primary keys and unique constraints —
+in particular `(live_competition_id, user_id, live_fixture_id)` on `live_predictions`.
 
-export const users = pgTable('users', {
-  id: text('id').primaryKey(),
-  username: text('username').notNull().unique(),
-  hashedPassword: text('hashed_password').notNull(),
-  isAdmin: boolean('is_admin').notNull().default(false),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-});
+### Migrations — read this before adding a column
 
-// Lucia v3 sessions table
-export const sessions = pgTable('sessions', {
-  id: text('id').primaryKey(),
-  userId: text('user_id')
-    .notNull()
-    .references(() => users.id),
-  expiresAt: timestamp('expires_at', {
-    withTimezone: true,
-    mode: 'date',
-  }).notNull(),
-});
+`server/drizzle/meta/_journal.json` is **out of sync** with the SQL files on disk: several
+migrations (`0011`, `0012`, `0015_maintenance_mode`, `0018`) exist but are not journaled, and
+meta snapshots stop at `0004`. That is why `server/src/index.ts` `start()` carries a long block
+of defensive `ALTER TABLE … ADD COLUMN IF NOT EXISTS` / `CREATE TABLE IF NOT EXISTS` statements
+that run on every boot.
 
-export const tournaments = pgTable('tournaments', {
-  id: text('id').primaryKey(),
-  name: text('name').notNull(),
-  status: tournamentStatusEnum('status').notNull().default('upcoming'),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-});
-
-export const teams = pgTable('teams', {
-  id: text('id').primaryKey(),
-  tournamentId: text('tournament_id')
-    .notNull()
-    .references(() => tournaments.id, { onDelete: 'cascade' }),
-  name: text('name').notNull(),
-  group: text('group'),
-});
-
-export const matches = pgTable('matches', {
-  id: text('id').primaryKey(),
-  tournamentId: text('tournament_id')
-    .notNull()
-    .references(() => tournaments.id, { onDelete: 'cascade' }),
-  homeTeamId: text('home_team_id').references(() => teams.id),
-  awayTeamId: text('away_team_id').references(() => teams.id),
-  stage: matchStageEnum('stage').notNull(),
-  scheduledAt: timestamp('scheduled_at'),
-  status: matchStatusEnum('status').notNull().default('scheduled'),
-  homeScore: integer('home_score'),
-  awayScore: integer('away_score'),
-});
-
-export const competitions = pgTable('competitions', {
-  id: text('id').primaryKey(),
-  tournamentId: text('tournament_id')
-    .notNull()
-    .references(() => tournaments.id, { onDelete: 'cascade' }),
-  name: text('name').notNull(),
-  inviteCode: text('invite_code').notNull().unique(),
-  scoringConfig: json('scoring_config').notNull().$type<ScoringConfig>(),
-  predictionDeadline: timestamp('prediction_deadline'),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-});
-
-export const competitionMembers = pgTable('competition_members', {
-  competitionId: text('competition_id')
-    .notNull()
-    .references(() => competitions.id, { onDelete: 'cascade' }),
-  userId: text('user_id')
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  joinedAt: timestamp('joined_at').notNull().defaultNow(),
-});
-
-export const predictions = pgTable('predictions', {
-  id: text('id').primaryKey(),
-  competitionId: text('competition_id')
-    .notNull()
-    .references(() => competitions.id, { onDelete: 'cascade' }),
-  userId: text('user_id')
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  matchId: text('match_id')
-    .notNull()
-    .references(() => matches.id, { onDelete: 'cascade' }),
-  homeScore: integer('home_score').notNull(),
-  awayScore: integer('away_score').notNull(),
-  // For knockout draws: which team the user thinks will progress from ET/pens
-  progressingTeamId: text('progressing_team_id').references(() => teams.id),
-  points: integer('points'),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-});
-
-// ── Relations ─────────────────────────────────────────────────────────────────
-
-export const usersRelations = relations(users, ({ many }) => ({
-  sessions: many(sessions),
-  competitionMembers: many(competitionMembers),
-  predictions: many(predictions),
-}));
-
-export const tournamentsRelations = relations(tournaments, ({ many }) => ({
-  teams: many(teams),
-  matches: many(matches),
-  competitions: many(competitions),
-}));
-
-export const matchesRelations = relations(matches, ({ one }) => ({
-  tournament: one(tournaments, {
-    fields: [matches.tournamentId],
-    references: [tournaments.id],
-  }),
-  homeTeam: one(teams, {
-    fields: [matches.homeTeamId],
-    references: [teams.id],
-  }),
-  awayTeam: one(teams, {
-    fields: [matches.awayTeamId],
-    references: [teams.id],
-  }),
-}));
-
-export const competitionsRelations = relations(competitions, ({ one, many }) => ({
-  tournament: one(tournaments, {
-    fields: [competitions.tournamentId],
-    references: [tournaments.id],
-  }),
-  members: many(competitionMembers),
-  predictions: many(predictions),
-}));
-```
-
-Key tables:
-- `users` — registered players
-- `tournaments` — e.g. "2026 FIFA World Cup"
-- `teams` — teams participating in a tournament
-- `matches` — scheduled/completed games within a tournament
-- `competitions` — a prediction competition tied to a tournament
-- `competition_members` — which users are in which competition
-- `predictions` — per-user, per-match score predictions
-- `group_predictions` — predicted group stage standings
-- `knockout_predictions` — predicted team for each knockout round
+**Convention: any new schema change needs both** a generated migration file *and* an idempotent
+defensive statement in `start()`.
 
 ---
 
@@ -390,30 +224,76 @@ GET    /api/competitions/:id/predictions   — returns current user's prediction
 POST   /api/competitions/:id/predictions   — upsert a prediction (checks deadline)
 ```
 
+> This map is **partial**. `routes/competitions.ts` alone exposes ~40 endpoints (bracket
+> predictions, leaderboard progression, user stats, tiebreak choices, bonus answers, an SSE
+> stream at `GET /api/competitions/:id/leaderboard/events`, and a set of admin-only bracket
+> repair endpoints), and `routes/tournaments.ts` adds a dozen knockout generation/simulation
+> operations. Grep the route files rather than trusting this list.
+
+### Live tournament endpoints (planned)
+
+All under `/api/live` — see [`docs/LIVE_TOURNAMENTS_PLAN.md`](docs/LIVE_TOURNAMENTS_PLAN.md) §10
+for the full table with guards and payloads.
+
+```
+GET    /api/live/presets                          — the "ready-made connections" dropdown
+GET    /api/live/formats                          — stage definitions per format
+CRUD   /api/live/tournaments[/:id]
+POST   /api/live/tournaments/:id/sync             — manual sync trigger (admin)
+GET    /api/live/tournaments/:id/{teams,fixtures,standings}
+CRUD   /api/live/competitions[/:id]
+POST   /api/live/competitions/join
+GET    /api/live/competitions/:id/fixtures        — fixtures + my prediction + lock state, one call
+PUT    /api/live/competitions/:id/predictions     — upsert one; enforces kickoff − 60 min
+GET    /api/live/competitions/:id/leaderboard
+GET    /api/live/competitions/:id/events          — SSE
+```
+
 ---
 
 ## Scoring System
 
-Points are awarded per competition based on a `scoring_config` JSON object stored with the
-competition. The scoring engine lives in `server/src/lib/scoring.ts` as a pure function.
+### Manual tournaments
 
-### Default scoring config
+Points are awarded per competition based on a `scoring_config` JSON object stored with the
+competition. The scoring engine lives in `server/src/lib/scoring.ts` as a pure function;
+persistence and orchestration live in `server/src/lib/scoringTrigger.ts`.
 
 ```json
 {
-  "exact_score": 3, // After 90 minutes, extra time and penalties are not counted.
-  "correct_result": 1, // Correct on which team wins/draws
-  "correct_group_position": 1, // Exact end position of a team in their group (based on guessed results)
-  "correct_team_progresses": 2, // Points if the user guesses that the correct team win the tie (user can guess draw and select which team they believe will progress from extra time/penalties)
-  "correct_team_in_knockout_tie": 1, // Points if the predictions the user has made up to this point results in the correct team' being in the specific knockout tie.
-  "correct_team_in_final": 5, // Replaces "correct_team_in_knockout_tie" for the final game 
-  "correct_winner": 10, // Bonus if user guesses correct tournament winner replaces "correct_team_in_final"
-  "bonus_question": 0 // Customizable value, some questions can be worth more points than others.
+  "exact_score": 3,                    // After 90 minutes; extra time and penalties are not counted
+  "correct_result": 1,                 // Correct on which team wins/draws
+  "correct_group_position": 1,         // Exact end position of a team in their group
+  "correct_team_progresses": 2,        // Correct team wins the tie (incl. via ET/pens)
+  "correct_team_in_knockout_tie": 1,   // User's chain of predictions put the right team in this tie
+  "correct_team_in_final": 5,          // Replaces correct_team_in_knockout_tie for the final
+  "correct_winner": 7                  // Additive bonus for the correct tournament winner
 }
 ```
 
-Points are calculated and written to the `predictions` table when an admin marks a match
-as completed with its final score.
+Bonus question points are configured per question, not in this object. Points are recalculated
+and written to `competition_members` when an admin marks a match completed — inline, inside the
+`PATCH /api/matches/:id` request. There is **no API to edit `scoring_config`**; changes are made
+by SQL migration plus a startup fixup in `index.ts`.
+
+### Live tournaments (planned)
+
+Three **stacking** tiers per fixture, scored on the **end-of-normal-time** score (90 minutes plus
+stoppage time — extra time and penalties never score, in any stage, though they are stored and
+displayed):
+
+| Tier | Points |
+|---|---|
+| Correct outcome (home win / draw / away win) | +1 |
+| Correct goal difference | +1 |
+| Exact scoreline | +2 |
+| **Maximum per fixture** | **4** |
+
+Nested, so they add: actual 2–1 → predicted 2–1 scores 4, predicted 3–2 scores 2, predicted 3–1
+scores 1, predicted 1–1 scores 0.
+
+Scoring runs from the background sync tick when a fixture transitions to `finished`, not from a
+request handler.
 
 ---
 
@@ -432,21 +312,42 @@ as completed with its final score.
 ```env
 # .env (never commit — see .env.example for keys)
 DATABASE_URL=
-SESSION_SECRET=
 NODE_ENV=development
-PORT=5432
+PORT=3000
 CLIENT_URL=http://localhost:5173   # Only used in dev for CORS
+
+# Cloudflare R2
+R2_ACCOUNT_ID=
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+R2_BUCKET_NAME=tournament-predictor-assets
+
+# Live tournaments (planned)
+FOOTBALL_DATA_API_KEY=
+LIVE_SYNC_ENABLED=true
+LIVE_SYNC_TICK_SECONDS=30
 ```
+
+Read with bare `process.env` — there is no config module or validation layer. Note
+`SESSION_SECRET` appears in `.env.example` but is **never actually read** by any code.
 
 ---
 
 ## Deployment (Railway)
 
-- Single Railway service
+- Single Railway service (`railway.toml`), NIXPACKS builder
 - Build command: `npm run build` (builds both client and server)
 - Start command: `npm run start` (Express serves the built React app from `client/dist/`)
+- Healthcheck: `GET /api/health`
 - PostgreSQL is a separate Railway plugin (same project)
 - All env vars set in Railway dashboard
+- Migrations run automatically on boot, so a deploy applies pending schema changes
+
+**Implication for background work:** there is no cron, no job queue, no worker process and no
+`.github/workflows`. The only durable place to run periodic work is an in-process `setInterval`
+started from `start()` in `server/src/index.ts`. The planned live-tournament sync does exactly
+that, guarded by a Postgres advisory lock so it stays correct if the service is ever scaled
+past one replica.
 
 ---
 
@@ -475,33 +376,64 @@ CLIENT_URL=http://localhost:5173   # Only used in dev for CORS
 - [x] Live score calculations
 
 
-### In Progress#
-1. Add multiple language support
-1. General improvements
+### In Progress
+1. **Live (API-linked) tournament type** — design agreed, see
+   [`docs/LIVE_TOURNAMENTS_PLAN.md`](docs/LIVE_TOURNAMENTS_PLAN.md). Phase 0 (documentation)
+   done; Phases 1–6 pending.
+2. Add multiple language support
+3. General improvements
 
 ### Known Issues / Tech Debt
--
+- `server/drizzle/meta/_journal.json` is out of sync with the SQL files on disk; the boot-time
+  defensive DDL in `index.ts` compensates. Any new column needs both a migration and a
+  defensive statement.
+- `competition_members` has no primary key; `predictions` has no unique constraint on
+  (competition, user, match) — uniqueness is enforced only in app code.
+- Knockout scoring logic is duplicated in three places (`lib/scoring.ts`, the
+  `all-match-predictions` handler, `KnockoutStageContent.tsx`) and has diverged before.
+- `computeGroupStandings` / `sortGroupTeamsWithH2H` duplicated between `lib/scoring.ts` and
+  `routes/tournaments.ts`; `computeLuckyLoserLabels` exists in `shared/` and twice in the client.
+- `routes/competitions.ts` is 5448 lines with no service layer.
+- No integration tests — only pure-function Vitest specs. `db/client.ts` connects at module
+  import time, so route files cannot be imported in tests.
+
 ---
 
 ## Image Upload Architecture
 
 - **Storage:** Cloudflare R2 (S3-compatible), bucket `tournament-predictor-assets`
-- **Upload flow:** client → `POST /api/upload` (multer + @aws-sdk/client-s3) → R2 → returns public URL → URL stored in DB
+- **Upload flow:** client → `POST /api/upload` (multer + @aws-sdk/client-s3) → R2 → returns a
+  `/api/images/...` URL → stored in DB
 - **File limits:** 5 MB, image types only (jpeg/png/gif/webp)
-- **Keys:** `{users|tournaments|teams}/{uuid}{ext}`
-- **Public URL base:** set via `R2_PUBLIC_URL` env var (R2 dev domain or custom domain)
-- **Reusable component:** `client/src/components/ImageUpload.tsx` — handles preview, upload, and error display
-- **Edit pages:** `/settings` (user profile pic), `/tournaments/:id/edit` (admin), `/teams/:teamId/edit` (admin)
+- **Keys:** `{users|tournaments|teams|competitions}/{uuid}{ext}`
+- **Serving:** images are **proxied through `GET /api/images/:folder/:filename`**
+  (`server/src/routes/images.ts`, optional `?w=` resize via `sharp`) rather than served from a
+  public R2 URL — deliberately, to avoid corporate firewalls that block direct Cloudflare
+  requests. `R2_PUBLIC_URL` is no longer used.
+- **Reusable component:** `client/src/components/ImageUpload.tsx`
+- **Edit pages:** `/settings` (user profile pic), `/admin/tournaments/:id/edit`,
+  `/admin/teams/:teamId/edit`
+- **Planned:** live-tournament team crests are mirrored from the provider into R2 during sync
+  (folder `live-teams`) so they go through the same proxy.
 
 ---
 
 ## TODO
 
-[UPDATE AS YOU BUILD — or keep this in a separate TODO.md and paste it here]
-
 ### Next Session
 
+Start Phase 1 of [`docs/LIVE_TOURNAMENTS_PLAN.md`](docs/LIVE_TOURNAMENTS_PLAN.md) — formats,
+presets, shared types and the `live_*` schema.
+
+Phase 2 is the go/no-go: four questions answered with a real football-data.org API key decide
+whether that provider is sufficient or whether the adapter should target API-Football instead.
+Do it before building anything that depends on it.
+
 ### Backlog (in order)
+
+1. Live tournaments Phases 1–6
+2. Admin UI for editing scoring config (both tournament types)
+3. Bonus questions for live tournaments (deliberately out of scope for v1)
 
 ---
 
@@ -511,9 +443,17 @@ CLIENT_URL=http://localhost:5173   # Only used in dev for CORS
 - **No email/SMTP** — auth is username + password only, no verification
 - **No external auth providers** — Lucia with local credentials only
 - **Single Railway service** — Express serves React build as static files to minimize cost
-- **Open source only** — no paid services beyond Railway
+- **Open source only** — no paid services beyond Railway (football-data.org's free tier is the
+  first choice for live data for this reason; a paid provider is a deliberate decision, not a
+  default)
 - **No React Native / mobile app** — responsive web only
 - **TypeScript everywhere** — client, server, and shared types
+- **The two tournament types stay separate** — the live type does not reuse the manual type's
+  tables, scoring, routes or pages, and vice versa. Shared surface is limited to
+  `users`/`sessions`, the auth middleware, R2 image handling, the `api.ts` fetch wrapper and
+  generic UI plumbing. Resist "unifying" them: the manual type's bracket/group-position model
+  and the live type's per-fixture model have almost nothing in common, and a shared abstraction
+  would have to carry both.
 
 ---
 
@@ -541,29 +481,26 @@ Use this template at the start of each task block:
 
 ---
 
-## First Prompt (Run This Next)
+## Next Prompt (Run This Next)
 
-After pasting this context file, use the following to kick off the scaffold:
+The scaffold prompt that used to live here is long obsolete. The current next step is Phase 1 of
+the live tournament plan:
 
-> **Task:** Generate the complete project scaffold. Output every file with its full path and
-> complete contents. Do not skip or abbreviate any file.
+> **Task:** Implement Phase 1 of `docs/LIVE_TOURNAMENTS_PLAN.md` — formats, presets, shared
+> types and the `live_*` database schema. Read §4 and §5 of that document first; they contain the
+> agreed table definitions and the `ucl_swiss` / `domestic_league` stage mappings.
 >
-> Files to generate:
-> - `package.json` (root, npm workspaces for `client/`, `server/`, `shared/`)
-> - `server/package.json`, `server/tsconfig.json`
-> - `server/src/index.ts` — Express entry, serves `client/dist` as static in production
-> - `server/src/db/client.ts` — Drizzle + postgres connection
-> - `server/src/db/schema.ts` — full initial schema (users, tournaments, teams, matches, competitions, competition_members, predictions, sessions)
-> - `server/src/db/migrate.ts` — migration runner script
-> - `server/src/middleware/auth.ts` — Lucia session middleware, `requireAuth`, `requireAdmin`
-> - `server/src/routes/auth.ts` — register, login, logout, me
-> - `server/src/lib/scoring.ts` — stub scoring function with full signature
-> - `client/package.json`, `client/tsconfig.json`, `client/index.html`
-> - `client/vite.config.ts` — with proxy to Express API in dev
-> - `client/src/main.tsx`, `client/src/App.tsx` — React Router setup with placeholder pages
-> - `client/src/lib/api.ts` — fetch wrapper pointed at `/api`
-> - `client/src/store/authStore.ts` — Zustand store for current user
-> - `shared/package.json`, `shared/src/types.ts`, `shared/src/schemas.ts`
-> - `.env.example`
-> - `railway.toml`
-> - `.gitignore`
+> Files to create:
+> - `shared/src/live/formats.ts`, `presets.ts`, `types.ts`, `schemas.ts`, `lock.ts`
+> - `shared/src/live/lock.test.ts`
+> - `server/src/db/liveSchema.ts`
+>
+> Files to modify:
+> - `shared/src/index.ts` — re-export the new `live/` modules
+> - `server/src/db/schema.ts` — `export * from './liveSchema'`
+> - `server/src/index.ts` — defensive `CREATE TYPE` / `CREATE TABLE IF NOT EXISTS` in `start()`
+> - `.env.example` — `FOOTBALL_DATA_API_KEY`, `LIVE_SYNC_ENABLED`, `LIVE_SYNC_TICK_SECONDS`
+>
+> Then run `npm run db:generate` and commit the resulting migration.
+>
+> Do not touch any existing table, route, or page. The two tournament types stay separate.

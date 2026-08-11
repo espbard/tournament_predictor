@@ -2,6 +2,25 @@
 
 A web app for predicting sports tournament outcomes. Small private groups (up to ~20 people) compete to see who can best predict match results and earn leaderboard points.
 
+## Tournament types
+
+The app supports two independent kinds of tournament. They share only authentication, image
+handling and generic UI plumbing — everything else (tables, routes, scoring, pages) is separate
+by design.
+
+| | **Manual** | **Live / API-linked** |
+|---|---|---|
+| Status | In production | Planned — see [`docs/LIVE_TOURNAMENTS_PLAN.md`](docs/LIVE_TOURNAMENTS_PLAN.md) |
+| Data | Admin enters teams, fixtures and results by hand | Pulled from an external football API |
+| Deadline | One competition-wide deadline | Per fixture: kickoff − 60 minutes |
+| Predicted matchups | Yes — full knockout bracket | No — only real fixtures with real teams |
+| Scoring | 8 sources incl. group positions and bracket picks | Outcome +1, goal difference +1, exact score +2 |
+
+The first live tournaments will be the UEFA Champions League 2026/27 (from the league phase
+onwards) and the Premier League 2026/27.
+
+---
+
 ## Features
 
 - **Tournament management** — Admins create tournaments with groups, teams, and matches
@@ -132,18 +151,21 @@ The server reads `PORT` from the environment (Railway sets this automatically).
 ## Project structure
 
 ```
+├── docs/                    # Design documents (see LIVE_TOURNAMENTS_PLAN.md)
 ├── client/                  # React + Vite frontend
 │   └── src/
-│       ├── pages/           # 15 route-level page components
+│       ├── pages/           # Route-level page components
 │       ├── components/      # Shared UI components (Navbar, bracket, leaderboard, etc.)
 │       ├── lib/             # api.ts fetch wrapper, tiebreaker logic, i18n
 │       └── store/           # Zustand stores (auth, theme, language)
 ├── server/                  # Express backend
 │   └── src/
 │       ├── db/              # Drizzle schema, client, migration runner
-│       ├── routes/          # Express routers (auth, tournaments, competitions, upload, images, settings)
-│       ├── middleware/       # requireAuth / requireAdmin guards (Lucia v3)
-│       └── lib/             # Scoring engine, scoring trigger, SSE leaderboard events, R2 helpers
+│       ├── routes/          # Express routers (auth, tournaments, competitions, upload,
+│       │                    # images, settings, feedback)
+│       ├── middleware/      # requireAuth / requireAdmin guards (Lucia v3)
+│       ├── lib/             # Scoring engine, scoring trigger, SSE leaderboard events, R2 helpers
+│       └── scripts/         # One-off maintenance scripts, run by hand with tsx
 │   └── drizzle/             # Generated SQL migration files
 ├── shared/                  # Zod schemas and TypeScript types shared by client and server
 └── package.json             # npm workspaces root
@@ -164,7 +186,7 @@ The server reads `PORT` from the environment (Railway sets this automatically).
 
 ## Database schema
 
-16 tables managed by Drizzle ORM:
+15 tables managed by Drizzle ORM, defined in `server/src/db/schema.ts`:
 
 - **users / sessions** — Lucia auth
 - **tournaments / groups / teams / matches** — Tournament structure
@@ -172,25 +194,50 @@ The server reads `PORT` from the environment (Railway sets this automatically).
 - **predictions** — Per-match score predictions
 - **bracketPredictions** — Full knockout bracket predictions (JSON)
 - **bonusQuestions / bonusAnswers** — Flexible Q&A scoring
+- **players** — Named players, used by `player`-type bonus answers
+- **feedback** — In-app feedback inbox
 - **appConfig** — Single-row app-wide settings (maintenance mode)
+
+The planned live tournament type adds seven `live_*` tables in `server/src/db/liveSchema.ts` —
+see [`docs/LIVE_TOURNAMENTS_PLAN.md`](docs/LIVE_TOURNAMENTS_PLAN.md).
+
+> **Migrations caveat:** `server/drizzle/meta/_journal.json` is out of sync with the SQL files on
+> disk, so `server/src/index.ts` runs a block of idempotent `ADD COLUMN IF NOT EXISTS` /
+> `CREATE TABLE IF NOT EXISTS` statements on every boot. Any new schema change needs **both** a
+> generated migration and a defensive statement there.
 
 ---
 
 ## Scoring
 
-Scoring is configurable per competition. Default point values:
+### Manual tournaments
+
+Configurable per competition (`competitions.scoring_config`). Default point values:
 
 | Event | Points |
 |---|---|
 | Exact score | 3 |
 | Correct result (win/draw/loss) | 1 |
-| Correct group position | 2 |
+| Correct group position | 1 |
 | Correct team progresses (knockout) | 2 |
-| Correct team in knockout tiebreak | 1 |
+| Correct team in knockout tie | 1 |
 | Correct team in final | 5 |
-| Correct tournament winner | 10 |
+| Correct tournament winner | 7 |
 
-Scores are recalculated automatically each time an admin marks a match as complete.
+Scores are recalculated automatically each time an admin marks a match as complete. Bonus
+question points are set per question.
+
+### Live tournaments (planned)
+
+Three stacking tiers per fixture, scored on the end-of-normal-time result (90 minutes plus
+stoppage time; extra time and penalties are displayed but never score):
+
+| Event | Points |
+|---|---|
+| Correct outcome (win/draw/loss) | 1 |
+| Correct goal difference | 1 |
+| Exact score | 2 |
+| **Maximum per fixture** | **4** |
 
 ---
 
