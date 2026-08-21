@@ -18,6 +18,7 @@ import { feedbackRouter } from './routes/feedback';
 import { recalculateAllScoresForTournament } from './lib/scoringTrigger';
 import { ensureLiveSchema } from './live/ensureSchema';
 import { liveTournamentsRouter } from './live/routes/tournaments';
+import { liveCompetitionsRouter } from './live/routes/competitions';
 import { startLiveScheduler } from './live/scheduler';
 
 const app = express();
@@ -47,6 +48,7 @@ app.use('/api/settings', settingsRouter);
 app.use('/api/feedback', feedbackRouter);
 // Live (API-linked) tournaments — see docs/LIVE_TOURNAMENTS_PLAN.md
 app.use('/api/live', liveTournamentsRouter);
+app.use('/api/live', liveCompetitionsRouter);
 
 // Serve built React app in production
 if (process.env.NODE_ENV === 'production') {

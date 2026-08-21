@@ -20,7 +20,7 @@ There are two kinds of tournament. **They share nothing but the `users` / `sessi
 the auth middleware, image handling, and generic UI plumbing.** Treat them as two separate
 products living in one repo, and do not refactor one into the other.
 
-| | **Manual** (built, in production) | **Live / API-linked** (in progress — Phases 1–3 of 6 done) |
+| | **Manual** (built, in production) | **Live / API-linked** (server complete — Phases 1–4 of 6; no client yet) |
 |---|---|---|
 | Source of data | Admin types in teams, fixtures and every result | Pulled from an external football API |
 | Prediction deadline | One competition-wide `prediction_deadline` | Per fixture: **kickoff − 60 minutes** |
@@ -111,11 +111,13 @@ anything under a `live` prefix. A summary is in the "Live tournaments" section b
 │       │   ├── providers/          # football-data adapter: types.ts, footballData.ts,
 │       │   │                       # rateLimiter.ts, index.ts (getProvider registry),
 │       │   │                       # __fixtures__/ real captured payloads + tests
-│       │   ├── routes/             # tournaments.ts (built); competitions.ts PLANNED
+│       │   ├── routes/             # tournaments.ts, competitions.ts
 │       │   ├── sync.ts             # structure + live-window sync, provider-id upserts
 │       │   ├── scheduler.ts        # advisory-locked tick, hot/warm/cold request budgeting
-│       │   ├── sync.test.ts, scheduler.test.ts
-│       │   ├── scoring.ts, scoringTrigger.ts, liveEvents.ts   # PLANNED (phase 4)
+│       │   ├── scoring.ts          # pure calculateLivePoints — three stacking tiers
+│       │   ├── scoringTrigger.ts   # scoreFixtures, recalculate*, denormalised totals
+│       │   ├── liveEvents.ts       # SSE registry, fixtures-updated / leaderboard-updated
+│       │   ├── sync.test.ts, scheduler.test.ts, scoring.test.ts
 │       ├── middleware/auth.ts      # Lucia v3 — requireAuth / requireAdmin
 │       ├── routes/                 # auth, tournaments (1812), competitions (5448), upload,
 │       │                           # images, settings, feedback
@@ -299,17 +301,32 @@ GET    /api/live/tournaments/:id/fixtures         — ?stageKey&matchday&from&to
 GET    /api/live/tournaments/:id/standings        — ?stageKey
 ```
 
-Planned (Phase 4):
+```
+POST   /api/live/tournaments/:id/recalculate      — rebuild every competition's scores
+```
+
+Built (`server/src/live/routes/competitions.ts`):
 
 ```
-CRUD   /api/live/competitions[/:id]
-POST   /api/live/competitions/join
-GET    /api/live/competitions/:id/fixtures        — fixtures + my prediction + lock state, one call
+GET    /api/live/competitions                     — the caller's leagues (all, for admins)
+POST   /api/live/competitions                     — admin
+POST   /api/live/competitions/join                — {inviteCode}
+GET    /api/live/competitions/:id                 — + tournament, stages, tableScope
+PATCH  /api/live/competitions/:id                 — admin; a scoringConfig change recalculates
+DELETE /api/live/competitions/:id                 — admin
+POST   /api/live/competitions/:id/recalculate     — admin
+DELETE /api/live/competitions/:id/leave
+GET    /api/live/competitions/:id/members
+GET    /api/live/competitions/:id/leaderboard     — denormalised columns, ties share a rank
+GET    /api/live/competitions/:id/events          — SSE: fixtures-updated, leaderboard-updated
+GET    /api/live/competitions/:id/fixtures        — MAIN READ MODEL, see below
 PUT    /api/live/competitions/:id/predictions     — upsert one; enforces kickoff − 60 min
-GET    /api/live/competitions/:id/leaderboard
-GET    /api/live/competitions/:id/events          — SSE
-POST   /api/live/tournaments/:id/recalculate
+GET    /api/live/competitions/:id/predictions/:userId  — locked fixtures only
 ```
+
+`GET /competitions/:id/fixtures` is what the client should build the fixtures tab from: it
+returns each fixture with its teams, the caller's own prediction, `lockedAt`, `isLocked`,
+`isPredictable` and any points awarded, in one call. No client-side joining needed.
 
 ---
 
@@ -338,11 +355,11 @@ and written to `competition_members` when an admin marks a match completed — i
 `PATCH /api/matches/:id` request. There is **no API to edit `scoring_config`**; changes are made
 by SQL migration plus a startup fixup in `index.ts`.
 
-### Live tournaments (planned)
+### Live tournaments
 
-Three **stacking** tiers per fixture, scored on the **end-of-normal-time** score (90 minutes plus
-stoppage time — extra time and penalties never score, in any stage, though they are stored and
-displayed):
+`server/src/live/scoring.ts` (pure) and `scoringTrigger.ts` (persistence). Three **stacking**
+tiers per fixture, scored on the **end-of-normal-time** score (90 minutes plus stoppage time —
+extra time and penalties never score, in any stage, though they are stored and displayed):
 
 | Tier | Points |
 |---|---|
@@ -384,10 +401,12 @@ R2_ACCESS_KEY_ID=
 R2_SECRET_ACCESS_KEY=
 R2_BUCKET_NAME=tournament-predictor-assets
 
-# Live tournaments (planned)
-FOOTBALL_DATA_API_KEY=
-LIVE_SYNC_ENABLED=true
-LIVE_SYNC_TICK_SECONDS=30
+# Live tournaments
+FOOTBALL_DATA_API_KEY=          # football-data.org key; free tier is 10 req/min per account
+LIVE_SYNC_ENABLED=true          # defaults to OFF — a dev server would spend the shared budget
+LIVE_SYNC_TICK_SECONDS=30       # scheduler interval
+LIVE_SYNC_TICK_BUDGET=6         # provider requests one tick may spend (structure 3, window 1)
+FOOTBALL_DATA_RATE_LIMIT=10     # requests per minute the limiter allows
 ```
 
 Read with bare `process.env` — there is no config module or validation layer. Note
@@ -407,9 +426,9 @@ Read with bare `process.env` — there is no config module or validation layer. 
 
 **Implication for background work:** there is no cron, no job queue, no worker process and no
 `.github/workflows`. The only durable place to run periodic work is an in-process `setInterval`
-started from `start()` in `server/src/index.ts`. The planned live-tournament sync does exactly
-that, guarded by a Postgres advisory lock so it stays correct if the service is ever scaled
-past one replica.
+started from `start()` in `server/src/index.ts`. The live-tournament sync
+(`server/src/live/scheduler.ts`) does exactly that, guarded by a Postgres advisory lock so it
+stays correct if the service is ever scaled past one replica.
 
 ---
 

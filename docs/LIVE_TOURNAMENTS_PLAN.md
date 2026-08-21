@@ -1,10 +1,10 @@
 # Live (API-linked) tournaments — implementation plan
 
-> **Status:** Phases 1–3 of 6 landed. Formats, presets, shared types, the `live_*` schema, the
-> football-data adapter, the sync engine and the admin tournament API all exist. `/api/live/*` is
-> mounted, but there are no prediction leagues and no client yet, so the feature is still
-> invisible to ordinary users. This document is the agreed design and the build order. Update the
-> phase checkboxes in §13 as work lands, and record any deviation in §15.
+> **Status:** Phases 1–4 of 6 landed. The whole server side is done — schema, provider adapter,
+> sync engine, scheduler, tournament and competition APIs, the per-fixture lock and scoring.
+> **There is no client yet**, so the feature is still invisible to ordinary users; everything is
+> reachable only over `/api/live/*`. This document is the agreed design and the build order.
+> Update the phase checkboxes in §13 as work lands, and record any deviation in §15.
 >
 > **The Phase 2 go/no-go passed:** `score.regularTime` is present, so the 90-minute scoring rule
 > is implementable on football-data. See §0 for the full smoke-check results.
@@ -28,7 +28,8 @@ for the current list; the substantive commits so far are:
 | `0435bbe` | `server/src/scripts/live-provider-smoke.ts`, the Phase 2 go/no-go check |
 | `116f606` | Network allowlist requirement and handoff state |
 | `5116c60` | Phase 2 — provider adapter, rate limiter, captured fixtures, 44 specs |
-| *(this)* | Phase 3 — sync engine, scheduler, admin tournament API, 39 specs |
+| `32ba519` | Phase 3 — sync engine, scheduler, admin tournament API, 39 specs |
+| *(this)* | Phase 4 — competitions, per-fixture lock, scoring, SSE, 25 specs |
 
 Later commits on the branch are documentation only unless a phase box in §13 says otherwise.
 
@@ -128,25 +129,33 @@ None of this applies to Railway, or to a local checkout.
 
 ### Next step
 
-**Phase 4 — prediction leagues, lock and scoring**, in §13. The data side is finished: fixtures,
-teams and standings arrive and stay current on their own, so Phase 4 is about people predicting
-on them.
+**Phase 5 — the client**, in §13. The server is complete and verified, so this is React work
+against a settled API. Nothing in the provider or data layer is still unknown.
 
-Build and verify against the **Premier League** preset. PL 2026/27 has 380 real dated fixtures
-starting 21 August 2026, which makes the per-fixture lock testable for real — one fixture more
-than an hour out and one inside the hour. The Champions League is the harder case and mostly
-cannot be exercised yet: its 2026/27 season did not exist at the provider as of 21 August 2026,
-and every call for it 404s until the draw on the 27th.
+Start from `GET /api/live/competitions/:id/fixtures`. It is the main read model and returns, in
+one call, each fixture with its teams, the caller's own prediction, `lockedAt`, `isLocked`,
+`isPredictable` and any points awarded — so the fixtures tab needs no client-side joining and no
+second request.
 
-Things Phase 3 leaves for Phase 4 to pick up:
+Points to get right, in rough order of how easy they are to get wrong:
 
-- `SyncResult.newlyFinishedFixtureIds` and `.changedFixtureIds` are already computed and returned
-  on every sync; `server/src/live/scheduler.ts` has the hand-off point marked with a comment.
-  Wire them to `scoreFixtures()` and the SSE push.
-- `POST /api/live/tournaments/:id/recalculate` is specified in §10 but not built — it needs the
-  scoring trigger to exist first.
-- The lock rule is already implemented and tested in `shared/src/live/lock.ts`; Phase 4 enforces
-  it in `PUT /api/live/competitions/:id/predictions` and nothing else.
+1. **Render from the format, not from a hardcoded stage list.** `GET /api/live/competitions/:id`
+   returns `stages` and `tableScope` for exactly this. A `table` stage lists fixtures grouped by
+   matchday; a `knockout` stage lists ties. The Premier League's 380 fixtures make matchday
+   defaulting essential rather than cosmetic.
+2. **The pre-draw Champions League renders as a state, not an empty list.** Its 2026/27 season
+   did not exist at the provider as of 21 August 2026 and every call 404s until the draw on the
+   27th, so zero fixtures and zero teams is a normal, expected response. Show
+   `LiveQualifiedTeamsPanel` rather than an empty fixture list.
+3. **Use the shared lock helper** from `shared/src/live/lock.ts` for the countdown and to disable
+   inputs — `minutesUntilLock()` exists for the countdown. Do not re-derive the rule client-side;
+   that is the whole reason it lives in `shared`.
+4. **`client/src/lib/api.ts` has no `put`.** The prediction endpoint needs one.
+5. SSE is at `GET /api/live/competitions/:id/events` and pushes `fixtures-updated` and
+   `leaderboard-updated`. Same pattern as `CompetitionDetailPage.tsx`.
+
+Verify against the **Premier League** competition: it has 380 real dated fixtures, so a countdown
+really does flip to Locked an hour before kickoff.
 
 ---
 
@@ -946,16 +955,30 @@ points). The manual "Fotball-VM 2026" competition is unaffected at every phase.
   grouping, qualification derivation, live-window dates, temperature classification, request
   budgeting). 170 specs across the workspace in total.
 
-- [ ] **Phase 4 — Prediction leagues, lock, scoring. ← next**
-  `server/src/live/routes/competitions.ts`, `scoring.ts`, `scoringTrigger.ts`, `liveEvents.ts`.
-  *Verify:* create a live competition on the Premier League preset (it has real dated fixtures
-  now, unlike UCL), join by invite code, `PUT` a prediction on a fixture >1 h out (200) and one
-  <1 h out (400). Then set a fixture's `kickoffAt` into the past via SQL, run a sync, and confirm
-  scoring fires and the leaderboard moves.
-  *Tests:* `server/src/live/scoring.test.ts` — the full table from §2, plus: unfinished fixture
-  scores 0, null normal-time scores 0, and an extra-time fixture scores on normal time only.
+- [x] **Phase 4 — Prediction leagues, lock, scoring.** *(done)*
+  `server/src/live/routes/competitions.ts`, `scoring.ts`, `scoringTrigger.ts`, `liveEvents.ts`,
+  plus `POST /tournaments/:id/recalculate` and the scheduler's scoring hand-off.
 
-- [ ] **Phase 5 — Client.**
+  *Verified* against the real provider and a real Postgres, on a Premier League tournament and
+  competition created and then deleted:
+  - **Lock** — a fixture far out is open; `lockedAt` is exactly kickoff − 60 min; moved to 30
+    minutes before kickoff it locks; moved to 90 minutes it reopens.
+  - **Predictions** — the `(competition, user, fixture)` unique constraint makes the upsert
+    overwrite rather than duplicate.
+  - **Scoring** — all four tiers against a real 2–1 result: 4 / 2 / 1 / 0, member total 7, every
+    breakdown column correct. Re-scoring the same fixtures leaves the total at 7 rather than
+    doubling it.
+  - **Unscorable** — nulling a normal-time score sets points back to `null` rather than 0 and
+    drops the total to 3; restoring the score brings it back to 7.
+  - **Config change** — rebuilding under a custom config gives 29, cross-checked against the
+    pure scoring function.
+  - Deleting the competition and tournament cascaded away every prediction, member and fixture.
+
+  *Tests:* `scoring.test.ts` — 25 specs covering the full table from §2, every non-finished
+  status, null normal-time scores, extra-time fixtures scoring on normal time only, and custom
+  configs. 195 specs across the workspace in total.
+
+- [ ] **Phase 5 — Client. ← next**
   Pages, components, routes, `api.put`, HomePage/AdminHomePage/Navbar entry points, i18n.
   *Verify:* end to end in the browser — create both tournaments as admin, create a competition,
   join as a normal user, enter predictions on a PL matchday, watch a countdown flip to Locked,
@@ -1046,6 +1069,18 @@ Recorded as they happen, so the document stays trustworthy.
 | `syncTournamentStructure` tolerates a 404 from `/teams` and `/standings` independently | A season can have fixtures but no table yet, or vice versa. Only a total failure is an error |
 | Scheduler added a request *budget* (`LIVE_SYNC_TICK_BUDGET`, default 6) and a cost per sync kind | §7 said "at most one hot tournament per minute", which does not generalise. Costing structure syncs at 3 requests and window syncs at 1, then sorting by temperature and staleness, keeps the tick inside the free tier and stops a busy competition starving the others |
 | `LIVE_SYNC_ENABLED` defaults to off | Two developers running `npm run dev` would otherwise both spend the shared 10 req/min account budget without realising |
+
+**Phase 4**
+
+| Change | Why |
+|---|---|
+| `recalculateLiveCompetition` clears points to `null` on an unscorable fixture rather than writing 0 | The UI has to tell "not scored yet" apart from "scored, earned nothing". A stored 0 conflates them |
+| `PATCH /competitions/:id` triggers a recalculation when `scoringConfig` changes | Stored points were computed under the old values, so leaving them would silently show wrong totals until the next fixture finished |
+| Member totals are rebuilt with one `UPDATE … FROM (SELECT … SUM …)`, including members with no scored predictions | A read-sum-write loop could drift if two ticks overlap. Including zero-prediction members is what makes recalculation after a config change correct rather than leaving stale rows |
+| `applySyncResult` lives in `scoringTrigger.ts`, not in `sync.ts` | Keeps syncing a pure data concern; the scheduler owns the scoring and SSE hand-off. §7 implied the sync would call scoring directly |
+| The leaderboard ranks with equal totals sharing a rank and the next rank skipping | Standard competition ranking. §9 only said "sorted by totalPoints desc", which leaves ties undefined |
+| `POST /competitions/:id/recalculate` added alongside the tournament-level one in §10 | An admin fixing one league should not have to rebuild every league on the tournament |
+| Comparison-user bot accounts get no lock bypass, and `isLeaderboardUser` accounts are refused outright | §8 specified both; recorded here because the manual type does grant comparison users a bypass, so the difference is deliberate rather than an oversight |
 
 ---
 

@@ -14,6 +14,7 @@ import {
 import { db } from '../../db/client';
 import { liveFixtures, liveStandings, liveTeams, liveTournaments } from '../../db/liveSchema';
 import { requireAdmin, requireAuth } from '../../middleware/auth';
+import { recalculateLiveTournament } from '../scoringTrigger';
 import { syncLiveWindow, syncTournamentStructure } from '../sync';
 
 // ── Live tournament API ───────────────────────────────────────────────────────
@@ -245,6 +246,26 @@ liveTournamentsRouter.post('/tournaments/:id/sync', requireAdmin, async (req, re
       error: 'Provider sync failed',
       details: err instanceof Error ? err.message : String(err),
     });
+  }
+});
+
+/**
+ * Rebuild scores for every competition on this tournament.
+ *
+ * Needed after a scoringConfig change, or if a fixture's stored result is corrected.
+ */
+liveTournamentsRouter.post('/tournaments/:id/recalculate', requireAdmin, async (req, res) => {
+  try {
+    const [tournament] = await db
+      .select({ id: liveTournaments.id })
+      .from(liveTournaments)
+      .where(eq(liveTournaments.id, req.params.id));
+    if (!tournament) return res.status(404).json({ error: 'Not found' });
+
+    const result = await recalculateLiveTournament(tournament.id);
+    return res.json(result);
+  } catch (err) {
+    return fail(res, err);
   }
 });
 

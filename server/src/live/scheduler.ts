@@ -1,6 +1,7 @@
 import { and, eq, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client';
 import { liveFixtures, liveTournaments } from '../db/liveSchema';
+import { applySyncResult } from './scoringTrigger';
 import { syncLiveWindow, syncTournamentStructure } from './sync';
 
 // ── Sync scheduler ────────────────────────────────────────────────────────────
@@ -232,8 +233,19 @@ export async function tick(): Promise<PlannedSync[]> {
             );
           }
 
-          // Phase 4 hooks in here: score result.newlyFinishedFixtureIds, then push SSE
-          // for those plus result.changedFixtureIds.
+          // Score whatever just finished and push SSE to anyone watching. Kept out of
+          // the sync itself so syncing stays a pure data concern.
+          const scored = await applySyncResult({
+            liveTournamentId: job.tournamentId,
+            newlyFinishedFixtureIds: result.newlyFinishedFixtureIds,
+            changedFixtureIds: result.changedFixtureIds,
+          });
+          if (scored.scoredPredictions > 0) {
+            console.log(
+              `[live-sync] ${job.tournamentId}: scored ${scored.scoredPredictions} prediction(s) ` +
+                `across ${scored.affectedCompetitionIds.length} competition(s)`,
+            );
+          }
         } catch (err) {
           // One tournament failing must not stop the others. The message is already
           // recorded on live_tournaments.last_sync_error by the sync itself.
