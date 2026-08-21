@@ -5,7 +5,8 @@ import { getFromR2 } from '../lib/r2';
 
 export const imagesRouter = Router();
 
-const VALID_FOLDERS = new Set(['users', 'tournaments', 'teams', 'competitions']);
+// Keep in sync with the R2Folder union in lib/r2.ts.
+const VALID_FOLDERS = new Set(['users', 'tournaments', 'teams', 'competitions', 'live-teams']);
 const MAX_RESIZE_WIDTH = 512;
 
 function streamToBuffer(stream: Readable): Promise<Buffer> {

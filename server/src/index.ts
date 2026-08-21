@@ -16,6 +16,10 @@ import { competitionsRouter } from './routes/competitions';
 import { settingsRouter } from './routes/settings';
 import { feedbackRouter } from './routes/feedback';
 import { recalculateAllScoresForTournament } from './lib/scoringTrigger';
+import { ensureLiveSchema } from './live/ensureSchema';
+import { liveTournamentsRouter } from './live/routes/tournaments';
+import { liveCompetitionsRouter } from './live/routes/competitions';
+import { startLiveScheduler } from './live/scheduler';
 
 const app = express();
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
@@ -42,6 +46,9 @@ app.use('/api/images', imagesRouter);
 app.use('/api/competitions', competitionsRouter);
 app.use('/api/settings', settingsRouter);
 app.use('/api/feedback', feedbackRouter);
+// Live (API-linked) tournaments — see docs/LIVE_TOURNAMENTS_PLAN.md
+app.use('/api/live', liveTournamentsRouter);
+app.use('/api/live', liveCompetitionsRouter);
 
 // Serve built React app in production
 if (process.env.NODE_ENV === 'production') {
@@ -139,6 +146,11 @@ async function start() {
       "goals_scored" integer NOT NULL DEFAULT 0
     )
   `);
+
+  // Defensive: ensure the live (API-linked) tournament tables exist regardless of
+  // migration state. See docs/LIVE_TOURNAMENTS_PLAN.md.
+  await ensureLiveSchema();
+
   console.log('Migrations complete.');
 
   // Defensive: fix any competitions still using correct_group_position=2 (old default).
@@ -246,6 +258,10 @@ async function start() {
   } catch (err) {
     console.warn('Comparison user seed skipped:', err);
   }
+
+  // Poll the live tournament provider on an interval. No-op unless LIVE_SYNC_ENABLED=true,
+  // so a dev server does not quietly spend the shared provider request budget.
+  startLiveScheduler();
 
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);

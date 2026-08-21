@@ -12,6 +12,11 @@ import {
 import { relations } from 'drizzle-orm';
 import type { ScoringConfig, KnockoutConfig, BracketPredictions, BonusAnswerType } from '@tournament-predictor/shared';
 
+// Live (API-linked) tournaments are defined in ./liveSchema.ts. That file imports `users`
+// from here, so this file deliberately does NOT re-export it — the two are wired together
+// in ./client.ts and drizzle.config.ts instead, keeping the dependency one-directional.
+// See docs/LIVE_TOURNAMENTS_PLAN.md.
+
 // ── Enums ─────────────────────────────────────────────────────────────────────
 
 export const tournamentStatusEnum = pgEnum('tournament_status', [

@@ -2,6 +2,45 @@
 
 A web app for predicting sports tournament outcomes. Small private groups (up to ~20 people) compete to see who can best predict match results and earn leaderboard points.
 
+## Tournament types
+
+The app supports two independent kinds of tournament. They share only authentication, image
+handling and generic UI plumbing — everything else (tables, routes, scoring, pages) is separate
+by design.
+
+| | **Manual** | **Live / API-linked** |
+|---|---|---|
+| Status | In production | Built, not yet run end to end in a browser. See [`docs/LIVE_TOURNAMENTS_PLAN.md`](docs/LIVE_TOURNAMENTS_PLAN.md) |
+| Data | Admin enters teams, fixtures and results by hand | Pulled from an external football API |
+| Deadline | One competition-wide deadline | Per fixture: kickoff − 60 minutes |
+| Predicted matchups | Yes — full knockout bracket | No — only real fixtures with real teams |
+| Scoring | 8 sources incl. group positions and bracket picks | Per fixture: outcome +1, goal difference +1, exact score +2. Plus a league table prediction |
+
+The first live tournaments are the UEFA Champions League 2026/27 (from the league phase
+onwards) and the Premier League 2026/27, both available as ready-made presets.
+
+### Running a live tournament
+
+1. Set `FOOTBALL_DATA_API_KEY` (free key from [football-data.org](https://www.football-data.org/client/register))
+   and `LIVE_SYNC_ENABLED=true`.
+2. As an admin, go to **/admin/live-tournaments**, pick a preset and create it. Teams, fixtures
+   and the table are pulled in immediately.
+3. Create a prediction league at **/admin/live-competitions** and share its invite code.
+
+A background scheduler then keeps everything current on its own — polling roughly every minute
+while a match is being played, every 15 minutes when one is due within a day, and every 6 hours
+otherwise. Results are scored as fixtures finish, and connected clients are updated over SSE.
+
+The free API tier allows **10 requests per minute, counted per account**, so a running dev server
+shares that budget with anything else using the same key. `LIVE_SYNC_TICK_BUDGET` caps what a
+single tick may spend.
+
+> A tournament created before its draw is a supported, expected state. The provider does not
+> publish a season until it exists — every request for it returns 404 — so the competition shows
+> a "fixtures not published yet" panel and fills itself in automatically once the draw happens.
+
+---
+
 ## Features
 
 - **Tournament management** — Admins create tournaments with groups, teams, and matches
@@ -132,18 +171,21 @@ The server reads `PORT` from the environment (Railway sets this automatically).
 ## Project structure
 
 ```
+├── docs/                    # Design documents (see LIVE_TOURNAMENTS_PLAN.md)
 ├── client/                  # React + Vite frontend
 │   └── src/
-│       ├── pages/           # 15 route-level page components
+│       ├── pages/           # Route-level page components
 │       ├── components/      # Shared UI components (Navbar, bracket, leaderboard, etc.)
 │       ├── lib/             # api.ts fetch wrapper, tiebreaker logic, i18n
 │       └── store/           # Zustand stores (auth, theme, language)
 ├── server/                  # Express backend
 │   └── src/
 │       ├── db/              # Drizzle schema, client, migration runner
-│       ├── routes/          # Express routers (auth, tournaments, competitions, upload, images, settings)
-│       ├── middleware/       # requireAuth / requireAdmin guards (Lucia v3)
-│       └── lib/             # Scoring engine, scoring trigger, SSE leaderboard events, R2 helpers
+│       ├── routes/          # Express routers (auth, tournaments, competitions, upload,
+│       │                    # images, settings, feedback)
+│       ├── middleware/      # requireAuth / requireAdmin guards (Lucia v3)
+│       ├── lib/             # Scoring engine, scoring trigger, SSE leaderboard events, R2 helpers
+│       └── scripts/         # One-off maintenance scripts, run by hand with tsx
 │   └── drizzle/             # Generated SQL migration files
 ├── shared/                  # Zod schemas and TypeScript types shared by client and server
 └── package.json             # npm workspaces root
@@ -160,11 +202,24 @@ The server reads `PORT` from the environment (Railway sets this automatically).
 | `server/src/lib/scoringTrigger.ts` | Recalculates all member scores when a match result is saved |
 | `server/src/lib/leaderboardEvents.ts` | SSE broadcaster for live leaderboard updates |
 
+Everything for the live tournament type lives under `server/src/live/` and `client/src/**/live/`:
+
+| File | Purpose |
+|---|---|
+| `server/src/live/providers/` | football-data.org adapter behind a provider-neutral interface, plus the rate limiter |
+| `server/src/live/sync.ts` | Pulls teams, fixtures and standings; maps stages, groups two-legged ties |
+| `server/src/live/scheduler.ts` | Advisory-locked interval that decides what to poll and how often |
+| `server/src/live/scoring.ts` | Pure per-fixture points, on the 90-minute score only |
+| `server/src/live/scoringTrigger.ts` | Applies scoring, keeps denormalised member totals in step |
+| `server/src/live/crests.ts` | Mirrors team crests into R2 so they serve through `/api/images/*` |
+| `server/src/live/routes/` | `/api/live/*` — tournaments and prediction leagues |
+| `client/src/lib/liveApi.ts` | Typed client wrappers and query keys |
+
 ---
 
 ## Database schema
 
-16 tables managed by Drizzle ORM:
+15 tables managed by Drizzle ORM, defined in `server/src/db/schema.ts`:
 
 - **users / sessions** — Lucia auth
 - **tournaments / groups / teams / matches** — Tournament structure
@@ -172,25 +227,76 @@ The server reads `PORT` from the environment (Railway sets this automatically).
 - **predictions** — Per-match score predictions
 - **bracketPredictions** — Full knockout bracket predictions (JSON)
 - **bonusQuestions / bonusAnswers** — Flexible Q&A scoring
+- **players** — Named players, used by `player`-type bonus answers
+- **feedback** — In-app feedback inbox
 - **appConfig** — Single-row app-wide settings (maintenance mode)
+
+The live tournament type adds eight `live_*` tables in `server/src/db/liveSchema.ts` — see
+[`docs/LIVE_TOURNAMENTS_PLAN.md`](docs/LIVE_TOURNAMENTS_PLAN.md).
+
+> **Migrations caveat:** `server/drizzle/meta/_journal.json` is out of sync with the SQL files on
+> disk and holds no snapshots past `0004`, so **`npm run db:generate` is unsafe here** — it would
+> emit a migration recreating half the database. Every migration from `0005` on is hand-written.
+> The server also runs idempotent `ADD COLUMN IF NOT EXISTS` / `CREATE TABLE IF NOT EXISTS`
+> statements on every boot to compensate. Any new schema change needs **both** a hand-written
+> migration (plus its `_journal.json` entry) and a defensive statement — in `server/src/index.ts`
+> for manual tables, or `server/src/live/ensureSchema.ts` for live ones.
 
 ---
 
 ## Scoring
 
-Scoring is configurable per competition. Default point values:
+### Manual tournaments
+
+Configurable per competition (`competitions.scoring_config`). Default point values:
 
 | Event | Points |
 |---|---|
 | Exact score | 3 |
 | Correct result (win/draw/loss) | 1 |
-| Correct group position | 2 |
+| Correct group position | 1 |
 | Correct team progresses (knockout) | 2 |
-| Correct team in knockout tiebreak | 1 |
+| Correct team in knockout tie | 1 |
 | Correct team in final | 5 |
-| Correct tournament winner | 10 |
+| Correct tournament winner | 7 |
 
-Scores are recalculated automatically each time an admin marks a match as complete.
+Scores are recalculated automatically each time an admin marks a match as complete. Bonus
+question points are set per question.
+
+### Live tournaments
+
+Three stacking tiers per fixture, scored on the end-of-normal-time result (90 minutes plus
+stoppage time; extra time and penalties are displayed but never score):
+
+| Event | Points |
+|---|---|
+| Correct outcome (win/draw/loss) | 1 |
+| Correct goal difference | 1 |
+| Exact score | 2 |
+| **Maximum per fixture** | **4** |
+
+The tiers are nested, so they add: against an actual 2–1, predicting 2–1 scores 4, 3–2 scores 2,
+3–1 scores 1, and 1–1 scores nothing.
+
+**League table prediction.** Users also order every team in the league table from top to bottom.
+Once the whole stage has been played, each team in exactly the right final position scores 1. In
+the Champions League, landing a team in the right part of the table scores 1 more, so an exact
+placing is worth 2:
+
+| Champions League band | Positions |
+|---|---|
+| Automatic qualification | 1–8 |
+| Play-off spots | 9–24 |
+| Eliminated | 25 and below |
+
+The Premier League defines no bands, so only exact positions score there. The table closes one
+hour before the first match of the stage.
+
+Only the 90-minute score ever counts, in every stage. This matters more than it sounds: for a
+penalty shootout the provider reports full time as regular time *plus* the shootout tally, so a
+0–1 tie won 4–1 on penalties comes back as `1–5`. Scoring that would award points for a scoreline
+that never happened, so a fixture whose 90-minute result cannot be determined is left unscored
+and flagged in the admin UI rather than guessed at.
 
 ---
 

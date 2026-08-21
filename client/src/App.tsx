@@ -22,6 +22,10 @@ import MaintenancePage from '@/pages/MaintenancePage';
 import AdminFeedbackPage from '@/pages/AdminFeedbackPage';
 import TeamPage from '@/pages/TeamPage';
 import FeedbackButton from '@/components/FeedbackButton';
+import LiveCompetitionDetailPage from '@/pages/live/LiveCompetitionDetailPage';
+import AdminLiveTournamentsPage from '@/pages/live/AdminLiveTournamentsPage';
+import AdminLiveTournamentDetailPage from '@/pages/live/AdminLiveTournamentDetailPage';
+import AdminLiveCompetitionsPage from '@/pages/live/AdminLiveCompetitionsPage';
 
 function PrivateRoute({ children, maintenanceMode }: { children: React.ReactNode; maintenanceMode: boolean }) {
   const { user, isLoading } = useAuthStore();
@@ -167,6 +171,40 @@ export default function App() {
         element={
           <AdminRoute>
             <AdminFeedbackPage />
+          </AdminRoute>
+        }
+      />
+
+      {/* Live (API-linked) tournaments — see docs/LIVE_TOURNAMENTS_PLAN.md */}
+      <Route
+        path="/live/competitions/:id"
+        element={
+          <PrivateRoute maintenanceMode={maintenanceMode}>
+            <LiveCompetitionDetailPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/admin/live-tournaments"
+        element={
+          <AdminRoute>
+            <AdminLiveTournamentsPage />
+          </AdminRoute>
+        }
+      />
+      <Route
+        path="/admin/live-tournaments/:id"
+        element={
+          <AdminRoute>
+            <AdminLiveTournamentDetailPage />
+          </AdminRoute>
+        }
+      />
+      <Route
+        path="/admin/live-competitions"
+        element={
+          <AdminRoute>
+            <AdminLiveCompetitionsPage />
           </AdminRoute>
         }
       />
