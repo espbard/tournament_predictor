@@ -1,9 +1,12 @@
 # Live (API-linked) tournaments — implementation plan
 
-> **Status:** Phase 1 of 6 landed. Formats, presets, shared types and the `live_*` schema exist;
-> nothing is wired to a provider or exposed over HTTP yet, so the feature is invisible to users.
-> This document is the agreed design and the build order. Update the phase checkboxes in §13 as
-> work lands, and record any deviation in §15.
+> **Status:** Phases 1–2 of 6 landed. Formats, presets, shared types, the `live_*` schema and the
+> football-data adapter exist; nothing is exposed over HTTP yet, so the feature is invisible to
+> users. This document is the agreed design and the build order. Update the phase checkboxes in
+> §13 as work lands, and record any deviation in §15.
+>
+> **The Phase 2 go/no-go passed:** `score.regularTime` is present, so the 90-minute scoring rule
+> is implementable on football-data. See §0 for the full smoke-check results.
 
 ---
 
@@ -22,6 +25,8 @@ for the current list; the substantive commits so far are:
 | `7e33318` | This document, plus `CLAUDE_CONTEXT.md` / `README.md` refresh |
 | `2229514` | Phase 1 — formats, presets, shared types, `live_*` schema, migration `0023` |
 | `0435bbe` | `server/src/scripts/live-provider-smoke.ts`, the Phase 2 go/no-go check |
+| `116f606` | Network allowlist requirement and handoff state |
+| *(this)* | Phase 2 — provider adapter, rate limiter, captured fixtures, 44 specs |
 
 Later commits on the branch are documentation only unless a phase box in §13 says otherwise.
 
@@ -29,7 +34,7 @@ No pull request has been opened. The manual tournament type is untouched — the
 existing files are additive (`shared/src/index.ts` re-export, `db/client.ts` schema merge,
 `drizzle.config.ts` array, one `ensureLiveSchema()` call in `server/src/index.ts`).
 
-### What Phase 1 delivered
+### What Phases 1–2 delivered
 
 - `shared/src/live/` — `types.ts`, `formats.ts`, `presets.ts`, `lock.ts`, `schemas.ts`, `index.ts`
 - `server/src/db/liveSchema.ts` — the seven `live_*` tables
@@ -37,6 +42,30 @@ existing files are additive (`shared/src/index.ts` re-export, `db/client.ts` sch
 - `server/src/live/ensureSchema.ts` — idempotent boot-time DDL
 - `server/src/live/lock.test.ts` — 39 passing specs
 - `.env.example` — the three new keys
+- `server/src/live/providers/` — `types.ts`, `rateLimiter.ts`, `footballData.ts`, `index.ts`,
+  `__fixtures__/*.json` (real captured payloads) and `footballData.test.ts` (44 specs)
+
+### Phase 2 smoke-check results — run 21 August 2026 against the live API
+
+All four questions in §13 are answered. **The provider choice is confirmed: stay on
+football-data.** Full output is in the commit message; the decisions that came out of it:
+
+| # | Question | Answer |
+|---|---|---|
+| 1 | Do the CL stage strings match `ucl_swiss`? | **Yes, exactly** — `LEAGUE_STAGE`, `PLAYOFFS`, `LAST_16`, `QUARTER_FINALS`, `SEMI_FINALS`, `FINAL`. The `PLAY_OFF_ROUND` / `PLAYOFFS` collision is moot: coverage starts at the league phase, so the summer qualifiers never appear (189 matches = 144+16+16+8+4+1) |
+| 2 | Does `/teams?season=2026` list the automatic qualifiers pre-draw? | **No — it 404s.** football-data has not created the CL 2026/27 season at all; `seasons` runs 2025 back to 1980. It should appear after the 27 August draw |
+| 3 | **Is `score.regularTime` exposed after extra time?** | **Yes — the blocker is cleared.** And the fallback it rules out is worse than assumed: for a shootout, `fullTime` is regular time *plus the shootout tally* (a 0-1 tie won 4-1 on pens reports `fullTime: 1-5`) |
+| 4 | Does PL 2026 return 380 fixtures with matchdays? | **Yes** — 380 fixtures, 38 matchdays, `REGULAR_SEASON`, first kickoff 2026-08-21 |
+
+Two further findings, both verified through the adapter against the live API:
+
+- **`matchday` is the leg number** on two-legged knockout ties (`[1, 2]` on `PLAYOFFS`, `LAST_16`,
+  `QUARTER_FINALS`, `SEMI_FINALS`). Phase 3 should use it directly instead of §7's "order legs by
+  kickoff" derivation, which breaks when both legs share a date.
+- **`season` combines fine with `dateFrom`/`dateTo`**, so `syncLiveWindow` in Phase 3 works as
+  designed — a 3-day PL window returned 9 fixtures.
+
+### Environment gotchas that cost time
 
 ### Environment gotchas that cost time
 
@@ -50,7 +79,11 @@ existing files are additive (`shared/src/index.ts` re-export, `db/client.ts` sch
    mismatch around line 911 and a missing `isReplacement` around line 1285). They are on `main`
    and unrelated to this work. `npx tsc --noEmit` in `server/` should report exactly 2 errors —
    if you see more, you added them. The `client/` workspace should report 0.
-4. **`api.football-data.org` is blocked** by the environment's network policy. See below.
+   A third, `Cannot find module 'sharp'` in `routes/images.ts`, appears only when `sharp` is
+   missing from `node_modules`; it is an install gap, not a code error. `npm install` clears it.
+4. **`api.football-data.org` is blocked** by the environment's network policy *in a cloud
+   session*. See below. It is reachable from a normal local checkout, which is where Phase 2 was
+   ultimately run.
 
 ### Verifying database work without a live database
 
@@ -72,37 +105,44 @@ Keep the socket directory short — a path under the session scratchpad exceeds 
 107-byte socket limit. Apply `server/drizzle/*.sql` in filename order to reproduce a real
 database. Remember to `pg_ctl stop` and delete any scratch scripts before committing.
 
-### Blocked: Phase 2 needs two things from the user
+### Running against the real API
 
-Phase 2 (§13) is the go/no-go for the whole provider choice, and it cannot run in a cloud session until:
+`FOOTBALL_DATA_API_KEY` is set in the repo-root `.env`, so from a local checkout both of these
+work with no further setup:
 
-1. **`*.football-data.org` is allowlisted.** The Default environment ships with **Trusted**
-   network access, which rejects the API host — the proxy returns
-   `403 Host not in allowlist: api.football-data.org`. Fix: at claude.ai/code, click the cloud
-   icon above the message box, hover the environment, open its settings, switch **Network
-   access** to **Custom**, add `*.football-data.org` to **Allowed domains**, and — importantly —
-   tick **"Also include default list of common package managers"**, or `npm install` breaks.
-   Network policy is read once at session start, so a **new session** is required afterwards.
-   The wildcard covers `api.` (the API), `crests.` (team badges, needed in Phase 6) and `docs.`
-   (the API reference, which was unreachable when this plan was written — several field names in
-   §6 are from memory and still need confirming).
-2. **`FOOTBALL_DATA_API_KEY` is set**, either in the environment's variables box or in a local
-   `.env`. Note the docs warn that environment variables are readable by anyone using the
-   environment and are not a secrets store; for a personal environment and a free read-only key
-   that is a reasonable trade, but it is the user's call.
+```bash
+cd server
+npx tsx --env-file=../.env src/scripts/live-provider-smoke.ts   # re-run the go/no-go check
+```
 
-**If either is missing, do not start writing the adapter.** Ask the user to run
-`server/src/scripts/live-provider-smoke.ts` locally and paste the output — it answers all four
-questions without the key ever leaving their machine, and captured payloads are enough to build
-and unit-test the adapter.
+Two things to remember. Requests are capped at **10 per minute** on the free tier, and the cap is
+per account rather than per process — so a `npm run dev` server syncing in the background eats
+the same budget as a script. And in a **cloud** session the host is blocked unless
+`*.football-data.org` is allowlisted: at claude.ai/code, click the cloud icon above the message
+box, hover the environment, open its settings, set **Network access** to **Custom**, add
+`*.football-data.org`, and tick **"Also include default list of common package managers"** or
+`npm install` breaks. Policy is read once at boot, so a **new session** is needed afterwards.
+None of this applies to Railway, or to a local checkout.
 
 ### Next step
 
-Phase 2, in §13. Run the smoke script, then write `server/src/live/providers/` against what it
-actually returns. The single most important answer is whether `score.regularTime` exists on a
-finished extra-time match: the agreed rule scores knockout fixtures on the end of normal time,
-and if the provider only reports the after-extra-time score, that rule is not implementable on
-football-data and the adapter should target API-Football instead.
+**Phase 3 — sync engine and admin tournament API**, in §13. The adapter is done and verified, so
+this is now plain application code with no unknowns left in the provider layer. Build it against
+the **Premier League** preset: PL 2026/27 has 380 real dated fixtures right now, whereas the
+Champions League 2026/27 season does not exist at the provider yet and every call for it 404s
+until the draw on 27 August 2026.
+
+Three findings from Phase 2 that change what §7 says to write:
+
+1. Use the provider's `matchday` as `legNumber` on two-legged ties. Do not derive it from kickoff
+   order — §7's original suggestion — because both legs can share a date.
+2. Treat `ProviderError.isSeasonUnavailable` (a 404) as "no data yet", not a failure. Creating the
+   UCL tournament before the draw is a supported state and must not fill `lastSyncError` with
+   noise or flip `syncEnabled` off.
+3. The qualification-status rule in §7 cannot work as written for the Champions League: it derives
+   `eliminated` from lost ties below `startStageKey`, but football-data does not cover the summer
+   qualifiers at all. Derive `qualified` from presence in standings or in a fixture at/above
+   `startStageKey`, and leave everything else `pending`.
 
 ---
 
@@ -486,7 +526,7 @@ Status normalisation: `SCHEDULED|TIMED → scheduled` (`kickoffConfirmed = statu
 `POSTPONED → postponed`, `SUSPENDED → suspended`, `CANCELLED → cancelled`.
 
 **Normal-time extraction** — the single most important mapping, since it drives every point
-awarded:
+awarded. **Verified against live data 21 Aug 2026** and implemented as `normalTimeFromScore`:
 
 ```
 if score.duration === 'REGULAR'        → normalTime = score.fullTime
@@ -495,9 +535,29 @@ else                                   → normalTime = null, flag the fixture, 
 ```
 
 Never silently fall back to `fullTime` for an extra-time match — that would hand out points on a
-scoreline the rules exclude. A fixture with `normalTime = null` and status `finished` is
-surfaced in the admin UI as needing attention, and `providerScoreRaw` retains everything needed
-to fix it.
+scoreline the rules exclude. The captured payloads show this is worse than a rounding concern:
+football-data reports a shootout's `fullTime` as **regular time plus the shootout tally**, so
+Liverpool 0-1 PSG, won 4-1 on penalties, arrives as `fullTime: {home: 1, away: 5}` — a scoreline
+that never happened in any period of play. A fixture with `normalTime = null` and status
+`finished` is surfaced in the admin UI as needing attention, and `providerScoreRaw` retains
+everything needed to fix it.
+
+**Confirmed payload shapes.** Real trimmed responses are committed under
+`server/src/live/providers/__fixtures__/` and are what `footballData.test.ts` runs against, so the
+mapping is pinned without network access. Field names that differ from ours, and bit us:
+
+| Provider | Ours | Note |
+|---|---|---|
+| `playedGames` | `played` | standings row |
+| `draw` | `drawn` | standings row |
+| `crest` | `crestUrl` | team |
+| `utcDate` | `kickoffAt` | fixture |
+| `lastUpdated` | `providerLastUpdated` | fixture |
+
+`/standings` returns **three tables per stage** — `type` of `TOTAL`, `HOME` and `AWAY`. Only
+`TOTAL` is the real table; keeping all three would triple every row and violate the
+`(tournament, stage, team)` unique key on `live_standings`. `form` comes back as `""` rather than
+null on the `HOME`/`AWAY` tables and early in a season, so it is normalised to null.
 
 **`server/src/live/providers/rateLimiter.ts`** — a serialising token bucket (10 req/60 s by
 default, from `FOOTBALL_DATA_RATE_LIMIT`). All adapter calls queue through it; `429` backs off on
@@ -841,41 +901,28 @@ points). The manual "Fotball-VM 2026" competition is unaffected at every phase.
   the `server` workspace only, so shared-package tests live there, exactly as
   `server/src/lib/bracketSlots.test.ts` already tests `shared/src/bracketSlots.ts`.
 
-- [ ] **Phase 2 — Provider adapter, no DB writes. The go/no-go phase. ← next**
+- [x] **Phase 2 — Provider adapter, no DB writes. The go/no-go phase.** *(done — **passed**)*
 
-  **Prerequisites, both from the user** (see §0 and §6): `*.football-data.org` allowlisted in the
-  environment's network policy, and `FOOTBALL_DATA_API_KEY` available. Without them, ask the user
-  to run the smoke script locally and paste the output rather than guessing at payload shapes.
+  `server/src/live/providers/{types,footballData,rateLimiter,index}.ts`, written against real
+  payloads rather than the from-memory field names §6 originally carried.
 
-  The check script already exists: **`server/src/scripts/live-provider-smoke.ts`** (committed in
-  `0435bbe`). It is read-only, never prints the key, paces requests 7s apart to stay inside the
-  free tier's 10/minute limit, and reports per-step failures instead of aborting. Run it with:
+  *Go/no-go:* **passed.** `score.regularTime` is present on finished extra-time and shootout
+  matches, so the 90-minute rule is implementable and there is no need to move to API-Football.
+  All four questions are answered in the table in §0, along with two extra findings (`matchday`
+  carries the leg number; `season` combines with `dateFrom`/`dateTo`).
 
-  ```bash
-  cd server && FOOTBALL_DATA_API_KEY=xxx npx tsx src/scripts/live-provider-smoke.ts
-  ```
+  *Verified:* the smoke script (`server/src/scripts/live-provider-smoke.ts`, unchanged from
+  `0435bbe`) run against the live API, then the adapter itself exercised end-to-end — a 3-day PL
+  window returned 9 fixtures, CL 2024 standings mapped to exactly 36 rows with `HOME`/`AWAY`
+  duplicates dropped, and `CL 2026` surfaced as `ProviderError.isSeasonUnavailable` rather than
+  crashing. `npx vitest run` is green (131 specs across 4 files) and `npx tsc --noEmit` reports
+  only the 2 pre-existing errors in `routes/competitions.ts`.
 
-  *The four questions it answers:*
-  1. Do the Champions League `availableStages` match the `ucl_swiss` mapping — in particular, are
-     the August qualifier (`PLAY_OFF_ROUND`) and the February knockout (`PLAYOFFS`) genuinely two
-     different strings? If one string covers both, `startStageKey` cannot separate them and the
-     format needs rework.
-  2. Does `/teams?season=2026` return the 29 automatic qualifiers *before* the 27 August draw, or
-     only after? A "no" is survivable — the UI shows "teams confirmed after the draw" and fills
-     itself in — but it is worth knowing.
-  3. **Does `/matches` expose `score.regularTime` on a completed extra-time match?** This is the
-     real blocker. The agreed rule scores on the end of normal time, so if the provider only
-     reports the after-extra-time score, the rule is not implementable here and the adapter
-     should target API-Football instead.
-  4. Does `/competitions/PL/matches?season=2026` return 380 fixtures with matchdays?
+  *Tests:* `server/src/live/providers/footballData.test.ts` — 44 specs covering raw→DTO mapping,
+  the stage vocabulary and the rate limiter, run against real payloads captured into
+  `__fixtures__/`. No network in tests.
 
-  Then write `server/src/live/providers/{types,footballData,rateLimiter,index}.ts` against the
-  real payloads, correcting the stage mapping and the normal-time extraction in §6 — several
-  field names there were written from memory, because the provider's docs host was unreachable.
-  *Tests:* `server/src/live/providers/footballData.test.ts` — raw→DTO mapping against captured
-  JSON fixtures committed as test data. No network in tests.
-
-- [ ] **Phase 3 — Sync + admin tournament API.**
+- [ ] **Phase 3 — Sync + admin tournament API. ← next**
   `server/src/live/sync.ts`, `scheduler.ts`, `routes/tournaments.ts`, mounted in `index.ts`.
   *Verify:* `GET /api/live/presets` returns both entries; `POST /api/live/tournaments
   {presetKey:'ucl_2026_27'}` creates and populates; `GET /tournaments/:id/teams` shows
@@ -911,20 +958,25 @@ stage mapping, tie grouping — get Vitest coverage.
 
 ## 14. Risks and open questions
 
-1. **Pre-draw UCL data is the main unknown.** football-data does expose CL qualifying stages, so
-   play-off results should land — but whether `/teams?season=2026` lists the 29 automatic
-   qualifiers before 27 August is not confirmed. Phase 2 answers it with one API call. If the
-   answer is no, the fallback is honest rather than broken: the panel reads "teams confirmed
-   after the draw" and self-populates. If the qualified-so-far list must definitely work,
-   API-Football is the safer provider — the interface makes that a one-file swap.
-2. **Stage string collision.** The qualifying `PLAY_OFF_ROUND` and the February knockout
-   `PLAYOFFS` are easy to conflate, and getting it wrong would make summer qualifiers
-   predictable. Confirm both strings against live data in Phase 2; the `startStageKey` filter is
-   the safety net.
-3. **`score.regularTime` availability** decides whether the 90-minute rule is implementable on
-   this provider. The plan refuses to score rather than guessing — so if the field is missing,
-   extra-time knockout fixtures would sit unscored until handled. Confirm in Phase 2 against a
-   past season's knockout tie.
+1. ~~**Pre-draw UCL data is the main unknown.**~~ **Resolved in Phase 2, worse than feared but
+   manageable.** It is not that `/teams?season=2026` returns a short list — the CL 2026/27 season
+   does not exist at the provider at all, and *every* endpoint 404s for it. So the fallback is
+   mandatory, not optional: the qualified-teams panel must render from zero rows, and the sync
+   engine must treat a 404 as "not published yet" rather than an error. Also note football-data
+   does **not** cover the CL qualifying rounds, so the 29-automatic-qualifiers list cannot be
+   derived from play-off results either. Everything appears at once after the 27 August draw.
+   If a pre-draw qualified list is genuinely required, API-Football is the fallback — the
+   provider interface makes that a one-file swap.
+2. ~~**Stage string collision.**~~ **Resolved in Phase 2: no collision exists.** football-data's
+   CL coverage begins at the league phase (189 matches = 144+16+16+8+4+1), so `PLAY_OFF_ROUND`
+   never appears and only the February `PLAYOFFS` is ever emitted. The four summer qualifying
+   stages in `ucl_swiss` are therefore dead mappings today. They are deliberately kept: they cost
+   nothing, `providerStages` is per-provider by design, and a test pins the two strings apart in
+   case coverage ever widens.
+3. ~~**`score.regularTime` availability.**~~ **Resolved in Phase 2: present.** Confirmed on both
+   `EXTRA_TIME` and `PENALTY_SHOOTOUT` fixtures from the 2024/25 season. The refuse-to-guess rule
+   is implemented and unit-tested, so the "sits unscored" path only triggers if the provider
+   regresses.
 4. **Premier League volume.** 380 fixtures plus a per-fixture 1-hour deadline means users predict
    continuously all season rather than in one sitting. The matchday-grouped UI handles it, but it
    is a different rhythm from the existing World Cup product.
@@ -952,6 +1004,19 @@ Recorded as they happen, so the document stays trustworthy.
 | `live_standings` unique key drops `group_name` | Nullable columns are distinct under Postgres unique constraints, so including it would allow duplicates in single-table formats |
 | Lock test lives at `server/src/live/lock.test.ts`, not `shared/src/live/lock.test.ts` | Vitest only runs in the `server` workspace; this matches `server/src/lib/bracketSlots.test.ts` testing shared code |
 | Added `minutesUntilLock()` and an explicit stale-kickoff rule for postponed fixtures | The countdown UI needs the former; the latter stops a provider's un-updated kickoff time from locking a match that was never played |
+
+**Phase 2**
+
+| Change | Why |
+|---|---|
+| An unknown provider status maps to `suspended`, not `scheduled` | `scheduled` and `postponed` are the only statuses that leave a fixture open for predictions. Guessing either for an unrecognised state could reopen a match already played; `suspended` locks it and awards nothing |
+| `ProviderFixtureScore.normalTime` is a `{home, away}` pair of nullables rather than a nullable pair | Keeps one shape for all six score sections. "Refuse to score" is expressed as both sides null, which §9's scoring rule already treats as zero points |
+| Added `ProviderError.isSeasonUnavailable` | A 404 on an unpublished season is an expected state for a tournament created before its draw, not a failure. The sync engine needs to tell the two apart |
+| Added `ProviderError.retryable` and `RateLimiter.availableNow()` | §7's tick needs to know whether to re-try and how much of the minute's budget is left; both were implied by the design but had no accessor |
+| `mapStandings` keeps only `type === 'TOTAL'` | Not in the original design because the three-tables-per-stage shape was unknown. Keeping all three triples every row and violates the `live_standings` unique key |
+| Test fixtures are read with `readFileSync` rather than imported | Avoids adding `resolveJsonModule` to the server tsconfig, and keeps raw payloads typed as `any`, which is what they are |
+| §7's "order legs by kickoff" derivation is superseded by the provider's `matchday` | Verified: two-legged ties come back with `matchday` 1 and 2. Kickoff ordering is ambiguous when both legs share a date |
+| The four UCL summer qualifying stages are kept despite being unreachable | football-data's CL coverage starts at the league phase. They cost nothing, and removing them would drop the guard that keeps `PLAY_OFF_ROUND` and `PLAYOFFS` distinct |
 
 ---
 

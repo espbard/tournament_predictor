@@ -1,0 +1,109 @@
+{
+  "_note": "Trimmed from GET /v4/competitions/PL/teams?season=2026. Real payloads, captured 2026-08-21. squad/staff/runningCompetitions removed — the adapter does not read them.",
+  "count": 3,
+  "filters": {
+    "season": 2026
+  },
+  "competition": {
+    "id": 2021,
+    "name": "Premier League",
+    "code": "PL",
+    "type": "LEAGUE",
+    "emblem": "https://crests.football-data.org/PL.png"
+  },
+  "teams": [
+    {
+      "area": {
+        "id": 2072,
+        "name": "England",
+        "code": "ENG",
+        "flag": "https://crests.football-data.org/770.svg"
+      },
+      "id": 57,
+      "name": "Arsenal FC",
+      "shortName": "Arsenal",
+      "tla": "ARS",
+      "crest": "https://crests.football-data.org/57.png",
+      "address": "75 Drayton Park London N5 1BU",
+      "website": "http://www.arsenal.com",
+      "founded": 1886,
+      "clubColors": "Red / White",
+      "venue": "Emirates Stadium",
+      "coach": {
+        "id": null,
+        "firstName": null,
+        "lastName": null,
+        "name": null,
+        "dateOfBirth": null,
+        "nationality": null,
+        "contract": {
+          "start": null,
+          "until": null
+        }
+      },
+      "lastUpdated": "2022-02-10T19:48:56Z"
+    },
+    {
+      "area": {
+        "id": 2072,
+        "name": "England",
+        "code": "ENG",
+        "flag": "https://crests.football-data.org/770.svg"
+      },
+      "id": 58,
+      "name": "Aston Villa FC",
+      "shortName": "Aston Villa",
+      "tla": "AVL",
+      "crest": "https://crests.football-data.org/58.png",
+      "address": "Villa Park Birmingham B6 6HE",
+      "website": "http://www.avfc.co.uk",
+      "founded": 1872,
+      "clubColors": "Claret / Sky Blue",
+      "venue": "Villa Park",
+      "coach": {
+        "id": null,
+        "firstName": null,
+        "lastName": null,
+        "name": null,
+        "dateOfBirth": null,
+        "nationality": null,
+        "contract": {
+          "start": null,
+          "until": null
+        }
+      },
+      "lastUpdated": "2022-04-03T16:22:14Z"
+    },
+    {
+      "area": {
+        "id": 2072,
+        "name": "England",
+        "code": "ENG",
+        "flag": "https://crests.football-data.org/770.svg"
+      },
+      "id": 61,
+      "name": "Chelsea FC",
+      "shortName": "Chelsea",
+      "tla": "CHE",
+      "crest": "https://crests.football-data.org/61.png",
+      "address": "Fulham Road London SW6 1HS",
+      "website": "http://www.chelseafc.com",
+      "founded": 1905,
+      "clubColors": "Royal Blue / White",
+      "venue": "Stamford Bridge",
+      "coach": {
+        "id": null,
+        "firstName": null,
+        "lastName": null,
+        "name": null,
+        "dateOfBirth": null,
+        "nationality": null,
+        "contract": {
+          "start": null,
+          "until": null
+        }
+      },
+      "lastUpdated": "2022-02-10T19:24:40Z"
+    }
+  ]
+}

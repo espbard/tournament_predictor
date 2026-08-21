@@ -1,0 +1,214 @@
+{
+  "_note": "Trimmed from GET /v4/competitions/CL/standings?season=2024. Real payloads, captured 2026-08-21.",
+  "filters": {
+    "season": "2024"
+  },
+  "competition": {
+    "id": 2001,
+    "name": "UEFA Champions League",
+    "code": "CL",
+    "type": "CUP",
+    "emblem": "https://crests.football-data.org/CL.png"
+  },
+  "season": {
+    "id": 2350,
+    "startDate": "2024-09-17",
+    "endDate": "2025-05-31",
+    "currentMatchday": 8,
+    "winner": null
+  },
+  "standings": [
+    {
+      "stage": "LEAGUE_STAGE",
+      "type": "TOTAL",
+      "group": null,
+      "table": [
+        {
+          "position": 1,
+          "team": {
+            "id": 64,
+            "name": "Liverpool FC",
+            "shortName": "Liverpool",
+            "tla": "LIV",
+            "crest": "https://crests.football-data.org/64.png"
+          },
+          "playedGames": 8,
+          "form": "L,W,W,W,W",
+          "won": 7,
+          "draw": 0,
+          "lost": 1,
+          "points": 21,
+          "goalsFor": 17,
+          "goalsAgainst": 5,
+          "goalDifference": 12
+        },
+        {
+          "position": 2,
+          "team": {
+            "id": 81,
+            "name": "FC Barcelona",
+            "shortName": "Barça",
+            "tla": "FCB",
+            "crest": "https://crests.football-data.org/81.png"
+          },
+          "playedGames": 8,
+          "form": "D,W,W,W,W",
+          "won": 6,
+          "draw": 1,
+          "lost": 1,
+          "points": 19,
+          "goalsFor": 28,
+          "goalsAgainst": 13,
+          "goalDifference": 15
+        },
+        {
+          "position": 3,
+          "team": {
+            "id": 57,
+            "name": "Arsenal FC",
+            "shortName": "Arsenal",
+            "tla": "ARS",
+            "crest": "https://crests.football-data.org/57.png"
+          },
+          "playedGames": 8,
+          "form": "W,W,W,W,L",
+          "won": 6,
+          "draw": 1,
+          "lost": 1,
+          "points": 19,
+          "goalsFor": 16,
+          "goalsAgainst": 3,
+          "goalDifference": 13
+        }
+      ]
+    },
+    {
+      "stage": "LEAGUE_STAGE",
+      "type": "HOME",
+      "group": null,
+      "table": [
+        {
+          "position": 1,
+          "team": {
+            "id": 5,
+            "name": "FC Bayern München",
+            "shortName": "Bayern",
+            "tla": "FCB",
+            "crest": "https://crests.football-data.org/5.png"
+          },
+          "playedGames": 4,
+          "form": "",
+          "won": 4,
+          "draw": 0,
+          "lost": 0,
+          "points": 12,
+          "goalsFor": 14,
+          "goalsAgainst": 3,
+          "goalDifference": 11
+        },
+        {
+          "position": 2,
+          "team": {
+            "id": 64,
+            "name": "Liverpool FC",
+            "shortName": "Liverpool",
+            "tla": "LIV",
+            "crest": "https://crests.football-data.org/64.png"
+          },
+          "playedGames": 4,
+          "form": "",
+          "won": 4,
+          "draw": 0,
+          "lost": 0,
+          "points": 12,
+          "goalsFor": 10,
+          "goalsAgainst": 1,
+          "goalDifference": 9
+        },
+        {
+          "position": 3,
+          "team": {
+            "id": 108,
+            "name": "FC Internazionale Milano",
+            "shortName": "Inter",
+            "tla": "INT",
+            "crest": "https://crests.football-data.org/108.png"
+          },
+          "playedGames": 4,
+          "form": "",
+          "won": 4,
+          "draw": 0,
+          "lost": 0,
+          "points": 12,
+          "goalsFor": 9,
+          "goalsAgainst": 0,
+          "goalDifference": 9
+        }
+      ]
+    },
+    {
+      "stage": "LEAGUE_STAGE",
+      "type": "AWAY",
+      "group": null,
+      "table": [
+        {
+          "position": 1,
+          "team": {
+            "id": 102,
+            "name": "Atalanta BC",
+            "shortName": "Atalanta",
+            "tla": "ATA",
+            "crest": "https://crests.football-data.org/102.png"
+          },
+          "playedGames": 4,
+          "form": "",
+          "won": 3,
+          "draw": 1,
+          "lost": 0,
+          "points": 10,
+          "goalsFor": 13,
+          "goalsAgainst": 3,
+          "goalDifference": 10
+        },
+        {
+          "position": 2,
+          "team": {
+            "id": 78,
+            "name": "Club Atlético de Madrid",
+            "shortName": "Atleti",
+            "tla": "ATL",
+            "crest": "https://crests.football-data.org/78.png"
+          },
+          "playedGames": 4,
+          "form": "",
+          "won": 3,
+          "draw": 0,
+          "lost": 1,
+          "points": 9,
+          "goalsFor": 12,
+          "goalsAgainst": 6,
+          "goalDifference": 6
+        },
+        {
+          "position": 3,
+          "team": {
+            "id": 81,
+            "name": "FC Barcelona",
+            "shortName": "Barça",
+            "tla": "FCB",
+            "crest": "https://crests.football-data.org/81.png"
+          },
+          "playedGames": 4,
+          "form": "",
+          "won": 3,
+          "draw": 0,
+          "lost": 1,
+          "points": 9,
+          "goalsFor": 14,
+          "goalsAgainst": 10,
+          "goalDifference": 4
+        }
+      ]
+    }
+  ]
+}

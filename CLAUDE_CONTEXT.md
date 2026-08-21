@@ -20,7 +20,7 @@ There are two kinds of tournament. **They share nothing but the `users` / `sessi
 the auth middleware, image handling, and generic UI plumbing.** Treat them as two separate
 products living in one repo, and do not refactor one into the other.
 
-| | **Manual** (built, in production) | **Live / API-linked** (in progress — Phase 1 of 6 done) |
+| | **Manual** (built, in production) | **Live / API-linked** (in progress — Phases 1–2 of 6 done) |
 |---|---|---|
 | Source of data | Admin types in teams, fixtures and every result | Pulled from an external football API |
 | Prediction deadline | One competition-wide `prediction_deadline` | Per fixture: **kickoff − 60 minutes** |
@@ -108,7 +108,9 @@ anything under a `live` prefix. A summary is in the "Live tournaments" section b
 │       ├── live/                   # the entire live tournament type
 │       │   ├── ensureSchema.ts     # idempotent boot-time DDL for the live_* tables
 │       │   ├── lock.test.ts        # covers shared/src/live/{lock,formats,presets}.ts
-│       │   ├── providers/          # PLANNED — types.ts, footballData.ts, rateLimiter.ts
+│       │   ├── providers/          # football-data adapter: types.ts, footballData.ts,
+│       │   │                       # rateLimiter.ts, index.ts (getProvider registry),
+│       │   │                       # __fixtures__/ real captured payloads + tests
 │       │   ├── routes/             # PLANNED — tournaments.ts, competitions.ts
 │       │   ├── sync.ts, scheduler.ts, scoring.ts, scoringTrigger.ts, liveEvents.ts  # PLANNED
 │       ├── middleware/auth.ts      # Lucia v3 — requireAuth / requireAdmin
@@ -170,7 +172,7 @@ Architectural facts that trip people up:
 - `computeGroupStandings` / `sortGroupTeamsWithH2H` are duplicated verbatim between
   `lib/scoring.ts` and `routes/tournaments.ts`.
 
-### Live tournament type (built in Phase 1)
+### Live tournament type (built in Phases 1–2)
 
 `server/src/db/liveSchema.ts` — 7 tables, all with real primary keys and the unique constraints
 the data requires, unlike their manual counterparts:
@@ -192,6 +194,23 @@ Shared code in `shared/src/live/`: `types.ts`, `formats.ts` (stage definitions p
 format + `resolveStageKey` / `isStageAtOrAfter` / `predictableStages`), `presets.ts` (the
 ready-made connections dropdown), `lock.ts` (the kickoff − 60 min rule, used by both client and
 server), `schemas.ts` (Zod).
+
+`server/src/live/providers/` — the football-data.org v4 adapter behind a provider-neutral
+interface, so nothing above it knows which API supplies the data. `getProvider(id)` is the only
+entry point. Three things to know before touching it:
+
+- **Only `score.regularTime` may be scored**, never `fullTime`. For a penalty shootout
+  football-data reports `fullTime` as regular time *plus the shootout tally* — a 0-1 tie won 4-1
+  on penalties comes back as `1-5`. `normalTimeFromScore` returns nulls rather than guessing when
+  the normal-time score is unavailable, and the fixture goes unscored.
+- **The free tier allows 10 requests/minute, per account.** Every call queues through
+  `RateLimiter`, which serialises requests and backs the whole queue off on a `429`.
+- **A 404 is often not an error.** A season the provider has not published yet (the Champions
+  League 2026/27, until the draw) surfaces as `ProviderError.isSeasonUnavailable`.
+
+Mapping is pinned by `footballData.test.ts` against real payloads committed under
+`providers/__fixtures__/`; no test touches the network. To re-check the provider against live
+data, run `npx tsx --env-file=../.env src/scripts/live-provider-smoke.ts` from `server/`.
 
 ### Migrations — read this before adding a column
 
