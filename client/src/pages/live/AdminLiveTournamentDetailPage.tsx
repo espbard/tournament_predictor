@@ -50,7 +50,11 @@ export default function AdminLiveTournamentDetailPage() {
               fixtures: result.fixtures,
               teams: result.teams,
               standings: result.standings,
-            }),
+            }) +
+              // Only worth mentioning on the first full sync, when there is work to do.
+              (result.crestsMirrored > 0
+                ? ` ${t('live.admin.crestsMirrored', { count: result.crestsMirrored })}`
+                : ''),
       );
       refresh();
     },

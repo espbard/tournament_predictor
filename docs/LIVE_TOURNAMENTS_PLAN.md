@@ -1,11 +1,15 @@
 # Live (API-linked) tournaments — implementation plan
 
-> **Status:** Phases 1–5 of 6 landed. Server and client are both built — schema, provider
-> adapter, sync engine, scheduler, both APIs, the per-fixture lock, scoring, and the pages and
-> components that surface all of it. **The end-to-end browser pass has not been done yet**
-> (see the Phase 5 box in §13 for exactly what remains), and Phase 6 polish is outstanding.
-> This document is the agreed design and the build order. Update the phase checkboxes in §13 as
-> work lands, and record any deviation in §15.
+> **Status:** All six phases landed. Schema, provider adapter, sync engine, scheduler, both APIs,
+> the per-fixture lock, scoring, the client, and crest mirroring are all built, and every phase
+> up to 4 was verified against the real provider and a real database.
+>
+> **One thing remains: nobody has driven the feature end to end in a browser.** Everything
+> typechecks, builds and unit-tests, and the server side was verified directly — but saving a
+> prediction through the UI, watching a countdown flip to Locked, and watching a score arrive
+> over SSE are all still unproven. The checklist is in §0 under "Next step".
+>
+> Update the phase checkboxes in §13 as work lands, and record any deviation in §15.
 >
 > **The Phase 2 go/no-go passed:** `score.regularTime` is present, so the 90-minute scoring rule
 > is implementable on football-data. See §0 for the full smoke-check results.
@@ -31,7 +35,8 @@ for the current list; the substantive commits so far are:
 | `5116c60` | Phase 2 — provider adapter, rate limiter, captured fixtures, 44 specs |
 | `32ba519` | Phase 3 — sync engine, scheduler, admin tournament API, 39 specs |
 | `b43aba8` | Phase 4 — competitions, per-fixture lock, scoring, SSE, 25 specs |
-| *(this)* | Phase 5 — client pages, components, routes, entry points, i18n |
+| `39fc537` | Phase 5 — client pages, components, routes, entry points, i18n |
+| *(this)* | Phase 6 — crest mirroring to R2, docs refresh, 13 specs |
 
 Later commits on the branch are documentation only unless a phase box in §13 says otherwise.
 
@@ -157,9 +162,15 @@ To watch SSE and scoring fire without waiting for a real match, set a fixture's 
 the past and its status to `finished` with a normal-time score, then trigger a sync from the admin
 detail page.
 
-**2. Phase 6 — polish**, in §13: crest mirroring into R2, and the README refresh. The
-`lastSyncError`, unmapped-stage and unscorable-fixture warnings that §13 lists under Phase 6 are
-already built into `AdminLiveTournamentDetailPage`, so what remains there is the R2 work and docs.
+**2. Then the feature is complete.** All six phases have landed; the browser pass above is the
+only outstanding work in this plan.
+
+Worth checking during that pass, since it is the one Phase 6 behaviour with no unit coverage:
+**crest mirroring**. On the first full sync of a tournament the admin detail page should report
+crests copied to storage, and every team crest afterwards should be served from a
+`/api/images/live-teams/...` URL rather than `crests.football-data.org`. A second full sync should
+report zero — if it re-mirrors every time, the preserve-existing-crest clause in `sync.ts`'s team
+upsert is not working.
 
 ---
 
@@ -1003,9 +1014,15 @@ points). The manual "Fotball-VM 2026" competition is unaffected at every phase.
   live score arrive over SSE. Confirm the Champions League competition renders
   `LiveQualifiedTeamsPanel` rather than an empty fixture list.
 
-- [ ] **Phase 6 — Polish.**
-  Crest mirroring to R2, `lastSyncError` and unmapped-stage warnings in the admin UI, README and
-  `CLAUDE_CONTEXT.md` refresh, `.env.example` entries.
+- [x] **Phase 6 — Polish.** *(done)*
+  `server/src/live/crests.ts` mirrors team crests into R2 under `live-teams/`; `lib/r2.ts` gained
+  `uploadBufferToR2` and an `R2Folder` union; `routes/images.ts` serves the new folder. The
+  `lastSyncError`, unmapped-stage and unscorable-fixture warnings already landed in Phase 5's
+  `AdminLiveTournamentDetailPage`. README, `CLAUDE_CONTEXT.md` and `.env.example` refreshed —
+  the last of those was missing `LIVE_SYNC_TICK_BUDGET` and `FOOTBALL_DATA_RATE_LIMIT` entirely,
+  and had `LIVE_SYNC_ENABLED=true` where the code defaults it off.
+  *Tests:* `crests.test.ts` — 13 specs over the pure helpers (extension parsing, content-type
+  resolution, and the idempotency guard that stops a mirrored crest being re-downloaded).
 
 No integration test harness exists (no test DB, and `server/src/db/client.ts` connects at import
 time), so Phases 3–5 are verified manually. Pure functions — scoring, lock, provider mapping,
@@ -1119,6 +1136,17 @@ Recorded as they happen, so the document stays trustworthy.
 | `LiveFixtureCard` only adopts a refetched prediction when its inputs are empty | A background refetch or an SSE push must not overwrite a score the user is midway through typing |
 | The live tab bar is a sibling branch in `Navbar`, not an extension of the existing dropdowns | §11 called for this explicitly; the two tournament types share no tabs |
 | Crests are rendered directly from `crestUrl` | Phase 6 mirrors them into R2 and rewrites the column; the component needs no change when that lands |
+
+**Phase 6**
+
+| Change | Why |
+|---|---|
+| Added `uploadBufferToR2` alongside `uploadToR2` rather than reusing it | `uploadToR2` takes an `Express.Multer.File`. A crest arrives as fetched bytes, and faking a multer object to reuse the function would be worse than splitting out the part that actually differs |
+| The team upsert preserves an existing `/api/images/%` crest instead of taking the provider's | Without it every sync would reset the column to the provider URL and re-download all 36 crests. This is the whole idempotency mechanism, and it lives in `sync.ts` rather than `crests.ts` |
+| Crest mirroring is best-effort, capped at 60 per sync, 4 concurrent, and skipped entirely when R2 is unconfigured | It runs last, after fixtures and standings are already saved. A crest CDN being down must not cost a sync, and a local dev environment without R2 should degrade to provider URLs rather than erroring every tick |
+| A crest the provider *changes* is never re-fetched | A mirrored URL is indistinguishable from an up-to-date one without storing the provider URL separately, which would need a schema change. Crests change rarely; clearing the column forces a refresh |
+| `client/src/lib/api.ts`'s `uploadFile` type union was **not** extended with `'live-teams'`, contrary to §11 | Nothing uploads a crest from the browser — mirroring is entirely server-side. Adding an option no caller can reach would be misleading |
+| `.env.example` now shows `LIVE_SYNC_ENABLED=false` | It previously showed `true`, contradicting the code, which requires the string `"true"` to enable the scheduler. An example file that misstates the default is worse than no example |
 
 ---
 

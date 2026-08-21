@@ -10,14 +10,34 @@ by design.
 
 | | **Manual** | **Live / API-linked** |
 |---|---|---|
-| Status | In production | In progress — schema and shared types built, provider not yet wired. See [`docs/LIVE_TOURNAMENTS_PLAN.md`](docs/LIVE_TOURNAMENTS_PLAN.md) |
+| Status | In production | Built, not yet run end to end in a browser. See [`docs/LIVE_TOURNAMENTS_PLAN.md`](docs/LIVE_TOURNAMENTS_PLAN.md) |
 | Data | Admin enters teams, fixtures and results by hand | Pulled from an external football API |
 | Deadline | One competition-wide deadline | Per fixture: kickoff − 60 minutes |
 | Predicted matchups | Yes — full knockout bracket | No — only real fixtures with real teams |
 | Scoring | 8 sources incl. group positions and bracket picks | Outcome +1, goal difference +1, exact score +2 |
 
-The first live tournaments will be the UEFA Champions League 2026/27 (from the league phase
-onwards) and the Premier League 2026/27.
+The first live tournaments are the UEFA Champions League 2026/27 (from the league phase
+onwards) and the Premier League 2026/27, both available as ready-made presets.
+
+### Running a live tournament
+
+1. Set `FOOTBALL_DATA_API_KEY` (free key from [football-data.org](https://www.football-data.org/client/register))
+   and `LIVE_SYNC_ENABLED=true`.
+2. As an admin, go to **/admin/live-tournaments**, pick a preset and create it. Teams, fixtures
+   and the table are pulled in immediately.
+3. Create a prediction league at **/admin/live-competitions** and share its invite code.
+
+A background scheduler then keeps everything current on its own — polling roughly every minute
+while a match is being played, every 15 minutes when one is due within a day, and every 6 hours
+otherwise. Results are scored as fixtures finish, and connected clients are updated over SSE.
+
+The free API tier allows **10 requests per minute, counted per account**, so a running dev server
+shares that budget with anything else using the same key. `LIVE_SYNC_TICK_BUDGET` caps what a
+single tick may spend.
+
+> A tournament created before its draw is a supported, expected state. The provider does not
+> publish a season until it exists — every request for it returns 404 — so the competition shows
+> a "fixtures not published yet" panel and fills itself in automatically once the draw happens.
 
 ---
 
@@ -182,6 +202,19 @@ The server reads `PORT` from the environment (Railway sets this automatically).
 | `server/src/lib/scoringTrigger.ts` | Recalculates all member scores when a match result is saved |
 | `server/src/lib/leaderboardEvents.ts` | SSE broadcaster for live leaderboard updates |
 
+Everything for the live tournament type lives under `server/src/live/` and `client/src/**/live/`:
+
+| File | Purpose |
+|---|---|
+| `server/src/live/providers/` | football-data.org adapter behind a provider-neutral interface, plus the rate limiter |
+| `server/src/live/sync.ts` | Pulls teams, fixtures and standings; maps stages, groups two-legged ties |
+| `server/src/live/scheduler.ts` | Advisory-locked interval that decides what to poll and how often |
+| `server/src/live/scoring.ts` | Pure per-fixture points, on the 90-minute score only |
+| `server/src/live/scoringTrigger.ts` | Applies scoring, keeps denormalised member totals in step |
+| `server/src/live/crests.ts` | Mirrors team crests into R2 so they serve through `/api/images/*` |
+| `server/src/live/routes/` | `/api/live/*` — tournaments and prediction leagues |
+| `client/src/lib/liveApi.ts` | Typed client wrappers and query keys |
+
 ---
 
 ## Database schema
@@ -230,7 +263,7 @@ Configurable per competition (`competitions.scoring_config`). Default point valu
 Scores are recalculated automatically each time an admin marks a match as complete. Bonus
 question points are set per question.
 
-### Live tournaments (planned)
+### Live tournaments
 
 Three stacking tiers per fixture, scored on the end-of-normal-time result (90 minutes plus
 stoppage time; extra time and penalties are displayed but never score):
@@ -241,6 +274,15 @@ stoppage time; extra time and penalties are displayed but never score):
 | Correct goal difference | 1 |
 | Exact score | 2 |
 | **Maximum per fixture** | **4** |
+
+The tiers are nested, so they add: against an actual 2–1, predicting 2–1 scores 4, 3–2 scores 2,
+3–1 scores 1, and 1–1 scores nothing.
+
+Only the 90-minute score ever counts, in every stage. This matters more than it sounds: for a
+penalty shootout the provider reports full time as regular time *plus* the shootout tally, so a
+0–1 tie won 4–1 on penalties comes back as `1–5`. Scoring that would award points for a scoreline
+that never happened, so a fixture whose 90-minute result cannot be determined is left unscored
+and flagged in the admin UI rather than guessed at.
 
 ---
 

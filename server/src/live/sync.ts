@@ -9,6 +9,7 @@ import {
 } from '@tournament-predictor/shared';
 import { db } from '../db/client';
 import { liveFixtures, liveStandings, liveTeams, liveTournaments } from '../db/liveSchema';
+import { mirrorTeamCrests } from './crests';
 import { getProvider } from './providers';
 import {
   ProviderError,
@@ -48,6 +49,8 @@ export interface SyncResult {
   unmappedStages: string[];
   /** True when the provider has not published this season yet. Not an error. */
   seasonUnavailable: boolean;
+  /** Team crests copied into R2 by this sync. Zero on every sync after the first. */
+  crestsMirrored: number;
 }
 
 function emptyResult(): SyncResult {
@@ -59,6 +62,7 @@ function emptyResult(): SyncResult {
     changedFixtureIds: [],
     unmappedStages: [],
     seasonUnavailable: false,
+    crestsMirrored: 0,
   };
 }
 
@@ -257,7 +261,10 @@ async function upsertTeams(
             name: sql`excluded.name`,
             shortName: sql`excluded.short_name`,
             tla: sql`excluded.tla`,
-            crestUrl: sql`excluded.crest_url`,
+            // A crest already mirrored into R2 must survive re-syncing, or every sync
+            // would reset it to the provider URL and mirrorTeamCrests would re-download
+            // all of them. See server/src/live/crests.ts.
+            crestUrl: sql`CASE WHEN ${liveTeams.crestUrl} LIKE '/api/images/%' THEN ${liveTeams.crestUrl} ELSE excluded.crest_url END`,
             groupName: sql`coalesce(excluded.group_name, ${liveTeams.groupName})`,
           },
         });
@@ -675,6 +682,26 @@ export async function syncTournamentStructure(tournamentId: string): Promise<Syn
     }
 
     await refreshQualificationStatuses(tournament, format);
+
+    // Best-effort, and last: a crest host that is down or an R2 hiccup must not cost us
+    // the fixtures and standings we just fetched.
+    try {
+      const crests = await mirrorTeamCrests(
+        tournament.id,
+        [...providerTeams, ...fromFixtures],
+        teamIdByProviderId,
+      );
+      result.crestsMirrored = crests.mirrored;
+      if (crests.failed > 0) {
+        console.warn(`[live-sync] ${tournament.id}: ${crests.failed} crest(s) failed to mirror`);
+      }
+    } catch (err) {
+      console.warn(
+        `[live-sync] ${tournament.id}: crest mirroring skipped:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+
     await recordSyncOutcome(tournament.id, 'structure', null);
     return result;
   } catch (err) {

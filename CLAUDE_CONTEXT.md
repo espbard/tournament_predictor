@@ -488,7 +488,8 @@ stays correct if the service is ever scaled past one replica.
 - **Upload flow:** client → `POST /api/upload` (multer + @aws-sdk/client-s3) → R2 → returns a
   `/api/images/...` URL → stored in DB
 - **File limits:** 5 MB, image types only (jpeg/png/gif/webp)
-- **Keys:** `{users|tournaments|teams|competitions}/{uuid}{ext}`
+- **Keys:** `{users|tournaments|teams|competitions|live-teams}/{uuid}{ext}` — the folder set is
+  `VALID_FOLDERS` in `routes/images.ts` and the `R2Folder` union in `lib/r2.ts`; keep them in sync
 - **Serving:** images are **proxied through `GET /api/images/:folder/:filename`**
   (`server/src/routes/images.ts`, optional `?w=` resize via `sharp`) rather than served from a
   public R2 URL — deliberately, to avoid corporate firewalls that block direct Cloudflare
@@ -496,8 +497,15 @@ stays correct if the service is ever scaled past one replica.
 - **Reusable component:** `client/src/components/ImageUpload.tsx`
 - **Edit pages:** `/settings` (user profile pic), `/admin/tournaments/:id/edit`,
   `/admin/teams/:teamId/edit`
-- **Planned:** live-tournament team crests are mirrored from the provider into R2 during sync
-  (folder `live-teams`) so they go through the same proxy.
+- **Live team crests** (`server/src/live/crests.ts`) are downloaded from
+  `crests.football-data.org` during a structure sync, stored in R2 under `live-teams/`, and the
+  team row rewritten to the resulting `/api/images/` URL so they serve through the same proxy.
+  Three things to know: it is **best-effort** and never fails a sync; the team upsert in `sync.ts`
+  deliberately does **not** overwrite an already-mirrored URL, which is what stops every sync
+  re-downloading all of them; and because a mirrored URL is indistinguishable from a current one,
+  a crest the provider *changes* is never picked up — force it by clearing
+  `live_teams.crest_url` and re-syncing. Without R2 configured, mirroring is skipped and crests
+  load straight from the provider.
 
 ---
 
