@@ -91,6 +91,7 @@ describe('calculateLivePoints', () => {
 
   it('honours a custom config', () => {
     const custom: LiveScoringConfig = {
+      ...CONFIG,
       correct_outcome: 3,
       correct_goal_difference: 5,
       exact_score: 10,
@@ -101,6 +102,7 @@ describe('calculateLivePoints', () => {
 
   it('awards nothing when every tier is configured to zero', () => {
     const zeroed: LiveScoringConfig = {
+      ...CONFIG,
       correct_outcome: 0,
       correct_goal_difference: 0,
       exact_score: 0,

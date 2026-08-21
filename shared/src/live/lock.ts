@@ -51,6 +51,37 @@ export function isFixtureLocked(fixture: LockableFixture, now: Date = new Date()
   return now.getTime() >= lockAt.getTime();
 }
 
+// ── Table predictions ─────────────────────────────────────────────────────────
+
+/**
+ * When a table prediction closes: the same hour before kickoff, but measured from the
+ * *first* fixture of the stage.
+ *
+ * Predicting the final order only makes sense before any of it has been played, so the
+ * deadline is the first match rather than the last. Null when no fixture in the stage has
+ * a date yet — which is the normal state for a competition created before its draw, and
+ * leaves the prediction open.
+ */
+export function tablePredictionLockAt(
+  fixtureKickoffs: Array<string | Date | null>,
+): Date | null {
+  const times = fixtureKickoffs
+    .map(toDate)
+    .filter((d): d is Date => d !== null)
+    .map(d => d.getTime());
+  if (times.length === 0) return null;
+  return fixtureLockAt(new Date(Math.min(...times)));
+}
+
+export function isTablePredictionLocked(
+  fixtureKickoffs: Array<string | Date | null>,
+  now: Date = new Date(),
+): boolean {
+  const lockAt = tablePredictionLockAt(fixtureKickoffs);
+  if (!lockAt) return false;
+  return now.getTime() >= lockAt.getTime();
+}
+
 /**
  * Whole minutes until a fixture locks. Null when the kickoff time is unknown,
  * zero once the deadline has passed. For the countdown UI.

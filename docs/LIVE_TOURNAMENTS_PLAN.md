@@ -36,7 +36,8 @@ for the current list; the substantive commits so far are:
 | `32ba519` | Phase 3 — sync engine, scheduler, admin tournament API, 39 specs |
 | `b43aba8` | Phase 4 — competitions, per-fixture lock, scoring, SSE, 25 specs |
 | `39fc537` | Phase 5 — client pages, components, routes, entry points, i18n |
-| *(this)* | Phase 6 — crest mirroring to R2, docs refresh, 13 specs |
+| `81c6138` | Phase 6 — crest mirroring to R2, docs refresh, 13 specs |
+| *(this)* | League table predictions — migration `0024`, 29 specs |
 
 Later commits on the branch are documentation only unless a phase box in §13 says otherwise.
 
@@ -47,7 +48,7 @@ existing files are additive (`shared/src/index.ts` re-export, `db/client.ts` sch
 ### What Phases 1–2 delivered
 
 - `shared/src/live/` — `types.ts`, `formats.ts`, `presets.ts`, `lock.ts`, `schemas.ts`, `index.ts`
-- `server/src/db/liveSchema.ts` — the seven `live_*` tables
+- `server/src/db/liveSchema.ts` — the `live_*` tables (seven at phase 1; eight since table predictions)
 - `server/drizzle/0023_live_tournaments.sql` + its `_journal.json` entry
 - `server/src/live/ensureSchema.ts` — idempotent boot-time DDL
 - `server/src/live/lock.test.ts` — 39 passing specs
@@ -226,6 +227,42 @@ Three **stacking** tiers, evaluated per fixture:
 The tiers are nested — an exact scoreline necessarily also has the right goal difference and
 outcome — so points simply add.
 
+### League table prediction
+
+Alongside the per-fixture predictions, users order **every team in the table stage** from top to
+bottom. Once every fixture in that stage has been played, each team is compared with where it
+actually finished:
+
+| Tier | Points |
+|---|---|
+| Team in exactly the right position | +1 |
+| Team in the right *band* of the table | +1 |
+
+The two stack, so in the Champions League a team placed exactly right is worth **2**, a team in
+the right band but the wrong place **1**, and a team in the wrong band **0**.
+
+Bands are format data, defined on the table stage (`LiveStageDef.bands`). The Champions League
+league phase has three:
+
+| Band | Positions |
+|---|---|
+| Automatic qualification | 1–8 |
+| Play-off spots | 9–24 |
+| Eliminated | 25 and below |
+
+The Premier League defines **no** bands, so only exact positions score there. A format that adds
+bands later needs no code change — just the entries.
+
+**Deadline:** the table prediction closes when the *first* fixture of the stage would lock, i.e.
+first kickoff − `LIVE_LOCK_MINUTES`. Predicting a final order only makes sense before any of it
+has been played. A stage with no published dates yet stays open, which is the normal pre-draw
+state.
+
+**Scored when the stage completes** — every fixture `finished` or `cancelled`. A cancelled fixture
+counts as done, since waiting for one that will never be played would strand the table forever; a
+*postponed* one does not, because it is still expected and could still move the table. Positions
+come from `live_standings` verbatim, never recomputed.
+
 | Actual | Predicted | Outcome | GD | Exact | Total |
 |---|---|---|---|---|---|
 | 2–1 | 2–1 | ✓ | ✓ | ✓ | **4** |
@@ -247,11 +284,17 @@ export interface LiveScoringConfig {
   correct_outcome: number;
   correct_goal_difference: number;
   exact_score: number;
+  table_exact_position: number;
+  table_correct_band: number;
 }
 export const DEFAULT_LIVE_SCORING_CONFIG: LiveScoringConfig = {
   correct_outcome: 1, correct_goal_difference: 1, exact_score: 2,
+  table_exact_position: 1, table_correct_band: 1,
 };
 ```
+
+Always read a stored config through `withLiveScoringDefaults()`. Competitions created before a
+tier existed have a JSON blob without it, and arithmetic on `undefined` silently yields `NaN`.
 
 ---
 
@@ -1147,6 +1190,20 @@ Recorded as they happen, so the document stays trustworthy.
 | A crest the provider *changes* is never re-fetched | A mirrored URL is indistinguishable from an up-to-date one without storing the provider URL separately, which would need a schema change. Crests change rarely; clearing the column forces a refresh |
 | `client/src/lib/api.ts`'s `uploadFile` type union was **not** extended with `'live-teams'`, contrary to §11 | Nothing uploads a crest from the browser — mirroring is entirely server-side. Adding an option no caller can reach would be misleading |
 | `.env.example` now shows `LIVE_SYNC_ENABLED=false` | It previously showed `true`, contradicting the code, which requires the string `"true"` to enable the scheduler. An example file that misstates the default is worse than no example |
+
+**League table predictions** *(added after the six phases, on request)*
+
+| Decision | Why |
+|---|---|
+| Bands live on `LiveStageDef`, not in scoring code | They are a property of the competition's shape, like stages themselves. The Premier League defines none and so scores exact positions only, with no special-casing anywhere |
+| The order is stored as one `json` array, not a row per team | The ordering *is* the prediction; it is only ever read and written whole. A row per team would need 36 upserts per save and a position column that can never be allowed to collide |
+| No FK on the team ids inside that array | A team removed from the tournament degrades to a stale id that simply scores nothing, rather than a cascade deleting the whole prediction |
+| The deadline is the *first* fixture of the stage, not a per-fixture lock | Predicting a final order only makes sense before any of it has been played. Reuses `LIVE_LOCK_MINUTES` so there is still one lock rule |
+| A cancelled fixture counts as "stage complete", a postponed one does not | Waiting on a match that will never be played would strand the table unscored forever; a postponed one is still expected and could still move it |
+| The server re-validates the submitted order as a complete permutation | A partial or duplicated table would quietly distort scoring — duplicating a team you are confident about, or omitting one you are not |
+| `LiveScoreResult` (per fixture) no longer extends `LiveScoreBreakdown` | The breakdown now includes table points, which a single fixture can never produce. Sharing the type would have forced a meaningless field onto every fixture result |
+| Member totals moved to two `LEFT JOIN LATERAL` subqueries | Fixture points and table points are independent sources; summing them in one join would multiply the rows together |
+| `moveItem` / `initialOrder` extracted to `client/src/lib/liveTableOrder.ts` | Pure logic worth checking without mounting React. Extracting it surfaced a real bug: a guard clause could return early and leave the table an incomplete permutation, which the server would then reject on save |
 
 ---
 

@@ -231,6 +231,8 @@ export const liveCompetitionMembers = pgTable(
     correctOutcomePoints: integer('correct_outcome_points').notNull().default(0),
     correctGoalDifferencePoints: integer('correct_goal_difference_points').notNull().default(0),
     exactScorePoints: integer('exact_score_points').notNull().default(0),
+    /** Exact-position plus band points from the table prediction. */
+    tablePoints: integer('table_points').notNull().default(0),
     totalPoints: integer('total_points').notNull().default(0),
   },
   t => ({
@@ -271,6 +273,41 @@ export const livePredictions = pgTable(
       t.liveFixtureId,
     ),
     fixtureIdx: index('live_predictions_fixture_idx').on(t.liveFixtureId),
+  }),
+);
+
+export const liveTablePredictions = pgTable(
+  'live_table_predictions',
+  {
+    id: text('id').primaryKey(),
+    liveCompetitionId: text('live_competition_id')
+      .notNull()
+      .references(() => liveCompetitions.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** Which table stage this predicts — a format could grow a second one later. */
+    stageKey: text('stage_key').notNull(),
+    /**
+     * live_teams ids, top of the table first. Stored whole rather than a row per team
+     * because the ordering *is* the prediction and it is only ever read and written
+     * complete. No FK, so a team removed from the tournament degrades to a stale id
+     * rather than destroying the whole prediction.
+     */
+    orderedTeamIds: json('ordered_team_ids').notNull().$type<string[]>(),
+    /** Null until every fixture in the stage has been played and scoring runs. */
+    points: integer('points'),
+    exactPositionPoints: integer('exact_position_points').notNull().default(0),
+    bandPoints: integer('band_points').notNull().default(0),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  t => ({
+    tablePredictionUnique: uniqueIndex('live_table_predictions_competition_user_stage_unique').on(
+      t.liveCompetitionId,
+      t.userId,
+      t.stageKey,
+    ),
   }),
 );
 
@@ -335,6 +372,17 @@ export const liveCompetitionMembersRelations = relations(liveCompetitionMembers,
   }),
   user: one(users, {
     fields: [liveCompetitionMembers.userId],
+    references: [users.id],
+  }),
+}));
+
+export const liveTablePredictionsRelations = relations(liveTablePredictions, ({ one }) => ({
+  competition: one(liveCompetitions, {
+    fields: [liveTablePredictions.liveCompetitionId],
+    references: [liveCompetitions.id],
+  }),
+  user: one(users, {
+    fields: [liveTablePredictions.userId],
     references: [users.id],
   }),
 }));

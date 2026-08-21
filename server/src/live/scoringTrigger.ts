@@ -1,13 +1,22 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
-import { DEFAULT_LIVE_SCORING_CONFIG, type LiveScoringConfig } from '@tournament-predictor/shared';
+import {
+  getLiveFormat,
+  tablePredictionStage,
+  withLiveScoringDefaults,
+  type LiveScoringConfig,
+} from '@tournament-predictor/shared';
 import { db } from '../db/client';
 import {
   liveCompetitionMembers,
   liveCompetitions,
   liveFixtures,
   livePredictions,
+  liveStandings,
+  liveTablePredictions,
+  liveTournaments,
 } from '../db/liveSchema';
 import { calculateLivePoints } from './scoring';
+import { calculateTablePoints, isTableStageComplete } from './tableScoring';
 import { notifyLiveCompetitions } from './liveEvents';
 
 // ── Scoring trigger ───────────────────────────────────────────────────────────
@@ -48,27 +57,36 @@ async function recomputeMemberTotals(competitionIds: string[]): Promise<void> {
   if (competitionIds.length === 0) return;
 
   await chunked(competitionIds, async chunk => {
+    // Two independent sources — per-fixture predictions and the table prediction — so
+    // they are summed in separate subqueries and joined. Doing it in one join would
+    // multiply the fixture rows by the table rows.
     await db.execute(sql`
       UPDATE live_competition_members AS m
-      SET correct_outcome_points = COALESCE(t.outcome, 0),
-          correct_goal_difference_points = COALESCE(t.gd, 0),
-          exact_score_points = COALESCE(t.exact, 0),
-          total_points = COALESCE(t.total, 0)
-      FROM (
-        SELECT m2.id AS member_id,
-               SUM(p.correct_outcome_points)          AS outcome,
-               SUM(p.correct_goal_difference_points)  AS gd,
-               SUM(p.exact_score_points)              AS exact,
-               SUM(p.points)                          AS total
-        FROM live_competition_members m2
-        LEFT JOIN live_predictions p
-          ON p.live_competition_id = m2.live_competition_id
-         AND p.user_id = m2.user_id
-         AND p.points IS NOT NULL
-        WHERE m2.live_competition_id IN ${chunk}
-        GROUP BY m2.id
-      ) AS t
-      WHERE m.id = t.member_id
+      SET correct_outcome_points = COALESCE(f.outcome, 0),
+          correct_goal_difference_points = COALESCE(f.gd, 0),
+          exact_score_points = COALESCE(f.exact, 0),
+          table_points = COALESCE(tp.table_points, 0),
+          total_points = COALESCE(f.total, 0) + COALESCE(tp.table_points, 0)
+      FROM live_competition_members m2
+      LEFT JOIN LATERAL (
+        SELECT SUM(p.correct_outcome_points)         AS outcome,
+               SUM(p.correct_goal_difference_points) AS gd,
+               SUM(p.exact_score_points)             AS exact,
+               SUM(p.points)                         AS total
+        FROM live_predictions p
+        WHERE p.live_competition_id = m2.live_competition_id
+          AND p.user_id = m2.user_id
+          AND p.points IS NOT NULL
+      ) AS f ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT SUM(tpr.points) AS table_points
+        FROM live_table_predictions tpr
+        WHERE tpr.live_competition_id = m2.live_competition_id
+          AND tpr.user_id = m2.user_id
+          AND tpr.points IS NOT NULL
+      ) AS tp ON TRUE
+      WHERE m.id = m2.id
+        AND m2.live_competition_id IN ${chunk}
     `);
   });
 }
@@ -111,7 +129,7 @@ export async function scoreFixtures(fixtureIds: string[]): Promise<ScoreFixtures
   const affected = new Set<string>();
 
   for (const competition of competitions) {
-    const config: LiveScoringConfig = competition.scoringConfig ?? DEFAULT_LIVE_SCORING_CONFIG;
+    const config: LiveScoringConfig = withLiveScoringDefaults(competition.scoringConfig);
     const relevantFixtureIds = fixtures
       .filter(f => f.liveTournamentId === competition.liveTournamentId)
       .map(f => f.id);
@@ -165,6 +183,100 @@ export async function scoreFixtures(fixtureIds: string[]): Promise<ScoreFixtures
 }
 
 /**
+ * Score the table predictions for every competition on a tournament, if — and only if —
+ * the table stage has actually finished.
+ *
+ * Called after each sync. Cheap to re-run: it bails immediately unless every fixture in
+ * the stage has reached a terminal state, which for a league season is once a year.
+ */
+export async function scoreTablePredictions(tournamentId: string): Promise<ScoreFixturesResult> {
+  const result: ScoreFixturesResult = { scoredPredictions: 0, affectedCompetitionIds: [] };
+
+  const [tournament] = await db
+    .select()
+    .from(liveTournaments)
+    .where(eq(liveTournaments.id, tournamentId));
+  if (!tournament) return result;
+
+  const stage = tablePredictionStage(getLiveFormat(tournament.format), tournament.startStageKey);
+  if (!stage) return result;
+
+  const stageFixtures = await db
+    .select({ status: liveFixtures.status })
+    .from(liveFixtures)
+    .where(
+      and(
+        eq(liveFixtures.liveTournamentId, tournament.id),
+        eq(liveFixtures.stageKey, stage.key),
+      ),
+    );
+  if (!isTableStageComplete(stageFixtures)) return result;
+
+  // The final table, straight from the provider — never recomputed locally.
+  const standings = await db
+    .select({ teamId: liveStandings.teamId, position: liveStandings.position })
+    .from(liveStandings)
+    .where(
+      and(
+        eq(liveStandings.liveTournamentId, tournament.id),
+        eq(liveStandings.stageKey, stage.key),
+      ),
+    );
+  if (standings.length === 0) return result;
+
+  const actualPositions = new Map(standings.map(s => [s.teamId, s.position]));
+
+  const competitions = await db
+    .select({
+      id: liveCompetitions.id,
+      scoringConfig: liveCompetitions.scoringConfig,
+    })
+    .from(liveCompetitions)
+    .where(eq(liveCompetitions.liveTournamentId, tournament.id));
+
+  const affected = new Set<string>();
+  for (const competition of competitions) {
+    const config = withLiveScoringDefaults(competition.scoringConfig);
+
+    const predictions = await db
+      .select()
+      .from(liveTablePredictions)
+      .where(
+        and(
+          eq(liveTablePredictions.liveCompetitionId, competition.id),
+          eq(liveTablePredictions.stageKey, stage.key),
+        ),
+      );
+    if (predictions.length === 0) continue;
+
+    for (const prediction of predictions) {
+      const scored = calculateTablePoints(
+        prediction.orderedTeamIds ?? [],
+        actualPositions,
+        stage,
+        config,
+      );
+      await db
+        .update(liveTablePredictions)
+        .set({
+          points: scored.points,
+          exactPositionPoints: scored.exactPositionPoints,
+          bandPoints: scored.bandPoints,
+          updatedAt: new Date(),
+        })
+        .where(eq(liveTablePredictions.id, prediction.id));
+      result.scoredPredictions++;
+    }
+
+    affected.add(competition.id);
+  }
+
+  result.affectedCompetitionIds = [...affected];
+  await recomputeMemberTotals(result.affectedCompetitionIds);
+  return result;
+}
+
+/**
  * Rebuild one competition's scores from scratch.
  *
  * Needed whenever scoringConfig changes, since stored points were computed under the old
@@ -182,7 +294,7 @@ export async function recalculateLiveCompetition(competitionId: string): Promise
     .where(eq(liveCompetitions.id, competitionId));
   if (!competition) return { scoredPredictions: 0, affectedCompetitionIds: [] };
 
-  const config: LiveScoringConfig = competition.scoringConfig ?? DEFAULT_LIVE_SCORING_CONFIG;
+  const config: LiveScoringConfig = withLiveScoringDefaults(competition.scoringConfig);
 
   const rows = await db
     .select({
@@ -226,7 +338,7 @@ export async function recalculateLiveCompetition(competitionId: string): Promise
   return { scoredPredictions: scored, affectedCompetitionIds: [competition.id] };
 }
 
-/** Rebuild every competition attached to a tournament. */
+/** Rebuild every competition attached to a tournament, table predictions included. */
 export async function recalculateLiveTournament(tournamentId: string): Promise<ScoreFixturesResult> {
   const competitions = await db
     .select({ id: liveCompetitions.id })
@@ -238,6 +350,12 @@ export async function recalculateLiveTournament(tournamentId: string): Promise<S
     const result = await recalculateLiveCompetition(competition.id);
     scored += result.scoredPredictions;
   }
+
+  // Table predictions are scored per tournament rather than per competition, since the
+  // final table is a property of the tournament. Runs last so its member-total recompute
+  // sees the freshly rebuilt fixture points.
+  const table = await scoreTablePredictions(tournamentId);
+  scored += table.scoredPredictions;
 
   return { scoredPredictions: scored, affectedCompetitionIds: competitions.map(c => c.id) };
 }
@@ -254,6 +372,17 @@ export async function applySyncResult(opts: {
   changedFixtureIds: string[];
 }): Promise<ScoreFixturesResult> {
   const result = await scoreFixtures(opts.newlyFinishedFixtureIds);
+
+  // A fixture finishing may have been the last one in the table stage, which is what
+  // makes the table predictions scorable. Only worth checking when something just
+  // finished — nothing else can complete a stage.
+  if (opts.newlyFinishedFixtureIds.length > 0) {
+    const table = await scoreTablePredictions(opts.liveTournamentId);
+    result.scoredPredictions += table.scoredPredictions;
+    result.affectedCompetitionIds = [
+      ...new Set([...result.affectedCompetitionIds, ...table.affectedCompetitionIds]),
+    ];
+  }
 
   if (result.affectedCompetitionIds.length > 0) {
     notifyLiveCompetitions(result.affectedCompetitionIds, 'leaderboard-updated');

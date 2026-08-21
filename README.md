@@ -14,7 +14,7 @@ by design.
 | Data | Admin enters teams, fixtures and results by hand | Pulled from an external football API |
 | Deadline | One competition-wide deadline | Per fixture: kickoff − 60 minutes |
 | Predicted matchups | Yes — full knockout bracket | No — only real fixtures with real teams |
-| Scoring | 8 sources incl. group positions and bracket picks | Outcome +1, goal difference +1, exact score +2 |
+| Scoring | 8 sources incl. group positions and bracket picks | Per fixture: outcome +1, goal difference +1, exact score +2. Plus a league table prediction |
 
 The first live tournaments are the UEFA Champions League 2026/27 (from the league phase
 onwards) and the Premier League 2026/27, both available as ready-made presets.
@@ -231,7 +231,7 @@ Everything for the live tournament type lives under `server/src/live/` and `clie
 - **feedback** — In-app feedback inbox
 - **appConfig** — Single-row app-wide settings (maintenance mode)
 
-The live tournament type adds seven `live_*` tables in `server/src/db/liveSchema.ts` — see
+The live tournament type adds eight `live_*` tables in `server/src/db/liveSchema.ts` — see
 [`docs/LIVE_TOURNAMENTS_PLAN.md`](docs/LIVE_TOURNAMENTS_PLAN.md).
 
 > **Migrations caveat:** `server/drizzle/meta/_journal.json` is out of sync with the SQL files on
@@ -277,6 +277,20 @@ stoppage time; extra time and penalties are displayed but never score):
 
 The tiers are nested, so they add: against an actual 2–1, predicting 2–1 scores 4, 3–2 scores 2,
 3–1 scores 1, and 1–1 scores nothing.
+
+**League table prediction.** Users also order every team in the league table from top to bottom.
+Once the whole stage has been played, each team in exactly the right final position scores 1. In
+the Champions League, landing a team in the right part of the table scores 1 more, so an exact
+placing is worth 2:
+
+| Champions League band | Positions |
+|---|---|
+| Automatic qualification | 1–8 |
+| Play-off spots | 9–24 |
+| Eliminated | 25 and below |
+
+The Premier League defines no bands, so only exact positions score there. The table closes one
+hour before the first match of the stage.
 
 Only the 90-minute score ever counts, in every stage. This matters more than it sounds: for a
 penalty shootout the provider reports full time as regular time *plus* the shootout tally, so a

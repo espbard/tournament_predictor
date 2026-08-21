@@ -7,6 +7,8 @@ import type {
   LiveScoringConfig,
   LiveStageDef,
   LiveStanding,
+  LiveTableBand,
+  LiveTablePrediction,
   LiveTeam,
   LiveTournament,
   LiveTournamentPreset,
@@ -55,8 +57,30 @@ export interface LiveLeaderboardRow {
     correctOutcomePoints: number;
     correctGoalDifferencePoints: number;
     exactScorePoints: number;
+    tablePoints: number;
   };
 }
+
+/**
+ * The table-prediction tab's payload. A discriminated union because a format without a
+ * table stage has nothing else to send, and the UI should not have to guess.
+ */
+export type LiveTablePredictionView =
+  | { available: false }
+  | {
+      available: true;
+      stageKey: string;
+      stageLabelKey: string;
+      bands: LiveTableBand[];
+      teams: LiveTeam[];
+      prediction: LiveTablePrediction | null;
+      /** First kickoff of the stage − 60 min, or null when no date is published yet. */
+      lockedAt: string | null;
+      isLocked: boolean;
+      /** Current standings order, top first. The natural starting point for a new table. */
+      currentOrder: string[];
+      scoringConfig: LiveScoringConfig;
+    };
 
 export interface LiveCompetitionDetail extends LiveCompetition {
   tournament: LiveTournament | null;
@@ -181,6 +205,16 @@ export const liveApi = {
     api.get<LiveFixtureView[]>(`/live/competitions/${competitionId}/fixtures${query(params)}`),
   savePrediction: (competitionId: string, body: { fixtureId: string; homeScore: number; awayScore: number }) =>
     api.put<{ id: string }>(`/live/competitions/${competitionId}/predictions`, body),
+  // ── League table prediction ───────────────────────────────────────────────
+  tablePrediction: (competitionId: string) =>
+    api.get<LiveTablePredictionView>(`/live/competitions/${competitionId}/table-prediction`),
+  saveTablePrediction: (competitionId: string, body: { stageKey: string; orderedTeamIds: string[] }) =>
+    api.put<LiveTablePrediction>(`/live/competitions/${competitionId}/table-prediction`, body),
+  otherUserTablePrediction: (competitionId: string, userId: string) =>
+    api.get<LiveTablePrediction | null>(
+      `/live/competitions/${competitionId}/table-prediction/${userId}`,
+    ),
+
   otherUserPredictions: (competitionId: string, userId: string) =>
     api.get<Array<{ liveFixtureId: string; homeScore: number; awayScore: number; points: number | null }>>(
       `/live/competitions/${competitionId}/predictions/${userId}`,
@@ -198,6 +232,7 @@ export const liveKeys = {
   fixtures: (competitionId: string, stageKey?: string, matchday?: number) =>
     ['live', 'fixtures', competitionId, stageKey ?? null, matchday ?? null] as const,
   leaderboard: (competitionId: string) => ['live', 'leaderboard', competitionId] as const,
+  tablePrediction: (competitionId: string) => ['live', 'table-prediction', competitionId] as const,
   members: (competitionId: string) => ['live', 'members', competitionId] as const,
   standings: (tournamentId: string, stageKey?: string) =>
     ['live', 'standings', tournamentId, stageKey ?? null] as const,

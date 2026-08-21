@@ -5,10 +5,16 @@ import { LIVE_FORMAT_KEYS } from './formats';
 // (SaveBracketPredictionsSchema caps at 30).
 const goals = z.number().int().min(0).max(30);
 
+const points = z.number().int().min(0).max(100);
+
 export const LiveScoringConfigSchema = z.object({
-  correct_outcome: z.number().int().min(0).max(100),
-  correct_goal_difference: z.number().int().min(0).max(100),
-  exact_score: z.number().int().min(0).max(100),
+  correct_outcome: points,
+  correct_goal_difference: points,
+  exact_score: points,
+  // Optional so a competition stored before these tiers existed still validates on
+  // update; withLiveScoringDefaults fills them in on read.
+  table_exact_position: points.optional(),
+  table_correct_band: points.optional(),
 });
 
 export const CreateLiveTournamentSchema = z.object({
@@ -52,6 +58,17 @@ export const SaveLivePredictionSchema = z.object({
   awayScore: goals,
 });
 
+/**
+ * A full predicted table, top to bottom.
+ *
+ * The server checks the ids against the tournament's actual teams — this only enforces
+ * shape and a sane upper bound (no real league table is longer than this).
+ */
+export const SaveLiveTablePredictionSchema = z.object({
+  stageKey: z.string().min(1),
+  orderedTeamIds: z.array(z.string().min(1)).min(2).max(64),
+});
+
 export const ListLiveFixturesQuerySchema = z.object({
   stageKey: z.string().min(1).optional(),
   matchday: z.coerce.number().int().min(1).max(60).optional(),
@@ -73,4 +90,5 @@ export type CreateLiveCompetitionInput = z.infer<typeof CreateLiveCompetitionSch
 export type UpdateLiveCompetitionInput = z.infer<typeof UpdateLiveCompetitionSchema>;
 export type JoinLiveCompetitionInput = z.infer<typeof JoinLiveCompetitionSchema>;
 export type SaveLivePredictionInput = z.infer<typeof SaveLivePredictionSchema>;
+export type SaveLiveTablePredictionInput = z.infer<typeof SaveLiveTablePredictionSchema>;
 export type ListLiveFixturesQuery = z.infer<typeof ListLiveFixturesQuerySchema>;

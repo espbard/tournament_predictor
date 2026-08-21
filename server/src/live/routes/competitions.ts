@@ -3,15 +3,19 @@ import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import { generateId } from 'lucia';
 import {
   CreateLiveCompetitionSchema,
-  DEFAULT_LIVE_SCORING_CONFIG,
   JoinLiveCompetitionSchema,
   ListLiveFixturesQuerySchema,
   SaveLivePredictionSchema,
+  SaveLiveTablePredictionSchema,
   UpdateLiveCompetitionSchema,
   fixtureLockAt,
   getLiveFormat,
   isFixtureLocked,
   isStageAtOrAfter,
+  isTablePredictionLocked,
+  tablePredictionLockAt,
+  tablePredictionStage,
+  withLiveScoringDefaults,
 } from '@tournament-predictor/shared';
 import { db } from '../../db/client';
 import {
@@ -19,6 +23,8 @@ import {
   liveCompetitions,
   liveFixtures,
   livePredictions,
+  liveStandings,
+  liveTablePredictions,
   liveTeams,
   liveTournaments,
 } from '../../db/liveSchema';
@@ -26,6 +32,7 @@ import { users } from '../../db/schema';
 import { requireAdmin, requireAuth } from '../../middleware/auth';
 import { subscribeLiveCompetition, unsubscribeLiveCompetition } from '../liveEvents';
 import { recalculateLiveCompetition } from '../scoringTrigger';
+import { validateTableOrder } from '../tableScoring';
 
 // ── Live competition API ──────────────────────────────────────────────────────
 //
@@ -157,7 +164,8 @@ liveCompetitionsRouter.post('/competitions', requireAdmin, async (req, res) => {
         name: parsed.data.name.trim(),
         imageUrl: parsed.data.imageUrl ?? null,
         inviteCode,
-        scoringConfig: parsed.data.scoringConfig ?? DEFAULT_LIVE_SCORING_CONFIG,
+        // Any tier the caller omitted falls back to the default rather than undefined.
+        scoringConfig: withLiveScoringDefaults(parsed.data.scoringConfig),
       })
       .returning();
 
@@ -207,7 +215,9 @@ liveCompetitionsRouter.patch('/competitions/:id', requireAdmin, async (req, res)
     const update: Record<string, unknown> = {};
     if (parsed.data.name !== undefined) update.name = parsed.data.name.trim();
     if (parsed.data.imageUrl !== undefined) update.imageUrl = parsed.data.imageUrl;
-    if (parsed.data.scoringConfig !== undefined) update.scoringConfig = parsed.data.scoringConfig;
+    if (parsed.data.scoringConfig !== undefined) {
+      update.scoringConfig = withLiveScoringDefaults(parsed.data.scoringConfig);
+    }
     if (Object.keys(update).length === 0) return res.status(400).json({ error: 'Nothing to update' });
 
     const [row] = await db
@@ -308,6 +318,7 @@ liveCompetitionsRouter.get('/competitions/:id/leaderboard', requireAuth, async (
         correctOutcomePoints: liveCompetitionMembers.correctOutcomePoints,
         correctGoalDifferencePoints: liveCompetitionMembers.correctGoalDifferencePoints,
         exactScorePoints: liveCompetitionMembers.exactScorePoints,
+        tablePoints: liveCompetitionMembers.tablePoints,
       })
       .from(liveCompetitionMembers)
       .innerJoin(users, eq(liveCompetitionMembers.userId, users.id))
@@ -333,6 +344,7 @@ liveCompetitionsRouter.get('/competitions/:id/leaderboard', requireAuth, async (
             correctOutcomePoints: row.correctOutcomePoints,
             correctGoalDifferencePoints: row.correctGoalDifferencePoints,
             exactScorePoints: row.exactScorePoints,
+            tablePoints: row.tablePoints,
           },
         };
       }),
@@ -464,6 +476,259 @@ liveCompetitionsRouter.get('/competitions/:id/fixtures', requireAuth, async (req
     return fail(res, err);
   }
 });
+
+// ── League table prediction ───────────────────────────────────────────────────
+
+/**
+ * Everything the table-prediction tab needs: the teams to order, the caller's saved
+ * order, the deadline, and — once the stage has been played out — how it scored.
+ */
+liveCompetitionsRouter.get('/competitions/:id/table-prediction', requireAuth, async (req, res) => {
+  try {
+    const user = res.locals.user;
+    const [competition] = await db
+      .select()
+      .from(liveCompetitions)
+      .where(eq(liveCompetitions.id, req.params.id));
+    if (!competition) return res.status(404).json({ error: 'Not found' });
+    if (!(await assertMember(competition.id, user))) {
+      return res.status(403).json({ error: 'Not a member of this competition' });
+    }
+
+    const [tournament] = await db
+      .select()
+      .from(liveTournaments)
+      .where(eq(liveTournaments.id, competition.liveTournamentId));
+    if (!tournament) return res.status(404).json({ error: 'Live tournament not found' });
+
+    const stage = tablePredictionStage(getLiveFormat(tournament.format), tournament.startStageKey);
+    // A format with no table stage simply has no table to predict.
+    if (!stage) return res.json({ available: false });
+
+    const teams = await db
+      .select()
+      .from(liveTeams)
+      .where(eq(liveTeams.liveTournamentId, tournament.id))
+      .orderBy(asc(liveTeams.name));
+
+    const stageFixtures = await db
+      .select({ kickoffAt: liveFixtures.kickoffAt, status: liveFixtures.status })
+      .from(liveFixtures)
+      .where(
+        and(
+          eq(liveFixtures.liveTournamentId, tournament.id),
+          eq(liveFixtures.stageKey, stage.key),
+        ),
+      );
+
+    const kickoffs = stageFixtures.map(f => f.kickoffAt);
+    const lockAt = tablePredictionLockAt(kickoffs);
+
+    const [prediction] = await db
+      .select()
+      .from(liveTablePredictions)
+      .where(
+        and(
+          eq(liveTablePredictions.liveCompetitionId, competition.id),
+          eq(liveTablePredictions.userId, user.id),
+          eq(liveTablePredictions.stageKey, stage.key),
+        ),
+      );
+
+    // The live table, so the UI can offer it as a starting order and show the result.
+    const standings = await db
+      .select({ teamId: liveStandings.teamId, position: liveStandings.position })
+      .from(liveStandings)
+      .where(
+        and(
+          eq(liveStandings.liveTournamentId, tournament.id),
+          eq(liveStandings.stageKey, stage.key),
+        ),
+      )
+      .orderBy(asc(liveStandings.position));
+
+    return res.json({
+      available: true,
+      stageKey: stage.key,
+      stageLabelKey: stage.labelKey,
+      bands: stage.bands ?? [],
+      teams,
+      prediction: prediction ?? null,
+      lockedAt: lockAt ? lockAt.toISOString() : null,
+      isLocked: isTablePredictionLocked(kickoffs),
+      // Standings order, top first — the natural starting point for a new prediction.
+      currentOrder: standings.map(s => s.teamId),
+      scoringConfig: withLiveScoringDefaults(competition.scoringConfig),
+    });
+  } catch (err) {
+    return fail(res, err);
+  }
+});
+
+/**
+ * Save the whole predicted table.
+ *
+ * The order must be a complete permutation of the tournament's teams — validated
+ * server-side, since a partial or duplicated table would quietly distort scoring.
+ */
+liveCompetitionsRouter.put('/competitions/:id/table-prediction', requireAuth, async (req, res) => {
+  try {
+    const parsed = SaveLiveTablePredictionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid body', details: parsed.error.flatten() });
+    }
+
+    const user = res.locals.user;
+    if (user.isLeaderboardUser) {
+      return res.status(403).json({ error: 'This account cannot make predictions' });
+    }
+
+    const [competition] = await db
+      .select()
+      .from(liveCompetitions)
+      .where(eq(liveCompetitions.id, req.params.id));
+    if (!competition) return res.status(404).json({ error: 'Not found' });
+
+    const [membership] = await db
+      .select({ id: liveCompetitionMembers.id })
+      .from(liveCompetitionMembers)
+      .where(
+        and(
+          eq(liveCompetitionMembers.liveCompetitionId, competition.id),
+          eq(liveCompetitionMembers.userId, user.id),
+        ),
+      );
+    if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+
+    const [tournament] = await db
+      .select()
+      .from(liveTournaments)
+      .where(eq(liveTournaments.id, competition.liveTournamentId));
+    if (!tournament) return res.status(404).json({ error: 'Live tournament not found' });
+
+    const stage = tablePredictionStage(getLiveFormat(tournament.format), tournament.startStageKey);
+    if (!stage || stage.key !== parsed.data.stageKey) {
+      return res.status(400).json({ error: 'That stage does not take a table prediction' });
+    }
+
+    const stageFixtures = await db
+      .select({ kickoffAt: liveFixtures.kickoffAt })
+      .from(liveFixtures)
+      .where(
+        and(
+          eq(liveFixtures.liveTournamentId, tournament.id),
+          eq(liveFixtures.stageKey, stage.key),
+        ),
+      );
+
+    const kickoffs = stageFixtures.map(f => f.kickoffAt);
+    if (isTablePredictionLocked(kickoffs)) {
+      const lockAt = tablePredictionLockAt(kickoffs);
+      return res.status(400).json({
+        error: 'Table predictions for this competition are closed',
+        lockedAt: lockAt ? lockAt.toISOString() : null,
+      });
+    }
+
+    const teams = await db
+      .select({ id: liveTeams.id })
+      .from(liveTeams)
+      .where(eq(liveTeams.liveTournamentId, tournament.id));
+
+    const validation = validateTableOrder(
+      parsed.data.orderedTeamIds,
+      teams.map(t => t.id),
+    );
+    if (!validation.ok) {
+      return res.status(400).json({ error: 'Invalid table order', reason: validation.reason });
+    }
+
+    const now = new Date();
+    const [saved] = await db
+      .insert(liveTablePredictions)
+      .values({
+        id: generateId(15),
+        liveCompetitionId: competition.id,
+        userId: user.id,
+        stageKey: stage.key,
+        orderedTeamIds: parsed.data.orderedTeamIds,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [
+          liveTablePredictions.liveCompetitionId,
+          liveTablePredictions.userId,
+          liveTablePredictions.stageKey,
+        ],
+        set: { orderedTeamIds: parsed.data.orderedTeamIds, updatedAt: now },
+      })
+      .returning();
+
+    return res.json(saved);
+  } catch (err) {
+    return fail(res, err);
+  }
+});
+
+/**
+ * Another member's table prediction — only once the deadline has passed, so nobody can
+ * copy an order while it still matters.
+ */
+liveCompetitionsRouter.get(
+  '/competitions/:id/table-prediction/:userId',
+  requireAuth,
+  async (req, res) => {
+    try {
+      const { id, userId } = req.params;
+      if (!(await assertMember(id, res.locals.user))) {
+        return res.status(403).json({ error: 'Not a member of this competition' });
+      }
+
+      const [competition] = await db
+        .select()
+        .from(liveCompetitions)
+        .where(eq(liveCompetitions.id, id));
+      if (!competition) return res.status(404).json({ error: 'Not found' });
+
+      const [tournament] = await db
+        .select()
+        .from(liveTournaments)
+        .where(eq(liveTournaments.id, competition.liveTournamentId));
+      if (!tournament) return res.status(404).json({ error: 'Live tournament not found' });
+
+      const stage = tablePredictionStage(getLiveFormat(tournament.format), tournament.startStageKey);
+      if (!stage) return res.json(null);
+
+      const stageFixtures = await db
+        .select({ kickoffAt: liveFixtures.kickoffAt })
+        .from(liveFixtures)
+        .where(
+          and(
+            eq(liveFixtures.liveTournamentId, tournament.id),
+            eq(liveFixtures.stageKey, stage.key),
+          ),
+        );
+      if (!isTablePredictionLocked(stageFixtures.map(f => f.kickoffAt))) {
+        return res.status(403).json({ error: 'Not visible until the deadline has passed' });
+      }
+
+      const [prediction] = await db
+        .select()
+        .from(liveTablePredictions)
+        .where(
+          and(
+            eq(liveTablePredictions.liveCompetitionId, id),
+            eq(liveTablePredictions.userId, userId),
+            eq(liveTablePredictions.stageKey, stage.key),
+          ),
+        );
+      return res.json(prediction ?? null);
+    } catch (err) {
+      return fail(res, err);
+    }
+  },
+);
 
 // ── Predictions ───────────────────────────────────────────────────────────────
 

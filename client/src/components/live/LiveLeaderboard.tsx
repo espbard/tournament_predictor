@@ -16,6 +16,10 @@ export default function LiveLeaderboard({ rows }: Props) {
   const { t } = useT();
   const { user } = useAuthStore();
 
+  // The table column only appears once the table prediction has actually been scored,
+  // which is once a season. A column of zeros all year would just be noise.
+  const anyTablePoints = rows.some(row => row.breakdown.tablePoints > 0);
+
   if (rows.length === 0) {
     return (
       <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
@@ -40,6 +44,11 @@ export default function LiveLeaderboard({ rows }: Props) {
             <th className="w-14 py-2 text-center font-medium" title={t('live.leaderboard.exact')}>
               {t('live.leaderboard.exactShort')}
             </th>
+            {anyTablePoints && (
+              <th className="w-14 py-2 text-center font-medium" title={t('live.leaderboard.table')}>
+                {t('live.leaderboard.tableShort')}
+              </th>
+            )}
             <th className="w-16 py-2 pr-2 text-right font-medium">{t('live.leaderboard.total')}</th>
           </tr>
         </thead>
@@ -73,6 +82,11 @@ export default function LiveLeaderboard({ rows }: Props) {
                 <td className="py-2 text-center tabular-nums text-muted-foreground">
                   {row.breakdown.exactScorePoints}
                 </td>
+                {anyTablePoints && (
+                  <td className="py-2 text-center tabular-nums text-muted-foreground">
+                    {row.breakdown.tablePoints}
+                  </td>
+                )}
                 <td className="py-2 pr-2 text-right font-semibold tabular-nums">{row.totalPoints}</td>
               </tr>
             );

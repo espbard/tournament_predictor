@@ -1,8 +1,4 @@
-import type {
-  LiveFixtureStatus,
-  LiveScoreBreakdown,
-  LiveScoringConfig,
-} from '@tournament-predictor/shared';
+import type { LiveFixtureStatus, LiveScoringConfig } from '@tournament-predictor/shared';
 
 // ── Live tournament scoring ───────────────────────────────────────────────────
 //
@@ -32,8 +28,16 @@ export interface LiveFixtureScoreInput {
   status: LiveFixtureStatus;
 }
 
-export interface LiveScoreResult extends LiveScoreBreakdown {
+/**
+ * Per-fixture result. Deliberately not `LiveScoreBreakdown` — that type describes a
+ * member's whole-competition breakdown, which also carries table-prediction points, and
+ * a single fixture can never produce those.
+ */
+export interface LiveScoreResult {
   points: number;
+  correctOutcomePoints: number;
+  correctGoalDifferencePoints: number;
+  exactScorePoints: number;
 }
 
 const ZERO: LiveScoreResult = {

@@ -38,18 +38,43 @@ export interface LiveScoringConfig {
   correct_outcome: number;
   correct_goal_difference: number;
   exact_score: number;
+  /** Per team placed in exactly the right final table position. */
+  table_exact_position: number;
+  /**
+   * Per team placed in the right band of the table (Champions League: top 8, 9th–24th,
+   * 25th and below). Stacks with the exact-position award, so a team in exactly the right
+   * place is worth both. Formats without bands never award this.
+   */
+  table_correct_band: number;
 }
 
 export const DEFAULT_LIVE_SCORING_CONFIG: LiveScoringConfig = {
   correct_outcome: 1,
   correct_goal_difference: 1,
   exact_score: 2,
+  table_exact_position: 1,
+  table_correct_band: 1,
 };
+
+/**
+ * Fill in any tier missing from a stored config.
+ *
+ * Competitions created before a tier existed have a JSON blob without it, and arithmetic
+ * on `undefined` would silently produce NaN points. Always read a stored config through
+ * this rather than using it directly.
+ */
+export function withLiveScoringDefaults(
+  config: Partial<LiveScoringConfig> | null | undefined,
+): LiveScoringConfig {
+  return { ...DEFAULT_LIVE_SCORING_CONFIG, ...(config ?? {}) };
+}
 
 export interface LiveScoreBreakdown {
   correctOutcomePoints: number;
   correctGoalDifferencePoints: number;
   exactScorePoints: number;
+  /** Combined exact-position and band points from the table prediction. */
+  tablePoints: number;
 }
 
 // ── Entities ──────────────────────────────────────────────────────────────────
@@ -165,6 +190,39 @@ export interface LivePrediction {
   exactScorePoints: number;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * A user's predicted final order for a table stage.
+ *
+ * `orderedTeamIds` is the whole table top to bottom — index 0 is 1st place. It is stored
+ * as an array rather than a row per team because it is only ever read and written whole,
+ * and the ordering *is* the prediction.
+ */
+export interface LiveTablePrediction {
+  id: string;
+  liveCompetitionId: string;
+  userId: string;
+  stageKey: string;
+  orderedTeamIds: string[];
+  /** Null until the stage finishes and scoring runs. */
+  points: number | null;
+  exactPositionPoints: number;
+  bandPoints: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Per-team scoring detail, for showing a user how their table prediction did. */
+export interface LiveTablePredictionTeamResult {
+  teamId: string;
+  predictedPosition: number;
+  actualPosition: number | null;
+  exactPosition: boolean;
+  correctBand: boolean;
+  predictedBand: string | null;
+  actualBand: string | null;
+  points: number;
 }
 
 export interface LiveLeaderboardEntry {

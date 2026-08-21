@@ -10,6 +10,7 @@ import LiveTieCard from '@/components/live/LiveTieCard';
 import LiveStandingsTable from '@/components/live/LiveStandingsTable';
 import LiveLeaderboard from '@/components/live/LiveLeaderboard';
 import LiveQualifiedTeamsPanel from '@/components/live/LiveQualifiedTeamsPanel';
+import LiveTablePrediction from '@/components/live/LiveTablePrediction';
 
 // ── Live competition ──────────────────────────────────────────────────────────
 //
@@ -21,7 +22,7 @@ import LiveQualifiedTeamsPanel from '@/components/live/LiveQualifiedTeamsPanel';
 //
 // See docs/LIVE_TOURNAMENTS_PLAN.md §11.
 
-const TABS = ['fixtures', 'standings', 'leaderboard'] as const;
+const TABS = ['fixtures', 'table', 'standings', 'leaderboard'] as const;
 type TabId = (typeof TABS)[number];
 
 const LIVE_STATUSES = new Set(['in_play', 'paused']);
@@ -80,6 +81,12 @@ export default function LiveCompetitionDetailPage() {
     queryKey: liveKeys.tournamentTeams(tournamentId ?? ''),
     queryFn: () => liveApi.tournamentTeams(tournamentId!),
     enabled: !!tournamentId,
+  });
+
+  const { data: tableView, isLoading: loadingTable } = useQuery({
+    queryKey: liveKeys.tablePrediction(id!),
+    queryFn: () => liveApi.tablePrediction(id!),
+    enabled: !!id && activeTab === 'table',
   });
 
   // Live updates. One connection per page, same pattern as CompetitionDetailPage.
@@ -178,6 +185,28 @@ export default function LiveCompetitionDetailPage() {
 
   const handleSave = (fixtureId: string, homeScore: number, awayScore: number) =>
     saveMutation.mutate({ fixtureId, homeScore, awayScore });
+
+  const [tableSavedAt, setTableSavedAt] = useState<number | null>(null);
+  const [tableError, setTableError] = useState<string | null>(null);
+
+  const saveTableMutation = useMutation({
+    mutationFn: (orderedTeamIds: string[]) =>
+      liveApi.saveTablePrediction(id!, {
+        stageKey: tableView?.available ? tableView.stageKey : '',
+        orderedTeamIds,
+      }),
+    onMutate: () => setTableError(null),
+    onSuccess: () => {
+      setTableSavedAt(Date.now());
+      queryClient.invalidateQueries({ queryKey: liveKeys.tablePrediction(id!) });
+      setTimeout(() => setTableSavedAt(null), 2500);
+    },
+    onError: err => {
+      setTableError(err instanceof ApiError ? err.message : t('live.saveFailed'));
+      // Usually the deadline passing mid-edit; refetch so the UI locks itself.
+      queryClient.invalidateQueries({ queryKey: liveKeys.tablePrediction(id!) });
+    },
+  });
 
   if (loadingCompetition) return <LoadingSpinner />;
   if (!competition) {
@@ -287,6 +316,26 @@ export default function LiveCompetitionDetailPage() {
           )}
         </>
       )}
+
+      {activeTab === 'table' &&
+        (loadingTable ? (
+          <LoadingSpinner />
+        ) : !tableView?.available ? (
+          <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+            {t('live.table.unavailable')}
+          </p>
+        ) : tableView.teams.length === 0 ? (
+          // Before the draw there are no teams to order yet.
+          <LiveQualifiedTeamsPanel teams={teams} expectedTeamCount={null} note={null} />
+        ) : (
+          <LiveTablePrediction
+            view={tableView}
+            onSave={orderedTeamIds => saveTableMutation.mutate(orderedTeamIds)}
+            isSaving={saveTableMutation.isPending}
+            savedAt={tableSavedAt}
+            error={tableError}
+          />
+        ))}
 
       {activeTab === 'standings' && (
         <LiveStandingsTable rows={standings} tableScope={competition.tableScope} />

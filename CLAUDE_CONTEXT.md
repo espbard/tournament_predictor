@@ -20,12 +20,12 @@ There are two kinds of tournament. **They share nothing but the `users` / `sessi
 the auth middleware, image handling, and generic UI plumbing.** Treat them as two separate
 products living in one repo, and do not refactor one into the other.
 
-| | **Manual** (built, in production) | **Live / API-linked** (Phases 1–5 of 6; not yet driven end to end in a browser) |
+| | **Manual** (built, in production) | **Live / API-linked** (all 6 phases + table predictions built; not yet driven end to end in a browser) |
 |---|---|---|
 | Source of data | Admin types in teams, fixtures and every result | Pulled from an external football API |
 | Prediction deadline | One competition-wide `prediction_deadline` | Per fixture: **kickoff − 60 minutes** |
 | Predicted matchups | Yes — users predict the whole knockout bracket | **No** — users only predict real fixtures with real teams |
-| Scoring | 8 sources (exact score, group position, bracket picks, bonus …) | 3 stacking tiers: outcome +1, goal difference +1, exact score +2 |
+| Scoring | 8 sources (exact score, group position, bracket picks, bonus …) | Per fixture, 3 stacking tiers: outcome +1, goal difference +1, exact score +2. Plus a once-a-season league table prediction |
 | Stages | Hardcoded `match_stage` enum | Data-driven format definitions per competition |
 | Tables | `tournaments`, `teams`, `matches`, `competitions`, `predictions`, `bracket_predictions`, … | `live_tournaments`, `live_teams`, `live_fixtures`, `live_standings`, `live_competitions`, `live_predictions`, … |
 | API base | `/api/tournaments`, `/api/competitions` | `/api/live/*` |
@@ -81,10 +81,12 @@ anything under a `live` prefix. A summary is in the "Live tournaments" section b
 │       │                           # FinalResultsView, LeaderboardLineGraph, UserStatCard,
 │       │                           # ImageUpload, UserAvatar, LoadingSpinner, FeedbackButton, …
 │       │   └── live/               # LiveFixtureCard, LiveTieCard, LiveCountdown,
-│       │                           # LiveStandingsTable, LiveLeaderboard, LiveQualifiedTeamsPanel
+│       │                           # LiveStandingsTable, LiveLeaderboard,
+│       │                           # LiveQualifiedTeamsPanel, LiveTablePrediction
 │       ├── lib/                    # api.ts (fetch wrapper), translations.ts (no/en/de), useT.ts,
 │       │                           # tiebreakers.ts, pointSources.ts, teamTranslations.ts, utils.ts
-│       │   └── liveApi.ts          # typed wrappers + query keys for /api/live/*
+│       │   ├── liveApi.ts          # typed wrappers + query keys for /api/live/*
+│       │   └── liveTableOrder.ts    # pure ordering helpers for the table prediction
 │       ├── pages/                  # HomePage, AdminHomePage, Login/Register, CompetitionsPage,
 │       │                           # CompetitionDetailPage (2990 lines), UserPredictionsPage,
 │       │                           # TournamentsPage, TournamentDetailPage, TournamentKnockoutPage,
@@ -115,9 +117,12 @@ anything under a `live` prefix. A summary is in the "Live tournaments" section b
 │       │   ├── sync.ts             # structure + live-window sync, provider-id upserts
 │       │   ├── scheduler.ts        # advisory-locked tick, hot/warm/cold request budgeting
 │       │   ├── scoring.ts          # pure calculateLivePoints — three stacking tiers
+│       │   ├── tableScoring.ts      # league table prediction: exact positions + bands
 │       │   ├── scoringTrigger.ts   # scoreFixtures, recalculate*, denormalised totals
 │       │   ├── liveEvents.ts       # SSE registry, fixtures-updated / leaderboard-updated
-│       │   ├── sync.test.ts, scheduler.test.ts, scoring.test.ts
+│       │   ├── crests.ts           # mirrors team crests into R2
+│       │   ├── sync.test.ts, scheduler.test.ts, scoring.test.ts,
+│       │   │                       # tableScoring.test.ts, crests.test.ts
 │       ├── middleware/auth.ts      # Lucia v3 — requireAuth / requireAdmin
 │       ├── routes/                 # auth, tournaments (1812), competitions (5448), upload,
 │       │                           # images, settings, feedback
@@ -127,8 +132,8 @@ anything under a `live` prefix. A summary is in the "Live tournaments" section b
     └── src
         ├── index.ts                # re-exports everything, including ./live
         ├── types.ts, schemas.ts, bracketSlots.ts
-        └── live/                   # types.ts, formats.ts, presets.ts, lock.ts,
-                                    # schemas.ts, index.ts
+        └── live/                   # types.ts, formats.ts (stages + table bands),
+                                    # presets.ts, lock.ts, schemas.ts, index.ts
 ```
 
 Tests live in the `server` workspace only (`npm run test -w server`) — that is where Vitest is
@@ -179,7 +184,7 @@ Architectural facts that trip people up:
 
 ### Live tournament type (built in Phases 1–2)
 
-`server/src/db/liveSchema.ts` — 7 tables, all with real primary keys and the unique constraints
+`server/src/db/liveSchema.ts` — 8 tables, all with real primary keys and the unique constraints
 the data requires, unlike their manual counterparts:
 
 | Table | Notes |
@@ -191,6 +196,7 @@ the data requires, unlike their manual counterparts:
 | `live_competitions` | **No `prediction_deadline` column** — the live type locks per fixture only |
 | `live_competition_members` | Membership + denormalised 3-source score aggregate |
 | `live_predictions` | Unique on `(competition, user, fixture)` — the constraint the manual `predictions` table lacks |
+| `live_table_predictions` | One row per user per table stage; the predicted order is a single `json` array of team ids, top first. No FK on those ids on purpose — a removed team degrades to a stale id that scores nothing rather than cascading the prediction away |
 
 `liveSchema.ts` imports `users` from `schema.ts`, so `schema.ts` deliberately does **not**
 re-export it. They are merged in `db/client.ts` and listed as an array in `drizzle.config.ts`.
@@ -322,6 +328,9 @@ GET    /api/live/competitions/:id/events          — SSE: fixtures-updated, lea
 GET    /api/live/competitions/:id/fixtures        — MAIN READ MODEL, see below
 PUT    /api/live/competitions/:id/predictions     — upsert one; enforces kickoff − 60 min
 GET    /api/live/competitions/:id/predictions/:userId  — locked fixtures only
+GET    /api/live/competitions/:id/table-prediction     — teams, my order, deadline, result
+PUT    /api/live/competitions/:id/table-prediction     — {stageKey, orderedTeamIds}
+GET    /api/live/competitions/:id/table-prediction/:userId  — only after the deadline
 ```
 
 `GET /competitions/:id/fixtures` is what the client should build the fixtures tab from: it
@@ -370,6 +379,23 @@ extra time and penalties never score, in any stage, though they are stored and d
 
 Nested, so they add: actual 2–1 → predicted 2–1 scores 4, predicted 3–2 scores 2, predicted 3–1
 scores 1, predicted 1–1 scores 0.
+
+**League table prediction** (`server/src/live/tableScoring.ts`) — a fourth source, scored once
+per season. Users order every team in the table stage; each team in exactly the right final
+position scores `table_exact_position` (1), and in a format with **bands** each team in the right
+band scores `table_correct_band` (1) on top. Champions League bands are 1–8 automatic, 9–24
+play-off, 25+ eliminated; the Premier League defines none, so only exact positions score there.
+Bands are format data on `LiveStageDef.bands` — adding them to another competition is a data
+change, not a code one.
+
+Three things to know:
+
+- **Read a stored config through `withLiveScoringDefaults()`.** Competitions created before a
+  tier existed lack the key, and arithmetic on `undefined` silently gives `NaN`.
+- The table locks at the **first** fixture of the stage (kickoff − 60 min), not per fixture, and
+  is scored only once every fixture in the stage is `finished` or `cancelled` — a *postponed*
+  fixture keeps it open, since it could still move the table.
+- Positions come from `live_standings` verbatim, never recomputed locally.
 
 Scoring runs from the background sync tick when a fixture transitions to `finished`, not from a
 request handler.

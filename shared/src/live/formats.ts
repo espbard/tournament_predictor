@@ -13,6 +13,25 @@ export type LiveFormatKey = 'ucl_swiss' | 'domestic_league';
 
 export type LiveStageKind = 'table' | 'knockout';
 
+/**
+ * A contiguous run of table positions that means something in the competition — the
+ * Champions League league phase splits into automatic qualification, a knockout play-off
+ * and elimination.
+ *
+ * Used by table predictions: landing a team in the right band is worth a point even when
+ * the exact position is wrong. Competitions without meaningful bands simply omit them,
+ * and then only exact positions score.
+ */
+export interface LiveTableBand {
+  /** Stable internal key. Persisted in scoring output — never rename in place. */
+  key: string;
+  labelKey: string;
+  /** 1-based, inclusive. */
+  from: number;
+  /** 1-based, inclusive. Null means "down to the bottom of the table". */
+  to: number | null;
+}
+
 export interface LiveStageDef {
   /** Stable internal key. Persisted on live_fixtures.stage_key — never rename in place. */
   key: string;
@@ -25,6 +44,13 @@ export interface LiveStageDef {
   order: number;
   /** Raw provider stage strings that map onto this stage, per provider. */
   providerStages: Partial<Record<LiveProviderId, string[]>>;
+  /**
+   * Whether users predict the final order of this stage's table. Only ever set on a
+   * `table` stage — there is no order to predict in a knockout.
+   */
+  tablePredictable?: boolean;
+  /** Position bands, for the table-prediction bonus. Omit when the table has no bands. */
+  bands?: LiveTableBand[];
 }
 
 export interface LiveFormatDef {
@@ -87,6 +113,14 @@ const UCL_SWISS: LiveFormatDef = {
       legs: 1,
       order: 10,
       providerStages: { football_data: ['LEAGUE_STAGE'] },
+      tablePredictable: true,
+      // The 36-team league phase splits three ways: the top 8 go straight through, 9th
+      // to 24th play a knockout play-off, and 25th down are out.
+      bands: [
+        { key: 'automatic', labelKey: 'live.bands.automatic', from: 1, to: 8 },
+        { key: 'playoff', labelKey: 'live.bands.playoff', from: 9, to: 24 },
+        { key: 'eliminated', labelKey: 'live.bands.eliminated', from: 25, to: null },
+      ],
     },
     {
       key: 'knockout_playoff',
@@ -144,6 +178,9 @@ const DOMESTIC_LEAGUE: LiveFormatDef = {
       legs: 1,
       order: 10,
       providerStages: { football_data: ['REGULAR_SEASON'] },
+      tablePredictable: true,
+      // No bands: a domestic league's European and relegation places carry no meaning
+      // inside this app, so only exact positions score.
     },
   ],
 };
@@ -210,4 +247,46 @@ export function predictableStages(format: LiveFormatDef, startStageKey: string):
   const start = getLiveStage(format, startStageKey);
   if (!start) return [];
   return format.stages.filter(s => s.order >= start.order).sort((a, b) => a.order - b.order);
+}
+
+// ── Table predictions ─────────────────────────────────────────────────────────
+
+/**
+ * The stage whose final table users predict the order of, or null when the format has
+ * none. Only stages at or above `startStageKey` count — a qualifying round's table is
+ * not something this app ever asks about.
+ */
+export function tablePredictionStage(
+  format: LiveFormatDef,
+  startStageKey: string,
+): LiveStageDef | null {
+  return (
+    predictableStages(format, startStageKey).find(s => s.kind === 'table' && s.tablePredictable) ??
+    null
+  );
+}
+
+/**
+ * Which band a finishing position falls in, or null when the stage has no bands.
+ * Positions outside every band also return null, which scores nothing rather than
+ * silently counting as a match.
+ */
+export function bandForPosition(
+  stage: LiveStageDef | null | undefined,
+  position: number,
+): string | null {
+  if (!stage?.bands?.length || !Number.isFinite(position) || position < 1) return null;
+  for (const band of stage.bands) {
+    if (position >= band.from && (band.to === null || position <= band.to)) return band.key;
+  }
+  return null;
+}
+
+/** Convenience for the UI: the band definition rather than just its key. */
+export function bandDefForPosition(
+  stage: LiveStageDef | null | undefined,
+  position: number,
+): LiveTableBand | null {
+  const key = bandForPosition(stage, position);
+  return key ? (stage?.bands?.find(b => b.key === key) ?? null) : null;
 }

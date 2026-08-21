@@ -60,10 +60,10 @@ export default function Navbar() {
   const showTabs = isOnCompetitionPage || isOnPredictionsPage;
   const competitionId = location.pathname.match(/^\/competitions\/([^/]+)/)?.[1];
 
-  // Live (API-linked) competitions get their own three-tab bar. Kept as a sibling branch
+  // Live (API-linked) competitions get their own tab bar. Kept as a sibling branch
   // rather than folded into the dropdowns above: the two tournament types share no tabs.
   const isOnLiveCompetitionPage = /^\/live\/competitions\/[^/]+$/.test(location.pathname);
-  const LIVE_TABS = ['fixtures', 'standings', 'leaderboard'] as const;
+  const LIVE_TABS = ['fixtures', 'table', 'standings', 'leaderboard'] as const;
   const liveActiveTab = searchParams.get('tab') ?? 'fixtures';
 
   const { data: navCompetition } = useQuery({
