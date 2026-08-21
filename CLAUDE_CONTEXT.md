@@ -20,7 +20,7 @@ There are two kinds of tournament. **They share nothing but the `users` / `sessi
 the auth middleware, image handling, and generic UI plumbing.** Treat them as two separate
 products living in one repo, and do not refactor one into the other.
 
-| | **Manual** (built, in production) | **Live / API-linked** (in progress — Phases 1–2 of 6 done) |
+| | **Manual** (built, in production) | **Live / API-linked** (in progress — Phases 1–3 of 6 done) |
 |---|---|---|
 | Source of data | Admin types in teams, fixtures and every result | Pulled from an external football API |
 | Prediction deadline | One competition-wide `prediction_deadline` | Per fixture: **kickoff − 60 minutes** |
@@ -111,8 +111,11 @@ anything under a `live` prefix. A summary is in the "Live tournaments" section b
 │       │   ├── providers/          # football-data adapter: types.ts, footballData.ts,
 │       │   │                       # rateLimiter.ts, index.ts (getProvider registry),
 │       │   │                       # __fixtures__/ real captured payloads + tests
-│       │   ├── routes/             # PLANNED — tournaments.ts, competitions.ts
-│       │   ├── sync.ts, scheduler.ts, scoring.ts, scoringTrigger.ts, liveEvents.ts  # PLANNED
+│       │   ├── routes/             # tournaments.ts (built); competitions.ts PLANNED
+│       │   ├── sync.ts             # structure + live-window sync, provider-id upserts
+│       │   ├── scheduler.ts        # advisory-locked tick, hot/warm/cold request budgeting
+│       │   ├── sync.test.ts, scheduler.test.ts
+│       │   ├── scoring.ts, scoringTrigger.ts, liveEvents.ts   # PLANNED (phase 4)
 │       ├── middleware/auth.ts      # Lucia v3 — requireAuth / requireAdmin
 │       ├── routes/                 # auth, tournaments (1812), competitions (5448), upload,
 │       │                           # images, settings, feedback
@@ -274,23 +277,38 @@ POST   /api/competitions/:id/predictions   — upsert a prediction (checks deadl
 > repair endpoints), and `routes/tournaments.ts` adds a dozen knockout generation/simulation
 > operations. Grep the route files rather than trusting this list.
 
-### Live tournament endpoints (planned)
+### Live tournament endpoints
 
 All under `/api/live` — see [`docs/LIVE_TOURNAMENTS_PLAN.md`](docs/LIVE_TOURNAMENTS_PLAN.md) §10
-for the full table with guards and payloads.
+for the full table with guards and payloads. Reads require auth; everything that creates,
+changes or triggers work is admin-only.
+
+Built (`server/src/live/routes/tournaments.ts`, mounted in `index.ts`):
 
 ```
-GET    /api/live/presets                          — the "ready-made connections" dropdown
+GET    /api/live/presets                          — the "ready-made connections" dropdown (admin)
 GET    /api/live/formats                          — stage definitions per format
-CRUD   /api/live/tournaments[/:id]
-POST   /api/live/tournaments/:id/sync             — manual sync trigger (admin)
-GET    /api/live/tournaments/:id/{teams,fixtures,standings}
+GET    /api/live/tournaments
+POST   /api/live/tournaments                      — {presetKey}; syncs inline, returns populated
+GET    /api/live/tournaments/:id                  — + sync state, unmapped stages, qualified count
+PATCH  /api/live/tournaments/:id
+DELETE /api/live/tournaments/:id
+POST   /api/live/tournaments/:id/sync             — {full?} — window or full structure sync
+GET    /api/live/tournaments/:id/teams
+GET    /api/live/tournaments/:id/fixtures         — ?stageKey&matchday&from&to&status
+GET    /api/live/tournaments/:id/standings        — ?stageKey
+```
+
+Planned (Phase 4):
+
+```
 CRUD   /api/live/competitions[/:id]
 POST   /api/live/competitions/join
 GET    /api/live/competitions/:id/fixtures        — fixtures + my prediction + lock state, one call
 PUT    /api/live/competitions/:id/predictions     — upsert one; enforces kickoff − 60 min
 GET    /api/live/competitions/:id/leaderboard
 GET    /api/live/competitions/:id/events          — SSE
+POST   /api/live/tournaments/:id/recalculate
 ```
 
 ---

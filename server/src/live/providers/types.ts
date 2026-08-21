@@ -67,6 +67,16 @@ export interface ProviderFixture {
   /** Null before a draw has assigned teams to a knockout slot. */
   homeProviderTeamId: string | null;
   awayProviderTeamId: string | null;
+  /**
+   * The teams as embedded on the fixture itself.
+   *
+   * Redundant with the ids above when the teams endpoint already covers them, which is the
+   * normal case. They matter when it does not: the sync engine backfills from these so a
+   * fixture never ends up pointing at a team row that was never created — for instance if
+   * `/teams` 404s for an unpublished season while `/matches` still returns data.
+   */
+  homeTeam: ProviderTeam | null;
+  awayTeam: ProviderTeam | null;
   /** ISO 8601, or null when no date has been published. */
   kickoffAt: string | null;
   /** False while the date is a provisional placeholder rather than a confirmed time. */

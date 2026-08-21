@@ -172,12 +172,19 @@ function emptyToNull(value: string | null | undefined): string | null {
   return trimmed === '' ? null : trimmed;
 }
 
+/** The team embedded on a fixture, or null when the slot is still undrawn. */
+function embeddedTeam(raw: RawTeamRef | null | undefined): ProviderTeam | null {
+  return raw?.id != null ? mapTeam(raw as RawTeamRef & { id: number }) : null;
+}
+
 export function mapMatch(raw: RawMatch): ProviderFixture {
   return {
     providerFixtureId: String(raw.id),
     // Before a draw, football-data sends a team object whose id is null.
     homeProviderTeamId: raw.homeTeam?.id != null ? String(raw.homeTeam.id) : null,
     awayProviderTeamId: raw.awayTeam?.id != null ? String(raw.awayTeam.id) : null,
+    homeTeam: embeddedTeam(raw.homeTeam),
+    awayTeam: embeddedTeam(raw.awayTeam),
     kickoffAt: emptyToNull(raw.utcDate),
     kickoffConfirmed: isKickoffConfirmed(raw.status),
     status: mapFixtureStatus(raw.status),

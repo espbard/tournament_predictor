@@ -1,9 +1,10 @@
 # Live (API-linked) tournaments — implementation plan
 
-> **Status:** Phases 1–2 of 6 landed. Formats, presets, shared types, the `live_*` schema and the
-> football-data adapter exist; nothing is exposed over HTTP yet, so the feature is invisible to
-> users. This document is the agreed design and the build order. Update the phase checkboxes in
-> §13 as work lands, and record any deviation in §15.
+> **Status:** Phases 1–3 of 6 landed. Formats, presets, shared types, the `live_*` schema, the
+> football-data adapter, the sync engine and the admin tournament API all exist. `/api/live/*` is
+> mounted, but there are no prediction leagues and no client yet, so the feature is still
+> invisible to ordinary users. This document is the agreed design and the build order. Update the
+> phase checkboxes in §13 as work lands, and record any deviation in §15.
 >
 > **The Phase 2 go/no-go passed:** `score.regularTime` is present, so the 90-minute scoring rule
 > is implementable on football-data. See §0 for the full smoke-check results.
@@ -26,7 +27,8 @@ for the current list; the substantive commits so far are:
 | `2229514` | Phase 1 — formats, presets, shared types, `live_*` schema, migration `0023` |
 | `0435bbe` | `server/src/scripts/live-provider-smoke.ts`, the Phase 2 go/no-go check |
 | `116f606` | Network allowlist requirement and handoff state |
-| *(this)* | Phase 2 — provider adapter, rate limiter, captured fixtures, 44 specs |
+| `5116c60` | Phase 2 — provider adapter, rate limiter, captured fixtures, 44 specs |
+| *(this)* | Phase 3 — sync engine, scheduler, admin tournament API, 39 specs |
 
 Later commits on the branch are documentation only unless a phase box in §13 says otherwise.
 
@@ -126,23 +128,25 @@ None of this applies to Railway, or to a local checkout.
 
 ### Next step
 
-**Phase 3 — sync engine and admin tournament API**, in §13. The adapter is done and verified, so
-this is now plain application code with no unknowns left in the provider layer. Build it against
-the **Premier League** preset: PL 2026/27 has 380 real dated fixtures right now, whereas the
-Champions League 2026/27 season does not exist at the provider yet and every call for it 404s
-until the draw on 27 August 2026.
+**Phase 4 — prediction leagues, lock and scoring**, in §13. The data side is finished: fixtures,
+teams and standings arrive and stay current on their own, so Phase 4 is about people predicting
+on them.
 
-Three findings from Phase 2 that change what §7 says to write:
+Build and verify against the **Premier League** preset. PL 2026/27 has 380 real dated fixtures
+starting 21 August 2026, which makes the per-fixture lock testable for real — one fixture more
+than an hour out and one inside the hour. The Champions League is the harder case and mostly
+cannot be exercised yet: its 2026/27 season did not exist at the provider as of 21 August 2026,
+and every call for it 404s until the draw on the 27th.
 
-1. Use the provider's `matchday` as `legNumber` on two-legged ties. Do not derive it from kickoff
-   order — §7's original suggestion — because both legs can share a date.
-2. Treat `ProviderError.isSeasonUnavailable` (a 404) as "no data yet", not a failure. Creating the
-   UCL tournament before the draw is a supported state and must not fill `lastSyncError` with
-   noise or flip `syncEnabled` off.
-3. The qualification-status rule in §7 cannot work as written for the Champions League: it derives
-   `eliminated` from lost ties below `startStageKey`, but football-data does not cover the summer
-   qualifiers at all. Derive `qualified` from presence in standings or in a fixture at/above
-   `startStageKey`, and leave everything else `pending`.
+Things Phase 3 leaves for Phase 4 to pick up:
+
+- `SyncResult.newlyFinishedFixtureIds` and `.changedFixtureIds` are already computed and returned
+  on every sync; `server/src/live/scheduler.ts` has the hand-off point marked with a comment.
+  Wire them to `scoreFixtures()` and the SSE push.
+- `POST /api/live/tournaments/:id/recalculate` is specified in §10 but not built — it needs the
+  scoring trigger to exist first.
+- The lock rule is already implemented and tested in `shared/src/live/lock.ts`; Phase 4 enforces
+  it in `PUT /api/live/competitions/:id/predictions` and nothing else.
 
 ---
 
@@ -922,15 +926,27 @@ points). The manual "Fotball-VM 2026" competition is unaffected at every phase.
   the stage vocabulary and the rate limiter, run against real payloads captured into
   `__fixtures__/`. No network in tests.
 
-- [ ] **Phase 3 — Sync + admin tournament API. ← next**
+- [x] **Phase 3 — Sync + admin tournament API.** *(done)*
   `server/src/live/sync.ts`, `scheduler.ts`, `routes/tournaments.ts`, mounted in `index.ts`.
-  *Verify:* `GET /api/live/presets` returns both entries; `POST /api/live/tournaments
-  {presetKey:'ucl_2026_27'}` creates and populates; `GET /tournaments/:id/teams` shows
-  qualification statuses; `GET /tournaments/:id/fixtures?stageKey=league_phase` is legitimately
-  empty pre-draw; the Premier League preset returns a full fixture list with matchdays. Watch the
-  log for scheduler ticks and confirm the rate limiter queues rather than 429s.
 
-- [ ] **Phase 4 — Prediction leagues, lock, scoring.**
+  *Verified* end to end against the real provider and a real Postgres, by creating two
+  tournaments, syncing, asserting, then deleting them:
+  - **Premier League 2026/27** — 20 teams, 380 fixtures, 38 distinct matchdays, every fixture
+    mapped to `regular_season` with a linked home team and a kickoff time, and no tie metadata
+    on a table format. A second structure sync left the count at 380 and reported nothing newly
+    finished, confirming the provider-id upserts are genuinely idempotent.
+  - **Champions League 2024/25** (a completed season, which is what exercises the knockout
+    paths) — 189 fixtures, 36 standings rows, all six stages mapped, 44 two-legged fixtures
+    forming exactly 22 ties each holding legs 1 and 2, the final single-leg, every finished
+    fixture carrying a normal-time score, and shootout fixtures storing normal time rather than
+    the provider's inflated full-time value. All 36 teams derived as `qualified`.
+  - Cleanup deleted both tournaments and left zero orphaned teams, fixtures or standings.
+
+  *Tests:* `sync.test.ts` and `scheduler.test.ts` — 39 specs over the pure helpers (tie
+  grouping, qualification derivation, live-window dates, temperature classification, request
+  budgeting). 170 specs across the workspace in total.
+
+- [ ] **Phase 4 — Prediction leagues, lock, scoring. ← next**
   `server/src/live/routes/competitions.ts`, `scoring.ts`, `scoringTrigger.ts`, `liveEvents.ts`.
   *Verify:* create a live competition on the Premier League preset (it has real dated fixtures
   now, unlike UCL), join by invite code, `PUT` a prediction on a fixture >1 h out (200) and one
@@ -1017,6 +1033,19 @@ Recorded as they happen, so the document stays trustworthy.
 | Test fixtures are read with `readFileSync` rather than imported | Avoids adding `resolveJsonModule` to the server tsconfig, and keeps raw payloads typed as `any`, which is what they are |
 | §7's "order legs by kickoff" derivation is superseded by the provider's `matchday` | Verified: two-legged ties come back with `matchday` 1 and 2. Kickoff ordering is ambiguous when both legs share a date |
 | The four UCL summer qualifying stages are kept despite being unreachable | football-data's CL coverage starts at the league phase. They cost nothing, and removing them would drop the guard that keeps `PLAY_OFF_ROUND` and `PLAYOFFS` distinct |
+
+**Phase 3**
+
+| Change | Why |
+|---|---|
+| `ProviderFixture` gained `homeTeam` / `awayTeam` objects alongside the ids | Fixtures embed their teams, so the sync can create a team row for anyone missing from `/teams`. Without it a fixture could point at a team that was never inserted — the exact shape of the pre-draw Champions League, where `/teams` 404s while `/matches` may not |
+| `legNumber` comes from the provider's `matchday`, with kickoff order only as a fallback | Phase 2 verified two-legged ties report matchday 1 and 2. §7's kickoff ordering is ambiguous when both legs share a date and wrong when a leg is postponed |
+| Qualification never derives `eliminated` on football-data | §7 derived it from lost ties below `startStageKey`, but the provider does not cover the CL qualifiers at all. The branch is kept for providers that do; here teams go `pending` → `qualified` at the draw |
+| Fixture team links are upgraded but never cleared (`coalesce(excluded.…, existing)`) | Once a draw assigns a team, a later payload that omits it must not blank out the opponent users have already predicted against |
+| Standings sync deletes rows the provider no longer lists | Upsert alone would leave a team that dropped out of the table sitting at a stale position |
+| `syncTournamentStructure` tolerates a 404 from `/teams` and `/standings` independently | A season can have fixtures but no table yet, or vice versa. Only a total failure is an error |
+| Scheduler added a request *budget* (`LIVE_SYNC_TICK_BUDGET`, default 6) and a cost per sync kind | §7 said "at most one hot tournament per minute", which does not generalise. Costing structure syncs at 3 requests and window syncs at 1, then sorting by temperature and staleness, keeps the tick inside the free tier and stops a busy competition starving the others |
+| `LIVE_SYNC_ENABLED` defaults to off | Two developers running `npm run dev` would otherwise both spend the shared 10 req/min account budget without realising |
 
 ---
 
