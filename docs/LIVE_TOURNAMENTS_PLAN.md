@@ -1,9 +1,108 @@
 # Live (API-linked) tournaments — implementation plan
 
-> **Status:** Phase 1 landed — formats, presets, shared types and the `live_*` schema exist.
-> Nothing is wired to a provider or exposed over HTTP yet. This document is the agreed design
-> and the step-by-step build order; update the phase checkboxes in §13 as work lands, and
-> record any deviation in §16.
+> **Status:** Phase 1 of 6 landed. Formats, presets, shared types and the `live_*` schema exist;
+> nothing is wired to a provider or exposed over HTTP yet, so the feature is invisible to users.
+> This document is the agreed design and the build order. Update the phase checkboxes in §13 as
+> work lands, and record any deviation in §15.
+
+---
+
+## 0. Start here — handoff state
+
+**Read this section first if you are picking the work up in a new session.** Everything below
+it is design; this is where things actually stand.
+
+### Where the code is
+
+Branch **`claude/live-api-tournament-type-l8e6hy`**, pushed. Run `git log --oneline origin/main..HEAD`
+for the current list; the substantive commits so far are:
+
+| Commit | What |
+|---|---|
+| `7e33318` | This document, plus `CLAUDE_CONTEXT.md` / `README.md` refresh |
+| `2229514` | Phase 1 — formats, presets, shared types, `live_*` schema, migration `0023` |
+| `0435bbe` | `server/src/scripts/live-provider-smoke.ts`, the Phase 2 go/no-go check |
+
+Later commits on the branch are documentation only unless a phase box in §13 says otherwise.
+
+No pull request has been opened. The manual tournament type is untouched — the only edits to
+existing files are additive (`shared/src/index.ts` re-export, `db/client.ts` schema merge,
+`drizzle.config.ts` array, one `ensureLiveSchema()` call in `server/src/index.ts`).
+
+### What Phase 1 delivered
+
+- `shared/src/live/` — `types.ts`, `formats.ts`, `presets.ts`, `lock.ts`, `schemas.ts`, `index.ts`
+- `server/src/db/liveSchema.ts` — the seven `live_*` tables
+- `server/drizzle/0023_live_tournaments.sql` + its `_journal.json` entry
+- `server/src/live/ensureSchema.ts` — idempotent boot-time DDL
+- `server/src/live/lock.test.ts` — 39 passing specs
+- `.env.example` — the three new keys
+
+### Environment gotchas that cost time
+
+1. **Dependencies are not pre-installed** in a fresh cloud session. Run `npm install` at the
+   repo root before anything else, or every `tsc` run drowns in "Cannot find module".
+2. **`npm run db:generate` is unsafe in this repo.** `server/drizzle/meta/` holds no snapshots
+   past `0004` while `_journal.json` lists through `0023`, so drizzle-kit would diff against a
+   five-year-old schema and emit a migration recreating half the database. Hand-write migrations,
+   as every one since `0005` has been, and add the matching `_journal.json` entry.
+3. **Two pre-existing type errors** in `server/src/routes/competitions.ts` (a `Date`/`string`
+   mismatch around line 911 and a missing `isReplacement` around line 1285). They are on `main`
+   and unrelated to this work. `npx tsc --noEmit` in `server/` should report exactly 2 errors —
+   if you see more, you added them. The `client/` workspace should report 0.
+4. **`api.football-data.org` is blocked** by the environment's network policy. See below.
+
+### Verifying database work without a live database
+
+There is no test DB and `server/src/db/client.ts` connects at module import time, so route files
+cannot be imported in tests. Postgres 16 *is* installed in the cloud image, though, which is how
+Phase 1's schema was actually exercised rather than merely typechecked:
+
+```bash
+PGBIN=/usr/lib/postgresql/16/bin
+rm -rf /tmp/pgd /tmp/pgs && mkdir -p /tmp/pgd /tmp/pgs
+chown postgres:postgres /tmp/pgd /tmp/pgs          # postgres refuses to run as root
+su postgres -c "$PGBIN/initdb -D /tmp/pgd -U postgres --auth=trust"
+su postgres -c "$PGBIN/pg_ctl -D /tmp/pgd -o '-k /tmp/pgs -p 5433 -h 127.0.0.1' -l /tmp/pgd/log start"
+su postgres -c "$PGBIN/createdb -h 127.0.0.1 -p 5433 -U postgres tp"
+# then: DATABASE_URL='postgresql://postgres@127.0.0.1:5433/tp' npx tsx <script>
+```
+
+Keep the socket directory short — a path under the session scratchpad exceeds Postgres's
+107-byte socket limit. Apply `server/drizzle/*.sql` in filename order to reproduce a real
+database. Remember to `pg_ctl stop` and delete any scratch scripts before committing.
+
+### Blocked: Phase 2 needs two things from the user
+
+Phase 2 (§13) is the go/no-go for the whole provider choice, and it cannot run in a cloud session until:
+
+1. **`*.football-data.org` is allowlisted.** The Default environment ships with **Trusted**
+   network access, which rejects the API host — the proxy returns
+   `403 Host not in allowlist: api.football-data.org`. Fix: at claude.ai/code, click the cloud
+   icon above the message box, hover the environment, open its settings, switch **Network
+   access** to **Custom**, add `*.football-data.org` to **Allowed domains**, and — importantly —
+   tick **"Also include default list of common package managers"**, or `npm install` breaks.
+   Network policy is read once at session start, so a **new session** is required afterwards.
+   The wildcard covers `api.` (the API), `crests.` (team badges, needed in Phase 6) and `docs.`
+   (the API reference, which was unreachable when this plan was written — several field names in
+   §6 are from memory and still need confirming).
+2. **`FOOTBALL_DATA_API_KEY` is set**, either in the environment's variables box or in a local
+   `.env`. Note the docs warn that environment variables are readable by anyone using the
+   environment and are not a secrets store; for a personal environment and a free read-only key
+   that is a reasonable trade, but it is the user's call.
+
+**If either is missing, do not start writing the adapter.** Ask the user to run
+`server/src/scripts/live-provider-smoke.ts` locally and paste the output — it answers all four
+questions without the key ever leaving their machine, and captured payloads are enough to build
+and unit-test the adapter.
+
+### Next step
+
+Phase 2, in §13. Run the smoke script, then write `server/src/live/providers/` against what it
+actually returns. The single most important answer is whether `score.regularTime` exists on a
+finished extra-time match: the agreed rule scores knockout fixtures on the end of normal time,
+and if the provider only reports the after-extra-time score, that rule is not implementable on
+football-data and the adapter should target API-Football instead.
 
 ---
 
@@ -30,7 +129,7 @@ We are adding a second, fundamentally different kind of tournament:
 
 Because the behaviour diverges this much, **the implementation is completely separate** — new
 tables, new routes, new scoring, new pages. Existing manual-tournament code is not modified,
-only additively mounted alongside. See §9 for the exact shared/not-shared split.
+only additively mounted alongside. See §12 for the exact shared/not-shared split.
 
 ### First target: UEFA Champions League 2026/27, from the league phase onwards
 
@@ -416,7 +515,36 @@ LIVE_SYNC_ENABLED=true
 LIVE_SYNC_TICK_SECONDS=30
 ```
 
-Add to `.env.example` and to the Railway dashboard.
+Already in `.env.example`. Also needs setting in the Railway dashboard before deploy.
+
+### Network egress — required for every phase from 2 onward
+
+Outbound access from a Claude Code cloud session is governed by the environment's network
+policy, and the **Trusted** default does not include the provider. Any request fails with:
+
+```
+403 Host not in allowlist: api.football-data.org
+```
+
+To fix it, at [claude.ai/code](https://claude.ai/code) click the cloud icon in the row above the
+message box, hover the environment, open its settings, set **Network access** to **Custom**, and
+add to **Allowed domains**:
+
+```
+*.football-data.org
+```
+
+Then tick **"Also include default list of common package managers"** — Custom *replaces* the
+Trusted list rather than extending it, so leaving it unchecked breaks `npm install` and the
+build. Network policy is read once when a session's VM boots, so an existing session keeps the
+policy it started with: **start a new session** after saving.
+
+The wildcard covers the three hosts this feature needs — `api.` for the API, `crests.` for team
+badges mirrored into R2 in Phase 6, and `docs.` for the API reference. Configuration reference:
+[cloud environments](https://code.claude.com/docs/en/cloud-environments#allow-specific-domains).
+
+None of this applies to Railway, which has no such restriction. It is purely about being able to
+develop and verify the feature from a cloud session.
 
 ---
 
@@ -713,22 +841,39 @@ points). The manual "Fotball-VM 2026" competition is unaffected at every phase.
   the `server` workspace only, so shared-package tests live there, exactly as
   `server/src/lib/bracketSlots.test.ts` already tests `shared/src/bracketSlots.ts`.
 
-- [ ] **Phase 2 — Provider adapter, no DB writes. The go/no-go phase.**
-  `server/src/live/providers/*` plus a throwaway `server/src/scripts/live-provider-smoke.ts`.
-  *Verify with a real API key:*
-  1. Does `GET /competitions/CL?season=2026` list the expected `availableStages`, and do they
-     match the `ucl_swiss` mapping?
+- [ ] **Phase 2 — Provider adapter, no DB writes. The go/no-go phase. ← next**
+
+  **Prerequisites, both from the user** (see §0 and §6): `*.football-data.org` allowlisted in the
+  environment's network policy, and `FOOTBALL_DATA_API_KEY` available. Without them, ask the user
+  to run the smoke script locally and paste the output rather than guessing at payload shapes.
+
+  The check script already exists: **`server/src/scripts/live-provider-smoke.ts`** (committed in
+  `0435bbe`). It is read-only, never prints the key, paces requests 7s apart to stay inside the
+  free tier's 10/minute limit, and reports per-step failures instead of aborting. Run it with:
+
+  ```bash
+  cd server && FOOTBALL_DATA_API_KEY=xxx npx tsx src/scripts/live-provider-smoke.ts
+  ```
+
+  *The four questions it answers:*
+  1. Do the Champions League `availableStages` match the `ucl_swiss` mapping — in particular, are
+     the August qualifier (`PLAY_OFF_ROUND`) and the February knockout (`PLAYOFFS`) genuinely two
+     different strings? If one string covers both, `startStageKey` cannot separate them and the
+     format needs rework.
   2. Does `/teams?season=2026` return the 29 automatic qualifiers *before* the 27 August draw, or
-     only after?
-  3. Does `/matches` expose `score.regularTime` on a completed extra-time match (check a past
-     season)?
+     only after? A "no" is survivable — the UI shows "teams confirmed after the draw" and fills
+     itself in — but it is worth knowing.
+  3. **Does `/matches` expose `score.regularTime` on a completed extra-time match?** This is the
+     real blocker. The agreed rule scores on the end of normal time, so if the provider only
+     reports the after-extra-time score, the rule is not implementable here and the adapter
+     should target API-Football instead.
   4. Does `/competitions/PL/matches?season=2026` return 380 fixtures with matchdays?
 
-  These four answers decide whether football-data is sufficient or whether the adapter should be
-  pointed at API-Football instead — and they cost one afternoon before any dependent code exists.
-  Fix the stage mapping and normal-time extraction from the real payloads.
+  Then write `server/src/live/providers/{types,footballData,rateLimiter,index}.ts` against the
+  real payloads, correcting the stage mapping and the normal-time extraction in §6 — several
+  field names there were written from memory, because the provider's docs host was unreachable.
   *Tests:* `server/src/live/providers/footballData.test.ts` — raw→DTO mapping against captured
-  JSON fixtures. No network in tests.
+  JSON fixtures committed as test data. No network in tests.
 
 - [ ] **Phase 3 — Sync + admin tournament API.**
   `server/src/live/sync.ts`, `scheduler.ts`, `routes/tournaments.ts`, mounted in `index.ts`.

@@ -449,20 +449,27 @@ past one replica.
 
 ### Next Session
 
-Phase 2 of [`docs/LIVE_TOURNAMENTS_PLAN.md`](docs/LIVE_TOURNAMENTS_PLAN.md) — the football-data
-provider adapter. **This is the go/no-go phase and it needs a real API key**
-(`FOOTBALL_DATA_API_KEY`, free from football-data.org). Four questions decide whether that
-provider is sufficient or whether the adapter should target API-Football instead:
+**Read [`docs/LIVE_TOURNAMENTS_PLAN.md`](docs/LIVE_TOURNAMENTS_PLAN.md) §0 "Start here — handoff
+state" first.** It records exactly where the work stands, which branch and commits hold it, the
+environment gotchas (dependencies are not pre-installed; `npm run db:generate` is unsafe here;
+two type errors in `routes/competitions.ts` are pre-existing), and a recipe for spinning up a
+throwaway Postgres 16 to verify schema work for real.
 
-1. Do `GET /competitions/CL?season=2026` `availableStages` match the `ucl_swiss` mapping — in
-   particular, is the February knockout round really `PLAYOFFS` and the August qualifier
-   `PLAY_OFF_ROUND`?
-2. Does `/teams?season=2026` list the 29 automatic qualifiers *before* the 27 August draw?
-3. Does `/matches` expose `score.regularTime` on a finished extra-time match? The 90-minute
-   scoring rule depends on it.
-4. Does `/competitions/PL/matches?season=2026` return all 380 fixtures with matchdays?
+The next task is **Phase 2** — the football-data provider adapter, and the go/no-go on the
+provider choice. It is **blocked on two things from the user**:
 
-Answer these before writing anything that depends on them.
+1. `*.football-data.org` allowlisted in the cloud environment's network policy. The default
+   **Trusted** policy rejects it (`403 Host not in allowlist: api.football-data.org`). Steps are
+   in §0 and §6 of the plan, and in `.env.example`.
+2. `FOOTBALL_DATA_API_KEY` set.
+
+If either is missing, don't start the adapter — ask the user to run
+`server/src/scripts/live-provider-smoke.ts` locally and paste the output. It answers all four
+go/no-go questions without the key leaving their machine.
+
+The answer that could change the design: **does `score.regularTime` exist on a finished
+extra-time match?** The agreed rule scores on the end of normal time, so if the provider only
+reports the after-extra-time score, the adapter should target API-Football instead.
 
 ### Backlog (in order)
 
