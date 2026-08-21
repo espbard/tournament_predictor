@@ -60,6 +60,12 @@ export default function Navbar() {
   const showTabs = isOnCompetitionPage || isOnPredictionsPage;
   const competitionId = location.pathname.match(/^\/competitions\/([^/]+)/)?.[1];
 
+  // Live (API-linked) competitions get their own three-tab bar. Kept as a sibling branch
+  // rather than folded into the dropdowns above: the two tournament types share no tabs.
+  const isOnLiveCompetitionPage = /^\/live\/competitions\/[^/]+$/.test(location.pathname);
+  const LIVE_TABS = ['fixtures', 'standings', 'leaderboard'] as const;
+  const liveActiveTab = searchParams.get('tab') ?? 'fixtures';
+
   const { data: navCompetition } = useQuery({
     queryKey: ['competitions', competitionId],
     queryFn: () => api.get<Competition>(`/competitions/${competitionId}`),
@@ -118,7 +124,7 @@ export default function Navbar() {
         {/* Site name – hidden on mobile only when tabs are shown */}
         <Link
           to="/"
-          className={`shrink-0 flex items-center text-base lg:text-lg font-semibold text-foreground hover:opacity-70 mr-2 py-2 sm:py-3 ${showTabs ? 'hidden sm:flex' : ''}`}
+          className={`shrink-0 flex items-center text-base lg:text-lg font-semibold text-foreground hover:opacity-70 mr-2 py-2 sm:py-3 ${showTabs || isOnLiveCompetitionPage ? 'hidden sm:flex' : ''}`}
         >
           {t('nav.appName')}
         </Link>
@@ -202,6 +208,17 @@ export default function Navbar() {
                 {t('competitionDetail.tabs.leaderboard')}
               </button>
             )}
+          </div>
+        )}
+
+        {/* Live competition tabs */}
+        {isOnLiveCompetitionPage && (
+          <div className="flex items-center min-w-0">
+            {LIVE_TABS.map(tab => (
+              <button key={tab} onClick={() => setTab(tab)} className={tabCls(liveActiveTab === tab)}>
+                {t(`live.tabs.${tab}`)}
+              </button>
+            ))}
           </div>
         )}
 

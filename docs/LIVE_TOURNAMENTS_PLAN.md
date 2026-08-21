@@ -1,10 +1,11 @@
 # Live (API-linked) tournaments — implementation plan
 
-> **Status:** Phases 1–4 of 6 landed. The whole server side is done — schema, provider adapter,
-> sync engine, scheduler, tournament and competition APIs, the per-fixture lock and scoring.
-> **There is no client yet**, so the feature is still invisible to ordinary users; everything is
-> reachable only over `/api/live/*`. This document is the agreed design and the build order.
-> Update the phase checkboxes in §13 as work lands, and record any deviation in §15.
+> **Status:** Phases 1–5 of 6 landed. Server and client are both built — schema, provider
+> adapter, sync engine, scheduler, both APIs, the per-fixture lock, scoring, and the pages and
+> components that surface all of it. **The end-to-end browser pass has not been done yet**
+> (see the Phase 5 box in §13 for exactly what remains), and Phase 6 polish is outstanding.
+> This document is the agreed design and the build order. Update the phase checkboxes in §13 as
+> work lands, and record any deviation in §15.
 >
 > **The Phase 2 go/no-go passed:** `score.regularTime` is present, so the 90-minute scoring rule
 > is implementable on football-data. See §0 for the full smoke-check results.
@@ -29,7 +30,8 @@ for the current list; the substantive commits so far are:
 | `116f606` | Network allowlist requirement and handoff state |
 | `5116c60` | Phase 2 — provider adapter, rate limiter, captured fixtures, 44 specs |
 | `32ba519` | Phase 3 — sync engine, scheduler, admin tournament API, 39 specs |
-| *(this)* | Phase 4 — competitions, per-fixture lock, scoring, SSE, 25 specs |
+| `b43aba8` | Phase 4 — competitions, per-fixture lock, scoring, SSE, 25 specs |
+| *(this)* | Phase 5 — client pages, components, routes, entry points, i18n |
 
 Later commits on the branch are documentation only unless a phase box in §13 says otherwise.
 
@@ -129,33 +131,35 @@ None of this applies to Railway, or to a local checkout.
 
 ### Next step
 
-**Phase 5 — the client**, in §13. The server is complete and verified, so this is React work
-against a settled API. Nothing in the provider or data layer is still unknown.
+Two things, in this order.
 
-Start from `GET /api/live/competitions/:id/fixtures`. It is the main read model and returns, in
-one call, each fixture with its teams, the caller's own prediction, `lockedAt`, `isLocked`,
-`isPredictable` and any points awarded — so the fixtures tab needs no client-side joining and no
-second request.
+**1. The end-to-end browser pass for Phase 5.** Everything is built and typechecks, but nobody
+has yet driven it against a running server with a real session. That needs a database, a logged-in
+admin, and `FOOTBALL_DATA_API_KEY` set:
 
-Points to get right, in rough order of how easy they are to get wrong:
+```bash
+npm run dev -w server     # needs DATABASE_URL and FOOTBALL_DATA_API_KEY
+npm run dev -w client
+```
 
-1. **Render from the format, not from a hardcoded stage list.** `GET /api/live/competitions/:id`
-   returns `stages` and `tableScope` for exactly this. A `table` stage lists fixtures grouped by
-   matchday; a `knockout` stage lists ties. The Premier League's 380 fixtures make matchday
-   defaulting essential rather than cosmetic.
-2. **The pre-draw Champions League renders as a state, not an empty list.** Its 2026/27 season
-   did not exist at the provider as of 21 August 2026 and every call 404s until the draw on the
-   27th, so zero fixtures and zero teams is a normal, expected response. Show
-   `LiveQualifiedTeamsPanel` rather than an empty fixture list.
-3. **Use the shared lock helper** from `shared/src/live/lock.ts` for the countdown and to disable
-   inputs — `minutesUntilLock()` exists for the countdown. Do not re-derive the rule client-side;
-   that is the whole reason it lives in `shared`.
-4. **`client/src/lib/api.ts` has no `put`.** The prediction endpoint needs one.
-5. SSE is at `GET /api/live/competitions/:id/events` and pushes `fixtures-updated` and
-   `leaderboard-updated`. Same pattern as `CompetitionDetailPage.tsx`.
+Then, as admin: create the **Premier League 2026/27** tournament from
+`/admin/live-tournaments`, create a league on it from `/admin/live-competitions`, join as a normal
+user with the invite code shown there, and check each of these:
 
-Verify against the **Premier League** competition: it has 380 real dated fixtures, so a countdown
-really does flip to Locked an hour before kickoff.
+- a matchday of fixtures renders, and the matchday selector defaults to the current one
+- a prediction saves, survives a reload, and overwrites rather than duplicating on re-save
+- a countdown flips to **Locked** at kickoff − 60 min, and the inputs disable with it
+- the leaderboard reflects points once a fixture finishes
+- the Champions League tournament renders `LiveQualifiedTeamsPanel`, not an empty list
+- the three-tab bar appears in the navbar on `/live/competitions/:id` and nowhere else
+
+To watch SSE and scoring fire without waiting for a real match, set a fixture's `kickoff_at` into
+the past and its status to `finished` with a normal-time score, then trigger a sync from the admin
+detail page.
+
+**2. Phase 6 — polish**, in §13: crest mirroring into R2, and the README refresh. The
+`lastSyncError`, unmapped-stage and unscorable-fixture warnings that §13 lists under Phase 6 are
+already built into `AdminLiveTournamentDetailPage`, so what remains there is the R2 work and docs.
 
 ---
 
@@ -978,12 +982,26 @@ points). The manual "Fotball-VM 2026" competition is unaffected at every phase.
   status, null normal-time scores, extra-time fixtures scoring on normal time only, and custom
   configs. 195 specs across the workspace in total.
 
-- [ ] **Phase 5 — Client. ← next**
-  Pages, components, routes, `api.put`, HomePage/AdminHomePage/Navbar entry points, i18n.
-  *Verify:* end to end in the browser — create both tournaments as admin, create a competition,
-  join as a normal user, enter predictions on a PL matchday, watch a countdown flip to Locked,
-  watch a live score arrive over SSE. Confirm the UCL competition renders the qualified-teams
-  panel rather than an empty fixture list.
+- [x] **Phase 5 — Client.** *(built; end-to-end browser pass still outstanding — see below)*
+  `client/src/lib/liveApi.ts` (+ `api.put`), `components/live/` (`LiveFixtureCard`,
+  `LiveTieCard`, `LiveCountdown`, `LiveStandingsTable`, `LiveLeaderboard`,
+  `LiveQualifiedTeamsPanel`), `pages/live/` (`LiveCompetitionDetailPage`,
+  `AdminLiveTournamentsPage`, `AdminLiveTournamentDetailPage`, `AdminLiveCompetitionsPage`),
+  four routes in `App.tsx`, a live tab branch in `Navbar`, entry points on
+  `HomePage`/`AdminHomePage`, and a `live` i18n block in all three languages.
+
+  *Verified so far:* `npx tsc --noEmit` is clean in `client/` (0 errors) and unchanged in
+  `server/` (the 2 pre-existing), `npm run build` succeeds, and the app boots and renders in a
+  browser with no JavaScript errors. All **172** translation keys the new code references —
+  including the runtime-built `live.status.*` / `live.tournamentStatus.*` /
+  `live.qualification.*` keys and every stage `labelKey` from `shared/src/live/formats.ts` —
+  resolve in **en, no and de**.
+
+  *Still to verify, and it needs a running server plus a logged-in session:* create both
+  tournaments as admin, create a competition, join as a normal user, enter predictions on a
+  Premier League matchday, watch a countdown flip to Locked at kickoff − 60 min, and watch a
+  live score arrive over SSE. Confirm the Champions League competition renders
+  `LiveQualifiedTeamsPanel` rather than an empty fixture list.
 
 - [ ] **Phase 6 — Polish.**
   Crest mirroring to R2, `lastSyncError` and unmapped-stage warnings in the admin UI, README and
@@ -1023,7 +1041,15 @@ stage mapping, tie grouping — get Vitest coverage.
    relax.
 6. **Scoring config has no edit UI** — same as the manual type, where changes are made by SQL. The
    values are in a JSON column and `recalculateLiveTournament` exists, so an admin form is a small
-   later addition when more tiers are added.
+   later addition when more tiers are added. Note `PATCH /api/live/competitions/:id` *does* accept
+   a `scoringConfig` and recalculates on change, so the endpoint is ready when a form appears.
+7. **Invite codes can collide across the two tournament types.** Both generate a 5-digit numeric
+   code, in separate tables with separate uniqueness constraints, so the same code can exist as
+   both a manual and a live competition. The single join box on `HomePage` tries the manual
+   endpoint first, so a colliding code would always join the manual league and the live one would
+   be unreachable by code. With a handful of leagues the odds are negligible, and the fix is a
+   one-character prefix on live codes — but it would need the existing codes left alone, so it is
+   recorded rather than done.
 
 ---
 
@@ -1081,6 +1107,18 @@ Recorded as they happen, so the document stays trustworthy.
 | The leaderboard ranks with equal totals sharing a rank and the next rank skipping | Standard competition ranking. §9 only said "sorted by totalPoints desc", which leaves ties undefined |
 | `POST /competitions/:id/recalculate` added alongside the tournament-level one in §10 | An admin fixing one league should not have to rebuild every league on the tournament |
 | Comparison-user bot accounts get no lock bypass, and `isLeaderboardUser` accounts are refused outright | §8 specified both; recorded here because the manual type does grant comparison users a bypass, so the difference is deliberate rather than an oversight |
+
+**Phase 5**
+
+| Change | Why |
+|---|---|
+| The fixtures tab fetches **every** fixture once and filters stage/matchday in memory, rather than one request per stage as §11's query keys implied | One request instead of dozens, instant stage switching, and a single key for the SSE handler to invalidate. Even the Premier League's 380 fixtures are a modest payload for a ~20-person app |
+| One invite-code box on `HomePage` that tries the manual endpoint and falls back to the live one on a 404, rather than §11's separate live join form | Users should not have to know which kind of league a code belongs to. See the caveat in §14.7 — the two code spaces can collide |
+| `ListFixturesParams` is a type alias, not an interface | Only aliases get an implicit index signature, which is what lets the object be passed to the `Record`-typed query-string helper |
+| `LiveCountdown` re-reads `minutesUntilLock` on a variable interval (5s under 2 min, 15s under an hour, else 60s) | A per-second timer on 380 mounted fixture cards is wasteful, and nothing visibly changes minute-to-minute an hour out |
+| `LiveFixtureCard` only adopts a refetched prediction when its inputs are empty | A background refetch or an SSE push must not overwrite a score the user is midway through typing |
+| The live tab bar is a sibling branch in `Navbar`, not an extension of the existing dropdowns | §11 called for this explicitly; the two tournament types share no tabs |
+| Crests are rendered directly from `crestUrl` | Phase 6 mirrors them into R2 and rewrites the column; the component needs no change when that lands |
 
 ---
 

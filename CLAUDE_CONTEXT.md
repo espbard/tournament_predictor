@@ -20,7 +20,7 @@ There are two kinds of tournament. **They share nothing but the `users` / `sessi
 the auth middleware, image handling, and generic UI plumbing.** Treat them as two separate
 products living in one repo, and do not refactor one into the other.
 
-| | **Manual** (built, in production) | **Live / API-linked** (server complete — Phases 1–4 of 6; no client yet) |
+| | **Manual** (built, in production) | **Live / API-linked** (Phases 1–5 of 6; not yet driven end to end in a browser) |
 |---|---|---|
 | Source of data | Admin types in teams, fixtures and every result | Pulled from an external football API |
 | Prediction deadline | One competition-wide `prediction_deadline` | Per fixture: **kickoff − 60 minutes** |
@@ -80,16 +80,16 @@ anything under a `live` prefix. A summary is in the "Live tournaments" section b
 │       ├── components/             # AppLayout, Navbar, KnockoutStageContent (2156 lines),
 │       │                           # FinalResultsView, LeaderboardLineGraph, UserStatCard,
 │       │                           # ImageUpload, UserAvatar, LoadingSpinner, FeedbackButton, …
-│       │   └── live/               # PLANNED — LiveFixtureCard, LiveTieCard, LiveCountdown,
+│       │   └── live/               # LiveFixtureCard, LiveTieCard, LiveCountdown,
 │       │                           # LiveStandingsTable, LiveLeaderboard, LiveQualifiedTeamsPanel
 │       ├── lib/                    # api.ts (fetch wrapper), translations.ts (no/en/de), useT.ts,
 │       │                           # tiebreakers.ts, pointSources.ts, teamTranslations.ts, utils.ts
-│       │   └── liveApi.ts          # PLANNED
+│       │   └── liveApi.ts          # typed wrappers + query keys for /api/live/*
 │       ├── pages/                  # HomePage, AdminHomePage, Login/Register, CompetitionsPage,
 │       │                           # CompetitionDetailPage (2990 lines), UserPredictionsPage,
 │       │                           # TournamentsPage, TournamentDetailPage, TournamentKnockoutPage,
 │       │                           # BonusQuestionsTab, TeamPage, Edit*Page, AdminFeedbackPage
-│       │   └── live/               # PLANNED — LiveCompetitionDetailPage, AdminLiveTournamentsPage,
+│       │   └── live/               # LiveCompetitionDetailPage, AdminLiveTournamentsPage,
 │       │                           # AdminLiveTournamentDetailPage, AdminLiveCompetitionsPage
 │       └── store/                  # authStore, languageStore, themeStore (Zustand)
 ├── server

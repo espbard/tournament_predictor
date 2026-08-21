@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
+import { liveApi, liveKeys } from '@/lib/liveApi';
 import { useAuthStore } from '@/store/authStore';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { useT } from '@/lib/useT';
@@ -27,12 +28,30 @@ function CompetitionsHome() {
     queryFn: () => api.get<Competition[]>('/competitions'),
   });
 
+  const { data: liveCompetitions = [] } = useQuery({
+    queryKey: liveKeys.competitions,
+    queryFn: () => liveApi.competitions(),
+  });
+
   const joinMutation = useMutation({
-    mutationFn: (code: string) => api.post<Competition>('/competitions/join', { inviteCode: code }),
+    // One code box for both tournament types: try the manual endpoint, and fall back to
+    // the live one when the code is not a manual competition. Users should not have to
+    // know which kind of league a code belongs to.
+    mutationFn: async (code: string) => {
+      try {
+        return await api.post<Competition>('/competitions/join', { inviteCode: code });
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 404) {
+          return await liveApi.join(code);
+        }
+        throw err;
+      }
+    },
     onSuccess: () => {
       setInviteCode('');
       setJoinError('');
       queryClient.invalidateQueries({ queryKey: ['competitions'] });
+      queryClient.invalidateQueries({ queryKey: liveKeys.competitions });
     },
     onError: (err) => {
       setJoinError(err instanceof ApiError ? err.message : t('home.failedToJoin'));
@@ -93,6 +112,31 @@ function CompetitionsHome() {
           ))}
         </div>
       )}
+      {liveCompetitions.length > 0 && (
+        <>
+          <h2 className="mb-4 mt-8 font-semibold">{t('live.myLiveCompetitions')}</h2>
+          <div className="grid gap-3">
+            {liveCompetitions.map(c => (
+              <Link
+                key={c.id}
+                to={`/live/competitions/${c.id}`}
+                className="flex items-center gap-4 rounded-lg border p-4 transition-colors hover:bg-muted"
+              >
+                {c.imageUrl ? (
+                  <img src={c.imageUrl} alt={c.name} className="h-12 w-12 rounded-lg object-cover flex-shrink-0" />
+                ) : (
+                  <div className="h-12 w-12 rounded-lg bg-muted flex-shrink-0" />
+                )}
+                <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+                  <h3 className="font-semibold">{c.name}</h3>
+                  <span className="text-xs text-muted-foreground">{t('live.perFixtureDeadline')}</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </>
+      )}
+
       <div className="mb-8 rounded-lg border p-5 mt-6">
         <h2 className="mb-3 font-semibold">{t('home.joinCompetition')}</h2>
         <form onSubmit={handleJoin} className="flex gap-2">
