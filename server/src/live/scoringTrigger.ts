@@ -1,6 +1,7 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import {
   getLiveFormat,
+  isLiveFixtureSelected,
   tablePredictionStage,
   withLiveScoringDefaults,
   type LiveScoringConfig,
@@ -18,6 +19,7 @@ import {
 import { calculateLivePoints } from './scoring';
 import { calculateTablePoints, isTableStageComplete } from './tableScoring';
 import { notifyLiveCompetitions } from './liveEvents';
+import { EMPTY_SELECTION_INDEX, loadSelectionIndex, loadSelectionIndexes } from './selections';
 
 // ── Scoring trigger ───────────────────────────────────────────────────────────
 //
@@ -101,16 +103,29 @@ export async function scoreFixtures(fixtureIds: string[]): Promise<ScoreFixtures
   const result: ScoreFixturesResult = { scoredPredictions: 0, affectedCompetitionIds: [] };
   if (fixtureIds.length === 0) return result;
 
-  const fixtures = await db
+  const allFixtures = await db
     .select({
       id: liveFixtures.id,
       liveTournamentId: liveFixtures.liveTournamentId,
+      stageKey: liveFixtures.stageKey,
+      matchday: liveFixtures.matchday,
       status: liveFixtures.status,
       normalTimeHome: liveFixtures.normalTimeHome,
       normalTimeAway: liveFixtures.normalTimeAway,
     })
     .from(liveFixtures)
     .where(inArray(liveFixtures.id, fixtureIds));
+  if (allFixtures.length === 0) return result;
+
+  // A fixture the admin left out of its gameweek's selected matches is not part of the
+  // game, so it awards nothing however it finished.
+  const selectionsByTournament = await loadSelectionIndexes([
+    ...new Set(allFixtures.map(f => f.liveTournamentId)),
+  ]);
+  const fixtures = allFixtures.filter(f => {
+    const selections = selectionsByTournament.get(f.liveTournamentId) ?? EMPTY_SELECTION_INDEX;
+    return isLiveFixtureSelected(f, selections);
+  });
   if (fixtures.length === 0) return result;
 
   // Scoring config lives per competition, so group the work by competition.
@@ -301,6 +316,9 @@ export async function recalculateLiveCompetition(competitionId: string): Promise
       predictionId: livePredictions.id,
       homeScore: livePredictions.homeScore,
       awayScore: livePredictions.awayScore,
+      id: liveFixtures.id,
+      stageKey: liveFixtures.stageKey,
+      matchday: liveFixtures.matchday,
       status: liveFixtures.status,
       normalTimeHome: liveFixtures.normalTimeHome,
       normalTimeAway: liveFixtures.normalTimeAway,
@@ -309,16 +327,20 @@ export async function recalculateLiveCompetition(competitionId: string): Promise
     .innerJoin(liveFixtures, eq(livePredictions.liveFixtureId, liveFixtures.id))
     .where(eq(livePredictions.liveCompetitionId, competition.id));
 
+  // Recomputed rather than remembered, so deselecting a match takes its points away on
+  // the next recalculation — which is exactly what the selection route triggers.
+  const selections = await loadSelectionIndex(competition.liveTournamentId);
+
   let scored = 0;
   for (const row of rows) {
-    const points = calculateLivePoints(
-      { homeScore: row.homeScore, awayScore: row.awayScore },
-      row,
-      config,
-    );
+    const selected = isLiveFixtureSelected(row, selections);
+    const points = selected
+      ? calculateLivePoints({ homeScore: row.homeScore, awayScore: row.awayScore }, row, config)
+      : { points: 0, correctOutcomePoints: 0, correctGoalDifferencePoints: 0, exactScorePoints: 0 };
     // An unscorable fixture goes back to null rather than a stored zero, so the UI can
-    // tell "not scored yet" apart from "scored, nothing earned".
-    const scorable = row.status === 'finished' && row.normalTimeHome !== null;
+    // tell "not scored yet" apart from "scored, nothing earned". A deselected one is
+    // treated the same way: it never scores, so it never shows a total.
+    const scorable = selected && row.status === 'finished' && row.normalTimeHome !== null;
 
     await db
       .update(livePredictions)

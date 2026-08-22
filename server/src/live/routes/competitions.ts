@@ -11,6 +11,7 @@ import {
   fixtureLockAt,
   getLiveFormat,
   isFixtureLocked,
+  isLiveFixtureSelected,
   isStageAtOrAfter,
   isTablePredictionLocked,
   tablePredictionLockAt,
@@ -32,6 +33,7 @@ import { users } from '../../db/schema';
 import { requireAdmin, requireAuth } from '../../middleware/auth';
 import { subscribeLiveCompetition, unsubscribeLiveCompetition } from '../liveEvents';
 import { recalculateLiveCompetition } from '../scoringTrigger';
+import { loadSelectionIndex } from '../selections';
 import { validateTableOrder } from '../tableScoring';
 
 // ── Live competition API ──────────────────────────────────────────────────────
@@ -446,6 +448,7 @@ liveCompetitionsRouter.get('/competitions/:id/fixtures', requireAuth, async (req
     const predictionByFixtureId = new Map(predictions.map(p => [p.liveFixtureId, p]));
 
     const format = getLiveFormat(tournament.format);
+    const selections = await loadSelectionIndex(tournament.id);
     const now = new Date();
 
     return res.json(
@@ -469,6 +472,9 @@ liveCompetitionsRouter.get('/competitions/:id/fixtures', requireAuth, async (req
           lockedAt: lockAt ? lockAt.toISOString() : null,
           isLocked: isFixtureLocked({ kickoffAt: f.kickoffAt, status: f.status }, now),
           isPredictable: isStageAtOrAfter(format, f.stageKey, tournament.startStageKey),
+          // False only where an admin has narrowed this gameweek to a set of matches
+          // that leaves this one out.
+          isSelected: isLiveFixtureSelected(f, selections),
         };
       }),
     );
@@ -790,6 +796,12 @@ liveCompetitionsRouter.put('/competitions/:id/predictions', requireAuth, async (
     const format = getLiveFormat(tournament.format);
     if (!isStageAtOrAfter(format, fixture.stageKey, tournament.startStageKey)) {
       return res.status(400).json({ error: 'This fixture is not part of the prediction game' });
+    }
+
+    // Nor is one the admin left out of its gameweek's selected matches.
+    const selections = await loadSelectionIndex(tournament.id);
+    if (!isLiveFixtureSelected(fixture, selections)) {
+      return res.status(400).json({ error: 'This match is not one of the selected matches' });
     }
 
     if (isFixtureLocked({ kickoffAt: fixture.kickoffAt, status: fixture.status })) {

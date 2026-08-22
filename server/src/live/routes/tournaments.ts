@@ -6,15 +6,27 @@ import {
   LIVE_FORMATS,
   LIVE_TOURNAMENT_PRESETS,
   ListLiveFixturesQuerySchema,
+  SaveLiveGameweekSelectionSchema,
   SyncLiveTournamentSchema,
   UpdateLiveTournamentSchema,
   getLiveFormat,
+  isLiveFixtureSelected,
   isStageAtOrAfter,
+  summariseLiveGameweeks,
 } from '@tournament-predictor/shared';
 import { db } from '../../db/client';
-import { liveFixtures, liveStandings, liveTeams, liveTournaments } from '../../db/liveSchema';
+import {
+  liveCompetitions,
+  liveFixtures,
+  liveGameweekSelections,
+  liveStandings,
+  liveTeams,
+  liveTournaments,
+} from '../../db/liveSchema';
 import { requireAdmin, requireAuth } from '../../middleware/auth';
+import { notifyLiveCompetitions } from '../liveEvents';
 import { recalculateLiveTournament } from '../scoringTrigger';
+import { loadSelectionIndex } from '../selections';
 import { syncLiveWindow, syncTournamentStructure } from '../sync';
 
 // ── Live tournament API ───────────────────────────────────────────────────────
@@ -145,7 +157,9 @@ liveTournamentsRouter.get('/tournaments/:id', requireAuth, async (req, res) => {
 
     const fixtures = await db
       .select({
+        id: liveFixtures.id,
         stageKey: liveFixtures.stageKey,
+        matchday: liveFixtures.matchday,
         providerStage: liveFixtures.providerStage,
         status: liveFixtures.status,
         normalTimeHome: liveFixtures.normalTimeHome,
@@ -156,9 +170,14 @@ liveTournamentsRouter.get('/tournaments/:id', requireAuth, async (req, res) => {
     const preset = LIVE_TOURNAMENT_PRESETS.find(p => p.key === tournament.presetKey);
 
     // A finished fixture with no normal-time score cannot be scored — surfaced so an
-    // admin can see it rather than wondering why nobody got points.
+    // admin can see it rather than wondering why nobody got points. A match left out of
+    // its gameweek's selection was never going to score, so it is not a problem to report.
+    const selections = await loadSelectionIndex(tournament.id);
     const unscorableFixtures = fixtures.filter(
-      f => f.status === 'finished' && f.normalTimeHome === null,
+      f =>
+        f.status === 'finished' &&
+        f.normalTimeHome === null &&
+        isLiveFixtureSelected(f, selections),
     ).length;
 
     return res.json({
@@ -320,6 +339,7 @@ liveTournamentsRouter.get('/tournaments/:id/fixtures', requireAuth, async (req, 
     const teamById = new Map(teams.map(t => [t.id, t]));
 
     const format = getLiveFormat(tournament.format);
+    const selections = await loadSelectionIndex(tournament.id);
     return res.json(
       rows.map(r => ({
         ...r,
@@ -327,6 +347,7 @@ liveTournamentsRouter.get('/tournaments/:id/fixtures', requireAuth, async (req, 
         awayTeam: r.awayTeamId ? teamById.get(r.awayTeamId) ?? null : null,
         // Stages below startStageKey are ingested but never predicted on.
         isPredictable: isStageAtOrAfter(format, r.stageKey, tournament.startStageKey),
+        isSelected: isLiveFixtureSelected(r, selections),
       })),
     );
   } catch (err) {
@@ -353,6 +374,154 @@ liveTournamentsRouter.get('/tournaments/:id/standings', requireAuth, async (req,
     const teamById = new Map(teams.map(t => [t.id, t]));
 
     return res.json(rows.map(r => ({ ...r, team: teamById.get(r.teamId) ?? null })));
+  } catch (err) {
+    return fail(res, err);
+  }
+});
+
+// ── Selected matches ──────────────────────────────────────────────────────────
+//
+// The admin picks which fixtures of a gameweek users predict on. Everything not picked is
+// ignored: no inputs, no points. A gameweek nobody has touched has every fixture selected,
+// so a tournament is playable from the moment it is created.
+//
+// See shared/src/live/selection.ts for the rule itself.
+
+/** Every gameweek in the tournament, with how many of its fixtures are selected. */
+liveTournamentsRouter.get('/tournaments/:id/selected-matches', requireAuth, async (req, res) => {
+  try {
+    const [tournament] = await db
+      .select({ id: liveTournaments.id })
+      .from(liveTournaments)
+      .where(eq(liveTournaments.id, req.params.id));
+    if (!tournament) return res.status(404).json({ error: 'Not found' });
+
+    const fixtures = await db
+      .select({
+        id: liveFixtures.id,
+        stageKey: liveFixtures.stageKey,
+        matchday: liveFixtures.matchday,
+        status: liveFixtures.status,
+      })
+      .from(liveFixtures)
+      .where(eq(liveFixtures.liveTournamentId, tournament.id));
+
+    const selections = await loadSelectionIndex(tournament.id);
+    return res.json(summariseLiveGameweeks(fixtures, selections));
+  } catch (err) {
+    return fail(res, err);
+  }
+});
+
+/**
+ * Register one gameweek's selection.
+ *
+ * `fixtureIds: null` (or an empty list) resets the gameweek to its default of every
+ * fixture selected, which is why it deletes the row rather than storing an empty one.
+ *
+ * Scores are rebuilt afterwards: a fixture that has just been deselected must give back
+ * the points it awarded, and one that has just been selected must award the points it
+ * already earned. Doing it here rather than leaving it to the next sync means the
+ * leaderboard is never briefly wrong.
+ */
+liveTournamentsRouter.put('/tournaments/:id/selected-matches', requireAdmin, async (req, res) => {
+  try {
+    const parsed = SaveLiveGameweekSelectionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid body', details: parsed.error.flatten() });
+    }
+
+    const [tournament] = await db
+      .select({ id: liveTournaments.id })
+      .from(liveTournaments)
+      .where(eq(liveTournaments.id, req.params.id));
+    if (!tournament) return res.status(404).json({ error: 'Not found' });
+
+    const { stageKey, matchday, fixtureIds } = parsed.data;
+    const gameweekFixtures = await db
+      .select({ id: liveFixtures.id })
+      .from(liveFixtures)
+      .where(
+        and(
+          eq(liveFixtures.liveTournamentId, tournament.id),
+          eq(liveFixtures.stageKey, stageKey),
+          eq(liveFixtures.matchday, matchday),
+        ),
+      );
+    if (gameweekFixtures.length === 0) {
+      return res.status(404).json({ error: 'That gameweek has no fixtures' });
+    }
+
+    // Duplicates in the request would make selectedCount disagree with the real number of
+    // selected fixtures, so normalise before storing.
+    const requested = [...new Set(fixtureIds ?? [])];
+    const gameweekFixtureIds = new Set(gameweekFixtures.map(f => f.id));
+    const stray = requested.filter(id => !gameweekFixtureIds.has(id));
+    if (stray.length > 0) {
+      return res.status(400).json({
+        error: 'Those fixtures are not in this gameweek',
+        fixtureIds: stray,
+      });
+    }
+
+    const now = new Date();
+    let selection = null;
+    if (requested.length === 0) {
+      await db
+        .delete(liveGameweekSelections)
+        .where(
+          and(
+            eq(liveGameweekSelections.liveTournamentId, tournament.id),
+            eq(liveGameweekSelections.stageKey, stageKey),
+            eq(liveGameweekSelections.matchday, matchday),
+          ),
+        );
+    } else {
+      [selection] = await db
+        .insert(liveGameweekSelections)
+        .values({
+          id: generateId(15),
+          liveTournamentId: tournament.id,
+          stageKey,
+          matchday,
+          selectedFixtureIds: requested,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: [
+            liveGameweekSelections.liveTournamentId,
+            liveGameweekSelections.stageKey,
+            liveGameweekSelections.matchday,
+          ],
+          set: { selectedFixtureIds: requested, updatedAt: now },
+        })
+        .returning();
+    }
+
+    const recalculated = await recalculateLiveTournament(tournament.id);
+
+    // Both the fixture list and the leaderboard can have changed under anyone with the
+    // competition open.
+    const competitions = await db
+      .select({ id: liveCompetitions.id })
+      .from(liveCompetitions)
+      .where(eq(liveCompetitions.liveTournamentId, tournament.id));
+    if (competitions.length > 0) {
+      const ids = competitions.map(c => c.id);
+      notifyLiveCompetitions(ids, 'fixtures-updated');
+      notifyLiveCompetitions(ids, 'leaderboard-updated');
+    }
+
+    return res.json({
+      selection,
+      isCustomised: selection !== null,
+      selectedFixtureIds: selection
+        ? selection.selectedFixtureIds
+        : gameweekFixtures.map(f => f.id),
+      fixtureCount: gameweekFixtures.length,
+      scoredPredictions: recalculated.scoredPredictions,
+    });
   } catch (err) {
     return fail(res, err);
   }

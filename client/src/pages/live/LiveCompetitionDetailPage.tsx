@@ -428,8 +428,17 @@ function FixtureList({
     );
   }
 
+  // Said once above the list rather than repeated on every ignored card.
+  const selectedCount = shown.filter(f => f.isSelected).length;
+  const hasUnselected = selectedCount < shown.length;
+
   return (
     <div className="grid gap-2">
+      {hasUnselected && (
+        <p className="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
+          {t('live.selectedMatchesNote', { selected: selectedCount, total: shown.length })}
+        </p>
+      )}
       {shown.map(fixture => (
         <LiveFixtureCard
           key={fixture.id}

@@ -166,6 +166,18 @@ export async function ensureLiveSchema(): Promise<void> {
     )
   `);
 
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "live_gameweek_selections" (
+      "id" text PRIMARY KEY,
+      "live_tournament_id" text NOT NULL REFERENCES "live_tournaments"("id") ON DELETE CASCADE,
+      "stage_key" text NOT NULL,
+      "matchday" integer NOT NULL,
+      "selected_fixture_ids" json NOT NULL,
+      "created_at" timestamp NOT NULL DEFAULT now(),
+      "updated_at" timestamp NOT NULL DEFAULT now()
+    )
+  `);
+
   // ── Columns added after a table's first release ──────────────────────────────
   await db.execute(sql`ALTER TABLE "live_competition_members" ADD COLUMN IF NOT EXISTS "table_points" integer NOT NULL DEFAULT 0`);
 
@@ -181,4 +193,5 @@ export async function ensureLiveSchema(): Promise<void> {
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "live_predictions_competition_user_fixture_unique" ON "live_predictions" ("live_competition_id", "user_id", "live_fixture_id")`);
   await db.execute(sql`CREATE INDEX IF NOT EXISTS "live_predictions_fixture_idx" ON "live_predictions" ("live_fixture_id")`);
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "live_table_predictions_competition_user_stage_unique" ON "live_table_predictions" ("live_competition_id", "user_id", "stage_key")`);
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "live_gameweek_selections_tournament_stage_matchday_unique" ON "live_gameweek_selections" ("live_tournament_id", "stage_key", "matchday")`);
 }

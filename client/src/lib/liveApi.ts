@@ -40,6 +40,11 @@ export interface LiveFixtureView extends LiveFixture {
   isLocked: boolean;
   /** False for fixtures below the tournament's startStageKey. */
   isPredictable: boolean;
+  /**
+   * False when the admin has narrowed this fixture's gameweek to a set of selected
+   * matches that leaves this one out. True by default.
+   */
+  isSelected: boolean;
 }
 
 export interface LiveStandingView extends LiveStanding {
@@ -98,6 +103,25 @@ export interface LiveTournamentDetail extends LiveTournament {
   unscorableFixtures: number;
   /** Provider stage strings the format does not know about. */
   unmappedStages: string[];
+}
+
+/** One gameweek — a matchday inside a stage — as the admin selection UI sees it. */
+export interface LiveGameweekView {
+  stageKey: string;
+  matchday: number;
+  /** False while the gameweek is at its default of every match selected. */
+  isCustomised: boolean;
+  fixtureCount: number;
+  selectedCount: number;
+  selectedFixtureIds: string[];
+}
+
+export interface SaveLiveSelectionResult {
+  isCustomised: boolean;
+  selectedFixtureIds: string[];
+  fixtureCount: number;
+  /** Predictions rescored as a result of the change. */
+  scoredPredictions: number;
 }
 
 export interface LiveSyncResult {
@@ -175,6 +199,13 @@ export const liveApi = {
   tournamentTeams: (id: string) => api.get<LiveTeam[]>(`/live/tournaments/${id}/teams`),
   tournamentFixtures: (id: string, params: ListFixturesParams = {}) =>
     api.get<LiveFixtureView[]>(`/live/tournaments/${id}/fixtures${query(params)}`),
+  selectedMatches: (id: string) =>
+    api.get<LiveGameweekView[]>(`/live/tournaments/${id}/selected-matches`),
+  // `fixtureIds: null` resets the gameweek to its default, where every match is selected.
+  saveSelectedMatches: (
+    id: string,
+    body: { stageKey: string; matchday: number; fixtureIds: string[] | null },
+  ) => api.put<SaveLiveSelectionResult>(`/live/tournaments/${id}/selected-matches`, body),
   tournamentStandings: (id: string, stageKey?: string) =>
     api.get<LiveStandingView[]>(`/live/tournaments/${id}/standings${query({ stageKey })}`),
 
@@ -239,5 +270,7 @@ export const liveKeys = {
   tournaments: ['live', 'tournaments'] as const,
   tournament: (id: string) => ['live', 'tournament', id] as const,
   tournamentTeams: (id: string) => ['live', 'tournament', id, 'teams'] as const,
+  tournamentFixtures: (id: string) => ['live', 'tournament', id, 'fixtures'] as const,
+  selectedMatches: (id: string) => ['live', 'tournament', id, 'selected-matches'] as const,
   presets: ['live', 'presets'] as const,
 };

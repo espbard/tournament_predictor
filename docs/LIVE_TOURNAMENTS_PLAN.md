@@ -518,6 +518,24 @@ matters doubly here because the UCL league phase has its own tiebreak rules.
 (all `integer notNull default 0`).
 **Unique** `(live_competition_id, user_id)`.
 
+### `live_gameweek_selections`
+`id` pk · `liveTournamentId` → cascade · `stageKey` text · `matchday` int ·
+`selectedFixtureIds` json `$type<string[]>` · `createdAt` · `updatedAt`.
+**Unique** `(live_tournament_id, stage_key, matchday)`.
+
+Which matches of a gameweek — one matchday inside one stage — users actually predict on. A
+gameweek with **no row here has every fixture selected**: that default is what makes a tournament
+playable the moment it is created, and it means an admin only ever touches the gameweeks they
+want to narrow. A row is therefore never stored with an empty array; saving an empty selection
+deletes the row instead, because "nothing selected" and "no selection registered" would otherwise
+be indistinguishable and a gameweek nobody can predict on is never the intent.
+
+No FK on the fixture ids, for the same reason as `live_table_predictions.orderedTeamIds`: a
+fixture the provider drops degrades to a stale id rather than silently widening the selection.
+The rule itself lives in `shared/src/live/selection.ts` so the client applies exactly the same
+one, and it is enforced in three places — the fixtures read models, `PUT /predictions`, and the
+scoring trigger.
+
 ### `live_predictions`
 `id` pk · `liveCompetitionId` → cascade · `userId` → cascade · `liveFixtureId` → cascade ·
 `homeScore` int notNull · `awayScore` int notNull · `points` int nullable ·
@@ -822,6 +840,8 @@ Mounted as `app.use('/api/live', liveRouter)` in `server/src/index.ts`.
 | GET | `/tournaments/:id/teams` | auth | with `qualificationStatus` |
 | GET | `/tournaments/:id/fixtures` | auth | `?stageKey&matchday&from&to&status` |
 | GET | `/tournaments/:id/standings` | auth | `?stageKey` |
+| GET | `/tournaments/:id/selected-matches` | auth | every gameweek with `isCustomised` and its selected fixture ids |
+| PUT | `/tournaments/:id/selected-matches` | admin | `{stageKey, matchday, fixtureIds}`; `fixtureIds: null` (or empty) resets the gameweek to "all selected". Recalculates the tournament, since a deselected match must give its points back |
 
 ### `server/src/live/routes/competitions.ts`
 
@@ -835,8 +855,8 @@ Mounted as `app.use('/api/live', liveRouter)` in `server/src/index.ts`.
 | GET | `/competitions/:id/members` | auth |
 | GET | `/competitions/:id/leaderboard` | auth |
 | GET | `/competitions/:id/events` | auth — SSE: `fixtures-updated`, `leaderboard-updated` |
-| GET | `/competitions/:id/fixtures` | auth — **main read model**: fixtures for a stage/matchday + caller's prediction + `lockedAt` + `isLocked` + awarded points, in one call |
-| PUT | `/competitions/:id/predictions` | auth — upsert one `{fixtureId, homeScore, awayScore}` |
+| GET | `/competitions/:id/fixtures` | auth — **main read model**: fixtures for a stage/matchday + caller's prediction + `lockedAt` + `isLocked` + `isSelected` + awarded points, in one call |
+| PUT | `/competitions/:id/predictions` | auth — upsert one `{fixtureId, homeScore, awayScore}`; rejects a fixture left out of its gameweek's selected matches |
 | GET | `/competitions/:id/predictions/:userId` | auth — another member's, **only for already-locked fixtures** |
 
 Zod schemas live in **`shared/src/live/schemas.ts`**, following the style of
@@ -869,6 +889,9 @@ Components under `client/src/components/live/`:
 - `LiveCountdown.tsx` — ticking "locks in 2h 14m", flips to "Locked" at kickoff − 60 min.
 - `LiveStandingsTable.tsx` — read-only provider standings; single table or per-group depending on
   `format.tableScope`.
+- `LiveSelectedMatchesPanel.tsx` — admin only, rendered on `AdminLiveTournamentDetailPage`. Picks
+  a stage and gameweek, then ticks which of its matches count. Opens on the gameweek of the next
+  match still to be played, and saving with nothing ticked resets the gameweek to "all count".
 - `LiveLeaderboard.tsx`, `LiveQualifiedTeamsPanel.tsx`.
 - `client/src/lib/liveApi.ts` — typed thin wrappers over the existing `client/src/lib/api.ts`.
   Note `api` currently has no `put` — add one.

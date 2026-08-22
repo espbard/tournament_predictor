@@ -5,6 +5,7 @@ import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { ApiError } from '@/lib/api';
 import { liveApi, liveKeys } from '@/lib/liveApi';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
+import LiveSelectedMatchesPanel from '@/components/live/LiveSelectedMatchesPanel';
 import { useT } from '@/lib/useT';
 
 // ── Admin: one live tournament ────────────────────────────────────────────────
@@ -37,6 +38,9 @@ export default function AdminLiveTournamentDetailPage() {
   function refresh() {
     queryClient.invalidateQueries({ queryKey: liveKeys.tournament(id!) });
     queryClient.invalidateQueries({ queryKey: liveKeys.tournamentTeams(id!) });
+    // A sync can add fixtures to a gameweek, which changes what there is to select.
+    queryClient.invalidateQueries({ queryKey: liveKeys.tournamentFixtures(id!) });
+    queryClient.invalidateQueries({ queryKey: liveKeys.selectedMatches(id!) });
   }
 
   const syncMutation = useMutation({
@@ -213,6 +217,8 @@ export default function AdminLiveTournamentDetailPage() {
         {message && <p className="mt-3 text-sm text-green-600 dark:text-green-400">{message}</p>}
         {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
       </div>
+
+      <LiveSelectedMatchesPanel tournamentId={tournament.id} />
 
       <div className="mb-6 rounded-lg border p-5">
         <h2 className="mb-3 font-semibold">{t('live.admin.teamsTitle')}</h2>

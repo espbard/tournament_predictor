@@ -213,6 +213,24 @@ export interface LiveTablePrediction {
   updatedAt: string;
 }
 
+/**
+ * The set of fixtures an admin has picked out of one gameweek (a matchday within a
+ * stage) as the ones users predict on.
+ *
+ * A gameweek with no row here has every fixture selected — the default. `selectedFixtureIds`
+ * is stored whole rather than a row per fixture because it is only ever read and written
+ * complete, and because "no row" is what expresses the default.
+ */
+export interface LiveGameweekSelection {
+  id: string;
+  liveTournamentId: string;
+  stageKey: string;
+  matchday: number;
+  selectedFixtureIds: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** Per-team scoring detail, for showing a user how their table prediction did. */
 export interface LiveTablePredictionTeamResult {
   teamId: string;
@@ -248,4 +266,9 @@ export interface LiveFixtureView extends LiveFixture {
   isLocked: boolean;
   /** False for fixtures below the tournament's startStageKey (e.g. summer qualifiers). */
   isPredictable: boolean;
+  /**
+   * False when the admin has registered a selection for this fixture's gameweek and left
+   * this fixture out of it. True by default — see shared/src/live/selection.ts.
+   */
+  isSelected: boolean;
 }

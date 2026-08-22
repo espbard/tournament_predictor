@@ -26,6 +26,9 @@ onwards) and the Premier League 2026/27, both available as ready-made presets.
 2. As an admin, go to **/admin/live-tournaments**, pick a preset and create it. Teams, fixtures
    and the table are pulled in immediately.
 3. Create a prediction league at **/admin/live-competitions** and share its invite code.
+4. Optionally narrow a gameweek under **Selected matches** on the tournament page: tick the
+   matches players predict on and the rest are ignored. Every match in a gameweek counts until
+   you pick, so this step can be skipped entirely.
 
 A background scheduler then keeps everything current on its own — polling roughly every minute
 while a match is being played, every 15 minutes when one is due within a day, and every 6 hours
@@ -231,7 +234,7 @@ Everything for the live tournament type lives under `server/src/live/` and `clie
 - **feedback** — In-app feedback inbox
 - **appConfig** — Single-row app-wide settings (maintenance mode)
 
-The live tournament type adds eight `live_*` tables in `server/src/db/liveSchema.ts` — see
+The live tournament type adds nine `live_*` tables in `server/src/db/liveSchema.ts` — see
 [`docs/LIVE_TOURNAMENTS_PLAN.md`](docs/LIVE_TOURNAMENTS_PLAN.md).
 
 > **Migrations caveat:** `server/drizzle/meta/_journal.json` is out of sync with the SQL files on

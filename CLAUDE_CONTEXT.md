@@ -27,7 +27,7 @@ products living in one repo, and do not refactor one into the other.
 | Predicted matchups | Yes — users predict the whole knockout bracket | **No** — users only predict real fixtures with real teams |
 | Scoring | 8 sources (exact score, group position, bracket picks, bonus …) | Per fixture, 3 stacking tiers: outcome +1, goal difference +1, exact score +2. Plus a once-a-season league table prediction |
 | Stages | Hardcoded `match_stage` enum | Data-driven format definitions per competition |
-| Tables | `tournaments`, `teams`, `matches`, `competitions`, `predictions`, `bracket_predictions`, … | `live_tournaments`, `live_teams`, `live_fixtures`, `live_standings`, `live_competitions`, `live_predictions`, … |
+| Tables | `tournaments`, `teams`, `matches`, `competitions`, `predictions`, `bracket_predictions`, … | `live_tournaments`, `live_teams`, `live_fixtures`, `live_standings`, `live_competitions`, `live_predictions`, `live_gameweek_selections`, … |
 | API base | `/api/tournaments`, `/api/competitions` | `/api/live/*` |
 | Server code | `server/src/routes/`, `server/src/lib/` | `server/src/live/` |
 | Client code | `client/src/pages/*.tsx` | `client/src/pages/live/`, `client/src/components/live/` |
@@ -184,7 +184,7 @@ Architectural facts that trip people up:
 
 ### Live tournament type (built in Phases 1–2)
 
-`server/src/db/liveSchema.ts` — 8 tables, all with real primary keys and the unique constraints
+`server/src/db/liveSchema.ts` — 9 tables, all with real primary keys and the unique constraints
 the data requires, unlike their manual counterparts:
 
 | Table | Notes |
@@ -196,6 +196,7 @@ the data requires, unlike their manual counterparts:
 | `live_competitions` | **No `prediction_deadline` column** — the live type locks per fixture only |
 | `live_competition_members` | Membership + denormalised 3-source score aggregate |
 | `live_predictions` | Unique on `(competition, user, fixture)` — the constraint the manual `predictions` table lacks |
+| `live_gameweek_selections` | One row per gameweek (`(tournament, stage_key, matchday)`, unique) holding the fixture ids users predict on, as a single `json` array. **No row means every fixture in that gameweek counts** — the default — so a row is never stored empty |
 | `live_table_predictions` | One row per user per table stage; the predicted order is a single `json` array of team ids, top first. No FK on those ids on purpose — a removed team degrades to a stale id that scores nothing rather than cascading the prediction away |
 
 `liveSchema.ts` imports `users` from `schema.ts`, so `schema.ts` deliberately does **not**
@@ -204,7 +205,7 @@ re-export it. They are merged in `db/client.ts` and listed as an array in `drizz
 Shared code in `shared/src/live/`: `types.ts`, `formats.ts` (stage definitions per competition
 format + `resolveStageKey` / `isStageAtOrAfter` / `predictableStages`), `presets.ts` (the
 ready-made connections dropdown), `lock.ts` (the kickoff − 60 min rule, used by both client and
-server), `schemas.ts` (Zod).
+server), `selection.ts` (which matches of a gameweek count), `schemas.ts` (Zod).
 
 `server/src/live/providers/` — the football-data.org v4 adapter behind a provider-neutral
 interface, so nothing above it knows which API supplies the data. `getProvider(id)` is the only
@@ -305,6 +306,8 @@ POST   /api/live/tournaments/:id/sync             — {full?} — window or full
 GET    /api/live/tournaments/:id/teams
 GET    /api/live/tournaments/:id/fixtures         — ?stageKey&matchday&from&to&status
 GET    /api/live/tournaments/:id/standings        — ?stageKey
+GET    /api/live/tournaments/:id/selected-matches — every gameweek + how many matches count
+PUT    /api/live/tournaments/:id/selected-matches — admin; {stageKey, matchday, fixtureIds}
 ```
 
 ```
@@ -335,7 +338,8 @@ GET    /api/live/competitions/:id/table-prediction/:userId  — only after the d
 
 `GET /competitions/:id/fixtures` is what the client should build the fixtures tab from: it
 returns each fixture with its teams, the caller's own prediction, `lockedAt`, `isLocked`,
-`isPredictable` and any points awarded, in one call. No client-side joining needed.
+`isPredictable`, `isSelected` and any points awarded, in one call. No client-side joining
+needed.
 
 ---
 
@@ -396,6 +400,14 @@ Three things to know:
   is scored only once every fixture in the stage is `finished` or `cancelled` — a *postponed*
   fixture keeps it open, since it could still move the table.
 - Positions come from `live_standings` verbatim, never recomputed locally.
+
+**Selected matches** — an admin may narrow a gameweek (one matchday inside one stage) to a set of
+fixtures through `PUT /api/live/tournaments/:id/selected-matches`. Anything left out is not part
+of the game: predictions on it are rejected and it never awards points. A gameweek nobody has
+narrowed has every fixture selected, which is why a new tournament is playable immediately. The
+rule lives in `shared/src/live/selection.ts` and is applied by the fixtures read models, the
+prediction route and the scoring trigger alike — changing a selection recalculates the tournament
+so points already awarded on a now-deselected match are given back.
 
 Scoring runs from the background sync tick when a fixture transitions to `finished`, not from a
 request handler.

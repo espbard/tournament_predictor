@@ -311,6 +311,36 @@ export const liveTablePredictions = pgTable(
   }),
 );
 
+export const liveGameweekSelections = pgTable(
+  'live_gameweek_selections',
+  {
+    id: text('id').primaryKey(),
+    liveTournamentId: text('live_tournament_id')
+      .notNull()
+      .references(() => liveTournaments.id, { onDelete: 'cascade' }),
+    /** A gameweek is one matchday inside one stage, so both identify it. */
+    stageKey: text('stage_key').notNull(),
+    matchday: integer('matchday').notNull(),
+    /**
+     * live_fixtures ids the admin picked out of this gameweek. Stored whole rather than a
+     * row per fixture because it is only ever read and written complete. No FK, so a
+     * fixture the provider drops degrades to a stale id rather than silently widening the
+     * selection. A row is never stored empty — see the route — because "no row" already
+     * means "every fixture selected".
+     */
+    selectedFixtureIds: json('selected_fixture_ids').notNull().$type<string[]>(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  t => ({
+    gameweekUnique: uniqueIndex('live_gameweek_selections_tournament_stage_matchday_unique').on(
+      t.liveTournamentId,
+      t.stageKey,
+      t.matchday,
+    ),
+  }),
+);
+
 // ── Relations ─────────────────────────────────────────────────────────────────
 
 export const liveTournamentsRelations = relations(liveTournaments, ({ many }) => ({
@@ -318,6 +348,14 @@ export const liveTournamentsRelations = relations(liveTournaments, ({ many }) =>
   fixtures: many(liveFixtures),
   standings: many(liveStandings),
   competitions: many(liveCompetitions),
+  gameweekSelections: many(liveGameweekSelections),
+}));
+
+export const liveGameweekSelectionsRelations = relations(liveGameweekSelections, ({ one }) => ({
+  tournament: one(liveTournaments, {
+    fields: [liveGameweekSelections.liveTournamentId],
+    references: [liveTournaments.id],
+  }),
 }));
 
 export const liveTeamsRelations = relations(liveTeams, ({ one }) => ({
