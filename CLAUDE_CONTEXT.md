@@ -27,7 +27,7 @@ products living in one repo, and do not refactor one into the other.
 | Predicted matchups | Yes — users predict the whole knockout bracket | **No** — users only predict real fixtures with real teams |
 | Scoring | 8 sources (exact score, group position, bracket picks, bonus …) | Per fixture, 3 stacking tiers: outcome +1, goal difference +1, exact score +2. Plus a once-a-season league table prediction |
 | Stages | Hardcoded `match_stage` enum | Data-driven format definitions per competition |
-| Tables | `tournaments`, `teams`, `matches`, `competitions`, `predictions`, `bracket_predictions`, … | `live_tournaments`, `live_teams`, `live_fixtures`, `live_standings`, `live_competitions`, `live_predictions`, `live_gameweek_selections`, … |
+| Tables | `tournaments`, `teams`, `matches`, `competitions`, `predictions`, `bracket_predictions`, … | `live_tournaments`, `live_teams`, `live_fixtures`, `live_standings`, `live_competitions`, `live_predictions`, `live_gameweek_selections`, `live_bonus_questions`, … |
 | API base | `/api/tournaments`, `/api/competitions` | `/api/live/*` |
 | Server code | `server/src/routes/`, `server/src/lib/` | `server/src/live/` |
 | Client code | `client/src/pages/*.tsx` | `client/src/pages/live/`, `client/src/components/live/` |
@@ -184,7 +184,7 @@ Architectural facts that trip people up:
 
 ### Live tournament type (built in Phases 1–2)
 
-`server/src/db/liveSchema.ts` — 9 tables, all with real primary keys and the unique constraints
+`server/src/db/liveSchema.ts` — 11 tables, all with real primary keys and the unique constraints
 the data requires, unlike their manual counterparts:
 
 | Table | Notes |
@@ -197,6 +197,8 @@ the data requires, unlike their manual counterparts:
 | `live_competition_members` | Membership + denormalised 3-source score aggregate |
 | `live_predictions` | Unique on `(competition, user, fixture)` — the constraint the manual `predictions` table lacks |
 | `live_gameweek_selections` | One row per gameweek (`(tournament, stage_key, matchday)`, unique) holding the fixture ids users predict on, as a single `json` array. **No row means every fixture in that gameweek counts** — the default — so a row is never stored empty |
+| `live_bonus_questions` | Season-long side bets on the tournament, so every league playing it asks the same ones. `lock_at` is an optional per-question deadline; null means the default — an hour before the first match of the starting stage |
+| `live_bonus_answers` | Unique on `(question, competition, user)`. `points` stays null until the tournament is marked completed — bonus points are withheld until then, as in the manual type |
 | `live_table_predictions` | One row per user per table stage; the predicted order is a single `json` array of team ids, top first. No FK on those ids on purpose — a removed team degrades to a stale id that scores nothing rather than cascading the prediction away |
 
 `liveSchema.ts` imports `users` from `schema.ts`, so `schema.ts` deliberately does **not**
@@ -308,6 +310,10 @@ GET    /api/live/tournaments/:id/fixtures         — ?stageKey&matchday&from&to
 GET    /api/live/tournaments/:id/standings        — ?stageKey
 GET    /api/live/tournaments/:id/selected-matches — every gameweek + how many matches count
 PUT    /api/live/tournaments/:id/selected-matches — admin; {stageKey, matchday, fixtureIds}
+GET    /api/live/tournaments/:id/bonus-questions  — answers redacted until completed
+POST   /api/live/tournaments/:id/bonus-questions  — admin
+PATCH  /api/live/tournaments/:id/bonus-questions/:questionId  — admin; sets the correct answer
+DELETE /api/live/tournaments/:id/bonus-questions/:questionId  — admin
 ```
 
 ```
@@ -334,6 +340,10 @@ GET    /api/live/competitions/:id/predictions/:userId  — locked fixtures only
 GET    /api/live/competitions/:id/table-prediction     — teams, my order, deadline, result
 PUT    /api/live/competitions/:id/table-prediction     — {stageKey, orderedTeamIds}
 GET    /api/live/competitions/:id/table-prediction/:userId  — only after the deadline
+GET    /api/live/competitions/:id/bonus-questions      — + lockedAt / isLocked per question
+GET    /api/live/competitions/:id/bonus-answers        — the caller's own
+PUT    /api/live/competitions/:id/bonus-answers        — {questionId, answer}
+GET    /api/live/competitions/:id/bonus-answers/:userId — locked questions only
 ```
 
 `GET /competitions/:id/fixtures` is what the client should build the fixtures tab from: it
@@ -400,6 +410,21 @@ Three things to know:
   is scored only once every fixture in the stage is `finished` or `cancelled` — a *postponed*
   fixture keeps it open, since it could still move the table.
 - Positions come from `live_standings` verbatim, never recomputed locally.
+
+**Bonus questions** (`server/src/live/bonusScoring.ts`) — a fourth source, mirroring the manual
+type: all-or-nothing per question, matched case-insensitively after trimming, with several
+correct answers stored as a JSON array. Two rules are worth knowing:
+
+- **Points are withheld until the tournament is marked `completed`**, so nobody can infer a
+  correct answer from a leaderboard that moved. Marking it completed is what awards them; moving
+  it back out of `completed` takes them away again.
+- **A question closes at its own `lock_at`**, or by default an hour before the first match of the
+  starting stage — the same instant the table prediction locks. There is no competition-wide
+  deadline to fall back on in this tournament type.
+
+Scoring writes points onto the answers only; the rollup into `live_competition_members` and
+`total_points` is `recomputeLiveMemberTotals()` in `scoringTrigger.ts`, the single place that
+sums every source.
 
 **Selected matches** — an admin may narrow a gameweek (one matchday inside one stage) to a set of
 fixtures through `PUT /api/live/tournaments/:id/selected-matches`. Anything left out is not part

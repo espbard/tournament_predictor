@@ -5,11 +5,14 @@ import {
   CreateLiveCompetitionSchema,
   JoinLiveCompetitionSchema,
   ListLiveFixturesQuerySchema,
+  SaveLiveBonusAnswerSchema,
   SaveLivePredictionSchema,
   SaveLiveTablePredictionSchema,
   UpdateLiveCompetitionSchema,
+  bonusQuestionLockAt,
   fixtureLockAt,
   getLiveFormat,
+  isBonusQuestionLocked,
   isFixtureLocked,
   isLiveFixtureSelected,
   isStageAtOrAfter,
@@ -20,6 +23,8 @@ import {
 } from '@tournament-predictor/shared';
 import { db } from '../../db/client';
 import {
+  liveBonusAnswers,
+  liveBonusQuestions,
   liveCompetitionMembers,
   liveCompetitions,
   liveFixtures,
@@ -32,6 +37,8 @@ import {
 import { users } from '../../db/schema';
 import { requireAdmin, requireAuth } from '../../middleware/auth';
 import { subscribeLiveCompetition, unsubscribeLiveCompetition } from '../liveEvents';
+import { loadLiveBonusAnswers } from '../bonusScoring';
+import { redactLiveBonusAnswerPoints, redactLiveBonusQuestions } from '../bonusVisibility';
 import { recalculateLiveCompetition } from '../scoringTrigger';
 import { loadSelectionIndex } from '../selections';
 import { validateTableOrder } from '../tableScoring';
@@ -321,6 +328,7 @@ liveCompetitionsRouter.get('/competitions/:id/leaderboard', requireAuth, async (
         correctGoalDifferencePoints: liveCompetitionMembers.correctGoalDifferencePoints,
         exactScorePoints: liveCompetitionMembers.exactScorePoints,
         tablePoints: liveCompetitionMembers.tablePoints,
+        bonusPoints: liveCompetitionMembers.bonusPoints,
       })
       .from(liveCompetitionMembers)
       .innerJoin(users, eq(liveCompetitionMembers.userId, users.id))
@@ -347,6 +355,7 @@ liveCompetitionsRouter.get('/competitions/:id/leaderboard', requireAuth, async (
             correctGoalDifferencePoints: row.correctGoalDifferencePoints,
             exactScorePoints: row.exactScorePoints,
             tablePoints: row.tablePoints,
+            bonusPoints: row.bonusPoints,
           },
         };
       }),
@@ -882,3 +891,245 @@ liveCompetitionsRouter.get(
     }
   },
 );
+
+// ── Bonus questions ───────────────────────────────────────────────────────────
+//
+// Questions belong to the tournament (see routes/tournaments.ts); answers belong here.
+//
+// A live competition has no competition-wide deadline, so a question closes at its own
+// `lockAt` when an admin set one, and otherwise an hour before the first match of the
+// tournament's starting stage — the same instant the table prediction locks. Points stay
+// invisible, and unawarded, until the tournament is marked completed.
+
+/** Kickoffs of the stage a season-long prediction is measured against. */
+async function tablePredictionStageKickoffs(tournament: {
+  id: string;
+  format: string;
+  startStageKey: string;
+}): Promise<Array<Date | null>> {
+  const stage = tablePredictionStage(getLiveFormat(tournament.format), tournament.startStageKey);
+  const rows = await db
+    .select({ kickoffAt: liveFixtures.kickoffAt })
+    .from(liveFixtures)
+    .where(
+      stage
+        ? and(
+            eq(liveFixtures.liveTournamentId, tournament.id),
+            eq(liveFixtures.stageKey, stage.key),
+          )
+        : // A format with no table stage still has a first predictable match to measure from.
+          and(
+            eq(liveFixtures.liveTournamentId, tournament.id),
+            eq(liveFixtures.stageKey, tournament.startStageKey),
+          ),
+    );
+  return rows.map(r => r.kickoffAt);
+}
+
+/** The questions, each with the deadline that actually applies to it. */
+liveCompetitionsRouter.get('/competitions/:id/bonus-questions', requireAuth, async (req, res) => {
+  try {
+    const user = res.locals.user;
+    const [competition] = await db
+      .select()
+      .from(liveCompetitions)
+      .where(eq(liveCompetitions.id, req.params.id));
+    if (!competition) return res.status(404).json({ error: 'Not found' });
+    if (!(await assertMember(competition.id, user))) {
+      return res.status(403).json({ error: 'Not a member of this competition' });
+    }
+
+    const [tournament] = await db
+      .select()
+      .from(liveTournaments)
+      .where(eq(liveTournaments.id, competition.liveTournamentId));
+    if (!tournament) return res.status(404).json({ error: 'Live tournament not found' });
+
+    const questions = await db
+      .select()
+      .from(liveBonusQuestions)
+      .where(eq(liveBonusQuestions.liveTournamentId, tournament.id))
+      .orderBy(asc(liveBonusQuestions.createdAt));
+
+    const kickoffs = await tablePredictionStageKickoffs(tournament);
+    const now = new Date();
+
+    return res.json(
+      redactLiveBonusQuestions(questions, user.isAdmin, tournament.status === 'completed').map(
+        q => {
+          const lockedAt = bonusQuestionLockAt(q.lockAt, kickoffs);
+          return {
+            ...q,
+            lockedAt: lockedAt ? lockedAt.toISOString() : null,
+            isLocked: isBonusQuestionLocked(q.lockAt, kickoffs, now),
+          };
+        },
+      ),
+    );
+  } catch (err) {
+    return fail(res, err);
+  }
+});
+
+/** The caller's own answers. Points are redacted until the tournament is completed. */
+liveCompetitionsRouter.get('/competitions/:id/bonus-answers', requireAuth, async (req, res) => {
+  try {
+    const user = res.locals.user;
+    if (!(await assertMember(req.params.id, user))) {
+      return res.status(403).json({ error: 'Not a member of this competition' });
+    }
+
+    const answers = await loadLiveBonusAnswers(req.params.id, user.id);
+    return res.json(
+      redactLiveBonusAnswerPoints(answers, user.isAdmin, await isTournamentCompletedFor(req.params.id)),
+    );
+  } catch (err) {
+    return fail(res, err);
+  }
+});
+
+async function isTournamentCompletedFor(competitionId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ status: liveTournaments.status })
+    .from(liveCompetitions)
+    .innerJoin(liveTournaments, eq(liveTournaments.id, liveCompetitions.liveTournamentId))
+    .where(eq(liveCompetitions.id, competitionId));
+  return row?.status === 'completed';
+}
+
+/**
+ * Another member's answers — only for questions that have already locked, so nobody can
+ * copy one while it still matters. The same rule the per-fixture predictions follow.
+ */
+liveCompetitionsRouter.get(
+  '/competitions/:id/bonus-answers/:userId',
+  requireAuth,
+  async (req, res) => {
+    try {
+      const viewer = res.locals.user;
+      const { id, userId } = req.params;
+      if (!(await assertMember(id, viewer))) {
+        return res.status(403).json({ error: 'Not a member of this competition' });
+      }
+
+      const [competition] = await db
+        .select()
+        .from(liveCompetitions)
+        .where(eq(liveCompetitions.id, id));
+      if (!competition) return res.status(404).json({ error: 'Not found' });
+
+      const [tournament] = await db
+        .select()
+        .from(liveTournaments)
+        .where(eq(liveTournaments.id, competition.liveTournamentId));
+      if (!tournament) return res.status(404).json({ error: 'Live tournament not found' });
+
+      const questions = await db
+        .select({ id: liveBonusQuestions.id, lockAt: liveBonusQuestions.lockAt })
+        .from(liveBonusQuestions)
+        .where(eq(liveBonusQuestions.liveTournamentId, tournament.id));
+
+      const kickoffs = await tablePredictionStageKickoffs(tournament);
+      const now = new Date();
+      const lockedQuestionIds = new Set(
+        questions.filter(q => isBonusQuestionLocked(q.lockAt, kickoffs, now)).map(q => q.id),
+      );
+
+      const answers = await loadLiveBonusAnswers(id, userId);
+      return res.json(
+        redactLiveBonusAnswerPoints(
+          answers.filter(a => viewer.isAdmin || lockedQuestionIds.has(a.questionId)),
+          viewer.isAdmin,
+          tournament.status === 'completed',
+        ),
+      );
+    } catch (err) {
+      return fail(res, err);
+    }
+  },
+);
+
+/** Upsert one answer. This is the only place the bonus deadline is enforced. */
+liveCompetitionsRouter.put('/competitions/:id/bonus-answers', requireAuth, async (req, res) => {
+  try {
+    const parsed = SaveLiveBonusAnswerSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid body', details: parsed.error.flatten() });
+    }
+
+    const user = res.locals.user;
+    if (user.isLeaderboardUser) {
+      return res.status(403).json({ error: 'This account cannot make predictions' });
+    }
+
+    const [competition] = await db
+      .select()
+      .from(liveCompetitions)
+      .where(eq(liveCompetitions.id, req.params.id));
+    if (!competition) return res.status(404).json({ error: 'Not found' });
+
+    const [membership] = await db
+      .select({ id: liveCompetitionMembers.id })
+      .from(liveCompetitionMembers)
+      .where(
+        and(
+          eq(liveCompetitionMembers.liveCompetitionId, competition.id),
+          eq(liveCompetitionMembers.userId, user.id),
+        ),
+      );
+    if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+
+    const [tournament] = await db
+      .select()
+      .from(liveTournaments)
+      .where(eq(liveTournaments.id, competition.liveTournamentId));
+    if (!tournament) return res.status(404).json({ error: 'Live tournament not found' });
+
+    const [question] = await db
+      .select()
+      .from(liveBonusQuestions)
+      .where(
+        and(
+          eq(liveBonusQuestions.id, parsed.data.questionId),
+          eq(liveBonusQuestions.liveTournamentId, tournament.id),
+        ),
+      );
+    if (!question) return res.status(404).json({ error: 'Question not found' });
+
+    const kickoffs = await tablePredictionStageKickoffs(tournament);
+    if (isBonusQuestionLocked(question.lockAt, kickoffs)) {
+      const lockedAt = bonusQuestionLockAt(question.lockAt, kickoffs);
+      return res.status(400).json({
+        error: 'This bonus question is closed',
+        lockedAt: lockedAt ? lockedAt.toISOString() : null,
+      });
+    }
+
+    const now = new Date();
+    const [saved] = await db
+      .insert(liveBonusAnswers)
+      .values({
+        id: generateId(15),
+        questionId: question.id,
+        liveCompetitionId: competition.id,
+        userId: user.id,
+        answer: parsed.data.answer.trim(),
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [
+          liveBonusAnswers.questionId,
+          liveBonusAnswers.liveCompetitionId,
+          liveBonusAnswers.userId,
+        ],
+        set: { answer: parsed.data.answer.trim(), updatedAt: now },
+      })
+      .returning();
+
+    // Nothing to score: points wait for the tournament to be marked completed.
+    return res.json(redactLiveBonusAnswerPoints([saved], user.isAdmin, tournament.status === 'completed')[0]);
+  } catch (err) {
+    return fail(res, err);
+  }
+});

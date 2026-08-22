@@ -6,6 +6,7 @@ import { ApiError } from '@/lib/api';
 import { liveApi, liveKeys } from '@/lib/liveApi';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import LiveSelectedMatchesPanel from '@/components/live/LiveSelectedMatchesPanel';
+import AdminLiveBonusQuestionsPanel from '@/components/live/AdminLiveBonusQuestionsPanel';
 import { useT } from '@/lib/useT';
 
 // ── Admin: one live tournament ────────────────────────────────────────────────
@@ -219,6 +220,8 @@ export default function AdminLiveTournamentDetailPage() {
       </div>
 
       <LiveSelectedMatchesPanel tournamentId={tournament.id} />
+
+      <AdminLiveBonusQuestionsPanel tournamentId={tournament.id} />
 
       <div className="mb-6 rounded-lg border p-5">
         <h2 className="mb-3 font-semibold">{t('live.admin.teamsTitle')}</h2>

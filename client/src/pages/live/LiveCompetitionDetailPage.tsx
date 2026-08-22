@@ -11,18 +11,20 @@ import LiveStandingsTable from '@/components/live/LiveStandingsTable';
 import LiveLeaderboard from '@/components/live/LiveLeaderboard';
 import LiveQualifiedTeamsPanel from '@/components/live/LiveQualifiedTeamsPanel';
 import LiveTablePrediction from '@/components/live/LiveTablePrediction';
+import LiveBonusQuestionsTab from '@/components/live/LiveBonusQuestionsTab';
 
 // ── Live competition ──────────────────────────────────────────────────────────
 //
-// Three tabs: Fixtures, Standings, Leaderboard. No knockout bracket, no group-position
-// tab, no bonus questions — this tournament type predicts real scheduled fixtures only.
+// Fixtures, the table prediction, bonus questions, standings and the leaderboard. No
+// knockout bracket and no group-position tab — this tournament type predicts real
+// scheduled fixtures, plus the two season-long side bets.
 //
 // The fixtures tab is driven by the tournament's format rather than a hardcoded stage
 // list, so a new competition shape needs no client change.
 //
 // See docs/LIVE_TOURNAMENTS_PLAN.md §11.
 
-const TABS = ['fixtures', 'table', 'standings', 'leaderboard'] as const;
+const TABS = ['fixtures', 'table', 'bonus', 'standings', 'leaderboard'] as const;
 type TabId = (typeof TABS)[number];
 
 const LIVE_STATUSES = new Set(['in_play', 'paused']);
@@ -124,8 +126,10 @@ export default function LiveCompetitionDetailPage() {
   }, [fixtures, stageKey]);
 
   const stageDef = stages.find(s => s.key === stageKey) ?? null;
+  // A match left out of its gameweek's selected matches is not part of the game, so it is
+  // not shown at all — no card, no inputs, nothing to explain.
   const stageFixtures = useMemo(
-    () => fixtures.filter(f => f.stageKey === stageKey),
+    () => fixtures.filter(f => f.stageKey === stageKey && f.isSelected),
     [fixtures, stageKey],
   );
 
@@ -337,6 +341,18 @@ export default function LiveCompetitionDetailPage() {
           />
         ))}
 
+      {activeTab === 'bonus' &&
+        (competition.tournament ? (
+          <LiveBonusQuestionsTab
+            competitionId={id!}
+            liveTournamentId={competition.tournament.id}
+          />
+        ) : (
+          <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+            {t('live.bonus.unavailable')}
+          </p>
+        ))}
+
       {activeTab === 'standings' && (
         <LiveStandingsTable rows={standings} tableScope={competition.tableScope} />
       )}
@@ -428,17 +444,8 @@ function FixtureList({
     );
   }
 
-  // Said once above the list rather than repeated on every ignored card.
-  const selectedCount = shown.filter(f => f.isSelected).length;
-  const hasUnselected = selectedCount < shown.length;
-
   return (
     <div className="grid gap-2">
-      {hasUnselected && (
-        <p className="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
-          {t('live.selectedMatchesNote', { selected: selectedCount, total: shown.length })}
-        </p>
-      )}
       {shown.map(fixture => (
         <LiveFixtureCard
           key={fixture.id}

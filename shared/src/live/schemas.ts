@@ -83,6 +83,32 @@ export const SaveLiveGameweekSelectionSchema = z.object({
   fixtureIds: z.array(z.string().min(1)).max(200).nullable(),
 });
 
+// ── Bonus questions ───────────────────────────────────────────────────────────
+
+const bonusAnswerType = z.enum(['number', 'player', 'team', 'yes_no']);
+
+export const CreateLiveBonusQuestionSchema = z.object({
+  question: z.string().min(1).max(500),
+  answerType: bonusAnswerType,
+  points: z.number().int().min(1).max(1000),
+  /** Null means the default deadline — the tournament's first predictable kickoff − 60 min. */
+  lockAt: z.string().datetime().nullable().optional(),
+});
+
+export const UpdateLiveBonusQuestionSchema = z.object({
+  question: z.string().min(1).max(500).optional(),
+  answerType: bonusAnswerType.optional(),
+  points: z.number().int().min(1).max(1000).optional(),
+  /** A JSON array of strings when several answers count; a plain string otherwise. */
+  correctAnswer: z.string().nullable().optional(),
+  lockAt: z.string().datetime().nullable().optional(),
+});
+
+export const SaveLiveBonusAnswerSchema = z.object({
+  questionId: z.string().min(1),
+  answer: z.string().min(1).max(500),
+});
+
 export const ListLiveFixturesQuerySchema = z.object({
   stageKey: z.string().min(1).optional(),
   matchday: z.coerce.number().int().min(1).max(60).optional(),
@@ -107,3 +133,6 @@ export type SaveLivePredictionInput = z.infer<typeof SaveLivePredictionSchema>;
 export type SaveLiveTablePredictionInput = z.infer<typeof SaveLiveTablePredictionSchema>;
 export type ListLiveFixturesQuery = z.infer<typeof ListLiveFixturesQuerySchema>;
 export type SaveLiveGameweekSelectionInput = z.infer<typeof SaveLiveGameweekSelectionSchema>;
+export type CreateLiveBonusQuestionInput = z.infer<typeof CreateLiveBonusQuestionSchema>;
+export type UpdateLiveBonusQuestionInput = z.infer<typeof UpdateLiveBonusQuestionSchema>;
+export type SaveLiveBonusAnswerInput = z.infer<typeof SaveLiveBonusAnswerSchema>;

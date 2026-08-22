@@ -75,6 +75,8 @@ export interface LiveScoreBreakdown {
   exactScorePoints: number;
   /** Combined exact-position and band points from the table prediction. */
   tablePoints: number;
+  /** Awarded only once the tournament is marked completed. */
+  bonusPoints: number;
 }
 
 // ── Entities ──────────────────────────────────────────────────────────────────
@@ -229,6 +231,59 @@ export interface LiveGameweekSelection {
   selectedFixtureIds: string[];
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * What a bonus question expects as an answer.
+ *
+ * Deliberately re-declared rather than imported from ../types: the live module keeps its
+ * own type surface, and the two lists are free to diverge. `player` is answered through
+ * the same external player search the manual type uses, so it needs no live player table.
+ */
+export type LiveBonusAnswerType = 'number' | 'player' | 'team' | 'yes_no';
+
+/**
+ * A season-long side bet on a live tournament — "how many goals will X score?".
+ *
+ * Questions belong to the tournament rather than a competition, so every league playing
+ * that tournament asks the same ones, exactly as the manual type works.
+ */
+export interface LiveBonusQuestion {
+  id: string;
+  liveTournamentId: string;
+  question: string;
+  answerType: LiveBonusAnswerType;
+  points: number;
+  /**
+   * Null until an admin records it. A JSON array of strings when several answers count,
+   * a plain string otherwise. Redacted from non-admins until the tournament is completed.
+   */
+  correctAnswer: string | null;
+  /**
+   * When answers close. Null means the default: one hour before the first match of the
+   * tournament's starting stage — the same instant the table prediction locks.
+   */
+  lockAt: string | null;
+  createdAt: string;
+}
+
+export interface LiveBonusAnswer {
+  id: string;
+  questionId: string;
+  liveCompetitionId: string;
+  userId: string;
+  answer: string;
+  /** Null until the tournament is completed and bonus scoring runs. */
+  points: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A question plus its lock state — what the bonus tab renders from. */
+export interface LiveBonusQuestionView extends LiveBonusQuestion {
+  /** The resolved deadline: the question's own, or the tournament's first kickoff − 60 min. */
+  lockedAt: string | null;
+  isLocked: boolean;
 }
 
 /** Per-team scoring detail, for showing a user how their table prediction did. */

@@ -29,6 +29,10 @@ onwards) and the Premier League 2026/27, both available as ready-made presets.
 4. Optionally narrow a gameweek under **Selected matches** on the tournament page: tick the
    matches players predict on and the rest are ignored. Every match in a gameweek counts until
    you pick, so this step can be skipped entirely.
+5. Optionally add **Bonus questions** on the same page — season-long side bets every league
+   playing that tournament will be asked. Answers close an hour before the first match unless
+   you give a question its own date, and the points are awarded when you mark the tournament
+   completed.
 
 A background scheduler then keeps everything current on its own — polling roughly every minute
 while a match is being played, every 15 minutes when one is due within a day, and every 6 hours
@@ -234,7 +238,7 @@ Everything for the live tournament type lives under `server/src/live/` and `clie
 - **feedback** — In-app feedback inbox
 - **appConfig** — Single-row app-wide settings (maintenance mode)
 
-The live tournament type adds nine `live_*` tables in `server/src/db/liveSchema.ts` — see
+The live tournament type adds eleven `live_*` tables in `server/src/db/liveSchema.ts` — see
 [`docs/LIVE_TOURNAMENTS_PLAN.md`](docs/LIVE_TOURNAMENTS_PLAN.md).
 
 > **Migrations caveat:** `server/drizzle/meta/_journal.json` is out of sync with the SQL files on

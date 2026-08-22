@@ -5,8 +5,8 @@ import type { LiveLeaderboardRow } from '@/lib/liveApi';
 
 // ── Live competition leaderboard ──────────────────────────────────────────────
 //
-// A straight read of the denormalised columns on live_competition_members — three point
-// sources rather than the manual type's nine, so no client-side aggregation.
+// A straight read of the denormalised columns on live_competition_members — a handful of
+// point sources rather than the manual type's nine, so no client-side aggregation.
 
 interface Props {
   rows: LiveLeaderboardRow[];
@@ -19,6 +19,8 @@ export default function LiveLeaderboard({ rows }: Props) {
   // The table column only appears once the table prediction has actually been scored,
   // which is once a season. A column of zeros all year would just be noise.
   const anyTablePoints = rows.some(row => row.breakdown.tablePoints > 0);
+  // Same for bonus questions: they are awarded once, when the tournament is completed.
+  const anyBonusPoints = rows.some(row => row.breakdown.bonusPoints > 0);
 
   if (rows.length === 0) {
     return (
@@ -47,6 +49,11 @@ export default function LiveLeaderboard({ rows }: Props) {
             {anyTablePoints && (
               <th className="w-14 py-2 text-center font-medium" title={t('live.leaderboard.table')}>
                 {t('live.leaderboard.tableShort')}
+              </th>
+            )}
+            {anyBonusPoints && (
+              <th className="w-14 py-2 text-center font-medium" title={t('live.leaderboard.bonus')}>
+                {t('live.leaderboard.bonusShort')}
               </th>
             )}
             <th className="w-16 py-2 pr-2 text-right font-medium">{t('live.leaderboard.total')}</th>
@@ -85,6 +92,11 @@ export default function LiveLeaderboard({ rows }: Props) {
                 {anyTablePoints && (
                   <td className="py-2 text-center tabular-nums text-muted-foreground">
                     {row.breakdown.tablePoints}
+                  </td>
+                )}
+                {anyBonusPoints && (
+                  <td className="py-2 text-center tabular-nums text-muted-foreground">
+                    {row.breakdown.bonusPoints}
                   </td>
                 )}
                 <td className="py-2 pr-2 text-right font-semibold tabular-nums">{row.totalPoints}</td>

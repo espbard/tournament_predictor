@@ -1,5 +1,9 @@
 import { api } from '@/lib/api';
 import type {
+  LiveBonusAnswer,
+  LiveBonusAnswerType,
+  LiveBonusQuestion,
+  LiveBonusQuestionView,
   LiveCompetition,
   LiveFixture,
   LiveFormatDef,
@@ -63,6 +67,8 @@ export interface LiveLeaderboardRow {
     correctGoalDifferencePoints: number;
     exactScorePoints: number;
     tablePoints: number;
+    /** Zero until the tournament is marked completed — bonus points are withheld until then. */
+    bonusPoints: number;
   };
 }
 
@@ -206,6 +212,27 @@ export const liveApi = {
     id: string,
     body: { stageKey: string; matchday: number; fixtureIds: string[] | null },
   ) => api.put<SaveLiveSelectionResult>(`/live/tournaments/${id}/selected-matches`, body),
+  // ── Bonus questions ───────────────────────────────────────────────────────
+  // Questions belong to the tournament; answers to a competition.
+  tournamentBonusQuestions: (id: string) =>
+    api.get<LiveBonusQuestion[]>(`/live/tournaments/${id}/bonus-questions`),
+  createBonusQuestion: (
+    id: string,
+    body: { question: string; answerType: LiveBonusAnswerType; points: number; lockAt?: string | null },
+  ) => api.post<LiveBonusQuestion>(`/live/tournaments/${id}/bonus-questions`, body),
+  updateBonusQuestion: (
+    id: string,
+    questionId: string,
+    body: {
+      question?: string;
+      answerType?: LiveBonusAnswerType;
+      points?: number;
+      correctAnswer?: string | null;
+      lockAt?: string | null;
+    },
+  ) => api.patch<LiveBonusQuestion>(`/live/tournaments/${id}/bonus-questions/${questionId}`, body),
+  deleteBonusQuestion: (id: string, questionId: string) =>
+    api.delete<{ ok: true }>(`/live/tournaments/${id}/bonus-questions/${questionId}`),
   tournamentStandings: (id: string, stageKey?: string) =>
     api.get<LiveStandingView[]>(`/live/tournaments/${id}/standings${query({ stageKey })}`),
 
@@ -246,6 +273,15 @@ export const liveApi = {
       `/live/competitions/${competitionId}/table-prediction/${userId}`,
     ),
 
+  bonusQuestions: (competitionId: string) =>
+    api.get<LiveBonusQuestionView[]>(`/live/competitions/${competitionId}/bonus-questions`),
+  bonusAnswers: (competitionId: string) =>
+    api.get<LiveBonusAnswer[]>(`/live/competitions/${competitionId}/bonus-answers`),
+  otherUserBonusAnswers: (competitionId: string, userId: string) =>
+    api.get<LiveBonusAnswer[]>(`/live/competitions/${competitionId}/bonus-answers/${userId}`),
+  saveBonusAnswer: (competitionId: string, body: { questionId: string; answer: string }) =>
+    api.put<LiveBonusAnswer>(`/live/competitions/${competitionId}/bonus-answers`, body),
+
   otherUserPredictions: (competitionId: string, userId: string) =>
     api.get<Array<{ liveFixtureId: string; homeScore: number; awayScore: number; points: number | null }>>(
       `/live/competitions/${competitionId}/predictions/${userId}`,
@@ -272,5 +308,9 @@ export const liveKeys = {
   tournamentTeams: (id: string) => ['live', 'tournament', id, 'teams'] as const,
   tournamentFixtures: (id: string) => ['live', 'tournament', id, 'fixtures'] as const,
   selectedMatches: (id: string) => ['live', 'tournament', id, 'selected-matches'] as const,
+  tournamentBonusQuestions: (id: string) => ['live', 'tournament', id, 'bonus-questions'] as const,
+  bonusQuestions: (competitionId: string) => ['live', 'bonus-questions', competitionId] as const,
+  bonusAnswers: (competitionId: string, userId?: string) =>
+    ['live', 'bonus-answers', competitionId, userId ?? 'me'] as const,
   presets: ['live', 'presets'] as const,
 };

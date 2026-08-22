@@ -2,12 +2,14 @@ import { Router } from 'express';
 import { and, asc, eq, gte, inArray, lte } from 'drizzle-orm';
 import { generateId } from 'lucia';
 import {
+  CreateLiveBonusQuestionSchema,
   CreateLiveTournamentSchema,
   LIVE_FORMATS,
   LIVE_TOURNAMENT_PRESETS,
   ListLiveFixturesQuerySchema,
   SaveLiveGameweekSelectionSchema,
   SyncLiveTournamentSchema,
+  UpdateLiveBonusQuestionSchema,
   UpdateLiveTournamentSchema,
   getLiveFormat,
   isLiveFixtureSelected,
@@ -16,6 +18,7 @@ import {
 } from '@tournament-predictor/shared';
 import { db } from '../../db/client';
 import {
+  liveBonusQuestions,
   liveCompetitions,
   liveFixtures,
   liveGameweekSelections,
@@ -25,7 +28,9 @@ import {
 } from '../../db/liveSchema';
 import { requireAdmin, requireAuth } from '../../middleware/auth';
 import { notifyLiveCompetitions } from '../liveEvents';
-import { recalculateLiveTournament } from '../scoringTrigger';
+import { scoreAllLiveBonusQuestions, scoreLiveBonusQuestion } from '../bonusScoring';
+import { redactLiveBonusQuestions } from '../bonusVisibility';
+import { recalculateLiveTournament, recomputeLiveMemberTotals } from '../scoringTrigger';
 import { loadSelectionIndex } from '../selections';
 import { syncLiveWindow, syncTournamentStructure } from '../sync';
 
@@ -220,6 +225,18 @@ liveTournamentsRouter.patch('/tournaments/:id', requireAdmin, async (req, res) =
       .where(eq(liveTournaments.id, req.params.id))
       .returning();
     if (!row) return res.status(404).json({ error: 'Not found' });
+
+    // Bonus points are withheld while a tournament is still running, so the status change
+    // is what awards them — and moving a tournament back out of `completed` takes them
+    // away again. Either way the answers, and the totals they feed, are rebuilt here.
+    if (parsed.data.status !== undefined) {
+      const scored = await scoreAllLiveBonusQuestions(row.id);
+      if (scored.affectedCompetitionIds.length > 0) {
+        await recomputeLiveMemberTotals(scored.affectedCompetitionIds);
+        notifyLiveCompetitions(scored.affectedCompetitionIds, 'leaderboard-updated');
+      }
+    }
+
     return res.json(row);
   } catch (err) {
     return fail(res, err);
@@ -526,3 +543,172 @@ liveTournamentsRouter.put('/tournaments/:id/selected-matches', requireAdmin, asy
     return fail(res, err);
   }
 });
+
+// ── Bonus questions ───────────────────────────────────────────────────────────
+//
+// Season-long side bets, defined on the tournament so every league playing it asks the
+// same ones — exactly how the manual type works. Answers, and the points they earn, live
+// on the competition; see routes/competitions.ts.
+//
+// A correct answer is invisible to non-admins until the tournament is marked completed,
+// which is also the moment the points it implies are actually awarded.
+
+/** The tournament's questions. Correct answers are redacted until completion. */
+liveTournamentsRouter.get('/tournaments/:id/bonus-questions', requireAuth, async (req, res) => {
+  try {
+    const [tournament] = await db
+      .select({ id: liveTournaments.id, status: liveTournaments.status })
+      .from(liveTournaments)
+      .where(eq(liveTournaments.id, req.params.id));
+    if (!tournament) return res.status(404).json({ error: 'Not found' });
+
+    const questions = await db
+      .select()
+      .from(liveBonusQuestions)
+      .where(eq(liveBonusQuestions.liveTournamentId, tournament.id))
+      .orderBy(asc(liveBonusQuestions.createdAt));
+
+    return res.json(
+      redactLiveBonusQuestions(
+        questions,
+        res.locals.user.isAdmin,
+        tournament.status === 'completed',
+      ),
+    );
+  } catch (err) {
+    return fail(res, err);
+  }
+});
+
+liveTournamentsRouter.post('/tournaments/:id/bonus-questions', requireAdmin, async (req, res) => {
+  try {
+    const parsed = CreateLiveBonusQuestionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid body', details: parsed.error.flatten() });
+    }
+
+    const [tournament] = await db
+      .select({ id: liveTournaments.id })
+      .from(liveTournaments)
+      .where(eq(liveTournaments.id, req.params.id));
+    if (!tournament) return res.status(404).json({ error: 'Not found' });
+
+    const [created] = await db
+      .insert(liveBonusQuestions)
+      .values({
+        id: generateId(15),
+        liveTournamentId: tournament.id,
+        question: parsed.data.question.trim(),
+        answerType: parsed.data.answerType,
+        points: parsed.data.points,
+        lockAt: parsed.data.lockAt ? new Date(parsed.data.lockAt) : null,
+      })
+      .returning();
+
+    return res.status(201).json(created);
+  } catch (err) {
+    return fail(res, err);
+  }
+});
+
+/**
+ * Edit a question, or record its correct answer.
+ *
+ * Setting the correct answer scores it — but only if the tournament is already completed.
+ * Before that the answer is stored and scoring is deferred, so nobody can infer it from a
+ * leaderboard that moved.
+ */
+liveTournamentsRouter.patch(
+  '/tournaments/:id/bonus-questions/:questionId',
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const parsed = UpdateLiveBonusQuestionSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: 'Invalid body', details: parsed.error.flatten() });
+      }
+
+      const [existing] = await db
+        .select()
+        .from(liveBonusQuestions)
+        .where(
+          and(
+            eq(liveBonusQuestions.id, req.params.questionId),
+            eq(liveBonusQuestions.liveTournamentId, req.params.id),
+          ),
+        );
+      if (!existing) return res.status(404).json({ error: 'Question not found' });
+
+      const update: Record<string, unknown> = {};
+      if (parsed.data.question !== undefined) update.question = parsed.data.question.trim();
+      if (parsed.data.answerType !== undefined) update.answerType = parsed.data.answerType;
+      if (parsed.data.points !== undefined) update.points = parsed.data.points;
+      if (parsed.data.correctAnswer !== undefined) update.correctAnswer = parsed.data.correctAnswer;
+      if (parsed.data.lockAt !== undefined) {
+        update.lockAt = parsed.data.lockAt ? new Date(parsed.data.lockAt) : null;
+      }
+      if (Object.keys(update).length === 0) {
+        return res.status(400).json({ error: 'Nothing to update' });
+      }
+
+      const [updated] = await db
+        .update(liveBonusQuestions)
+        .set(update)
+        .where(eq(liveBonusQuestions.id, existing.id))
+        .returning();
+
+      // The points a question is worth changed too, so rescore on any of these.
+      if (
+        parsed.data.correctAnswer !== undefined ||
+        parsed.data.points !== undefined
+      ) {
+        const scored = await scoreLiveBonusQuestion(updated.id);
+        if (scored.affectedCompetitionIds.length > 0) {
+          await recomputeLiveMemberTotals(scored.affectedCompetitionIds);
+          notifyLiveCompetitions(scored.affectedCompetitionIds, 'leaderboard-updated');
+        }
+      }
+
+      return res.json(updated);
+    } catch (err) {
+      return fail(res, err);
+    }
+  },
+);
+
+liveTournamentsRouter.delete(
+  '/tournaments/:id/bonus-questions/:questionId',
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const [existing] = await db
+        .select({ id: liveBonusQuestions.id, liveTournamentId: liveBonusQuestions.liveTournamentId })
+        .from(liveBonusQuestions)
+        .where(
+          and(
+            eq(liveBonusQuestions.id, req.params.questionId),
+            eq(liveBonusQuestions.liveTournamentId, req.params.id),
+          ),
+        );
+      if (!existing) return res.status(404).json({ error: 'Question not found' });
+
+      // Answers cascade away with the question, so the totals they fed have to be rebuilt.
+      const competitions = await db
+        .select({ id: liveCompetitions.id })
+        .from(liveCompetitions)
+        .where(eq(liveCompetitions.liveTournamentId, existing.liveTournamentId));
+
+      await db.delete(liveBonusQuestions).where(eq(liveBonusQuestions.id, existing.id));
+
+      if (competitions.length > 0) {
+        const ids = competitions.map(c => c.id);
+        await recomputeLiveMemberTotals(ids);
+        notifyLiveCompetitions(ids, 'leaderboard-updated');
+      }
+
+      return res.json({ ok: true });
+    } catch (err) {
+      return fail(res, err);
+    }
+  },
+);

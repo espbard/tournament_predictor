@@ -527,6 +527,7 @@ const translations = {
       tabs: {
         fixtures: 'Fixtures',
         table: 'Table prediction',
+        bonus: 'Bonus questions',
         standings: 'Table',
         leaderboard: 'Leaderboard',
       },
@@ -545,7 +546,6 @@ const translations = {
       kickoffTbd: 'Kickoff to be confirmed',
       notPredictable: 'This match is not part of the prediction game.',
       notSelected: 'Not one of this gameweek’s selected matches, so it does not count.',
-      selectedMatchesNote: 'Only the {{selected}} selected matches of these {{total}} count this gameweek.',
       notScorable: 'No 90-minute score available, so this match cannot be scored.',
       afterExtraTime: 'Decided after extra time — only the 90-minute score counts',
       afterPenalties: 'Decided on penalties {{home}}–{{away}} — only the 90-minute score counts',
@@ -618,6 +618,11 @@ const translations = {
         moveUp: 'Move {{team}} up',
         moveDown: 'Move {{team}} down',
       },
+      bonus: {
+        unavailable: 'This competition has no bonus questions.',
+        deadline: 'closes {{when}}',
+        closed: 'closed',
+      },
       leaderboard: {
         player: 'Player',
         outcome: 'Points from correct outcomes',
@@ -628,6 +633,8 @@ const translations = {
         exactShort: 'Exact',
         table: 'Points from the table prediction',
         tableShort: 'Table',
+        bonus: 'Points from bonus questions',
+        bonusShort: 'Bonus',
         total: 'Total',
       },
       awaitingDraw: {
@@ -692,6 +699,10 @@ const translations = {
         existingCompetitions: 'Leagues',
         noCompetitions: 'No live leagues yet.',
         deleteCompetitionConfirm: 'Delete this league and all its predictions?',
+        bonus: {
+          title: 'Bonus questions',
+          explainer: 'Season-long side bets, asked in every league playing this tournament. Answers close an hour before the first match unless you set another date; points are awarded when you mark the tournament completed.',
+        },
         selection: {
           title: 'Selected matches',
           explainer: 'Pick which matches of a gameweek players predict on. Every match counts until you pick.',
@@ -1242,6 +1253,7 @@ const translations = {
       tabs: {
         fixtures: 'Kamper',
         table: 'Tabelltips',
+        bonus: 'Bonusspørsmål',
         standings: 'Tabell',
         leaderboard: 'Poengtavle',
       },
@@ -1260,7 +1272,6 @@ const translations = {
       kickoffTbd: 'Avspark ikke bekreftet',
       notPredictable: 'Denne kampen er ikke med i tippingen.',
       notSelected: 'Ikke blant de valgte kampene denne runden, så den teller ikke.',
-      selectedMatchesNote: 'Bare de {{selected}} valgte kampene av disse {{total}} teller denne runden.',
       notScorable: 'Ingen stilling etter 90 minutter, så kampen kan ikke gi poeng.',
       afterExtraTime: 'Avgjort etter ekstraomganger — kun stillingen etter 90 minutter teller',
       afterPenalties: 'Avgjort på straffer {{home}}–{{away}} — kun stillingen etter 90 minutter teller',
@@ -1333,6 +1344,11 @@ const translations = {
         moveUp: 'Flytt {{team}} opp',
         moveDown: 'Flytt {{team}} ned',
       },
+      bonus: {
+        unavailable: 'Denne konkurransen har ingen bonusspørsmål.',
+        deadline: 'stenger {{when}}',
+        closed: 'stengt',
+      },
       leaderboard: {
         player: 'Spiller',
         outcome: 'Poeng for riktig utfall',
@@ -1343,6 +1359,8 @@ const translations = {
         exactShort: 'Eksakt',
         table: 'Poeng fra tabelltipset',
         tableShort: 'Tabell',
+        bonus: 'Poeng fra bonusspørsmål',
+        bonusShort: 'Bonus',
         total: 'Totalt',
       },
       awaitingDraw: {
@@ -1407,6 +1425,10 @@ const translations = {
         existingCompetitions: 'Konkurranser',
         noCompetitions: 'Ingen live-konkurranser ennå.',
         deleteCompetitionConfirm: 'Slette denne konkurransen og alle tippinger?',
+        bonus: {
+          title: 'Bonusspørsmål',
+          explainer: 'Spørsmål for hele sesongen, like for alle konkurranser på denne turneringen. Svarene stenger en time før første kamp om du ikke setter en annen dato, og poengene deles ut når du merker turneringen som ferdig.',
+        },
         selection: {
           title: 'Valgte kamper',
           explainer: 'Velg hvilke kamper i en runde spillerne skal tippe på. Alle kamper teller til du velger.',
@@ -1956,6 +1978,7 @@ const translations = {
       tabs: {
         fixtures: 'Spiele',
         table: 'Tabellentipp',
+        bonus: 'Bonusfragen',
         standings: 'Tabelle',
         leaderboard: 'Rangliste',
       },
@@ -1974,7 +1997,6 @@ const translations = {
       kickoffTbd: 'Anpfiff noch offen',
       notPredictable: 'Dieses Spiel gehört nicht zum Tippspiel.',
       notSelected: 'Kein ausgewähltes Spiel dieses Spieltags, es zählt daher nicht.',
-      selectedMatchesNote: 'Nur die {{selected}} ausgewählten von diesen {{total}} Spielen zählen an diesem Spieltag.',
       notScorable: 'Kein Ergebnis nach 90 Minuten, daher keine Punkte möglich.',
       afterExtraTime: 'Nach Verlängerung entschieden — es zählt nur das Ergebnis nach 90 Minuten',
       afterPenalties: 'Im Elfmeterschießen entschieden {{home}}–{{away}} — es zählt nur das Ergebnis nach 90 Minuten',
@@ -2047,6 +2069,11 @@ const translations = {
         moveUp: '{{team}} nach oben',
         moveDown: '{{team}} nach unten',
       },
+      bonus: {
+        unavailable: 'Dieses Tippspiel hat keine Bonusfragen.',
+        deadline: 'schließt {{when}}',
+        closed: 'geschlossen',
+      },
       leaderboard: {
         player: 'Spieler',
         outcome: 'Punkte für richtigen Ausgang',
@@ -2057,6 +2084,8 @@ const translations = {
         exactShort: 'Exakt',
         table: 'Punkte aus dem Tabellentipp',
         tableShort: 'Tabelle',
+        bonus: 'Punkte aus Bonusfragen',
+        bonusShort: 'Bonus',
         total: 'Gesamt',
       },
       awaitingDraw: {
@@ -2121,6 +2150,10 @@ const translations = {
         existingCompetitions: 'Tippspiele',
         noCompetitions: 'Noch keine Live-Tippspiele.',
         deleteCompetitionConfirm: 'Dieses Tippspiel und alle Tipps löschen?',
+        bonus: {
+          title: 'Bonusfragen',
+          explainer: 'Fragen für die ganze Saison, gleich für alle Tippspiele zu diesem Turnier. Antworten schließen eine Stunde vor dem ersten Spiel, sofern du kein anderes Datum setzt; die Punkte gibt es, sobald du das Turnier als abgeschlossen markierst.',
+        },
         selection: {
           title: 'Ausgewählte Spiele',
           explainer: 'Wähle, auf welche Spiele eines Spieltags getippt wird. Bis zur Auswahl zählen alle Spiele.',
