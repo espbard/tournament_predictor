@@ -31,6 +31,7 @@ import { notifyLiveCompetitions } from '../liveEvents';
 import { scoreAllLiveBonusQuestions, scoreLiveBonusQuestion } from '../bonusScoring';
 import { redactLiveBonusQuestions } from '../bonusVisibility';
 import { recalculateLiveTournament, recomputeLiveMemberTotals } from '../scoringTrigger';
+import { diagnoseTournamentFixtures } from '../diagnostics';
 import { loadSelectionIndex } from '../selections';
 import { syncLiveWindow, syncTournamentStructure } from '../sync';
 
@@ -280,6 +281,25 @@ liveTournamentsRouter.post('/tournaments/:id/sync', requireAdmin, async (req, re
     console.error(err);
     return res.status(502).json({
       error: 'Provider sync failed',
+      details: err instanceof Error ? err.message : String(err),
+    });
+  }
+});
+
+/**
+ * What does the provider actually return for this tournament?
+ *
+ * The one honest answer to "why are there no fixtures": five requests, each reported
+ * with its URL, status and count, plus what the database holds. Admin-only, read-only,
+ * and it spends half a minute's request budget — so it is a button, not a poll.
+ */
+liveTournamentsRouter.post('/tournaments/:id/diagnose', requireAdmin, async (req, res) => {
+  try {
+    return res.json(await diagnoseTournamentFixtures(req.params.id));
+  } catch (err) {
+    console.error(err);
+    return res.status(502).json({
+      error: 'Diagnostic failed',
       details: err instanceof Error ? err.message : String(err),
     });
   }

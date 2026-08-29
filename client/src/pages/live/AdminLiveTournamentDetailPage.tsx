@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { AlertTriangle, RefreshCw, Stethoscope } from 'lucide-react';
 import { ApiError } from '@/lib/api';
-import { liveApi, liveKeys } from '@/lib/liveApi';
+import { liveApi, liveKeys, type LiveFixtureDiagnosis, type LiveProviderProbe } from '@/lib/liveApi';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import LiveSelectedMatchesPanel from '@/components/live/LiveSelectedMatchesPanel';
 import AdminLiveBonusQuestionsPanel from '@/components/live/AdminLiveBonusQuestionsPanel';
@@ -78,6 +78,12 @@ export default function AdminLiveTournamentDetailPage() {
     onError: err => setError(err instanceof ApiError ? err.message : t('live.admin.recalcFailed')),
   });
 
+  const diagnoseMutation = useMutation({
+    mutationFn: () => liveApi.diagnoseTournament(id!),
+    onError: err =>
+      setError(err instanceof ApiError ? err.message : t('live.admin.diagnoseFailed')),
+  });
+
   const toggleSyncMutation = useMutation({
     mutationFn: (syncEnabled: boolean) => liveApi.updateTournament(id!, { syncEnabled }),
     onSuccess: refresh,
@@ -141,9 +147,8 @@ export default function AdminLiveTournamentDetailPage() {
         </div>
       )}
 
-      {/* Teams but no fixtures is the one "empty" state that looks like a bug and is not:
-          the provider has the season, it just has no match calendar for it yet. Without
-          this the admin page shows a bare "Fixtures 0" and no way to tell which it is. */}
+      {/* Teams but no fixtures has several causes that look identical from here, so this
+          says what is missing and points at the diagnostic rather than picking one. */}
       {tournament.teamCount > 0 && tournament.fixtureCount === 0 && (
         <div className="mb-4 flex gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4">
           <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
@@ -234,6 +239,22 @@ export default function AdminLiveTournamentDetailPage() {
         {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
       </div>
 
+      <div className="mb-6 rounded-lg border p-5">
+        <h2 className="mb-1 font-semibold">{t('live.admin.diagnoseTitle')}</h2>
+        <p className="mb-3 text-sm text-muted-foreground">{t('live.admin.diagnoseIntro')}</p>
+
+        <button
+          onClick={() => diagnoseMutation.mutate()}
+          disabled={diagnoseMutation.isPending}
+          className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50"
+        >
+          <Stethoscope size={14} />
+          {diagnoseMutation.isPending ? t('live.admin.diagnoseRunning') : t('live.admin.diagnose')}
+        </button>
+
+        {diagnoseMutation.data && <DiagnosisReport diagnosis={diagnoseMutation.data} />}
+      </div>
+
       <LiveSelectedMatchesPanel tournamentId={tournament.id} />
 
       <AdminLiveBonusQuestionsPanel tournamentId={tournament.id} />
@@ -291,6 +312,82 @@ function Stat({ label, value }: { label: string; value: string }) {
     <div className="rounded-lg border p-4">
       <dt className="text-xs text-muted-foreground">{label}</dt>
       <dd className="mt-1 text-xl font-semibold tabular-nums">{value}</dd>
+    </div>
+  );
+}
+
+// ── The diagnostic report ─────────────────────────────────────────────────────
+//
+// Every probe is shown, failures included: which endpoint answered what is the whole
+// point, and hiding the ones that failed would hide the answer. The verdict is the
+// server's reading of the same rows, not extra information.
+
+const PROBE_LABEL_KEYS: Record<LiveProviderProbe['key'], string> = {
+  competition: 'live.admin.probeCompetition',
+  matches_season: 'live.admin.probeMatchesSeason',
+  matches_unfiltered: 'live.admin.probeMatchesUnfiltered',
+  teams: 'live.admin.probeTeams',
+  standings: 'live.admin.probeStandings',
+};
+
+const VERDICT_KEYS: Record<LiveFixtureDiagnosis['verdict'], string> = {
+  fixtures_available: 'live.admin.verdictFixturesAvailable',
+  never_fully_synced: 'live.admin.verdictNeverFullySynced',
+  season_filter_hides_fixtures: 'live.admin.verdictSeasonFilterHides',
+  provider_has_no_fixtures: 'live.admin.verdictProviderHasNoFixtures',
+  season_not_published: 'live.admin.verdictSeasonNotPublished',
+  provider_unreachable: 'live.admin.verdictProviderUnreachable',
+};
+
+function DiagnosisReport({ diagnosis }: { diagnosis: LiveFixtureDiagnosis }) {
+  const { t } = useT();
+  const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : '—');
+
+  return (
+    <div className="mt-4">
+      <p className="mb-3 text-sm text-muted-foreground">
+        {diagnosis.provider} · {diagnosis.providerCompetitionId} · {diagnosis.season}
+        {' — '}
+        {t('live.admin.diagnoseStored', {
+          fixtures: diagnosis.storedFixtures,
+          teams: diagnosis.storedTeams,
+          lastSync: fmt(diagnosis.lastStructureSyncAt),
+        })}
+      </p>
+
+      <div className="grid gap-2">
+        {diagnosis.probes.map(probe => (
+          <div key={probe.key} className="rounded-md border p-3 text-sm">
+            <div className="flex flex-wrap items-baseline gap-x-2">
+              <span className="font-medium">{t(PROBE_LABEL_KEYS[probe.key])}</span>
+              <span
+                className={`rounded px-1.5 py-0.5 text-xs font-mono ${
+                  probe.ok
+                    ? 'bg-green-500/10 text-green-700 dark:text-green-400'
+                    : 'bg-destructive/10 text-destructive'
+                }`}
+              >
+                {probe.status ?? 'no response'}
+              </span>
+              {probe.count !== null && (
+                <span className="text-xs tabular-nums text-muted-foreground">
+                  {probe.count} returned
+                  {probe.countForSeason !== null && probe.countForSeason !== probe.count
+                    ? `, ${probe.countForSeason} for ${diagnosis.season}`
+                    : ''}
+                </span>
+              )}
+            </div>
+            <p className="mt-1 break-all font-mono text-xs text-muted-foreground">{probe.url}</p>
+            {probe.detail && <p className="mt-1 text-xs text-muted-foreground">{probe.detail}</p>}
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 rounded-md border border-primary/40 bg-primary/5 p-3">
+        <h3 className="text-sm font-semibold">{t('live.admin.verdictTitle')}</h3>
+        <p className="mt-1 text-sm text-muted-foreground">{t(VERDICT_KEYS[diagnosis.verdict])}</p>
+      </div>
     </div>
   );
 }

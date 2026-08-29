@@ -405,6 +405,67 @@ describe('FootballDataProvider.fetchFixtures', () => {
   });
 });
 
+// A diagnostic that throws on the first refusal answers nothing: the point is to see
+// which endpoints refused and which did not.
+describe('FootballDataProvider.probe', () => {
+  const originalFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  function stubFetch(bodyByPath: Record<string, { status?: number; body: unknown }>) {
+    globalThis.fetch = vi.fn(async (url: any) => {
+      const path = String(url).replace('https://api.football-data.org/v4', '');
+      const hit = bodyByPath[path];
+      if (!hit) return new Response('{"message":"not found"}', { status: 404 });
+      return new Response(JSON.stringify(hit.body), { status: hit.status ?? 200 });
+    }) as any;
+  }
+
+  const provider = () =>
+    new FootballDataProvider('test-key', new RateLimiter({ limit: 50, intervalMs: 1000 }));
+
+  it('reports every endpoint, refusals included, without throwing', async () => {
+    stubFetch({
+      '/competitions/CL': { body: { currentSeason: { startDate: '2026-09-15' }, seasons: [{ startDate: '2026-09-15' }] } },
+      '/competitions/CL/matches?season=2026': { body: { matches: [] } },
+      '/competitions/CL/matches': { body: clMatches },
+      '/competitions/CL/teams?season=2026': { status: 403, body: { message: 'restricted' } },
+      '/competitions/CL/standings?season=2026': { body: clStandings },
+    });
+
+    const probes = await provider().probe('CL', '2026');
+    const by = new Map(probes.map(p => [p.key, p]));
+
+    expect(probes.map(p => p.key)).toEqual([
+      'competition',
+      'matches_season',
+      'matches_unfiltered',
+      'teams',
+      'standings',
+    ]);
+    expect(by.get('competition')!.countForSeason).toBe(1);
+    expect(by.get('matches_season')!.count).toBe(0);
+    // clMatches is a 2024 payload, so none of it counts towards 2026.
+    expect(by.get('matches_unfiltered')!.count).toBe(clMatches.matches.length);
+    expect(by.get('matches_unfiltered')!.countForSeason).toBe(0);
+    expect(by.get('teams')!.ok).toBe(false);
+    expect(by.get('teams')!.status).toBe(403);
+    expect(by.get('standings')!.count).toBeGreaterThan(0);
+  });
+
+  it('records the URL it asked for, so the request itself can be checked', async () => {
+    stubFetch({});
+    const probes = await provider().probe('CL', '2026');
+
+    expect(probes.find(p => p.key === 'matches_season')!.url).toBe(
+      'https://api.football-data.org/v4/competitions/CL/matches?season=2026',
+    );
+    expect(probes.every(p => !p.ok && p.status === 404)).toBe(true);
+  });
+});
+
 describe('RateLimiter', () => {
   it('runs requests up to the limit without delay', async () => {
     const limiter = new RateLimiter({ limit: 3, intervalMs: 10_000 });

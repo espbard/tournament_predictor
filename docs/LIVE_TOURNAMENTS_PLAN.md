@@ -127,7 +127,13 @@ npm run live:smoke     # re-run the Phase 2 go/no-go check
 npm run live:doctor    # why does a tournament have no fixtures? (CL 2026 by default)
 ```
 
-`live:doctor` is the one to reach for when a tournament sits at zero fixtures. It asks
+In production the same check is a button: **Ask the provider** on the admin tournament page
+(`POST /api/live/tournaments/:id/diagnose`, admin-only, read-only, five requests through the
+adapter's own rate limiter). `LiveProvider.probe` is what each adapter implements for it, and
+`server/src/live/diagnostics.ts` turns the answers into a verdict — including
+`never_fully_synced`, the case where the fixtures are there and only a *window* sync has run.
+
+`live:doctor` is the local-script form of it, for when a tournament sits at zero fixtures. It asks
 `/matches?season=`, `/matches` unfiltered, `/teams` and `/standings` separately and prints a
 verdict, because the app cannot tell those apart on its own — an unpublished season, a published
 season with no calendar yet, and a `season=` filter that returns nothing all look like "0

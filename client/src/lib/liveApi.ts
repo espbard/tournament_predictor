@@ -138,6 +138,35 @@ export interface SaveLiveSelectionResult {
   scoredPredictions: number;
 }
 
+/** One provider endpoint a diagnostic run asked about. Mirrors ProviderProbe. */
+export interface LiveProviderProbe {
+  key: 'competition' | 'matches_season' | 'matches_unfiltered' | 'teams' | 'standings';
+  url: string;
+  status: number | null;
+  ok: boolean;
+  count: number | null;
+  countForSeason: number | null;
+  detail: string | null;
+}
+
+export interface LiveFixtureDiagnosis {
+  provider: string;
+  providerCompetitionId: string;
+  season: string;
+  storedFixtures: number;
+  storedTeams: number;
+  lastStructureSyncAt: string | null;
+  lastSyncError: string | null;
+  probes: LiveProviderProbe[];
+  verdict:
+    | 'fixtures_available'
+    | 'season_filter_hides_fixtures'
+    | 'provider_has_no_fixtures'
+    | 'season_not_published'
+    | 'provider_unreachable'
+    | 'never_fully_synced';
+}
+
 export interface LiveSyncResult {
   teams: number;
   fixtures: number;
@@ -205,6 +234,9 @@ export const liveApi = {
   deleteTournament: (id: string) => api.delete<{ ok: true }>(`/live/tournaments/${id}`),
   syncTournament: (id: string, full: boolean) =>
     api.post<LiveSyncResult>(`/live/tournaments/${id}/sync`, { full }),
+  /** Ask the provider directly what it has for this tournament. Admin-only. */
+  diagnoseTournament: (id: string) =>
+    api.post<LiveFixtureDiagnosis>(`/live/tournaments/${id}/diagnose`, {}),
   recalculateTournament: (id: string) =>
     api.post<{ scoredPredictions: number; affectedCompetitionIds: string[] }>(
       `/live/tournaments/${id}/recalculate`,

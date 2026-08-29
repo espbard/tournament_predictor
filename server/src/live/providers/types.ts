@@ -119,6 +119,38 @@ export interface FetchFixturesOptions {
   dateTo?: string;
 }
 
+/**
+ * One endpoint a diagnostic run asked about.
+ *
+ * The keys are the questions worth asking of any football provider, not football-data's
+ * URL shapes: does the competition list this season, does the season-filtered match list
+ * have anything, does the unfiltered one, and do teams and a table exist. An adapter maps
+ * them onto its own endpoints.
+ */
+export type ProviderProbeKey =
+  | 'competition'
+  | 'matches_season'
+  | 'matches_unfiltered'
+  | 'teams'
+  | 'standings';
+
+export interface ProviderProbe {
+  key: ProviderProbeKey;
+  /** The request as made, credentials excluded. Shown to an admin verbatim. */
+  url: string;
+  status: number | null;
+  ok: boolean;
+  /** Items returned — matches, teams, table rows. Null when the request failed. */
+  count: number | null;
+  /**
+   * Matches that belong to the season asked for. Differs from `count` only on
+   * `matches_unfiltered`, which serves whatever the provider calls the current season.
+   */
+  countForSeason: number | null;
+  /** Anything else worth reading: a stage breakdown, the seasons listed, an error. */
+  detail: string | null;
+}
+
 export interface LiveProvider {
   readonly id: LiveProviderId;
   listCompetitions(): Promise<ProviderCompetitionSummary[]>;
@@ -129,6 +161,15 @@ export interface LiveProvider {
     opts?: FetchFixturesOptions,
   ): Promise<ProviderFixture[]>;
   fetchStandings(competitionId: string, season: string): Promise<ProviderStandingRow[]>;
+  /**
+   * Ask every endpoint separately and report what came back, without throwing.
+   *
+   * Exists because "0 fixtures" has several causes that look identical from the outside:
+   * a season the provider has not created, a season it has created without a match
+   * calendar, a filter that returns nothing, and a competition or season we have wrong.
+   * Nothing here writes to the database.
+   */
+  probe(competitionId: string, season: string): Promise<ProviderProbe[]>;
 }
 
 // ── Errors ────────────────────────────────────────────────────────────────────

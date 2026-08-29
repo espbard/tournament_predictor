@@ -224,9 +224,12 @@ entry point. Three things to know before touching it:
 
 Mapping is pinned by `footballData.test.ts` against real payloads committed under
 `providers/__fixtures__/`; no test touches the network. To re-check the provider against live
-data, run `npm run live:smoke` from `server/`. When a tournament has no fixtures, run
-`npm run live:doctor` instead: it separates "the provider has no fixtures" from "our request
-hides them", which is otherwise indistinguishable from the outside.
+data, run `npm run live:smoke` from `server/`. When a tournament has no fixtures, use the
+**Ask the provider** button on the admin tournament page — `POST /api/live/tournaments/:id/diagnose`,
+which probes each endpoint with the running server's key and reports URL, status and count per
+endpoint plus a verdict. `npm run live:doctor` is the same check as a local script. Both separate
+"the provider has no fixtures" from "our request hides them", which is otherwise
+indistinguishable from the outside.
 
 - **An empty match list is not an error either.** A season can exist at the provider — teams and
   a table and all — days before its match calendar is ingested. Note the asymmetry this creates:
