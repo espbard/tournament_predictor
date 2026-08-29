@@ -56,6 +56,7 @@ export const liveBonusAnswerTypeEnum = pgEnum('live_bonus_answer_type', [
   'player',
   'team',
   'yes_no',
+  'country',
 ]);
 
 // ── Tables ────────────────────────────────────────────────────────────────────
@@ -368,6 +369,19 @@ export const liveBonusQuestions = pgTable('live_bonus_questions', {
    * shared/src/live/lock.ts.
    */
   lockAt: timestamp('lock_at'),
+
+  // ── Optional constraints — see shared/src/live/bonus.ts ─────────────────────
+  /** Inclusive bounds on a number answer. Null on either side leaves that side open. */
+  minValue: integer('min_value'),
+  maxValue: integer('max_value'),
+  /** A number answer within ±leeway of the correct one scores in full. */
+  leeway: integer('leeway'),
+  /**
+   * The only answers a player, team or country question accepts, stored whole because it
+   * is only ever read and written complete. Null or empty means every option is available.
+   */
+  options: json('options').$type<string[]>(),
+
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 

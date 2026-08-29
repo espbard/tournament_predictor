@@ -4,7 +4,11 @@ import { liveApi, liveKeys } from '@/lib/liveApi';
 import BonusQuestionsPanel from '@/components/bonus/BonusQuestionsPanel';
 import { useAuthStore } from '@/store/authStore';
 import { useT } from '@/lib/useT';
-import type { BonusAnswerType, Team } from '@tournament-predictor/shared';
+import type { Team } from '@tournament-predictor/shared';
+import type { PanelAnswerType } from '@/components/bonus/BonusQuestionsPanel';
+
+// Only live questions offer a country answer.
+const LIVE_ANSWER_TYPES: PanelAnswerType[] = ['number', 'yes_no', 'player', 'team', 'country'];
 
 // ── Bonus questions: live tournaments ─────────────────────────────────────────
 //
@@ -72,9 +76,13 @@ export default function LiveBonusQuestionsTab({
       questions={questions.map(q => ({
         id: q.id,
         question: q.question,
-        answerType: q.answerType as BonusAnswerType,
+        answerType: q.answerType as PanelAnswerType,
         points: q.points,
         correctAnswer: q.correctAnswer,
+        minValue: q.minValue,
+        maxValue: q.maxValue,
+        leeway: q.leeway,
+        options: q.options,
         isLocked: q.isLocked,
         // The competition has no deadline of its own to show this next to, so each
         // question says when it closes.
@@ -107,6 +115,9 @@ export default function LiveBonusQuestionsTab({
         // A correct answer can award points the moment the tournament is completed.
         queryClient.invalidateQueries({ queryKey: liveKeys.leaderboard(competitionId) });
       }}
+      // Live questions can be narrowed, and only they offer a country answer.
+      answerTypes={LIVE_ANSWER_TYPES}
+      supportsConstraints
       onAnswersChanged={() =>
         queryClient.invalidateQueries({ queryKey: liveKeys.bonusAnswers(competitionId, viewUserId) })
       }

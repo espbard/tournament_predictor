@@ -10,6 +10,7 @@ import {
   SaveLiveTablePredictionSchema,
   UpdateLiveCompetitionSchema,
   bonusQuestionLockAt,
+  checkLiveBonusAnswer,
   fixtureLockAt,
   getLiveFormat,
   isBonusQuestionLocked,
@@ -1105,6 +1106,28 @@ liveCompetitionsRouter.put('/competitions/:id/bonus-answers', requireAuth, async
       });
     }
 
+    // A team question with no list of its own is answered from the tournament's teams, so
+    // the check needs them; every other kind resolves its options without a query.
+    const teamNames =
+      question.answerType === 'team' && !question.options?.length
+        ? (
+            await db
+              .select({ name: liveTeams.name })
+              .from(liveTeams)
+              .where(eq(liveTeams.liveTournamentId, tournament.id))
+          ).map(t => t.name)
+        : [];
+
+    const checked = checkLiveBonusAnswer(question, parsed.data.answer, teamNames);
+    if (!checked.ok) {
+      return res.status(400).json({
+        error: 'That answer is not allowed for this question',
+        reason: checked.reason,
+        minValue: question.minValue,
+        maxValue: question.maxValue,
+      });
+    }
+
     const now = new Date();
     const [saved] = await db
       .insert(liveBonusAnswers)
@@ -1113,7 +1136,7 @@ liveCompetitionsRouter.put('/competitions/:id/bonus-answers', requireAuth, async
         questionId: question.id,
         liveCompetitionId: competition.id,
         userId: user.id,
-        answer: parsed.data.answer.trim(),
+        answer: checked.value,
         createdAt: now,
         updatedAt: now,
       })
@@ -1123,7 +1146,7 @@ liveCompetitionsRouter.put('/competitions/:id/bonus-answers', requireAuth, async
           liveBonusAnswers.liveCompetitionId,
           liveBonusAnswers.userId,
         ],
-        set: { answer: parsed.data.answer.trim(), updatedAt: now },
+        set: { answer: checked.value, updatedAt: now },
       })
       .returning();
 

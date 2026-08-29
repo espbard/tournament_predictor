@@ -197,7 +197,7 @@ the data requires, unlike their manual counterparts:
 | `live_competition_members` | Membership + denormalised 3-source score aggregate |
 | `live_predictions` | Unique on `(competition, user, fixture)` — the constraint the manual `predictions` table lacks |
 | `live_gameweek_selections` | One row per gameweek (`(tournament, stage_key, matchday)`, unique) holding the fixture ids users predict on, as a single `json` array. **No row means every fixture in that gameweek counts** — the default — so a row is never stored empty |
-| `live_bonus_questions` | Season-long side bets on the tournament, so every league playing it asks the same ones. `lock_at` is an optional per-question deadline; null means the default — an hour before the first match of the starting stage |
+| `live_bonus_questions` | Season-long side bets on the tournament, so every league playing it asks the same ones. `lock_at` is an optional per-question deadline; null means the default — an hour before the first match of the starting stage. `min_value` / `max_value` / `leeway` / `options` are the optional constraints, enforced in `shared/src/live/bonus.ts` |
 | `live_bonus_answers` | Unique on `(question, competition, user)`. `points` stays null until the tournament is marked completed — bonus points are withheld until then, as in the manual type |
 | `live_table_predictions` | One row per user per table stage; the predicted order is a single `json` array of team ids, top first. No FK on those ids on purpose — a removed team degrades to a stale id that scores nothing rather than cascading the prediction away |
 
@@ -429,6 +429,10 @@ correct answers stored as a JSON array. Two rules are worth knowing:
 - **A question closes at its own `lock_at`**, or by default an hour before the first match of the
   starting stage — the same instant the table prediction locks. There is no competition-wide
   deadline to fall back on in this tournament type.
+- **A question can be narrowed** (`shared/src/live/bonus.ts`): a number answer by a range and a
+  leeway (within ±leeway of the correct answer scores in full, never a fraction of it), and a
+  player, team or country answer by a list of options. Unnarrowed, a team answer is any of the
+  tournament's teams and a country answer any of UEFA's 55 member associations.
 
 Scoring writes points onto the answers only; the rollup into `live_competition_members` and
 `total_points` is `recomputeLiveMemberTotals()` in `scoringTrigger.ts`, the single place that

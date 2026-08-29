@@ -111,6 +111,14 @@ export interface LiveTournamentDetail extends LiveTournament {
   unmappedStages: string[];
 }
 
+/** What an admin may narrow about a bonus question. See shared/src/live/bonus.ts. */
+export interface LiveBonusConstraintsPayload {
+  minValue: number | null;
+  maxValue: number | null;
+  leeway: number | null;
+  options: string[] | null;
+}
+
 /** One gameweek — a matchday inside a stage — as the admin selection UI sees it. */
 export interface LiveGameweekView {
   stageKey: string;
@@ -218,7 +226,12 @@ export const liveApi = {
     api.get<LiveBonusQuestion[]>(`/live/tournaments/${id}/bonus-questions`),
   createBonusQuestion: (
     id: string,
-    body: { question: string; answerType: LiveBonusAnswerType; points: number; lockAt?: string | null },
+    body: {
+      question: string;
+      answerType: LiveBonusAnswerType;
+      points: number;
+      lockAt?: string | null;
+    } & Partial<LiveBonusConstraintsPayload>,
   ) => api.post<LiveBonusQuestion>(`/live/tournaments/${id}/bonus-questions`, body),
   updateBonusQuestion: (
     id: string,
@@ -229,7 +242,7 @@ export const liveApi = {
       points?: number;
       correctAnswer?: string | null;
       lockAt?: string | null;
-    },
+    } & Partial<LiveBonusConstraintsPayload>,
   ) => api.patch<LiveBonusQuestion>(`/live/tournaments/${id}/bonus-questions/${questionId}`, body),
   deleteBonusQuestion: (id: string, questionId: string) =>
     api.delete<{ ok: true }>(`/live/tournaments/${id}/bonus-questions/${questionId}`),

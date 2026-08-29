@@ -85,7 +85,25 @@ export const SaveLiveGameweekSelectionSchema = z.object({
 
 // ── Bonus questions ───────────────────────────────────────────────────────────
 
-const bonusAnswerType = z.enum(['number', 'player', 'team', 'yes_no']);
+const bonusAnswerType = z.enum(['number', 'player', 'team', 'yes_no', 'country']);
+
+// Wide enough for any real question — "how many goals in the group stage?" — while still
+// refusing a value that would only be a typo.
+const bonusNumber = z.number().int().min(-100000).max(100000);
+
+/**
+ * What an admin may narrow about a question. All optional, and all meaningful only for
+ * some answer types — see shared/src/live/bonus.ts for which.
+ */
+const bonusConstraints = {
+  /** Inclusive bounds on a number answer. */
+  minValue: bonusNumber.nullable().optional(),
+  maxValue: bonusNumber.nullable().optional(),
+  /** A number answer within ±leeway of the correct one scores in full. */
+  leeway: z.number().int().min(0).max(100000).nullable().optional(),
+  /** The only answers a player, team or country question accepts. Empty means all of them. */
+  options: z.array(z.string().min(1).max(200)).max(500).nullable().optional(),
+};
 
 export const CreateLiveBonusQuestionSchema = z.object({
   question: z.string().min(1).max(500),
@@ -93,6 +111,7 @@ export const CreateLiveBonusQuestionSchema = z.object({
   points: z.number().int().min(1).max(1000),
   /** Null means the default deadline — the tournament's first predictable kickoff − 60 min. */
   lockAt: z.string().datetime().nullable().optional(),
+  ...bonusConstraints,
 });
 
 export const UpdateLiveBonusQuestionSchema = z.object({
@@ -102,6 +121,7 @@ export const UpdateLiveBonusQuestionSchema = z.object({
   /** A JSON array of strings when several answers count; a plain string otherwise. */
   correctAnswer: z.string().nullable().optional(),
   lockAt: z.string().datetime().nullable().optional(),
+  ...bonusConstraints,
 });
 
 export const SaveLiveBonusAnswerSchema = z.object({

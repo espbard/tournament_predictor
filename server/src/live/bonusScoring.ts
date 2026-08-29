@@ -1,4 +1,5 @@
 import { and, eq, inArray } from 'drizzle-orm';
+import { liveBonusAnswerMatches, type LiveBonusConstraints } from '@tournament-predictor/shared';
 import { db } from '../db/client';
 import {
   liveBonusAnswers,
@@ -40,15 +41,26 @@ export function parseLiveCorrectAnswers(raw: string | null): string[] {
   return [raw];
 }
 
-/** Pure scoring rule: all-or-nothing per question. */
+/**
+ * Pure scoring rule: all-or-nothing per question.
+ *
+ * The comparison itself lives in shared/src/live/bonus.ts, so what counts as right here is
+ * exactly what the answer input allowed — including a number question's leeway, where
+ * anything within ±leeway of the correct answer scores in full.
+ */
 export function computeLiveBonusPoints(
-  question: { correctAnswer: string | null; points: number },
+  question: { correctAnswer: string | null; points: number } & Partial<LiveBonusConstraints>,
   answerText: string,
 ): number {
   const correct = parseLiveCorrectAnswers(question.correctAnswer);
   if (correct.length === 0) return 0;
-  const given = answerText.trim().toLowerCase();
-  return correct.some(c => c.trim().toLowerCase() === given) ? question.points : 0;
+  const constraints: LiveBonusConstraints = {
+    answerType: question.answerType ?? 'number',
+    leeway: question.leeway ?? null,
+  };
+  return correct.some(c => liveBonusAnswerMatches(constraints, c, answerText))
+    ? question.points
+    : 0;
 }
 
 async function isTournamentCompleted(liveTournamentId: string): Promise<boolean> {
@@ -65,11 +77,10 @@ async function isTournamentCompleted(liveTournamentId: string): Promise<boolean>
  * Callers are responsible for only reaching here once the tournament is completed —
  * `scoreLiveBonusQuestion` and `scoreAllLiveBonusQuestions` are the gated entry points.
  */
-async function applyQuestionScores(question: {
-  id: string;
-  correctAnswer: string | null;
-  points: number;
-}): Promise<number> {
+async function applyQuestionScores(
+  question: { id: string; correctAnswer: string | null; points: number } &
+    Partial<LiveBonusConstraints>,
+): Promise<number> {
   const answers = await db
     .select({ id: liveBonusAnswers.id, answer: liveBonusAnswers.answer })
     .from(liveBonusAnswers)

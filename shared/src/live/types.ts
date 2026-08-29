@@ -237,10 +237,11 @@ export interface LiveGameweekSelection {
  * What a bonus question expects as an answer.
  *
  * Deliberately re-declared rather than imported from ../types: the live module keeps its
- * own type surface, and the two lists are free to diverge. `player` is answered through
- * the same external player search the manual type uses, so it needs no live player table.
+ * own type surface, and the two lists have diverged — `country` exists only here. `player`
+ * is answered through the same external player search the manual type uses, so it needs no
+ * live player table.
  */
-export type LiveBonusAnswerType = 'number' | 'player' | 'team' | 'yes_no';
+export type LiveBonusAnswerType = 'number' | 'player' | 'team' | 'yes_no' | 'country';
 
 /**
  * A season-long side bet on a live tournament — "how many goals will X score?".
@@ -264,6 +265,20 @@ export interface LiveBonusQuestion {
    * tournament's starting stage — the same instant the table prediction locks.
    */
   lockAt: string | null;
+
+  // ── Optional constraints (see shared/src/live/bonus.ts) ─────────────────────
+  /** Inclusive bounds on a number answer. Null on either side leaves that side open. */
+  minValue: number | null;
+  maxValue: number | null;
+  /** A number answer within ±leeway of the correct one scores in full. */
+  leeway: number | null;
+  /**
+   * The only answers a player, team or country question accepts. Null or empty means
+   * every option is available — the tournament's teams, the European countries, or any
+   * player.
+   */
+  options: string[] | null;
+
   createdAt: string;
 }
 

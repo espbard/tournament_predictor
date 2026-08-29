@@ -5,8 +5,8 @@ import LiveGateShell from '@/components/live/LiveGateShell';
 import PlayerSearchInput from '@/components/PlayerSearchInput';
 import TeamSelectInput from '@/components/TeamSelectInput';
 import { useT } from '@/lib/useT';
-import type { Team } from '@tournament-predictor/shared';
-import type { LiveBonusQuestionView } from '@tournament-predictor/shared';
+import { EUROPEAN_COUNTRIES } from '@tournament-predictor/shared';
+import type { LiveBonusQuestionView, Team } from '@tournament-predictor/shared';
 
 // ── Step two: the bonus questions ─────────────────────────────────────────────
 //
@@ -66,9 +66,29 @@ export default function LiveBonusQuestionsGate({
       setError(err instanceof ApiError ? err.message : t('live.bonus.saveFailed')),
   });
 
-  const canSubmit = answer.trim().length > 0 && !saveMutation.isPending;
+  // What this question accepts: the admin's list, or everything of that kind. A team
+  // question keeps its picker and just offers fewer teams.
+  const listedOptions = question?.options?.length ? question.options : null;
+  const pickList = useMemo(
+    () =>
+      listedOptions ??
+      (question?.answerType === 'country' ? [...EUROPEAN_COUNTRIES] : null),
+    [listedOptions, question?.answerType],
+  );
+  const teamOptions = useMemo(
+    () => (listedOptions ? teams.filter(team => listedOptions.includes(team.name)) : teams),
+    [teams, listedOptions],
+  );
 
-  const teamOptions = useMemo(() => teams, [teams]);
+  // The range is enforced here as well as on the server, so a value that would be refused
+  // cannot be submitted in the first place.
+  const outOfRange =
+    question?.answerType === 'number' &&
+    answer.trim() !== '' &&
+    ((question.minValue != null && Number(answer) < question.minValue) ||
+      (question.maxValue != null && Number(answer) > question.maxValue));
+
+  const canSubmit = answer.trim().length > 0 && !outOfRange && !saveMutation.isPending;
 
   if (!question) return null;
 
@@ -133,6 +153,20 @@ export default function LiveBonusQuestionsGate({
                 </button>
               ))}
             </div>
+          ) : question.answerType === 'country' ||
+            (question.answerType === 'player' && pickList) ? (
+            <select
+              value={answer}
+              onChange={e => setAnswer(e.target.value)}
+              className="w-full rounded-md border bg-background px-3 py-3 text-base focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              <option value="">{t('bonusQuestions.chooseAnswer')}</option>
+              {(pickList ?? []).map(option => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
           ) : question.answerType === 'player' ? (
             <PlayerSearchInput
               value={answer}
@@ -149,10 +183,28 @@ export default function LiveBonusQuestionsGate({
             <input
               type="number"
               value={answer}
+              min={question.minValue ?? undefined}
+              max={question.maxValue ?? undefined}
               onChange={e => setAnswer(e.target.value)}
               placeholder={t('bonusQuestions.yourAnswer')}
               className="w-full rounded-md border px-3 py-3 text-base focus:outline-none focus:ring-2 focus:ring-ring [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />
+          )}
+
+          {/* What the question will accept, said before it is refused. */}
+          {question.answerType === 'number' &&
+            (question.minValue != null || question.maxValue != null) && (
+              <p className={`mt-2 text-xs ${outOfRange ? 'text-destructive' : 'text-muted-foreground'}`}>
+                {t('bonusQuestions.constraints.rangeHint', {
+                  min: question.minValue ?? '−∞',
+                  max: question.maxValue ?? '∞',
+                })}
+              </p>
+            )}
+          {question.answerType === 'number' && question.leeway != null && question.leeway > 0 && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              {t('bonusQuestions.constraints.leewayHint', { leeway: question.leeway })}
+            </p>
           )}
         </div>
       </div>
