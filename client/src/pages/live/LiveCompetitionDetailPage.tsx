@@ -12,6 +12,8 @@ import LiveLeaderboard from '@/components/live/LiveLeaderboard';
 import LiveQualifiedTeamsPanel from '@/components/live/LiveQualifiedTeamsPanel';
 import LiveTablePrediction from '@/components/live/LiveTablePrediction';
 import LiveBonusQuestionsTab from '@/components/live/LiveBonusQuestionsTab';
+import LiveTablePredictionGate from '@/components/live/LiveTablePredictionGate';
+import { useAuthStore } from '@/store/authStore';
 
 // ── Live competition ──────────────────────────────────────────────────────────
 //
@@ -32,6 +34,7 @@ const LIVE_STATUSES = new Set(['in_play', 'paused']);
 export default function LiveCompetitionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { t } = useT();
+  const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -85,10 +88,12 @@ export default function LiveCompetitionDetailPage() {
     enabled: !!tournamentId,
   });
 
+  // Fetched on every tab rather than only its own: whether a table prediction exists
+  // decides whether the rest of the page is reachable at all.
   const { data: tableView, isLoading: loadingTable } = useQuery({
     queryKey: liveKeys.tablePrediction(id!),
     queryFn: () => liveApi.tablePrediction(id!),
-    enabled: !!id && activeTab === 'table',
+    enabled: !!id,
   });
 
   // Live updates. One connection per page, same pattern as CompetitionDetailPage.
@@ -212,12 +217,39 @@ export default function LiveCompetitionDetailPage() {
     },
   });
 
-  if (loadingCompetition) return <LoadingSpinner />;
+  // ── The table-prediction gate ───────────────────────────────────────────────
+  //
+  // A member who has not submitted a table prediction sees only that, full screen, until
+  // they do. Three groups are deliberately let through instead of being trapped:
+  // anyone who can no longer submit (the table locks at the first kickoff and never
+  // reopens), accounts that are not allowed to predict at all, and admins, who need to be
+  // able to look at a competition without playing it.
+  const mustPredictTable =
+    !!tableView?.available &&
+    !tableView.isLocked &&
+    !tableView.prediction &&
+    tableView.teams.length > 0 &&
+    !user?.isAdmin &&
+    !user?.isLeaderboardUser;
+
+  if (loadingCompetition || loadingTable) return <LoadingSpinner />;
   if (!competition) {
     return (
       <main className="mx-auto max-w-2xl px-4 py-12">
         <p className="text-center text-sm text-muted-foreground">{t('live.competitionNotFound')}</p>
       </main>
+    );
+  }
+
+  if (mustPredictTable && tableView?.available) {
+    return (
+      <LiveTablePredictionGate
+        competitionName={competition.name}
+        view={tableView}
+        onSave={orderedTeamIds => saveTableMutation.mutate(orderedTeamIds)}
+        isSaving={saveTableMutation.isPending}
+        error={tableError}
+      />
     );
   }
 
@@ -322,9 +354,7 @@ export default function LiveCompetitionDetailPage() {
       )}
 
       {activeTab === 'table' &&
-        (loadingTable ? (
-          <LoadingSpinner />
-        ) : !tableView?.available ? (
+        (!tableView?.available ? (
           <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
             {t('live.table.unavailable')}
           </p>

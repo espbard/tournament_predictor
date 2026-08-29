@@ -411,6 +411,12 @@ Three things to know:
   fixture keeps it open, since it could still move the table.
 - Positions come from `live_standings` verbatim, never recomputed locally.
 
+**The table-prediction gate** — a member who has not submitted a table prediction gets
+`LiveTablePredictionGate` full screen instead of the competition, and cannot reach the rest of
+it until they submit. The table locks at the first kickoff and never reopens, so it is the one
+prediction that has to be asked for up front. Anyone who can no longer submit, accounts that
+may not predict, and admins are let through instead of being trapped.
+
 **Bonus questions** (`server/src/live/bonusScoring.ts`) — a fourth source, mirroring the manual
 type: all-or-nothing per question, matched case-insensitively after trimming, with several
 correct answers stored as a JSON array. Two rules are worth knowing:

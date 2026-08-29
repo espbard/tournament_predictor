@@ -923,6 +923,14 @@ Components under `client/src/components/live/`:
 - `LiveSelectedMatchesPanel.tsx` — admin only, rendered on `AdminLiveTournamentDetailPage`. Picks
   a stage and gameweek, then ticks which of its matches count. Opens on the gameweek of the next
   match still to be played, and saving with nothing ticked resets the gameweek to "all count".
+- `LiveTablePredictionGate.tsx` — the full-screen, dark blue to black first-run screen a
+  member sees instead of the competition until they have submitted a table prediction. The
+  table is the one prediction that cannot be made later (it locks at the first kickoff and
+  never reopens), so it is asked for up front. Three groups are deliberately let through
+  rather than trapped: anyone who can no longer submit, accounts that may not predict at all,
+  and admins, who need to inspect a competition without playing it. Renders
+  `LiveTablePrediction` in its `gate` variant — same list, save control pinned to the foot of
+  the screen, and the standings order on screen counts as a submission untouched.
 - `LiveBonusQuestionsTab.tsx` / `AdminLiveBonusQuestionsPanel.tsx` — the data half of the bonus
   tab and of the admin authoring panel. Both render
   `components/bonus/BonusQuestionsPanel.tsx`, which is the manual type's bonus UI lifted out of
