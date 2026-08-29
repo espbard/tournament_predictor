@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { EUROPEAN_COUNTRIES } from '@tournament-predictor/shared';
+import PlayerSearchInput from '@/components/PlayerSearchInput';
 import { useT } from '@/lib/useT';
 import type { Team } from '@tournament-predictor/shared';
 import type { PanelAnswerType } from '@/components/bonus/BonusQuestionsPanel';
@@ -192,12 +193,17 @@ export default function BonusConstraintsEditor({ answerType, value, onChange, te
 }
 
 /**
- * Type a player's name and add it to the list.
+ * Search for a player and add them to the list.
+ *
+ * The same search the answer inputs and the correct-answer picker use, so an admin builds
+ * the list from the same names a member will be choosing between. A typed name is taken as
+ * it stands when the search has nothing to offer — the suggestions come from an external
+ * service that a firewall or an outage can put out of reach, and the list must still be
+ * buildable then.
  *
  * Deliberately not a <form>: this editor is rendered inside the "add a question" form, and
  * a nested form is invalid — React warns about it, and the inner submit reaches the outer
- * form, which submits the half-filled question and reloads the page. So the button is a
- * plain button, and Enter is handled here with the keypress swallowed for the same reason.
+ * form, which submits the half-filled question and reloads the page.
  */
 function PlayerOptionInput({ onAdd }: { onAdd: (name: string) => void }) {
   const { t } = useT();
@@ -212,23 +218,19 @@ function PlayerOptionInput({ onAdd }: { onAdd: (name: string) => void }) {
 
   return (
     <div className="flex gap-2">
-      <input
-        type="text"
-        value={name}
-        onChange={e => setName(e.target.value)}
-        onKeyDown={e => {
-          if (e.key !== 'Enter') return;
-          e.preventDefault();
-          add();
-        }}
-        placeholder={t('bonusQuestions.constraints.addPlayerOption')}
-        className="flex-1 rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-      />
+      <div className="flex-1">
+        <PlayerSearchInput
+          value={name}
+          onChange={setName}
+          placeholder={t('bonusQuestions.constraints.addPlayerOption')}
+          allowFreeText
+        />
+      </div>
       <button
         type="button"
         onClick={add}
         disabled={name.trim() === ''}
-        className="rounded-md border px-3 py-2 text-sm hover:bg-muted disabled:opacity-50"
+        className="shrink-0 rounded-md border px-3 py-2 text-sm hover:bg-muted disabled:opacity-50"
       >
         {t('common.add')}
       </button>
