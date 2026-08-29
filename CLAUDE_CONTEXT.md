@@ -224,7 +224,16 @@ entry point. Three things to know before touching it:
 
 Mapping is pinned by `footballData.test.ts` against real payloads committed under
 `providers/__fixtures__/`; no test touches the network. To re-check the provider against live
-data, run `npx tsx --env-file=../.env src/scripts/live-provider-smoke.ts` from `server/`.
+data, run `npm run live:smoke` from `server/`. When a tournament has no fixtures, run
+`npm run live:doctor` instead: it separates "the provider has no fixtures" from "our request
+hides them", which is otherwise indistinguishable from the outside.
+
+- **An empty match list is not an error either.** A season can exist at the provider — teams and
+  a table and all — days before its match calendar is ingested. Note the asymmetry this creates:
+  if `/matches` 404s the whole structure sync aborts before teams are written, so a tournament
+  that *has* teams but no fixtures proves `/matches` answered 200 with an empty list. The
+  adapter retries such a response once without the `season=` filter, keeping the matches whose
+  own `season.startDate` falls in the season asked for.
 
 ### Migrations — read this before adding a column
 

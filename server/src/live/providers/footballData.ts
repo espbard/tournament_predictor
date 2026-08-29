@@ -58,8 +58,17 @@ interface RawTeamRef {
   crest?: string | null;
 }
 
+interface RawSeason {
+  id?: number | null;
+  /** football-data identifies a season by the year its start date falls in. */
+  startDate?: string | null;
+  endDate?: string | null;
+}
+
 interface RawMatch {
   id: number;
+  /** Present on every match in a /matches payload, whether or not it was filtered. */
+  season?: RawSeason | null;
   utcDate: string | null;
   status: string;
   matchday: number | null;
@@ -195,6 +204,19 @@ export function mapMatch(raw: RawMatch): ProviderFixture {
     minute: raw.minute ?? null,
     providerLastUpdated: emptyToNull(raw.lastUpdated),
   };
+}
+
+/**
+ * The season a match belongs to, as football-data numbers seasons: the year its
+ * `season.startDate` falls in. Null when the payload carries no season at all.
+ *
+ * Used to filter an unfiltered `/matches` response down to one season — see
+ * `fetchFixtures`, where that is the fallback for a `season=` filter that comes back
+ * empty on a season the provider has only just created.
+ */
+export function matchSeasonYear(raw: { season?: RawSeason | null }): string | null {
+  const start = emptyToNull(raw.season?.startDate ?? null);
+  return start ? start.slice(0, 4) : null;
 }
 
 export function mapTeam(raw: RawTeamRef & { id: number }): ProviderTeam {
@@ -342,14 +364,34 @@ export class FootballDataProvider implements LiveProvider {
     season: string,
     opts: FetchFixturesOptions = {},
   ): Promise<ProviderFixture[]> {
+    const path = `/competitions/${encodeURIComponent(competitionId)}/matches`;
     const params = new URLSearchParams({ season });
     if (opts.dateFrom) params.set('dateFrom', opts.dateFrom);
     if (opts.dateTo) params.set('dateTo', opts.dateTo);
 
-    const data = await this.get<{ matches?: RawMatch[] }>(
-      `/competitions/${encodeURIComponent(competitionId)}/matches?${params}`,
-    );
-    return (data.matches ?? []).map(mapMatch);
+    const data = await this.get<{ matches?: RawMatch[] }>(`${path}?${params}`);
+    const matches = data.matches ?? [];
+    if (matches.length > 0) return matches.map(mapMatch);
+
+    // An empty *windowed* request is ordinary — most 3-day windows have no games — so
+    // only a whole-season request that comes back empty is worth a second look.
+    if (opts.dateFrom || opts.dateTo) return [];
+
+    // The `season=` filter has been seen to return nothing for a season the provider has
+    // only just created, while the unfiltered endpoint — which serves the competition's
+    // current season — has the matches. Retry once without the filter and keep only the
+    // season asked for, read off each match's own `season.startDate`. A provider that
+    // genuinely has no fixtures for the season still yields nothing, which is the point:
+    // this can add fixtures, never the wrong season's.
+    const fallback = await this.get<{ matches?: RawMatch[] }>(path);
+    const forSeason = (fallback.matches ?? []).filter(m => matchSeasonYear(m) === season);
+    if (forSeason.length > 0) {
+      console.warn(
+        `[football-data] ${competitionId}: season=${season} returned no matches but the ` +
+          `unfiltered endpoint returned ${forSeason.length} for that season — using those`,
+      );
+    }
+    return forSeason.map(mapMatch);
   }
 
   async fetchStandings(competitionId: string, season: string): Promise<ProviderStandingRow[]> {

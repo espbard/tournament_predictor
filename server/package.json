@@ -7,7 +7,9 @@
     "start": "node dist/index.js",
     "test": "vitest run",
     "db:generate": "drizzle-kit --env-file=../.env generate",
-    "db:migrate": "tsx --env-file=../.env src/db/migrate.ts"
+    "db:migrate": "tsx --env-file=../.env src/db/migrate.ts",
+    "live:doctor": "tsx --env-file=../.env src/scripts/live-fixtures-doctor.ts",
+    "live:smoke": "tsx --env-file=../.env src/scripts/live-provider-smoke.ts"
   },
   "tsup": {
     "entry": [

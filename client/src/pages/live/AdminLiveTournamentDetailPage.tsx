@@ -141,6 +141,21 @@ export default function AdminLiveTournamentDetailPage() {
         </div>
       )}
 
+      {/* Teams but no fixtures is the one "empty" state that looks like a bug and is not:
+          the provider has the season, it just has no match calendar for it yet. Without
+          this the admin page shows a bare "Fixtures 0" and no way to tell which it is. */}
+      {tournament.teamCount > 0 && tournament.fixtureCount === 0 && (
+        <div className="mb-4 flex gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4">
+          <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-amber-700 dark:text-amber-400">
+              {t('live.admin.noFixturesTitle')}
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">{t('live.admin.noFixturesBody')}</p>
+          </div>
+        </div>
+      )}
+
       {tournament.unscorableFixtures > 0 && (
         <div className="mb-4 flex gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4">
           <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />

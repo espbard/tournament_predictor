@@ -123,8 +123,16 @@ work with no further setup:
 
 ```bash
 cd server
-npx tsx --env-file=../.env src/scripts/live-provider-smoke.ts   # re-run the go/no-go check
+npm run live:smoke     # re-run the Phase 2 go/no-go check
+npm run live:doctor    # why does a tournament have no fixtures? (CL 2026 by default)
 ```
+
+`live:doctor` is the one to reach for when a tournament sits at zero fixtures. It asks
+`/matches?season=`, `/matches` unfiltered, `/teams` and `/standings` separately and prints a
+verdict, because the app cannot tell those apart on its own — an unpublished season, a published
+season with no calendar yet, and a `season=` filter that returns nothing all look like "0
+fixtures" in the admin UI. Point it elsewhere with `LIVE_DOCTOR_COMPETITION`, `LIVE_DOCTOR_SEASON`
+and `LIVE_DOCTOR_FORMAT`.
 
 Two things to remember. Requests are capped at **10 per minute** on the free tier, and the cap is
 per account rather than per process — so a `npm run dev` server syncing in the background eats
