@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { EUROPEAN_COUNTRIES } from '@tournament-predictor/shared';
 import { useT } from '@/lib/useT';
 import type { Team } from '@tournament-predictor/shared';
@@ -190,30 +191,47 @@ export default function BonusConstraintsEditor({ answerType, value, onChange, te
   );
 }
 
+/**
+ * Type a player's name and add it to the list.
+ *
+ * Deliberately not a <form>: this editor is rendered inside the "add a question" form, and
+ * a nested form is invalid — React warns about it, and the inner submit reaches the outer
+ * form, which submits the half-filled question and reloads the page. So the button is a
+ * plain button, and Enter is handled here with the keypress swallowed for the same reason.
+ */
 function PlayerOptionInput({ onAdd }: { onAdd: (name: string) => void }) {
   const { t } = useT();
+  const [name, setName] = useState('');
+
+  function add() {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    onAdd(trimmed);
+    setName('');
+  }
+
   return (
-    <form
-      onSubmit={e => {
-        e.preventDefault();
-        const input = e.currentTarget.elements.namedItem('option') as HTMLInputElement;
-        const name = input.value.trim();
-        if (name) {
-          onAdd(name);
-          input.value = '';
-        }
-      }}
-      className="flex gap-2"
-    >
+    <div className="flex gap-2">
       <input
-        name="option"
         type="text"
+        value={name}
+        onChange={e => setName(e.target.value)}
+        onKeyDown={e => {
+          if (e.key !== 'Enter') return;
+          e.preventDefault();
+          add();
+        }}
         placeholder={t('bonusQuestions.constraints.addPlayerOption')}
         className="flex-1 rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
       />
-      <button type="submit" className="rounded-md border px-3 py-2 text-sm hover:bg-muted">
+      <button
+        type="button"
+        onClick={add}
+        disabled={name.trim() === ''}
+        className="rounded-md border px-3 py-2 text-sm hover:bg-muted disabled:opacity-50"
+      >
         {t('common.add')}
       </button>
-    </form>
+    </div>
   );
 }
