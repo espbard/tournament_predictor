@@ -14,9 +14,24 @@ interface Props {
   onChange: (name: string) => void;
   disabled?: boolean;
   placeholder?: string;
+  /**
+   * Take a typed name as the answer, without waiting for a pick from the suggestions.
+   *
+   * The suggestions come from an external player database, which a corporate firewall —
+   * or an outage — can put out of reach. Anywhere an answer is *required*, that would
+   * otherwise be a dead end, so those callers opt in and the typed text stands on its own.
+   * Answers are graded as text either way.
+   */
+  allowFreeText?: boolean;
 }
 
-export default function PlayerSearchInput({ value, onChange, disabled, placeholder }: Props) {
+export default function PlayerSearchInput({
+  value,
+  onChange,
+  disabled,
+  placeholder,
+  allowFreeText = false,
+}: Props) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SportsDbPlayer[]>([]);
   const [loading, setLoading] = useState(false);
@@ -48,6 +63,8 @@ export default function PlayerSearchInput({ value, onChange, disabled, placehold
     setQuery(q);
     // Clear selected meta if user types over it
     if (selectedMeta && q !== selectedMeta.strPlayer) setSelectedMeta(null);
+    // The typed text is the answer until a suggestion replaces it.
+    if (allowFreeText) onChange(q);
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (q.trim().length < 2) {
@@ -106,8 +123,10 @@ export default function PlayerSearchInput({ value, onChange, disabled, placehold
     );
   }
 
-  // Show selected card whenever a value is present (either from this session or loaded from saved answer)
-  const isSelected = !!value;
+  // Show selected card whenever a value is present (either from this session or loaded from
+  // saved answer). With free text the value changes on every keystroke, so the card is
+  // shown only for a real pick — otherwise it would swallow the field mid-word.
+  const isSelected = allowFreeText ? !!selectedMeta : !!value;
 
   return (
     <div ref={containerRef} className="relative">

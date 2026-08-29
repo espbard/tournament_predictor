@@ -12,6 +12,10 @@ import LiveLeaderboard from '@/components/live/LiveLeaderboard';
 import LiveQualifiedTeamsPanel from '@/components/live/LiveQualifiedTeamsPanel';
 import LiveTablePrediction from '@/components/live/LiveTablePrediction';
 import LiveBonusQuestionsTab from '@/components/live/LiveBonusQuestionsTab';
+import LiveTablePredictionGate from '@/components/live/LiveTablePredictionGate';
+import LiveBonusQuestionsGate from '@/components/live/LiveBonusQuestionsGate';
+import { useAuthStore } from '@/store/authStore';
+import type { Team } from '@tournament-predictor/shared';
 
 // ── Live competition ──────────────────────────────────────────────────────────
 //
@@ -32,6 +36,7 @@ const LIVE_STATUSES = new Set(['in_play', 'paused']);
 export default function LiveCompetitionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { t } = useT();
+  const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -85,10 +90,26 @@ export default function LiveCompetitionDetailPage() {
     enabled: !!tournamentId,
   });
 
+  // Fetched on every tab rather than only its own: whether a table prediction exists
+  // decides whether the rest of the page is reachable at all.
   const { data: tableView, isLoading: loadingTable } = useQuery({
     queryKey: liveKeys.tablePrediction(id!),
     queryFn: () => liveApi.tablePrediction(id!),
-    enabled: !!id && activeTab === 'table',
+    enabled: !!id,
+  });
+
+  // Also fetched on every tab: the bonus questions are the second step of the first-run
+  // flow, so whether any are unanswered decides whether the competition is reachable.
+  const { data: bonusQuestions = [], isLoading: loadingBonusQuestions } = useQuery({
+    queryKey: liveKeys.bonusQuestions(id!),
+    queryFn: () => liveApi.bonusQuestions(id!),
+    enabled: !!id,
+  });
+
+  const { data: bonusAnswers = [], isLoading: loadingBonusAnswers } = useQuery({
+    queryKey: liveKeys.bonusAnswers(id!),
+    queryFn: () => liveApi.bonusAnswers(id!),
+    enabled: !!id,
   });
 
   // Live updates. One connection per page, same pattern as CompetitionDetailPage.
@@ -212,12 +233,79 @@ export default function LiveCompetitionDetailPage() {
     },
   });
 
-  if (loadingCompetition) return <LoadingSpinner />;
+  // ── The table-prediction gate ───────────────────────────────────────────────
+  //
+  // A member who has not submitted a table prediction sees only that, full screen, until
+  // they do. Three groups are deliberately let through instead of being trapped:
+  // anyone who can no longer submit (the table locks at the first kickoff and never
+  // reopens), accounts that are not allowed to predict at all, and admins, who need to be
+  // able to look at a competition without playing it.
+  // A team answer is picked from the tournament's teams, and the picker knows only the
+  // manual Team shape — the live crest is mapped onto it, as in the bonus tab.
+  const bonusTeams: Team[] = teams.map(
+    team =>
+      ({
+        id: team.id,
+        tournamentId: tournamentId ?? '',
+        name: team.name,
+        imageUrl: team.crestUrl,
+      }) as Team,
+  );
+
+  const canBeGated = !user?.isAdmin && !user?.isLeaderboardUser;
+
+  const mustPredictTable =
+    canBeGated &&
+    !!tableView?.available &&
+    !tableView.isLocked &&
+    !tableView.prediction &&
+    tableView.teams.length > 0;
+
+  // Step two: the bonus questions that are still open and still unanswered. A closed one
+  // can never be answered, so requiring it would trap the member out of the competition.
+  const answeredQuestionIds = new Set(bonusAnswers.map(a => a.questionId));
+  const unansweredBonusQuestions = bonusQuestions.filter(
+    q => !q.isLocked && !answeredQuestionIds.has(q.id),
+  );
+  const mustAnswerBonus = canBeGated && !mustPredictTable && unansweredBonusQuestions.length > 0;
+
+  if (loadingCompetition || loadingTable || loadingBonusQuestions || loadingBonusAnswers) {
+    return <LoadingSpinner />;
+  }
   if (!competition) {
     return (
       <main className="mx-auto max-w-2xl px-4 py-12">
         <p className="text-center text-sm text-muted-foreground">{t('live.competitionNotFound')}</p>
       </main>
+    );
+  }
+
+  // The first-run flow, in order: the table, then the bonus questions, then the
+  // competition itself.
+  if (mustPredictTable && tableView?.available) {
+    return (
+      <LiveTablePredictionGate
+        competitionName={competition.name}
+        view={tableView}
+        onSave={orderedTeamIds => saveTableMutation.mutate(orderedTeamIds)}
+        isSaving={saveTableMutation.isPending}
+        error={tableError}
+      />
+    );
+  }
+
+  if (mustAnswerBonus) {
+    return (
+      <LiveBonusQuestionsGate
+        competitionName={competition.name}
+        questions={unansweredBonusQuestions}
+        teams={bonusTeams}
+        onSave={(questionId, answer) => liveApi.saveBonusAnswer(id!, { questionId, answer })}
+        onFinished={() => {
+          queryClient.invalidateQueries({ queryKey: liveKeys.bonusAnswers(id!) });
+          queryClient.invalidateQueries({ queryKey: liveKeys.leaderboard(id!) });
+        }}
+      />
     );
   }
 
@@ -322,9 +410,7 @@ export default function LiveCompetitionDetailPage() {
       )}
 
       {activeTab === 'table' &&
-        (loadingTable ? (
-          <LoadingSpinner />
-        ) : !tableView?.available ? (
+        (!tableView?.available ? (
           <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
             {t('live.table.unavailable')}
           </p>

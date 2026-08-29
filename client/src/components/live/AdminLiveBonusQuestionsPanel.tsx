@@ -3,7 +3,11 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { liveApi, liveKeys } from '@/lib/liveApi';
 import BonusQuestionsPanel from '@/components/bonus/BonusQuestionsPanel';
 import { useT } from '@/lib/useT';
-import type { BonusAnswerType, Team } from '@tournament-predictor/shared';
+import type { Team } from '@tournament-predictor/shared';
+import type { PanelAnswerType } from '@/components/bonus/BonusQuestionsPanel';
+
+// Only live questions offer a country answer.
+const LIVE_ANSWER_TYPES: PanelAnswerType[] = ['number', 'yes_no', 'player', 'team', 'country'];
 
 // ── Admin: bonus questions on a live tournament ───────────────────────────────
 //
@@ -52,9 +56,13 @@ export default function AdminLiveBonusQuestionsPanel({ tournamentId }: Props) {
         questions={questions.map(q => ({
           id: q.id,
           question: q.question,
-          answerType: q.answerType as BonusAnswerType,
+          answerType: q.answerType as PanelAnswerType,
           points: q.points,
           correctAnswer: q.correctAnswer,
+        minValue: q.minValue,
+        maxValue: q.maxValue,
+        leeway: q.leeway,
+        options: q.options,
         }))}
         answers={[]}
         teams={teams}
@@ -72,7 +80,10 @@ export default function AdminLiveBonusQuestionsPanel({ tournamentId }: Props) {
         onQuestionsChanged={() =>
           queryClient.invalidateQueries({ queryKey: liveKeys.tournamentBonusQuestions(tournamentId) })
         }
-        onAnswersChanged={() => {}}
+        // Live questions can be narrowed, and only they offer a country answer.
+      answerTypes={LIVE_ANSWER_TYPES}
+      supportsConstraints
+      onAnswersChanged={() => {}}
       />
     </div>
   );

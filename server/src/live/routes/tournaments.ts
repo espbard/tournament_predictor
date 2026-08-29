@@ -602,6 +602,11 @@ liveTournamentsRouter.post('/tournaments/:id/bonus-questions', requireAdmin, asy
         answerType: parsed.data.answerType,
         points: parsed.data.points,
         lockAt: parsed.data.lockAt ? new Date(parsed.data.lockAt) : null,
+        minValue: parsed.data.minValue ?? null,
+        maxValue: parsed.data.maxValue ?? null,
+        leeway: parsed.data.leeway ?? null,
+        // An empty list means "no restriction", which is what null stores.
+        options: parsed.data.options?.length ? parsed.data.options : null,
       })
       .returning();
 
@@ -647,6 +652,12 @@ liveTournamentsRouter.patch(
       if (parsed.data.lockAt !== undefined) {
         update.lockAt = parsed.data.lockAt ? new Date(parsed.data.lockAt) : null;
       }
+      if (parsed.data.minValue !== undefined) update.minValue = parsed.data.minValue;
+      if (parsed.data.maxValue !== undefined) update.maxValue = parsed.data.maxValue;
+      if (parsed.data.leeway !== undefined) update.leeway = parsed.data.leeway;
+      if (parsed.data.options !== undefined) {
+        update.options = parsed.data.options?.length ? parsed.data.options : null;
+      }
       if (Object.keys(update).length === 0) {
         return res.status(400).json({ error: 'Nothing to update' });
       }
@@ -657,10 +668,13 @@ liveTournamentsRouter.patch(
         .where(eq(liveBonusQuestions.id, existing.id))
         .returning();
 
-      // The points a question is worth changed too, so rescore on any of these.
+      // Anything that changes what an answer is worth, or what counts as right, means the
+      // stored points are stale — leeway most obviously, since it decides the match.
       if (
         parsed.data.correctAnswer !== undefined ||
-        parsed.data.points !== undefined
+        parsed.data.points !== undefined ||
+        parsed.data.leeway !== undefined ||
+        parsed.data.answerType !== undefined
       ) {
         const scored = await scoreLiveBonusQuestion(updated.id);
         if (scored.affectedCompetitionIds.length > 0) {
