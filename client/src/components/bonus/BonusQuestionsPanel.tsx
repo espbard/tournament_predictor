@@ -416,8 +416,11 @@ export default function BonusQuestionsPanel({
                       <p className="text-xs text-muted-foreground mt-0.5">
                         {typeLabel} · {q.points} {q.points === 1 ? t('bonusQuestions.pt') : t('bonusQuestions.pts')}
                         {q.deadlineLabel ? ` · ${q.deadlineLabel}` : ''}
-                        {constraintSummary(q, t) ? ` · ${constraintSummary(q, t)}` : ''}
+                        {canManage && constraintSummary(q, t)
+                          ? ` · ${constraintSummary(q, t)}`
+                          : ''}
                       </p>
+                      {!canManage && <ConstraintHints question={q} />}
                     </div>
                     {canManage && !viewUserId && (
                       <div className="flex gap-2 flex-shrink-0">
@@ -865,6 +868,33 @@ export default function BonusQuestionsPanel({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * What a number question will accept, and what counts as right, in words.
+ *
+ * Shown to whoever is answering — a leeway in particular changes how the question should
+ * be read, and "±5" in the header line is not something to make a member decode.
+ */
+function ConstraintHints({ question }: { question: BonusQuestionLike }) {
+  const { t } = useT();
+  if (question.answerType !== 'number') return null;
+
+  const hasRange = question.minValue != null || question.maxValue != null;
+  const hasLeeway = question.leeway != null && question.leeway > 0;
+  if (!hasRange && !hasLeeway) return null;
+
+  return (
+    <p className="mt-1 text-xs text-muted-foreground">
+      {hasRange &&
+        t('bonusQuestions.constraints.rangeHint', {
+          min: question.minValue ?? '−∞',
+          max: question.maxValue ?? '∞',
+        })}
+      {hasRange && hasLeeway && ' '}
+      {hasLeeway && t('bonusQuestions.constraints.leewayHint', { leeway: question.leeway! })}
+    </p>
   );
 }
 
