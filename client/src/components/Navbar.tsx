@@ -60,11 +60,18 @@ export default function Navbar() {
   const showTabs = isOnCompetitionPage || isOnPredictionsPage;
   const competitionId = location.pathname.match(/^\/competitions\/([^/]+)/)?.[1];
 
-  // Live (API-linked) competitions get their own tab bar. Kept as a sibling branch
-  // rather than folded into the dropdowns above: the two tournament types share no tabs.
+  // Live (API-linked) competitions navigate from here too, under the same two
+  // Predictions / Results dropdowns as the manual type, and have no tab bar of their own.
+  // Kept as a sibling branch rather than folded into the manual dropdowns: the two
+  // tournament types share no sections.
   const isOnLiveCompetitionPage = /^\/live\/competitions\/[^/]+$/.test(location.pathname);
-  const LIVE_TABS = ['fixtures', 'table', 'standings', 'leaderboard'] as const;
-  const liveActiveTab = searchParams.get('tab') ?? 'fixtures';
+  const LIVE_PREDICTION_TABS = ['fixtures', 'table', 'bonus'] as const;
+  const LIVE_RESULT_TABS = ['standings', 'leaderboard'] as const;
+  const liveTabParam = searchParams.get('tab') ?? '';
+  const liveActiveTab = [...LIVE_PREDICTION_TABS, ...LIVE_RESULT_TABS].some(tab => tab === liveTabParam)
+    ? liveTabParam
+    : 'fixtures';
+  const livePredictionsActive = LIVE_PREDICTION_TABS.some(tab => tab === liveActiveTab);
 
   const { data: navCompetition } = useQuery({
     queryKey: ['competitions', competitionId],
@@ -214,11 +221,45 @@ export default function Navbar() {
         {/* Live competition tabs */}
         {isOnLiveCompetitionPage && (
           <div className="flex items-center min-w-0">
-            {LIVE_TABS.map(tab => (
-              <button key={tab} onClick={() => setTab(tab)} className={tabCls(liveActiveTab === tab)}>
-                {t(`live.tabs.${tab}`)}
+            {/* Predictions dropdown */}
+            <div ref={groupsRef} className="relative">
+              <button
+                onClick={() => { setGroupsOpen(o => !o); setStandingsOpen(false); }}
+                className={tabCls(livePredictionsActive)}
+              >
+                {t('nav.tabGroups')}
+                <ChevronDown size={13} className={`transition-transform duration-150 lg:w-4 lg:h-4 ${groupsOpen ? 'rotate-180' : ''}`} />
               </button>
-            ))}
+              {groupsOpen && (
+                <div className="absolute left-0 top-full z-[100] min-w-[190px] rounded-md border border-border bg-popover shadow-md py-1">
+                  {LIVE_PREDICTION_TABS.map(tab => (
+                    <button key={tab} onClick={() => setTab(tab)} className={dropItemCls(liveActiveTab === tab)}>
+                      {t(`live.tabs.${tab}`)}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Results dropdown */}
+            <div ref={standingsRef} className="relative">
+              <button
+                onClick={() => { setStandingsOpen(o => !o); setGroupsOpen(false); }}
+                className={tabCls(!livePredictionsActive)}
+              >
+                {t('nav.tabStandings')}
+                <ChevronDown size={13} className={`transition-transform duration-150 lg:w-4 lg:h-4 ${standingsOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {standingsOpen && (
+                <div className="absolute left-0 top-full z-[100] min-w-[190px] rounded-md border border-border bg-popover shadow-md py-1">
+                  {LIVE_RESULT_TABS.map(tab => (
+                    <button key={tab} onClick={() => setTab(tab)} className={dropItemCls(liveActiveTab === tab)}>
+                      {t(`live.tabs.${tab}`)}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 

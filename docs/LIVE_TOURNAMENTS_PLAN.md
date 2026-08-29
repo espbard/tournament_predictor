@@ -157,7 +157,8 @@ user with the invite code shown there, and check each of these:
 - a countdown flips to **Locked** at kickoff − 60 min, and the inputs disable with it
 - the leaderboard reflects points once a fixture finishes
 - the Champions League tournament renders `LiveQualifiedTeamsPanel`, not an empty list
-- the three-tab bar appears in the navbar on `/live/competitions/:id` and nowhere else
+- the **Predictions** / **Results** dropdowns appear in the navbar on `/live/competitions/:id`
+  and nowhere else, the page itself has no tab bar, and every section is reachable from them
 
 To watch SSE and scoring fire without waiting for a real match, set a fixture's `kickoff_at` into
 the past and its status to `finished` with a normal-time score, then trigger a sync from the admin
@@ -960,9 +961,11 @@ Components under `client/src/components/live/`:
 - `client/src/lib/liveApi.ts` — typed thin wrappers over the existing `client/src/lib/api.ts`.
   Note `api` currently has no `put` — add one.
 
-`LiveCompetitionDetailPage` uses the tab pattern of `CompetitionDetailPage` but with three tabs:
-**Fixtures** · **Standings** · **Leaderboard**. No knockout tab, no bracket, no group-position
-tab.
+`LiveCompetitionDetailPage` renders one section at a time, chosen by `?tab=`, exactly as
+`CompetitionDetailPage` does — including navigating from the navbar rather than an in-page tab
+bar. Its five sections fall under the navbar's two dropdowns: **Predictions** (Fixtures · Table
+prediction · Bonus questions) and **Results** (Table · Leaderboard). No knockout tab, no bracket,
+no group-position tab.
 
 The Fixtures tab is driven by the format, not hardcoded:
 
@@ -991,8 +994,10 @@ Navigation:
 - `client/src/pages/AdminHomePage.tsx` — two new cards linking to `/admin/live-tournaments` and
   `/admin/live-competitions`.
 - `client/src/components/Navbar.tsx` — its tab bar is hard-wired to `/competitions/:id` and the
-  manual eight-tab set. Add a sibling branch matching `/live/competitions/:id` with the three
-  live tabs. Do not extend the existing dropdowns.
+  manual eight-tab set. A sibling branch matches `/live/competitions/:id` and renders the live
+  sections under the same two **Predictions** / **Results** dropdowns. It reuses the dropdown
+  markup and open/close state, but stays a separate branch: the two tournament types share no
+  sections, so do not merge the live entries into the manual dropdowns.
 
 i18n: a `live: { … }` block under all three languages (`no`, `en`, `de`) in
 `client/src/lib/translations.ts`, via the existing `useT()`.
