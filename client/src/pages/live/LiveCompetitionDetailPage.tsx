@@ -19,6 +19,10 @@ import LiveBonusQuestionsTab from '@/components/live/LiveBonusQuestionsTab';
 // knockout bracket and no group-position tab — this tournament type predicts real
 // scheduled fixtures, plus the two season-long side bets.
 //
+// The page renders one section at a time, chosen by ?tab=. There is no tab bar here:
+// navigation lives in the navbar's Predictions / Results dropdowns, same as the manual
+// type. See client/src/components/Navbar.tsx.
+//
 // The fixtures tab is driven by the tournament's format rather than a hardcoded stage
 // list, so a new competition shape needs no client change.
 //
@@ -33,7 +37,7 @@ export default function LiveCompetitionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { t } = useT();
   const queryClient = useQueryClient();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
 
   const tabParam = searchParams.get('tab') as TabId | null;
   const activeTab: TabId = tabParam && TABS.includes(tabParam) ? tabParam : 'fixtures';
@@ -141,17 +145,6 @@ export default function LiveCompetitionDetailPage() {
     [stageFixtures],
   );
 
-  function setTab(tab: TabId) {
-    setSearchParams(
-      prev => {
-        const next = new URLSearchParams(prev);
-        next.set('tab', tab);
-        return next;
-      },
-      { replace: true },
-    );
-  }
-
   const saveMutation = useMutation({
     mutationFn: ({ fixtureId, homeScore, awayScore }: { fixtureId: string; homeScore: number; awayScore: number }) =>
       liveApi.savePrediction(id!, { fixtureId, homeScore, awayScore }),
@@ -221,13 +214,6 @@ export default function LiveCompetitionDetailPage() {
     );
   }
 
-  const tabCls = (active: boolean) =>
-    `px-3 py-2 text-sm font-medium transition-colors border-b-2 ${
-      active
-        ? 'border-primary text-foreground'
-        : 'border-transparent text-muted-foreground hover:text-foreground'
-    }`;
-
   return (
     <main className="mx-auto max-w-2xl md:max-w-4xl lg:max-w-[80%] px-4 pt-2.5 pb-12 sm:pt-8">
       <header className="mb-6 flex items-center gap-4">
@@ -243,14 +229,6 @@ export default function LiveCompetitionDetailPage() {
           </p>
         </div>
       </header>
-
-      <div className="mb-4 flex gap-1 border-b">
-        {TABS.map(tab => (
-          <button key={tab} onClick={() => setTab(tab)} className={tabCls(activeTab === tab)}>
-            {t(`live.tabs.${tab}`)}
-          </button>
-        ))}
-      </div>
 
       {activeTab === 'fixtures' && (
         <>
