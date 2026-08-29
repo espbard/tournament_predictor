@@ -18,7 +18,9 @@ export async function ensureLiveSchema(): Promise<void> {
   await db.execute(sql`DO $$ BEGIN CREATE TYPE "live_tournament_status" AS ENUM ('upcoming', 'active', 'completed'); EXCEPTION WHEN duplicate_object THEN null; END $$`);
   await db.execute(sql`DO $$ BEGIN CREATE TYPE "live_fixture_status" AS ENUM ('scheduled', 'in_play', 'paused', 'finished', 'postponed', 'suspended', 'cancelled'); EXCEPTION WHEN duplicate_object THEN null; END $$`);
   await db.execute(sql`DO $$ BEGIN CREATE TYPE "live_qualification_status" AS ENUM ('qualified', 'pending', 'eliminated'); EXCEPTION WHEN duplicate_object THEN null; END $$`);
-  await db.execute(sql`DO $$ BEGIN CREATE TYPE "live_bonus_answer_type" AS ENUM ('number', 'player', 'team', 'yes_no'); EXCEPTION WHEN duplicate_object THEN null; END $$`);
+  await db.execute(sql`DO $$ BEGIN CREATE TYPE "live_bonus_answer_type" AS ENUM ('number', 'player', 'team', 'yes_no', 'country'); EXCEPTION WHEN duplicate_object THEN null; END $$`);
+  // Added to the enum after its first release, so an existing database needs it too.
+  await db.execute(sql`ALTER TYPE "live_bonus_answer_type" ADD VALUE IF NOT EXISTS 'country'`);
 
   // ── Tables ──────────────────────────────────────────────────────────────────
   await db.execute(sql`
@@ -208,6 +210,10 @@ export async function ensureLiveSchema(): Promise<void> {
   // ── Columns added after a table's first release ──────────────────────────────
   await db.execute(sql`ALTER TABLE "live_competition_members" ADD COLUMN IF NOT EXISTS "table_points" integer NOT NULL DEFAULT 0`);
   await db.execute(sql`ALTER TABLE "live_competition_members" ADD COLUMN IF NOT EXISTS "bonus_points" integer NOT NULL DEFAULT 0`);
+  await db.execute(sql`ALTER TABLE "live_bonus_questions" ADD COLUMN IF NOT EXISTS "min_value" integer`);
+  await db.execute(sql`ALTER TABLE "live_bonus_questions" ADD COLUMN IF NOT EXISTS "max_value" integer`);
+  await db.execute(sql`ALTER TABLE "live_bonus_questions" ADD COLUMN IF NOT EXISTS "leeway" integer`);
+  await db.execute(sql`ALTER TABLE "live_bonus_questions" ADD COLUMN IF NOT EXISTS "options" json`);
 
   // ── Indexes ─────────────────────────────────────────────────────────────────
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "live_tournaments_provider_competition_season_unique" ON "live_tournaments" ("provider", "provider_competition_id", "season")`);

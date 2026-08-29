@@ -290,7 +290,7 @@ export interface LiveScoringConfig {
 }
 export const DEFAULT_LIVE_SCORING_CONFIG: LiveScoringConfig = {
   correct_outcome: 1, correct_goal_difference: 1, exact_score: 2,
-  table_exact_position: 1, table_correct_band: 1,
+  table_exact_position: 2, table_correct_band: 1,
 };
 ```
 
@@ -539,8 +539,9 @@ scoring trigger.
 
 ### `live_bonus_questions` / `live_bonus_answers`
 `live_bonus_questions`: `id` pk · `liveTournamentId` → cascade · `question` · `answerType`
-(`live_bonus_answer_type`: number / player / team / yes_no) · `points` · `correctAnswer` text
-nullable · `lockAt` timestamp nullable · `createdAt`.
+(`live_bonus_answer_type`: number / player / team / yes_no / country) · `points` ·
+`correctAnswer` text nullable · `lockAt` timestamp nullable · `minValue` / `maxValue` /
+`leeway` int nullable · `options` json nullable · `createdAt`.
 
 `live_bonus_answers`: `id` pk · `questionId` → cascade · `liveCompetitionId` → cascade · `userId`
 → cascade · `answer` · `points` int nullable · `createdAt` · `updatedAt`.
@@ -557,6 +558,19 @@ the same ones; answers belong to a **competition**. Two rules differ from the ma
   answerable at all; without it, it would be born locked.
 - **Nothing else.** Points are still withheld until the tournament is marked `completed`, exactly
   as in the manual type, so nobody can infer a correct answer from a leaderboard that moved.
+
+**Constraints** (`shared/src/live/bonus.ts`) — all optional, and all enforced in that one
+module so the answer input, the save route and scoring cannot disagree:
+
+- `minValue` / `maxValue` bound a number answer; one outside is refused rather than scored 0.
+- `leeway` widens what counts as right: "25, give or take 5" pays full points for 20 through 30.
+  It never scales the award — a bonus question stays all-or-nothing.
+- `options` lists the answers a player, team or country question accepts. Null or empty means
+  every option: the tournament's teams for `team`, `EUROPEAN_COUNTRIES` (UEFA's 55 members) for
+  `country`, and anything at all for `player`, which has no roster to check against.
+
+An answer differing from an option only by case or spacing is accepted and stored as the option
+spells it, so scoring never turns on how somebody typed it.
 
 `server/src/live/bonusScoring.ts` holds the scoring (all-or-nothing, trimmed and
 case-insensitive, several correct answers stored as a JSON array) and
@@ -924,6 +938,20 @@ Components under `client/src/components/live/`:
 - `LiveSelectedMatchesPanel.tsx` — admin only, rendered on `AdminLiveTournamentDetailPage`. Picks
   a stage and gameweek, then ticks which of its matches count. Opens on the gameweek of the next
   match still to be played, and saving with nothing ticked resets the gameweek to "all count".
+- `LiveGateShell.tsx` / `LiveTablePredictionGate.tsx` / `LiveBonusQuestionsGate.tsx` — the
+  full-screen, dark blue to black first-run flow a member sees instead of the competition until
+  the season-long predictions are in: the table first, then any open bonus question they have
+  not answered, one per screen with a "Question n/m" counter. Neither prediction can be made
+  later — both close at the first kickoff — which is why they are asked for up front and why
+  the competition is unreachable until they are done. Three groups are deliberately let through
+  rather than trapped: anyone who can no longer submit, accounts that may not predict at all,
+  and admins, who need to inspect a competition without playing it; a bonus question that has
+  already locked is skipped on the same grounds. The table step renders `LiveTablePrediction`
+  in its `gate` variant — same list, save control pinned to the foot of the screen, and the
+  standings order on screen counts as a submission untouched. The bonus step writes its own
+  controls rather than sharing the panel's: required answers are large and alone on a dark
+  screen, and a player answer may be typed rather than picked, since its suggestions come from
+  an external service a firewall can block (`PlayerSearchInput`'s `allowFreeText`).
 - `LiveBonusQuestionsTab.tsx` / `AdminLiveBonusQuestionsPanel.tsx` — the data half of the bonus
   tab and of the admin authoring panel. Both render
   `components/bonus/BonusQuestionsPanel.tsx`, which is the manual type's bonus UI lifted out of

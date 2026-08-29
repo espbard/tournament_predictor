@@ -30,6 +30,12 @@ interface Props {
   isSaving: boolean;
   savedAt: number | null;
   error: string | null;
+  /**
+   * 'gate' is the full-screen first-run version shown to a member who has not submitted a
+   * table yet: the save control moves to a pinned bar at the foot of the screen, and the
+   * order shown counts as a submission even if the user reorders nothing.
+   */
+  variant?: 'default' | 'gate';
 }
 
 function bandClasses(bandKey: string | null): string {
@@ -45,7 +51,14 @@ function bandClasses(bandKey: string | null): string {
   }
 }
 
-export default function LiveTablePrediction({ view, onSave, isSaving, savedAt, error }: Props) {
+export default function LiveTablePrediction({
+  view,
+  onSave,
+  isSaving,
+  savedAt,
+  error,
+  variant = 'default',
+}: Props) {
   const { t } = useT();
   const teamById = useMemo(() => new Map(view.teams.map(team => [team.id, team])), [view.teams]);
 
@@ -96,15 +109,24 @@ export default function LiveTablePrediction({ view, onSave, isSaving, savedAt, e
     (!view.prediction ||
       view.prediction.orderedTeamIds.join(',') !== order.join(','));
 
+  // In the gate the standings order on screen is already a valid prediction, so accepting
+  // it untouched has to be possible — otherwise a user who agrees with it cannot get past.
+  const isGate = variant === 'gate';
+  const canSave = isGate ? order.length > 0 : dirty;
+
   return (
     <div>
       <div className="mb-4 rounded-lg border p-4">
-        <h2 className="font-semibold">{t('live.table.title')}</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
+        {/* The gate's own heading already says this, so the card leads with the scoring. */}
+        {!isGate && <h2 className="font-semibold">{t('live.table.title')}</h2>}
+        <p className={`text-sm text-muted-foreground${isGate ? '' : ' mt-1'}`}>
           {view.bands.length > 0
             ? t('live.table.explainerWithBands', {
                 exact: view.scoringConfig.table_exact_position,
                 band: view.scoringConfig.table_correct_band,
+                total:
+                  view.scoringConfig.table_exact_position +
+                  view.scoringConfig.table_correct_band,
               })
             : t('live.table.explainer', { exact: view.scoringConfig.table_exact_position })}
         </p>
@@ -155,11 +177,11 @@ export default function LiveTablePrediction({ view, onSave, isSaving, savedAt, e
         </div>
       </div>
 
-      {editable && (
+      {editable && !isGate && (
         <div className="mb-3 flex items-center gap-3">
           <button
             onClick={() => onSave(order)}
-            disabled={!dirty || isSaving}
+            disabled={!canSave || isSaving}
             className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
           >
             {isSaving ? t('common.saving') : t('live.table.save')}
@@ -214,6 +236,25 @@ export default function LiveTablePrediction({ view, onSave, isSaving, savedAt, e
           ) : null}
         </DragOverlay>
       </DndContext>
+
+      {/* A 36-row table pushes the top of the screen a long way up, so the gate keeps its
+          one action within reach at the bottom rather than back where the list began. */}
+      {editable && isGate && (
+        <div className="sticky bottom-0 z-10 -mx-4 mt-4 border-t border-white/10 bg-black/70 px-4 py-3 backdrop-blur">
+          <button
+            onClick={() => onSave(order)}
+            disabled={!canSave || isSaving}
+            className="w-full rounded-md bg-white px-4 py-3 text-sm font-semibold text-slate-900 transition-colors hover:bg-white/90 disabled:opacity-40"
+          >
+            {isSaving ? t('common.saving') : t('live.table.submit')}
+          </button>
+          {error ? (
+            <p className="mt-2 text-center text-sm text-destructive">{error}</p>
+          ) : (
+            <p className="mt-2 text-center text-xs text-white/60">{t('live.table.gateHint')}</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
