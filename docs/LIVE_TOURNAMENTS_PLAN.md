@@ -289,7 +289,7 @@ export interface LiveScoringConfig {
 }
 export const DEFAULT_LIVE_SCORING_CONFIG: LiveScoringConfig = {
   correct_outcome: 1, correct_goal_difference: 1, exact_score: 2,
-  table_exact_position: 1, table_correct_band: 1,
+  table_exact_position: 2, table_correct_band: 1,
 };
 ```
 
@@ -923,14 +923,20 @@ Components under `client/src/components/live/`:
 - `LiveSelectedMatchesPanel.tsx` — admin only, rendered on `AdminLiveTournamentDetailPage`. Picks
   a stage and gameweek, then ticks which of its matches count. Opens on the gameweek of the next
   match still to be played, and saving with nothing ticked resets the gameweek to "all count".
-- `LiveTablePredictionGate.tsx` — the full-screen, dark blue to black first-run screen a
-  member sees instead of the competition until they have submitted a table prediction. The
-  table is the one prediction that cannot be made later (it locks at the first kickoff and
-  never reopens), so it is asked for up front. Three groups are deliberately let through
+- `LiveGateShell.tsx` / `LiveTablePredictionGate.tsx` / `LiveBonusQuestionsGate.tsx` — the
+  full-screen, dark blue to black first-run flow a member sees instead of the competition until
+  the season-long predictions are in: the table first, then any open bonus question they have
+  not answered, one per screen with a "Question n/m" counter. Neither prediction can be made
+  later — both close at the first kickoff — which is why they are asked for up front and why
+  the competition is unreachable until they are done. Three groups are deliberately let through
   rather than trapped: anyone who can no longer submit, accounts that may not predict at all,
-  and admins, who need to inspect a competition without playing it. Renders
-  `LiveTablePrediction` in its `gate` variant — same list, save control pinned to the foot of
-  the screen, and the standings order on screen counts as a submission untouched.
+  and admins, who need to inspect a competition without playing it; a bonus question that has
+  already locked is skipped on the same grounds. The table step renders `LiveTablePrediction`
+  in its `gate` variant — same list, save control pinned to the foot of the screen, and the
+  standings order on screen counts as a submission untouched. The bonus step writes its own
+  controls rather than sharing the panel's: required answers are large and alone on a dark
+  screen, and a player answer may be typed rather than picked, since its suggestions come from
+  an external service a firewall can block (`PlayerSearchInput`'s `allowFreeText`).
 - `LiveBonusQuestionsTab.tsx` / `AdminLiveBonusQuestionsPanel.tsx` — the data half of the bonus
   tab and of the admin authoring panel. Both render
   `components/bonus/BonusQuestionsPanel.tsx`, which is the manual type's bonus UI lifted out of

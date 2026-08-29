@@ -396,7 +396,7 @@ scores 1, predicted 1–1 scores 0.
 
 **League table prediction** (`server/src/live/tableScoring.ts`) — a fourth source, scored once
 per season. Users order every team in the table stage; each team in exactly the right final
-position scores `table_exact_position` (1), and in a format with **bands** each team in the right
+position scores `table_exact_position` (2), and in a format with **bands** each team in the right
 band scores `table_correct_band` (1) on top. Champions League bands are 1–8 automatic, 9–24
 play-off, 25+ eliminated; the Premier League defines none, so only exact positions score there.
 Bands are format data on `LiveStageDef.bands` — adding them to another competition is a data
@@ -411,11 +411,13 @@ Three things to know:
   fixture keeps it open, since it could still move the table.
 - Positions come from `live_standings` verbatim, never recomputed locally.
 
-**The table-prediction gate** — a member who has not submitted a table prediction gets
-`LiveTablePredictionGate` full screen instead of the competition, and cannot reach the rest of
-it until they submit. The table locks at the first kickoff and never reopens, so it is the one
-prediction that has to be asked for up front. Anyone who can no longer submit, accounts that
-may not predict, and admins are let through instead of being trapped.
+**The first-run gate** — a member who has not made the season-long predictions gets them full
+screen instead of the competition, in two steps: the table (`LiveTablePredictionGate`), then any
+open bonus question they have not answered, one per screen with a "Question n/m" counter
+(`LiveBonusQuestionsGate`). Both use `LiveGateShell`. The competition is unreachable until both
+are done, because both close at the first kickoff and neither can be made later. Anyone who can
+no longer submit, accounts that may not predict, and admins are let through instead of being
+trapped; a bonus question that has already locked is skipped for the same reason.
 
 **Bonus questions** (`server/src/live/bonusScoring.ts`) — a fourth source, mirroring the manual
 type: all-or-nothing per question, matched case-insensitively after trimming, with several

@@ -124,6 +124,9 @@ export default function LiveTablePrediction({
             ? t('live.table.explainerWithBands', {
                 exact: view.scoringConfig.table_exact_position,
                 band: view.scoringConfig.table_correct_band,
+                total:
+                  view.scoringConfig.table_exact_position +
+                  view.scoringConfig.table_correct_band,
               })
             : t('live.table.explainer', { exact: view.scoringConfig.table_exact_position })}
         </p>

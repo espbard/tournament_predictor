@@ -38,12 +38,12 @@ export interface LiveScoringConfig {
   correct_outcome: number;
   correct_goal_difference: number;
   exact_score: number;
-  /** Per team placed in exactly the right final table position. */
+  /** Per team placed in exactly the right final table position. Worth more than a band. */
   table_exact_position: number;
   /**
    * Per team placed in the right band of the table (Champions League: top 8, 9th–24th,
    * 25th and below). Stacks with the exact-position award, so a team in exactly the right
-   * place is worth both. Formats without bands never award this.
+   * place is worth both — 3 points by default. Formats without bands never award this.
    */
   table_correct_band: number;
 }
@@ -52,7 +52,7 @@ export const DEFAULT_LIVE_SCORING_CONFIG: LiveScoringConfig = {
   correct_outcome: 1,
   correct_goal_difference: 1,
   exact_score: 2,
-  table_exact_position: 1,
+  table_exact_position: 2,
   table_correct_band: 1,
 };
 

@@ -13,7 +13,9 @@ import LiveQualifiedTeamsPanel from '@/components/live/LiveQualifiedTeamsPanel';
 import LiveTablePrediction from '@/components/live/LiveTablePrediction';
 import LiveBonusQuestionsTab from '@/components/live/LiveBonusQuestionsTab';
 import LiveTablePredictionGate from '@/components/live/LiveTablePredictionGate';
+import LiveBonusQuestionsGate from '@/components/live/LiveBonusQuestionsGate';
 import { useAuthStore } from '@/store/authStore';
+import type { Team } from '@tournament-predictor/shared';
 
 // ── Live competition ──────────────────────────────────────────────────────────
 //
@@ -93,6 +95,20 @@ export default function LiveCompetitionDetailPage() {
   const { data: tableView, isLoading: loadingTable } = useQuery({
     queryKey: liveKeys.tablePrediction(id!),
     queryFn: () => liveApi.tablePrediction(id!),
+    enabled: !!id,
+  });
+
+  // Also fetched on every tab: the bonus questions are the second step of the first-run
+  // flow, so whether any are unanswered decides whether the competition is reachable.
+  const { data: bonusQuestions = [], isLoading: loadingBonusQuestions } = useQuery({
+    queryKey: liveKeys.bonusQuestions(id!),
+    queryFn: () => liveApi.bonusQuestions(id!),
+    enabled: !!id,
+  });
+
+  const { data: bonusAnswers = [], isLoading: loadingBonusAnswers } = useQuery({
+    queryKey: liveKeys.bonusAnswers(id!),
+    queryFn: () => liveApi.bonusAnswers(id!),
     enabled: !!id,
   });
 
@@ -224,15 +240,38 @@ export default function LiveCompetitionDetailPage() {
   // anyone who can no longer submit (the table locks at the first kickoff and never
   // reopens), accounts that are not allowed to predict at all, and admins, who need to be
   // able to look at a competition without playing it.
+  // A team answer is picked from the tournament's teams, and the picker knows only the
+  // manual Team shape — the live crest is mapped onto it, as in the bonus tab.
+  const bonusTeams: Team[] = teams.map(
+    team =>
+      ({
+        id: team.id,
+        tournamentId: tournamentId ?? '',
+        name: team.name,
+        imageUrl: team.crestUrl,
+      }) as Team,
+  );
+
+  const canBeGated = !user?.isAdmin && !user?.isLeaderboardUser;
+
   const mustPredictTable =
+    canBeGated &&
     !!tableView?.available &&
     !tableView.isLocked &&
     !tableView.prediction &&
-    tableView.teams.length > 0 &&
-    !user?.isAdmin &&
-    !user?.isLeaderboardUser;
+    tableView.teams.length > 0;
 
-  if (loadingCompetition || loadingTable) return <LoadingSpinner />;
+  // Step two: the bonus questions that are still open and still unanswered. A closed one
+  // can never be answered, so requiring it would trap the member out of the competition.
+  const answeredQuestionIds = new Set(bonusAnswers.map(a => a.questionId));
+  const unansweredBonusQuestions = bonusQuestions.filter(
+    q => !q.isLocked && !answeredQuestionIds.has(q.id),
+  );
+  const mustAnswerBonus = canBeGated && !mustPredictTable && unansweredBonusQuestions.length > 0;
+
+  if (loadingCompetition || loadingTable || loadingBonusQuestions || loadingBonusAnswers) {
+    return <LoadingSpinner />;
+  }
   if (!competition) {
     return (
       <main className="mx-auto max-w-2xl px-4 py-12">
@@ -241,6 +280,8 @@ export default function LiveCompetitionDetailPage() {
     );
   }
 
+  // The first-run flow, in order: the table, then the bonus questions, then the
+  // competition itself.
   if (mustPredictTable && tableView?.available) {
     return (
       <LiveTablePredictionGate
@@ -249,6 +290,21 @@ export default function LiveCompetitionDetailPage() {
         onSave={orderedTeamIds => saveTableMutation.mutate(orderedTeamIds)}
         isSaving={saveTableMutation.isPending}
         error={tableError}
+      />
+    );
+  }
+
+  if (mustAnswerBonus) {
+    return (
+      <LiveBonusQuestionsGate
+        competitionName={competition.name}
+        questions={unansweredBonusQuestions}
+        teams={bonusTeams}
+        onSave={(questionId, answer) => liveApi.saveBonusAnswer(id!, { questionId, answer })}
+        onFinished={() => {
+          queryClient.invalidateQueries({ queryKey: liveKeys.bonusAnswers(id!) });
+          queryClient.invalidateQueries({ queryKey: liveKeys.leaderboard(id!) });
+        }}
       />
     );
   }
