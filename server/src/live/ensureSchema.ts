@@ -18,6 +18,7 @@ export async function ensureLiveSchema(): Promise<void> {
   await db.execute(sql`DO $$ BEGIN CREATE TYPE "live_tournament_status" AS ENUM ('upcoming', 'active', 'completed'); EXCEPTION WHEN duplicate_object THEN null; END $$`);
   await db.execute(sql`DO $$ BEGIN CREATE TYPE "live_fixture_status" AS ENUM ('scheduled', 'in_play', 'paused', 'finished', 'postponed', 'suspended', 'cancelled'); EXCEPTION WHEN duplicate_object THEN null; END $$`);
   await db.execute(sql`DO $$ BEGIN CREATE TYPE "live_qualification_status" AS ENUM ('qualified', 'pending', 'eliminated'); EXCEPTION WHEN duplicate_object THEN null; END $$`);
+  await db.execute(sql`DO $$ BEGIN CREATE TYPE "live_bonus_answer_type" AS ENUM ('number', 'player', 'team', 'yes_no'); EXCEPTION WHEN duplicate_object THEN null; END $$`);
 
   // ── Tables ──────────────────────────────────────────────────────────────────
   await db.execute(sql`
@@ -166,8 +167,47 @@ export async function ensureLiveSchema(): Promise<void> {
     )
   `);
 
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "live_gameweek_selections" (
+      "id" text PRIMARY KEY,
+      "live_tournament_id" text NOT NULL REFERENCES "live_tournaments"("id") ON DELETE CASCADE,
+      "stage_key" text NOT NULL,
+      "matchday" integer NOT NULL,
+      "selected_fixture_ids" json NOT NULL,
+      "created_at" timestamp NOT NULL DEFAULT now(),
+      "updated_at" timestamp NOT NULL DEFAULT now()
+    )
+  `);
+
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "live_bonus_questions" (
+      "id" text PRIMARY KEY,
+      "live_tournament_id" text NOT NULL REFERENCES "live_tournaments"("id") ON DELETE CASCADE,
+      "question" text NOT NULL,
+      "answer_type" "live_bonus_answer_type" NOT NULL DEFAULT 'number',
+      "points" integer NOT NULL,
+      "correct_answer" text,
+      "lock_at" timestamp,
+      "created_at" timestamp NOT NULL DEFAULT now()
+    )
+  `);
+
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "live_bonus_answers" (
+      "id" text PRIMARY KEY,
+      "question_id" text NOT NULL REFERENCES "live_bonus_questions"("id") ON DELETE CASCADE,
+      "live_competition_id" text NOT NULL REFERENCES "live_competitions"("id") ON DELETE CASCADE,
+      "user_id" text NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+      "answer" text NOT NULL,
+      "points" integer,
+      "created_at" timestamp NOT NULL DEFAULT now(),
+      "updated_at" timestamp NOT NULL DEFAULT now()
+    )
+  `);
+
   // ── Columns added after a table's first release ──────────────────────────────
   await db.execute(sql`ALTER TABLE "live_competition_members" ADD COLUMN IF NOT EXISTS "table_points" integer NOT NULL DEFAULT 0`);
+  await db.execute(sql`ALTER TABLE "live_competition_members" ADD COLUMN IF NOT EXISTS "bonus_points" integer NOT NULL DEFAULT 0`);
 
   // ── Indexes ─────────────────────────────────────────────────────────────────
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "live_tournaments_provider_competition_season_unique" ON "live_tournaments" ("provider", "provider_competition_id", "season")`);
@@ -181,4 +221,7 @@ export async function ensureLiveSchema(): Promise<void> {
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "live_predictions_competition_user_fixture_unique" ON "live_predictions" ("live_competition_id", "user_id", "live_fixture_id")`);
   await db.execute(sql`CREATE INDEX IF NOT EXISTS "live_predictions_fixture_idx" ON "live_predictions" ("live_fixture_id")`);
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "live_table_predictions_competition_user_stage_unique" ON "live_table_predictions" ("live_competition_id", "user_id", "stage_key")`);
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "live_gameweek_selections_tournament_stage_matchday_unique" ON "live_gameweek_selections" ("live_tournament_id", "stage_key", "matchday")`);
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "live_bonus_answers_question_competition_user_unique" ON "live_bonus_answers" ("question_id", "live_competition_id", "user_id")`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS "live_bonus_answers_competition_idx" ON "live_bonus_answers" ("live_competition_id")`);
 }

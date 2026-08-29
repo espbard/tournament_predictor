@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
@@ -7,6 +7,15 @@ import { useAuthStore } from '@/store/authStore';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { useT } from '@/lib/useT';
 import type { Competition } from '@tournament-predictor/shared';
+
+/** One row of the merged competition list — either tournament type, same card. */
+interface MyCompetition {
+  name: string;
+  imageUrl: string | null;
+  createdAt: string;
+  to: string;
+  subtitle: string | null;
+}
 
 export default function HomePage() {
   const { user } = useAuthStore();
@@ -28,10 +37,36 @@ function CompetitionsHome() {
     queryFn: () => api.get<Competition[]>('/competitions'),
   });
 
-  const { data: liveCompetitions = [] } = useQuery({
+  const { data: liveCompetitions = [], isLoading: loadingLive } = useQuery({
     queryKey: liveKeys.competitions,
     queryFn: () => liveApi.competitions(),
   });
+
+  // Both tournament types are the user's competitions, so they share one list. The only
+  // thing the card needs to know them apart for is where the link goes and what to say
+  // about the deadline — a live league locks per fixture and has no single date.
+  const myCompetitions: MyCompetition[] = useMemo(
+    () =>
+      [
+        ...competitions.map(c => ({
+          name: c.name,
+          imageUrl: c.imageUrl ?? null,
+          createdAt: c.createdAt,
+          to: `/competitions/${c.id}`,
+          subtitle: c.predictionDeadline
+            ? `${t('home.deadline')}: ${new Date(c.predictionDeadline).toLocaleDateString()}`
+            : null,
+        })),
+        ...liveCompetitions.map(c => ({
+          name: c.name,
+          imageUrl: c.imageUrl ?? null,
+          createdAt: c.createdAt,
+          to: `/live/competitions/${c.id}`,
+          subtitle: t('live.perFixtureDeadline'),
+        })),
+      ].sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? '')),
+    [competitions, liveCompetitions, t],
+  );
 
   const joinMutation = useMutation({
     // One code box for both tournament types: try the manual endpoint, and fall back to
@@ -81,18 +116,18 @@ function CompetitionsHome() {
         </div>
       </div>
       <h2 className="mb-4 font-semibold">{t('home.myCompetitions')}</h2>
-      {isLoading ? (
+      {isLoading || loadingLive ? (
         <LoadingSpinner />
-      ) : competitions.length === 0 ? (
+      ) : myCompetitions.length === 0 ? (
         <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
           {t('home.noCompetitions')}
         </p>
       ) : (
         <div className="grid gap-3">
-          {competitions.map(c => (
+          {myCompetitions.map(c => (
             <Link
-              key={c.id}
-              to={`/competitions/${c.id}`}
+              key={c.to}
+              to={c.to}
               className="flex items-center gap-4 rounded-lg border p-4 transition-colors hover:bg-muted"
             >
               {c.imageUrl ? (
@@ -102,39 +137,11 @@ function CompetitionsHome() {
               )}
               <div className="flex-1 min-w-0 flex flex-col gap-0.5">
                 <h3 className="font-semibold">{c.name}</h3>
-                {c.predictionDeadline && (
-                  <span className="text-xs text-muted-foreground">
-                    {t('home.deadline')}: {new Date(c.predictionDeadline).toLocaleDateString()}
-                  </span>
-                )}
+                {c.subtitle && <span className="text-xs text-muted-foreground">{c.subtitle}</span>}
               </div>
             </Link>
           ))}
         </div>
-      )}
-      {liveCompetitions.length > 0 && (
-        <>
-          <h2 className="mb-4 mt-8 font-semibold">{t('live.myLiveCompetitions')}</h2>
-          <div className="grid gap-3">
-            {liveCompetitions.map(c => (
-              <Link
-                key={c.id}
-                to={`/live/competitions/${c.id}`}
-                className="flex items-center gap-4 rounded-lg border p-4 transition-colors hover:bg-muted"
-              >
-                {c.imageUrl ? (
-                  <img src={c.imageUrl} alt={c.name} className="h-12 w-12 rounded-lg object-cover flex-shrink-0" />
-                ) : (
-                  <div className="h-12 w-12 rounded-lg bg-muted flex-shrink-0" />
-                )}
-                <div className="flex-1 min-w-0 flex flex-col gap-0.5">
-                  <h3 className="font-semibold">{c.name}</h3>
-                  <span className="text-xs text-muted-foreground">{t('live.perFixtureDeadline')}</span>
-                </div>
-              </Link>
-            ))}
-          </div>
-        </>
       )}
 
       <div className="mb-8 rounded-lg border p-5 mt-6">

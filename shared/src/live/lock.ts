@@ -82,6 +82,39 @@ export function isTablePredictionLocked(
   return now.getTime() >= lockAt.getTime();
 }
 
+// ── Bonus questions ───────────────────────────────────────────────────────────
+
+/**
+ * When a bonus question closes.
+ *
+ * A live competition has no competition-wide deadline, so a season-long side bet needs one
+ * of its own. The default is the same instant the table prediction locks — one hour before
+ * the first match of the tournament's predictable stage — because both are predictions
+ * about how a season turns out, and neither means much once it is under way.
+ *
+ * An admin can override it per question with `lockAt`, which is what makes a question added
+ * mid-season answerable at all. Null on both sides leaves the question open: no fixture has
+ * a date yet, so nothing has started.
+ */
+export function bonusQuestionLockAt(
+  lockAt: string | Date | null,
+  stageKickoffs: Array<string | Date | null>,
+): Date | null {
+  const own = toDate(lockAt);
+  if (own) return own;
+  return tablePredictionLockAt(stageKickoffs);
+}
+
+export function isBonusQuestionLocked(
+  lockAt: string | Date | null,
+  stageKickoffs: Array<string | Date | null>,
+  now: Date = new Date(),
+): boolean {
+  const deadline = bonusQuestionLockAt(lockAt, stageKickoffs);
+  if (!deadline) return false;
+  return now.getTime() >= deadline.getTime();
+}
+
 /**
  * Whole minutes until a fixture locks. Null when the kickoff time is unknown,
  * zero once the deadline has passed. For the countdown UI.

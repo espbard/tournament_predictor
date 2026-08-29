@@ -518,6 +518,50 @@ matters doubly here because the UCL league phase has its own tiebreak rules.
 (all `integer notNull default 0`).
 **Unique** `(live_competition_id, user_id)`.
 
+### `live_gameweek_selections`
+`id` pk · `liveTournamentId` → cascade · `stageKey` text · `matchday` int ·
+`selectedFixtureIds` json `$type<string[]>` · `createdAt` · `updatedAt`.
+**Unique** `(live_tournament_id, stage_key, matchday)`.
+
+Which matches of a gameweek — one matchday inside one stage — users actually predict on. A
+gameweek with **no row here has every fixture selected**: that default is what makes a tournament
+playable the moment it is created, and it means an admin only ever touches the gameweeks they
+want to narrow. A row is therefore never stored with an empty array; saving an empty selection
+deletes the row instead, because "nothing selected" and "no selection registered" would otherwise
+be indistinguishable and a gameweek nobody can predict on is never the intent.
+
+No FK on the fixture ids, for the same reason as `live_table_predictions.orderedTeamIds`: a
+fixture the provider drops degrades to a stale id rather than silently widening the selection.
+The rule itself lives in `shared/src/live/selection.ts` so the client applies exactly the same
+one, and it is enforced in three places — the fixtures read models, `PUT /predictions`, and the
+scoring trigger.
+
+### `live_bonus_questions` / `live_bonus_answers`
+`live_bonus_questions`: `id` pk · `liveTournamentId` → cascade · `question` · `answerType`
+(`live_bonus_answer_type`: number / player / team / yes_no) · `points` · `correctAnswer` text
+nullable · `lockAt` timestamp nullable · `createdAt`.
+
+`live_bonus_answers`: `id` pk · `questionId` → cascade · `liveCompetitionId` → cascade · `userId`
+→ cascade · `answer` · `points` int nullable · `createdAt` · `updatedAt`.
+**Unique** `(question_id, live_competition_id, user_id)` — the constraint the manual
+`bonus_answers` table enforces in app code only.
+
+Season-long side bets. Questions belong to the **tournament** so every league playing it asks
+the same ones; answers belong to a **competition**. Two rules differ from the manual type:
+
+- **The deadline.** A live competition has no competition-wide deadline, so a question closes at
+  its own `lockAt` when an admin set one, and otherwise an hour before the first match of the
+  tournament's starting stage — the same instant the table prediction locks (`bonusQuestionLockAt`
+  in `shared/src/live/lock.ts`). The override is what makes a question added mid-season
+  answerable at all; without it, it would be born locked.
+- **Nothing else.** Points are still withheld until the tournament is marked `completed`, exactly
+  as in the manual type, so nobody can infer a correct answer from a leaderboard that moved.
+
+`server/src/live/bonusScoring.ts` holds the scoring (all-or-nothing, trimmed and
+case-insensitive, several correct answers stored as a JSON array) and
+`server/src/live/bonusVisibility.ts` the redaction — deliberately without the manual version's
+test-account preview, which exists for a Final Results page the live type does not have.
+
 ### `live_predictions`
 `id` pk · `liveCompetitionId` → cascade · `userId` → cascade · `liveFixtureId` → cascade ·
 `homeScore` int notNull · `awayScore` int notNull · `points` int nullable ·
@@ -822,6 +866,10 @@ Mounted as `app.use('/api/live', liveRouter)` in `server/src/index.ts`.
 | GET | `/tournaments/:id/teams` | auth | with `qualificationStatus` |
 | GET | `/tournaments/:id/fixtures` | auth | `?stageKey&matchday&from&to&status` |
 | GET | `/tournaments/:id/standings` | auth | `?stageKey` |
+| GET | `/tournaments/:id/bonus-questions` | auth | correct answers redacted until the tournament is completed |
+| POST / PATCH / DELETE | `/tournaments/:id/bonus-questions[/:questionId]` | admin | recording a correct answer scores it, but only once the tournament is completed |
+| GET | `/tournaments/:id/selected-matches` | auth | every gameweek with `isCustomised` and its selected fixture ids |
+| PUT | `/tournaments/:id/selected-matches` | admin | `{stageKey, matchday, fixtureIds}`; `fixtureIds: null` (or empty) resets the gameweek to "all selected". Recalculates the tournament, since a deselected match must give its points back |
 
 ### `server/src/live/routes/competitions.ts`
 
@@ -835,9 +883,12 @@ Mounted as `app.use('/api/live', liveRouter)` in `server/src/index.ts`.
 | GET | `/competitions/:id/members` | auth |
 | GET | `/competitions/:id/leaderboard` | auth |
 | GET | `/competitions/:id/events` | auth — SSE: `fixtures-updated`, `leaderboard-updated` |
-| GET | `/competitions/:id/fixtures` | auth — **main read model**: fixtures for a stage/matchday + caller's prediction + `lockedAt` + `isLocked` + awarded points, in one call |
-| PUT | `/competitions/:id/predictions` | auth — upsert one `{fixtureId, homeScore, awayScore}` |
+| GET | `/competitions/:id/fixtures` | auth — **main read model**: fixtures for a stage/matchday + caller's prediction + `lockedAt` + `isLocked` + `isSelected` + awarded points, in one call |
+| PUT | `/competitions/:id/predictions` | auth — upsert one `{fixtureId, homeScore, awayScore}`; rejects a fixture left out of its gameweek's selected matches |
 | GET | `/competitions/:id/predictions/:userId` | auth — another member's, **only for already-locked fixtures** |
+| GET | `/competitions/:id/bonus-questions` | auth — the questions plus `lockedAt` / `isLocked` per question |
+| GET / PUT | `/competitions/:id/bonus-answers` | auth — the caller's answers; `PUT {questionId, answer}` upserts one, enforcing that question's deadline |
+| GET | `/competitions/:id/bonus-answers/:userId` | auth — another member's, **only for already-locked questions** |
 
 Zod schemas live in **`shared/src/live/schemas.ts`**, following the style of
 `shared/src/schemas.ts`.
@@ -869,6 +920,14 @@ Components under `client/src/components/live/`:
 - `LiveCountdown.tsx` — ticking "locks in 2h 14m", flips to "Locked" at kickoff − 60 min.
 - `LiveStandingsTable.tsx` — read-only provider standings; single table or per-group depending on
   `format.tableScope`.
+- `LiveSelectedMatchesPanel.tsx` — admin only, rendered on `AdminLiveTournamentDetailPage`. Picks
+  a stage and gameweek, then ticks which of its matches count. Opens on the gameweek of the next
+  match still to be played, and saving with nothing ticked resets the gameweek to "all count".
+- `LiveBonusQuestionsTab.tsx` / `AdminLiveBonusQuestionsPanel.tsx` — the data half of the bonus
+  tab and of the admin authoring panel. Both render
+  `components/bonus/BonusQuestionsPanel.tsx`, which is the manual type's bonus UI lifted out of
+  `pages/BonusQuestionsTab.tsx` and driven by an adapter: same panel, different endpoints and a
+  per-question rather than per-competition deadline.
 - `LiveLeaderboard.tsx`, `LiveQualifiedTeamsPanel.tsx`.
 - `client/src/lib/liveApi.ts` — typed thin wrappers over the existing `client/src/lib/api.ts`.
   Note `api` currently has no `put` — add one.
@@ -941,8 +1000,12 @@ store the content type correctly.
 - `CompetitionDetailPage.tsx`, `KnockoutStageContent.tsx`, `TournamentDetailPage.tsx`,
   `TournamentKnockoutPage.tsx`, `UserPredictionsPage.tsx`
 - `leaderboardEvents.ts` (mirrored as `live/liveEvents.ts`)
-- Bonus questions, players, late-additions, comparison-user bypass, group-stage self-lock,
-  tiebreak choices — none carry over to v1
+- Players, late-additions, comparison-user bypass, group-stage self-lock, tiebreak choices —
+  none carry over
+- Bonus questions were originally out of scope, and now exist on their own `live_bonus_*` tables
+  with their own scoring and visibility modules. The only thing shared is the *UI*:
+  `client/src/components/bonus/BonusQuestionsPanel.tsx`, which both types render through an
+  adapter.
 
 ---
 

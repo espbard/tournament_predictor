@@ -55,7 +55,10 @@ export default function LiveFixtureCard({
   const isFinished = fixture.status === 'finished';
   const isCalledOff = fixture.status === 'cancelled' || fixture.status === 'postponed';
 
-  const editable = !readOnly && !fixture.isLocked && fixture.isPredictable && fixture.homeTeamId !== null;
+  // A match the admin left out of its gameweek's selection is not part of the game, so it
+  // is shown as a result only — exactly like a fixture below the starting stage.
+  const inPredictionGame = fixture.isPredictable && fixture.isSelected;
+  const editable = !readOnly && !fixture.isLocked && inPredictionGame && fixture.homeTeamId !== null;
   const dirty =
     home !== '' &&
     away !== '' &&
@@ -106,7 +109,7 @@ export default function LiveFixtureCard({
           <span className="text-xs font-medium text-amber-600 dark:text-amber-400">
             {t(`live.status.${fixture.status}`)}
           </span>
-        ) : !isFinished && fixture.isPredictable ? (
+        ) : !isFinished && inPredictionGame ? (
           <LiveCountdown kickoffAt={fixture.kickoffAt} status={fixture.status} />
         ) : null}
       </div>
@@ -136,8 +139,10 @@ export default function LiveFixtureCard({
       )}
 
       {/* Prediction row */}
-      {!fixture.isPredictable ? (
-        <p className="mt-2 text-center text-xs text-muted-foreground">{t('live.notPredictable')}</p>
+      {!inPredictionGame ? (
+        <p className="mt-2 text-center text-xs text-muted-foreground">
+          {fixture.isPredictable ? t('live.notSelected') : t('live.notPredictable')}
+        </p>
       ) : (
         <div className="mt-3 flex items-center justify-center gap-2">
           <input
@@ -203,7 +208,7 @@ export default function LiveFixtureCard({
 
       {/* A finished fixture the provider gave us no normal-time score for cannot be
           scored — say so rather than letting it look like a zero. */}
-      {isFinished && fixture.normalTimeHome === null && (
+      {isFinished && inPredictionGame && fixture.normalTimeHome === null && (
         <p className="mt-1 text-center text-xs text-amber-600 dark:text-amber-400">
           {t('live.notScorable')}
         </p>

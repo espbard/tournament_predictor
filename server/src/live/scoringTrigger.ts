@@ -1,6 +1,7 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import {
   getLiveFormat,
+  isLiveFixtureSelected,
   tablePredictionStage,
   withLiveScoringDefaults,
   type LiveScoringConfig,
@@ -18,6 +19,8 @@ import {
 import { calculateLivePoints } from './scoring';
 import { calculateTablePoints, isTableStageComplete } from './tableScoring';
 import { notifyLiveCompetitions } from './liveEvents';
+import { scoreAllLiveBonusQuestions } from './bonusScoring';
+import { EMPTY_SELECTION_INDEX, loadSelectionIndex, loadSelectionIndexes } from './selections';
 
 // ── Scoring trigger ───────────────────────────────────────────────────────────
 //
@@ -53,20 +56,23 @@ export interface ScoreFixturesResult {
  * Members with no scored predictions are reset to zero rather than left stale, which is
  * what makes a recalculation after a scoring-config change correct.
  */
-async function recomputeMemberTotals(competitionIds: string[]): Promise<void> {
+export async function recomputeLiveMemberTotals(competitionIds: string[]): Promise<void> {
   if (competitionIds.length === 0) return;
 
   await chunked(competitionIds, async chunk => {
-    // Two independent sources — per-fixture predictions and the table prediction — so
-    // they are summed in separate subqueries and joined. Doing it in one join would
-    // multiply the fixture rows by the table rows.
+    // Three independent sources — per-fixture predictions, the table prediction and the
+    // bonus questions — so each is summed in its own subquery and joined. Doing it in one
+    // join would multiply the rows of each source by the rows of the others.
     await db.execute(sql`
       UPDATE live_competition_members AS m
       SET correct_outcome_points = COALESCE(f.outcome, 0),
           correct_goal_difference_points = COALESCE(f.gd, 0),
           exact_score_points = COALESCE(f.exact, 0),
           table_points = COALESCE(tp.table_points, 0),
-          total_points = COALESCE(f.total, 0) + COALESCE(tp.table_points, 0)
+          bonus_points = COALESCE(bq.bonus_points, 0),
+          total_points = COALESCE(f.total, 0)
+                       + COALESCE(tp.table_points, 0)
+                       + COALESCE(bq.bonus_points, 0)
       FROM live_competition_members m2
       LEFT JOIN LATERAL (
         SELECT SUM(p.correct_outcome_points)         AS outcome,
@@ -85,6 +91,13 @@ async function recomputeMemberTotals(competitionIds: string[]): Promise<void> {
           AND tpr.user_id = m2.user_id
           AND tpr.points IS NOT NULL
       ) AS tp ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT SUM(ba.points) AS bonus_points
+        FROM live_bonus_answers ba
+        WHERE ba.live_competition_id = m2.live_competition_id
+          AND ba.user_id = m2.user_id
+          AND ba.points IS NOT NULL
+      ) AS bq ON TRUE
       WHERE m.id = m2.id
         AND m2.live_competition_id IN ${chunk}
     `);
@@ -101,16 +114,29 @@ export async function scoreFixtures(fixtureIds: string[]): Promise<ScoreFixtures
   const result: ScoreFixturesResult = { scoredPredictions: 0, affectedCompetitionIds: [] };
   if (fixtureIds.length === 0) return result;
 
-  const fixtures = await db
+  const allFixtures = await db
     .select({
       id: liveFixtures.id,
       liveTournamentId: liveFixtures.liveTournamentId,
+      stageKey: liveFixtures.stageKey,
+      matchday: liveFixtures.matchday,
       status: liveFixtures.status,
       normalTimeHome: liveFixtures.normalTimeHome,
       normalTimeAway: liveFixtures.normalTimeAway,
     })
     .from(liveFixtures)
     .where(inArray(liveFixtures.id, fixtureIds));
+  if (allFixtures.length === 0) return result;
+
+  // A fixture the admin left out of its gameweek's selected matches is not part of the
+  // game, so it awards nothing however it finished.
+  const selectionsByTournament = await loadSelectionIndexes([
+    ...new Set(allFixtures.map(f => f.liveTournamentId)),
+  ]);
+  const fixtures = allFixtures.filter(f => {
+    const selections = selectionsByTournament.get(f.liveTournamentId) ?? EMPTY_SELECTION_INDEX;
+    return isLiveFixtureSelected(f, selections);
+  });
   if (fixtures.length === 0) return result;
 
   // Scoring config lives per competition, so group the work by competition.
@@ -178,7 +204,7 @@ export async function scoreFixtures(fixtureIds: string[]): Promise<ScoreFixtures
   }
 
   result.affectedCompetitionIds = [...affected];
-  await recomputeMemberTotals(result.affectedCompetitionIds);
+  await recomputeLiveMemberTotals(result.affectedCompetitionIds);
   return result;
 }
 
@@ -272,7 +298,7 @@ export async function scoreTablePredictions(tournamentId: string): Promise<Score
   }
 
   result.affectedCompetitionIds = [...affected];
-  await recomputeMemberTotals(result.affectedCompetitionIds);
+  await recomputeLiveMemberTotals(result.affectedCompetitionIds);
   return result;
 }
 
@@ -301,6 +327,9 @@ export async function recalculateLiveCompetition(competitionId: string): Promise
       predictionId: livePredictions.id,
       homeScore: livePredictions.homeScore,
       awayScore: livePredictions.awayScore,
+      id: liveFixtures.id,
+      stageKey: liveFixtures.stageKey,
+      matchday: liveFixtures.matchday,
       status: liveFixtures.status,
       normalTimeHome: liveFixtures.normalTimeHome,
       normalTimeAway: liveFixtures.normalTimeAway,
@@ -309,16 +338,20 @@ export async function recalculateLiveCompetition(competitionId: string): Promise
     .innerJoin(liveFixtures, eq(livePredictions.liveFixtureId, liveFixtures.id))
     .where(eq(livePredictions.liveCompetitionId, competition.id));
 
+  // Recomputed rather than remembered, so deselecting a match takes its points away on
+  // the next recalculation — which is exactly what the selection route triggers.
+  const selections = await loadSelectionIndex(competition.liveTournamentId);
+
   let scored = 0;
   for (const row of rows) {
-    const points = calculateLivePoints(
-      { homeScore: row.homeScore, awayScore: row.awayScore },
-      row,
-      config,
-    );
+    const selected = isLiveFixtureSelected(row, selections);
+    const points = selected
+      ? calculateLivePoints({ homeScore: row.homeScore, awayScore: row.awayScore }, row, config)
+      : { points: 0, correctOutcomePoints: 0, correctGoalDifferencePoints: 0, exactScorePoints: 0 };
     // An unscorable fixture goes back to null rather than a stored zero, so the UI can
-    // tell "not scored yet" apart from "scored, nothing earned".
-    const scorable = row.status === 'finished' && row.normalTimeHome !== null;
+    // tell "not scored yet" apart from "scored, nothing earned". A deselected one is
+    // treated the same way: it never scores, so it never shows a total.
+    const scorable = selected && row.status === 'finished' && row.normalTimeHome !== null;
 
     await db
       .update(livePredictions)
@@ -334,7 +367,7 @@ export async function recalculateLiveCompetition(competitionId: string): Promise
     if (scorable) scored++;
   }
 
-  await recomputeMemberTotals([competition.id]);
+  await recomputeLiveMemberTotals([competition.id]);
   return { scoredPredictions: scored, affectedCompetitionIds: [competition.id] };
 }
 
@@ -351,11 +384,18 @@ export async function recalculateLiveTournament(tournamentId: string): Promise<S
     scored += result.scoredPredictions;
   }
 
-  // Table predictions are scored per tournament rather than per competition, since the
-  // final table is a property of the tournament. Runs last so its member-total recompute
-  // sees the freshly rebuilt fixture points.
+  // Table predictions and bonus questions are scored per tournament rather than per
+  // competition, since the final table and the correct answers are properties of the
+  // tournament. They run last so the member-total recompute sees the freshly rebuilt
+  // fixture points.
   const table = await scoreTablePredictions(tournamentId);
   scored += table.scoredPredictions;
+
+  const bonus = await scoreAllLiveBonusQuestions(tournamentId);
+  scored += bonus.scoredAnswers;
+  // Bonus scoring writes points onto the answers only — the rollup into member totals is
+  // this function's job, so run it once the answers are settled.
+  await recomputeLiveMemberTotals(competitions.map(c => c.id));
 
   return { scoredPredictions: scored, affectedCompetitionIds: competitions.map(c => c.id) };
 }

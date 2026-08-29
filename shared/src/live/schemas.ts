@@ -69,6 +69,46 @@ export const SaveLiveTablePredictionSchema = z.object({
   orderedTeamIds: z.array(z.string().min(1)).min(2).max(64),
 });
 
+/**
+ * Register which fixtures of one gameweek users predict on.
+ *
+ * `fixtureIds: null` — or an empty array — resets the gameweek to its default, where
+ * every fixture counts. That is why an empty selection is never stored: "nothing
+ * selected" and "no selection registered" would otherwise be indistinguishable, and a
+ * gameweek nobody can predict on is never what an admin means.
+ */
+export const SaveLiveGameweekSelectionSchema = z.object({
+  stageKey: z.string().min(1),
+  matchday: z.number().int().min(1).max(60),
+  fixtureIds: z.array(z.string().min(1)).max(200).nullable(),
+});
+
+// ── Bonus questions ───────────────────────────────────────────────────────────
+
+const bonusAnswerType = z.enum(['number', 'player', 'team', 'yes_no']);
+
+export const CreateLiveBonusQuestionSchema = z.object({
+  question: z.string().min(1).max(500),
+  answerType: bonusAnswerType,
+  points: z.number().int().min(1).max(1000),
+  /** Null means the default deadline — the tournament's first predictable kickoff − 60 min. */
+  lockAt: z.string().datetime().nullable().optional(),
+});
+
+export const UpdateLiveBonusQuestionSchema = z.object({
+  question: z.string().min(1).max(500).optional(),
+  answerType: bonusAnswerType.optional(),
+  points: z.number().int().min(1).max(1000).optional(),
+  /** A JSON array of strings when several answers count; a plain string otherwise. */
+  correctAnswer: z.string().nullable().optional(),
+  lockAt: z.string().datetime().nullable().optional(),
+});
+
+export const SaveLiveBonusAnswerSchema = z.object({
+  questionId: z.string().min(1),
+  answer: z.string().min(1).max(500),
+});
+
 export const ListLiveFixturesQuerySchema = z.object({
   stageKey: z.string().min(1).optional(),
   matchday: z.coerce.number().int().min(1).max(60).optional(),
@@ -92,3 +132,7 @@ export type JoinLiveCompetitionInput = z.infer<typeof JoinLiveCompetitionSchema>
 export type SaveLivePredictionInput = z.infer<typeof SaveLivePredictionSchema>;
 export type SaveLiveTablePredictionInput = z.infer<typeof SaveLiveTablePredictionSchema>;
 export type ListLiveFixturesQuery = z.infer<typeof ListLiveFixturesQuerySchema>;
+export type SaveLiveGameweekSelectionInput = z.infer<typeof SaveLiveGameweekSelectionSchema>;
+export type CreateLiveBonusQuestionInput = z.infer<typeof CreateLiveBonusQuestionSchema>;
+export type UpdateLiveBonusQuestionInput = z.infer<typeof UpdateLiveBonusQuestionSchema>;
+export type SaveLiveBonusAnswerInput = z.infer<typeof SaveLiveBonusAnswerSchema>;

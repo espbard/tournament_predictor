@@ -10,7 +10,7 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import type { LiveScoringConfig } from '@tournament-predictor/shared';
+import type { LiveBonusAnswerType, LiveScoringConfig } from '@tournament-predictor/shared';
 import { users } from './schema';
 
 // ── Live (API-linked) tournaments ─────────────────────────────────────────────
@@ -47,6 +47,15 @@ export const liveQualificationStatusEnum = pgEnum('live_qualification_status', [
   'qualified',
   'pending',
   'eliminated',
+]);
+
+// Its own enum rather than the manual type's `bonus_answer_type`, so the live list can
+// grow or shrink without touching a type the manual tournaments depend on.
+export const liveBonusAnswerTypeEnum = pgEnum('live_bonus_answer_type', [
+  'number',
+  'player',
+  'team',
+  'yes_no',
 ]);
 
 // ── Tables ────────────────────────────────────────────────────────────────────
@@ -233,6 +242,8 @@ export const liveCompetitionMembers = pgTable(
     exactScorePoints: integer('exact_score_points').notNull().default(0),
     /** Exact-position plus band points from the table prediction. */
     tablePoints: integer('table_points').notNull().default(0),
+    /** Bonus question points. Stays zero until the tournament is marked completed. */
+    bonusPoints: integer('bonus_points').notNull().default(0),
     totalPoints: integer('total_points').notNull().default(0),
   },
   t => ({
@@ -311,6 +322,85 @@ export const liveTablePredictions = pgTable(
   }),
 );
 
+export const liveGameweekSelections = pgTable(
+  'live_gameweek_selections',
+  {
+    id: text('id').primaryKey(),
+    liveTournamentId: text('live_tournament_id')
+      .notNull()
+      .references(() => liveTournaments.id, { onDelete: 'cascade' }),
+    /** A gameweek is one matchday inside one stage, so both identify it. */
+    stageKey: text('stage_key').notNull(),
+    matchday: integer('matchday').notNull(),
+    /**
+     * live_fixtures ids the admin picked out of this gameweek. Stored whole rather than a
+     * row per fixture because it is only ever read and written complete. No FK, so a
+     * fixture the provider drops degrades to a stale id rather than silently widening the
+     * selection. A row is never stored empty — see the route — because "no row" already
+     * means "every fixture selected".
+     */
+    selectedFixtureIds: json('selected_fixture_ids').notNull().$type<string[]>(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  t => ({
+    gameweekUnique: uniqueIndex('live_gameweek_selections_tournament_stage_matchday_unique').on(
+      t.liveTournamentId,
+      t.stageKey,
+      t.matchday,
+    ),
+  }),
+);
+
+export const liveBonusQuestions = pgTable('live_bonus_questions', {
+  id: text('id').primaryKey(),
+  liveTournamentId: text('live_tournament_id')
+    .notNull()
+    .references(() => liveTournaments.id, { onDelete: 'cascade' }),
+  question: text('question').notNull(),
+  answerType: liveBonusAnswerTypeEnum('answer_type').notNull().default('number').$type<LiveBonusAnswerType>(),
+  points: integer('points').notNull(),
+  /** Null until an admin records it. A JSON array of strings when several answers count. */
+  correctAnswer: text('correct_answer'),
+  /**
+   * Per-question deadline. Null means the default — one hour before the first match of the
+   * tournament's starting stage, the same instant the table prediction locks. See
+   * shared/src/live/lock.ts.
+   */
+  lockAt: timestamp('lock_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+export const liveBonusAnswers = pgTable(
+  'live_bonus_answers',
+  {
+    id: text('id').primaryKey(),
+    questionId: text('question_id')
+      .notNull()
+      .references(() => liveBonusQuestions.id, { onDelete: 'cascade' }),
+    liveCompetitionId: text('live_competition_id')
+      .notNull()
+      .references(() => liveCompetitions.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    answer: text('answer').notNull(),
+    /** Null until the tournament is completed and bonus scoring runs. */
+    points: integer('points'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  t => ({
+    // The uniqueness the manual bonus_answers table enforces in app code only.
+    answerUnique: uniqueIndex('live_bonus_answers_question_competition_user_unique').on(
+      t.questionId,
+      t.liveCompetitionId,
+      t.userId,
+    ),
+    competitionIdx: index('live_bonus_answers_competition_idx').on(t.liveCompetitionId),
+  }),
+);
+
 // ── Relations ─────────────────────────────────────────────────────────────────
 
 export const liveTournamentsRelations = relations(liveTournaments, ({ many }) => ({
@@ -318,6 +408,38 @@ export const liveTournamentsRelations = relations(liveTournaments, ({ many }) =>
   fixtures: many(liveFixtures),
   standings: many(liveStandings),
   competitions: many(liveCompetitions),
+  gameweekSelections: many(liveGameweekSelections),
+  bonusQuestions: many(liveBonusQuestions),
+}));
+
+export const liveBonusQuestionsRelations = relations(liveBonusQuestions, ({ one, many }) => ({
+  tournament: one(liveTournaments, {
+    fields: [liveBonusQuestions.liveTournamentId],
+    references: [liveTournaments.id],
+  }),
+  answers: many(liveBonusAnswers),
+}));
+
+export const liveBonusAnswersRelations = relations(liveBonusAnswers, ({ one }) => ({
+  question: one(liveBonusQuestions, {
+    fields: [liveBonusAnswers.questionId],
+    references: [liveBonusQuestions.id],
+  }),
+  competition: one(liveCompetitions, {
+    fields: [liveBonusAnswers.liveCompetitionId],
+    references: [liveCompetitions.id],
+  }),
+  user: one(users, {
+    fields: [liveBonusAnswers.userId],
+    references: [users.id],
+  }),
+}));
+
+export const liveGameweekSelectionsRelations = relations(liveGameweekSelections, ({ one }) => ({
+  tournament: one(liveTournaments, {
+    fields: [liveGameweekSelections.liveTournamentId],
+    references: [liveTournaments.id],
+  }),
 }));
 
 export const liveTeamsRelations = relations(liveTeams, ({ one }) => ({
