@@ -135,7 +135,7 @@ async function main() {
     ['home team name', has(m => m.home?.name ?? m.home_team?.name), 'the only way to join to a stored team'],
     ['away team name', has(m => m.away?.name ?? m.away_team?.name), ''],
     ['stage / round', has(m => m.stage ?? m.round), 'absent → every fixture files under the tournament start stage'],
-    ['matchday', has(m => m.matchday ?? m.week ?? m.round_number), 'absent → gameweek selection cannot group fixtures'],
+    ['matchday', has(m => m.matchday ?? m.week ?? m.round_number), 'absent → derived from the calendar in matchdays.ts'],
     ['half-time score', has(m => m.half_time ?? m.score?.half_time ?? m.ht_score), 'nice to have'],
     ['extra time / pens', has(m => m.extra_time ?? m.penalties ?? m.score?.penalties), 'REQUIRED for knockout scoring'],
   ];

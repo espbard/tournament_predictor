@@ -142,7 +142,14 @@ Three things to know before extending it:
    unlinked and raises an admin warning; it is never guessed at. New aliases go in that file.
 2. **Its schema has no stage.** A stage-less fixture is filed under the tournament's
    `startStageKey`, which is right for a league phase and wrong for anything else.
-3. **Its score is a single pair**, with no regular/extra-time split. §6's refuse-to-guess rule
+3. **Its schema has no matchday**, and the matchday *is* the gameweek — `live_gameweek_selections`
+   is keyed by (stage, matchday), the admin's selected-matches panel only lists fixtures that
+   have one, and the fixtures tab pages a table stage by it. `live/matchdays.ts` derives it by
+   clustering kickoff times: a new round starts at a gap of more than four days, and no round
+   spans more than six, which recovers UEFA's published round numbering from a calendar whose
+   rounds are a fortnight apart. A stage where the provider reported *any* matchday is left
+   alone, so this is a no-op for football-data.
+4. **Its score is a single pair**, with no regular/extra-time split. §6's refuse-to-guess rule
    cannot be applied to it, so it must not be used for knockout rounds. Move fixtures back to
    football-data before February, or verify a richer field set exists.
 

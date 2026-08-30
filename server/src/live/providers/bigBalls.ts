@@ -25,7 +25,7 @@ import {
 //   id, sport, league, home{name,short_name,logo_url}, away{…}, kickoff_utc, status,
 //   score{home,away}, linescore, attendance, broadcast, has_odds
 //
-// Three things our fixture model wants are not in it:
+// Four things our fixture model wants are not in it:
 //
 //   1. No team ids. A match names its clubs and nothing else, so a fixture is joined to
 //      a stored team by name — see server/src/live/teamMatching.ts. Unmatched fixtures
@@ -34,16 +34,21 @@ import {
 //      which is useless. The sync engine therefore files a stage-less fixture under the
 //      tournament's startStageKey — correct for the Champions League league phase, and
 //      wrong for the knockout rounds, which this provider cannot describe.
-//   3. No breakdown of the score. `score` is one pair with no half-time, extra-time,
+//   3. No matchday, and the matchday *is* the gameweek here — selections are keyed by it
+//      and the fixtures tab pages by it. It is derived from the kickoff calendar instead,
+//      in server/src/live/matchdays.ts, which recovers the published round numbering as
+//      long as rounds are separated by a break. Nothing to do in this adapter beyond
+//      reporting null, but do not assume a null matchday is harmless.
+//   4. No breakdown of the score. `score` is one pair with no half-time, extra-time,
 //      penalty or regular-time split. The whole scoring model rests on the
 //      end-of-90-minutes score (see normalTimeFromScore in footballData.ts, and why it
 //      refuses to guess), and for a knockout tie decided in extra time this field cannot
 //      be told apart from one that includes it.
 //
-// So: fine for a league phase, where every match ends at 90 minutes and there is one
-// stage. Not sufficient for two-legged knockouts. Whoever revisits this in February
-// should move fixtures back to football-data — by then it will have the season — or
-// confirm that a richer field set exists and map it here.
+// So: fine for a league phase, where every match ends at 90 minutes, there is one stage,
+// and the rounds are a fortnight apart. Not sufficient for two-legged knockouts. Whoever
+// revisits this in February should move fixtures back to football-data — by then it will
+// have the season — or confirm that a richer field set exists and map it here.
 //
 // The endpoint shapes below follow bigballsdata's published documentation. They have NOT
 // been exercised against the live API from this repo: the host is unreachable from the

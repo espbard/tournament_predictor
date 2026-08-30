@@ -236,8 +236,9 @@ indistinguishable from the outside.
   the table always come from `provider`. Added for the Champions League 2026/27, where
   football-data had teams and a table but no calendar. Two consequences live in `sync.ts`, not in
   the adapters: fixtures are joined to teams **by name** (`teamMatching.ts`, which refuses to
-  guess and reports what it could not match), and a fixture whose provider names no stage is
-  filed under the tournament's `startStageKey`. See the header of `providers/bigBalls.ts` for
+  guess and reports what it could not match), a fixture whose provider names no stage is
+  filed under the tournament's `startStageKey`, and a missing matchday is derived from the
+  kickoff calendar (`matchdays.ts`) because the matchday is what a gameweek is keyed by. See the header of `providers/bigBalls.ts` for
   what that provider's schema cannot express — no team ids, no stage, and no split between
   normal time and extra time, which makes it unfit for two-legged knockouts.
 - **An empty match list is not an error either.** A season can exist at the provider — teams and

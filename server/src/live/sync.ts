@@ -10,6 +10,7 @@ import {
 import { db } from '../db/client';
 import { liveFixtures, liveStandings, liveTeams, liveTournaments } from '../db/liveSchema';
 import { mirrorTeamCrests } from './crests';
+import { deriveMatchdays } from './matchdays';
 import { getProvider } from './providers';
 import { buildTeamNameIndex, matchTeamByName } from './teamMatching';
 import {
@@ -37,7 +38,9 @@ import {
 //   * a fixture's teams are matched by name against the rows the main provider created,
 //     because providers do not share team ids, and the embedded teams are NOT inserted;
 //   * a fixture with no stage is filed under the tournament's startStageKey, since a
-//     provider that reports no stage would otherwise leave every fixture unpredictable.
+//     provider that reports no stage would otherwise leave every fixture unpredictable;
+//   * a matchday is derived from the calendar when the provider reports none, because the
+//     matchday *is* the gameweek — see matchdays.ts.
 //
 // See docs/LIVE_TOURNAMENTS_PLAN.md §7.
 
@@ -402,13 +405,28 @@ async function upsertFixtures(
     };
   });
 
+  // A provider that reports no matchday leaves every fixture outside every gameweek, so
+  // one is derived from the kickoff calendar. A no-op for football-data, which always
+  // reports one. Done before the tie metadata below, which reads the matchday as a leg
+  // number for two-legged ties.
+  const matchdayByFixtureId = deriveMatchdays(
+    prepared.map(p => ({
+      providerFixtureId: p.dto.providerFixtureId,
+      stageKey: p.stageKey,
+      matchday: p.dto.matchday,
+      kickoffAt: p.kickoffAt,
+    })),
+  );
+  const matchdayOf = (providerFixtureId: string) =>
+    matchdayByFixtureId.get(providerFixtureId) ?? null;
+
   const ties = assignTieMetadata(
     prepared.map(p => ({
       providerFixtureId: p.dto.providerFixtureId,
       stageKey: p.stageKey,
       homeTeamId: p.homeTeamId,
       awayTeamId: p.awayTeamId,
-      matchday: p.dto.matchday,
+      matchday: matchdayOf(p.dto.providerFixtureId),
       kickoffAt: p.kickoffAt,
     })),
     format,
@@ -430,7 +448,7 @@ async function upsertFixtures(
       stageKey: p.stageKey,
       providerStage: p.dto.providerStage,
       groupName: p.dto.groupName,
-      matchday: p.dto.matchday,
+      matchday: matchdayOf(p.dto.providerFixtureId),
       tieKey: tie.tieKey,
       legNumber: tie.legNumber,
       normalTimeHome: score.normalTime.home,
