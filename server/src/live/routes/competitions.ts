@@ -705,6 +705,80 @@ liveCompetitionsRouter.put('/competitions/:id/table-prediction', requireAuth, as
 });
 
 /**
+ * Delete the caller's table prediction, putting them back in front of the first-run gate.
+ *
+ * Only while the table is still open. Once it locks the prediction is what the season is
+ * scored against, so there is nothing to withdraw — the same instant the save route stops
+ * accepting changes. Nothing needs recomputing either: table points are only awarded once
+ * the stage finishes, long after this deadline, so the member's stored total is still zero.
+ */
+liveCompetitionsRouter.delete('/competitions/:id/table-prediction', requireAuth, async (req, res) => {
+  try {
+    const user = res.locals.user;
+
+    const [competition] = await db
+      .select()
+      .from(liveCompetitions)
+      .where(eq(liveCompetitions.id, req.params.id));
+    if (!competition) return res.status(404).json({ error: 'Not found' });
+
+    const [membership] = await db
+      .select({ id: liveCompetitionMembers.id })
+      .from(liveCompetitionMembers)
+      .where(
+        and(
+          eq(liveCompetitionMembers.liveCompetitionId, competition.id),
+          eq(liveCompetitionMembers.userId, user.id),
+        ),
+      );
+    if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+
+    const [tournament] = await db
+      .select()
+      .from(liveTournaments)
+      .where(eq(liveTournaments.id, competition.liveTournamentId));
+    if (!tournament) return res.status(404).json({ error: 'Live tournament not found' });
+
+    const stage = tablePredictionStage(getLiveFormat(tournament.format), tournament.startStageKey);
+    if (!stage) return res.status(400).json({ error: 'That stage does not take a table prediction' });
+
+    const stageFixtures = await db
+      .select({ kickoffAt: liveFixtures.kickoffAt })
+      .from(liveFixtures)
+      .where(
+        and(
+          eq(liveFixtures.liveTournamentId, tournament.id),
+          eq(liveFixtures.stageKey, stage.key),
+        ),
+      );
+
+    const kickoffs = stageFixtures.map(f => f.kickoffAt);
+    if (isTablePredictionLocked(kickoffs)) {
+      const lockAt = tablePredictionLockAt(kickoffs);
+      return res.status(400).json({
+        error: 'Table predictions for this competition are closed',
+        lockedAt: lockAt ? lockAt.toISOString() : null,
+      });
+    }
+
+    const deleted = await db
+      .delete(liveTablePredictions)
+      .where(
+        and(
+          eq(liveTablePredictions.liveCompetitionId, competition.id),
+          eq(liveTablePredictions.userId, user.id),
+          eq(liveTablePredictions.stageKey, stage.key),
+        ),
+      )
+      .returning({ id: liveTablePredictions.id });
+
+    return res.json({ deleted: deleted.length });
+  } catch (err) {
+    return fail(res, err);
+  }
+});
+
+/**
  * Another member's table prediction — only once the deadline has passed, so nobody can
  * copy an order while it still matters.
  */

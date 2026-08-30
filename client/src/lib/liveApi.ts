@@ -281,6 +281,9 @@ export const liveApi = {
     api.get<LiveTablePredictionView>(`/live/competitions/${competitionId}/table-prediction`),
   saveTablePrediction: (competitionId: string, body: { stageKey: string; orderedTeamIds: string[] }) =>
     api.put<LiveTablePrediction>(`/live/competitions/${competitionId}/table-prediction`, body),
+  /** Drops the caller's table prediction. Refused once the table has locked. */
+  clearTablePrediction: (competitionId: string) =>
+    api.delete<{ deleted: number }>(`/live/competitions/${competitionId}/table-prediction`),
   otherUserTablePrediction: (competitionId: string, userId: string) =>
     api.get<LiveTablePrediction | null>(
       `/live/competitions/${competitionId}/table-prediction/${userId}`,

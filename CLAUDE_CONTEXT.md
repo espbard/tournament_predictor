@@ -283,6 +283,7 @@ POST   /api/competitions/:id/predictions   — upsert a prediction (checks deadl
 
 DELETE /api/competitions/:id/bonus-answers      — clear the caller's own bonus answers
 DELETE /api/live/competitions/:id/bonus-answers — the same, for questions still open
+DELETE /api/live/competitions/:id/table-prediction — withdraw the caller's predicted table
 
 POST   /api/competitions/:id/invite        — mint (or re-read) the share link (any member)
 POST   /api/live/competitions/:id/invite   — the same, for a live competition
@@ -297,6 +298,14 @@ POST   /api/invites/:token/accept          — join whatever the link points at
 > `BonusQuestionsPanel` and appears only when its wrapper supplies `api.clearAnswers`,
 > which is why the admin tournament page (no competition, so no answers of one's own)
 > never shows it.
+
+> **Clearing a table prediction.** The live table tab offers "Clear table prediction"
+> while the table is still open — the same lock the save route enforces, an hour before
+> the stage's first kickoff. Confirming deletes the row and reloads the page, which puts
+> the member back in front of the first-run gate in `LiveCompetitionDetailPage`, since
+> that gate is driven by `tableView.prediction == null`. The button is deliberately absent
+> from the gate variant itself and after the lock; nothing needs rescoring, because table
+> points are only awarded once the stage finishes.
 
 > **Invite links.** Every competition can hand out `/invite/<token>` alongside its
 > five-digit code, for both tournament types. The token is 32 url-safe random characters

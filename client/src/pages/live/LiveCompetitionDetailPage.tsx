@@ -217,6 +217,7 @@ export default function LiveCompetitionDetailPage() {
 
   const [tableSavedAt, setTableSavedAt] = useState<number | null>(null);
   const [tableError, setTableError] = useState<string | null>(null);
+  const [clearTableError, setClearTableError] = useState<string | null>(null);
 
   const saveTableMutation = useMutation({
     mutationFn: (orderedTeamIds: string[]) =>
@@ -235,6 +236,16 @@ export default function LiveCompetitionDetailPage() {
       // Usually the deadline passing mid-edit; refetch so the UI locks itself.
       queryClient.invalidateQueries({ queryKey: liveKeys.tablePrediction(id!) });
     },
+  });
+
+  const clearTableMutation = useMutation({
+    mutationFn: () => liveApi.clearTablePrediction(id!),
+    onMutate: () => setClearTableError(null),
+    // A full reload rather than a refetch: with the table gone the first-run gate takes
+    // the screen again, and reloading leaves no half-edited order behind it.
+    onSuccess: () => window.location.reload(),
+    onError: err =>
+      setClearTableError(err instanceof ApiError ? err.message : t('live.table.clearFailed')),
   });
 
   // ── The table-prediction gate ───────────────────────────────────────────────
@@ -472,6 +483,9 @@ export default function LiveCompetitionDetailPage() {
             isSaving={saveTableMutation.isPending}
             savedAt={tableSavedAt}
             error={tableError}
+            onClear={() => clearTableMutation.mutate()}
+            isClearing={clearTableMutation.isPending}
+            clearError={clearTableError}
           />
         ))}
 
