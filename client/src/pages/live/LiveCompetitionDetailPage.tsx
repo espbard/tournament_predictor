@@ -7,6 +7,9 @@ import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { useT } from '@/lib/useT';
 import LiveFixtureCard from '@/components/live/LiveFixtureCard';
 import LiveTieCard from '@/components/live/LiveTieCard';
+import LiveGameweekProgress, {
+  type LiveGameweekProgressItem,
+} from '@/components/live/LiveGameweekProgress';
 import LiveStandingsTable from '@/components/live/LiveStandingsTable';
 import LiveLeaderboard from '@/components/live/LiveLeaderboard';
 import LiveQualifiedTeamsPanel from '@/components/live/LiveQualifiedTeamsPanel';
@@ -151,20 +154,56 @@ export default function LiveCompetitionDetailPage() {
   }, [fixtures, stageKey]);
 
   const stageDef = stages.find(s => s.key === stageKey) ?? null;
+
+  // Every fixture of the stage, selected or not. The gameweeks come from this rather than
+  // from the selected ones: a week the admin has not picked yet still exists and still
+  // gets a dot — a grey one — so the progress bar does not silently lose weeks.
+  const stageAllFixtures = useMemo(
+    () => fixtures.filter(f => f.stageKey === stageKey),
+    [fixtures, stageKey],
+  );
+
   // A match left out of its gameweek's selected matches is not part of the game, so it is
   // not shown at all — no card, no inputs, nothing to explain.
   const stageFixtures = useMemo(
-    () => fixtures.filter(f => f.stageKey === stageKey && f.isSelected),
-    [fixtures, stageKey],
+    () => stageAllFixtures.filter(f => f.isSelected),
+    [stageAllFixtures],
   );
 
   const matchdays = useMemo(
     () =>
-      [...new Set(stageFixtures.map(f => f.matchday).filter((m): m is number => m != null))].sort(
-        (a, b) => a - b,
-      ),
-    [stageFixtures],
+      [
+        ...new Set(stageAllFixtures.map(f => f.matchday).filter((m): m is number => m != null)),
+      ].sort((a, b) => a - b),
+    [stageAllFixtures],
   );
+
+  // One dot per gameweek: grey with nothing to predict, green once every selected match
+  // of that week has this viewer's prediction, yellow while any is still missing.
+  const gameweekProgress = useMemo<LiveGameweekProgressItem[]>(
+    () =>
+      matchdays.map(matchday => {
+        const selected = stageFixtures.filter(f => f.matchday === matchday);
+        const predicted = selected.filter(f => f.prediction !== null).length;
+        return {
+          matchday,
+          selected: selected.length,
+          predicted,
+          state:
+            selected.length === 0
+              ? 'empty'
+              : predicted === selected.length
+                ? 'complete'
+                : 'partial',
+        };
+      }),
+    [matchdays, stageFixtures],
+  );
+
+  const shownMatchday = matchday ?? matchdays[0] ?? null;
+  const shownSelectedCount = stageFixtures.filter(
+    f => shownMatchday === null || f.matchday === shownMatchday,
+  ).length;
 
   const saveMutation = useMutation({
     mutationFn: ({ fixtureId, homeScore, awayScore }: { fixtureId: string; homeScore: number; awayScore: number }) =>
@@ -352,31 +391,35 @@ export default function LiveCompetitionDetailPage() {
                 </div>
               )}
 
-              {stageDef?.kind === 'table' && matchdays.length > 1 && (
-                <div className="mb-3 flex items-center gap-2">
-                  <label htmlFor="matchday" className="text-xs text-muted-foreground">
-                    {t('live.matchday')}
-                  </label>
-                  <select
-                    id="matchday"
-                    value={matchday ?? matchdays[0]}
-                    onChange={e => setMatchday(Number(e.target.value))}
-                    className="rounded-md border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  >
-                    {matchdays.map(md => (
-                      <option key={md} value={md}>
-                        {md}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+              {stageDef?.kind === 'table' && matchdays.length > 0 && (
+                <>
+                  <LiveGameweekProgress
+                    items={gameweekProgress}
+                    current={shownMatchday}
+                    onSelect={setMatchday}
+                  />
+
+                  <div className="mb-3">
+                    <h2 className="text-lg font-semibold">
+                      {t('live.gameweekHeading', { matchday: shownMatchday ?? 0 })}
+                    </h2>
+                    {shownSelectedCount > 0 && (
+                      <p className="mt-0.5 text-sm text-muted-foreground">
+                        {t('live.gameweekSelectedExplainer', { count: shownSelectedCount })}
+                      </p>
+                    )}
+                  </div>
+                </>
               )}
 
               <FixtureList
                 fixtures={stageFixtures}
                 stageKind={stageDef?.kind ?? 'table'}
                 legs={stageDef?.legs ?? 1}
-                matchday={matchday ?? matchdays[0] ?? null}
+                matchday={shownMatchday}
+                emptyMessage={
+                  stageDef?.kind === 'table' ? t('live.gameweekNoneSelected') : undefined
+                }
                 onSave={handleSave}
                 savingFixtureId={savingFixtureId}
                 savedFixtures={savedFixtures}
@@ -433,6 +476,8 @@ interface FixtureListProps {
   stageKind: 'table' | 'knockout';
   legs: 1 | 2;
   matchday: number | null;
+  /** Why there is nothing here, when the caller knows better than "no matches yet". */
+  emptyMessage?: string;
   onSave: (fixtureId: string, homeScore: number, awayScore: number) => void;
   savingFixtureId: string | null;
   savedFixtures: Record<string, number>;
@@ -444,6 +489,7 @@ function FixtureList({
   stageKind,
   legs,
   matchday,
+  emptyMessage,
   onSave,
   savingFixtureId,
   savedFixtures,
@@ -503,7 +549,7 @@ function FixtureList({
   if (shown.length === 0) {
     return (
       <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-        {t('live.noFixtures')}
+        {emptyMessage ?? t('live.noFixtures')}
       </p>
     );
   }
