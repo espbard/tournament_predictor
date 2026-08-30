@@ -439,6 +439,94 @@ describe('BigBallsProvider', () => {
     });
   });
 
+  // Captured from the real API on 2026-08-30: no pagination in the envelope at all, and
+  // a note saying the Champions League is served from a stored table rather than a live
+  // adapter. Both facts drive behaviour, so both are pinned.
+  const REAL_ENVELOPE = {
+    data: [
+      {
+        id: '72f2d036-2869-4a95-b670-8efee7d9be09',
+        sport: 'football',
+        league: 'UEFA Champions League',
+        home: { name: 'Club Brugge KV', short_name: 'BRU', logo_url: 'https://crests.football-data.org/851.png' },
+        away: { name: 'Aston Villa', short_name: 'AVL', logo_url: 'https://r2.thesportsdb.com/x.png' },
+        kickoff_utc: '2026-09-08T16:45:00.000Z',
+        status: 'scheduled',
+        score: null,
+        linescore: null,
+        attendance: null,
+        broadcast: null,
+        has_odds: false,
+      },
+    ],
+    meta: {
+      source: 'stored',
+      cached: false,
+      request_id: '604095c5-1f88-4314-b43d-34b3be4140b6',
+      note: 'Upcoming matches served from the stored table (no live adapter covers this sport/league; refreshed by ingest).',
+    },
+    error: null,
+  };
+
+  it('maps the real envelope, and offers no next page from it', () => {
+    const matches = BigBallsProvider.matchesFrom(REAL_ENVELOPE, '/v1/matches');
+    expect(matches).toHaveLength(1);
+
+    const fixture = mapBigBallsMatch(matches[0] as any);
+    expect(fixture.homeTeam?.name).toBe('Club Brugge KV');
+    expect(fixture.awayTeam?.shortName).toBe('AVL');
+    expect(fixture.status).toBe('scheduled');
+    expect(fixture.kickoffAt).toBe('2026-09-08T16:45:00.000Z');
+    // A match not yet played carries no score, and none is invented for it.
+    expect(fixture.score.normalTime).toEqual({ home: null, away: null });
+
+    // Nothing in meta is pagination, so there is nothing to follow — which is what makes
+    // the discovery probe the only way through.
+    expect(BigBallsProvider.totalFrom(REAL_ENVELOPE)).toBeNull();
+    expect(BigBallsProvider.nextPagePath(REAL_ENVELOPE, '/v1/matches', 50)).toBeNull();
+  });
+
+  it('asks the season request the sync makes, then retries it with a bigger page', async () => {
+    const paths = stubFetch(path => {
+      if (path.startsWith('/v1/leagues')) return { body: { data: [{ key: 'CL', name: 'UEFA Champions League' }] } };
+      const limit = new URLSearchParams(path.split('?')[1]).get('limit');
+      return {
+        body: {
+          ...REAL_ENVELOPE,
+          data: Array.from({ length: limit ? 144 : 50 }, (_, i) => ({
+            ...REAL_ENVELOPE.data[0],
+            id: `m${i}`,
+          })),
+        },
+      };
+    });
+
+    const probes = await provider().probe('CL', '2026');
+
+    // The season request carries the same date range a whole-season sync sends.
+    expect(paths[1]).toBe(
+      '/v1/matches?sport=football&league=CL&date_from=2026-06-01&date_to=2027-07-31',
+    );
+    expect(probes.map(p => p.key)).toEqual(['competition', 'matches_season', 'matches_paged']);
+    expect(probes[2].count).toBe(144);
+    expect(probes[2].detail).toContain('the cap lifts');
+    // The provider's own note about how the league is served is surfaced, not swallowed.
+    expect(probes[1].detail).toContain('served from the stored table');
+  });
+
+  it('does not ask for a bigger page when the first response was not page-shaped', async () => {
+    const paths = stubFetch(path =>
+      path.startsWith('/v1/leagues')
+        ? { body: { data: [] } }
+        : { body: { data: Array.from({ length: 144 }, (_, i) => ({ ...REAL_ENVELOPE.data[0], id: `m${i}` })) } },
+    );
+
+    const probes = await provider().probe('CL', '2026');
+
+    expect(probes.map(p => p.key)).toEqual(['competition', 'matches_season']);
+    expect(paths).toHaveLength(2);
+  });
+
   it('probes the league list and the match list without throwing', async () => {
     stubFetch(path =>
       path.startsWith('/v1/leagues')

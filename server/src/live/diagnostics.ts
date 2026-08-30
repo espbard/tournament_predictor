@@ -72,7 +72,11 @@ export function verdictFrom(
       : probes.filter(probe => (probe.provider ?? fixtureProviderId) === fixtureProviderId),
   );
   const p = byKey(probes);
-  const filtered = matchProbes.get('matches_season');
+  // A bigger page, when the provider honours one, is simply more of the same request.
+  const paged = matchProbes.get('matches_paged');
+  const seasonFiltered = matchProbes.get('matches_season');
+  const filtered =
+    (paged?.countForSeason ?? -1) > (seasonFiltered?.countForSeason ?? -1) ? paged : seasonFiltered;
   const unfiltered = matchProbes.get('matches_unfiltered');
   const teams = p.get('teams');
   const standings = p.get('standings');

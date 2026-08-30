@@ -51,9 +51,20 @@ import {
 // revisits this in February should move fixtures back to football-data — by then it will
 // have the season — or confirm that a richer field set exists and map it here.
 //
-// The endpoint shapes below follow bigballsdata's published documentation. They have NOT
-// been exercised against the live API from this repo: the host is unreachable from the
-// environment this was written in. `npm run live:capture -w server` fetches and saves
+// ⚠ AND READ THIS BEFORE TRUSTING IT AT ALL. A real response, captured 2026-08-30, says:
+//
+//   "meta": { "source": "stored", "note": "Upcoming matches served from the stored table
+//             (no live adapter covers this sport/league; refreshed by ingest)." }
+//
+// The Champions League is not one of the competitions this provider covers live. What it
+// serves is whatever an ingest job happened to store, and on that date it was 50 matches
+// — about 10 of each round's 18, with a round missing entirely between 10 September and
+// 13 October. That is not a paging problem, and no amount of paging fixes it. Check the
+// per-round counts in the diagnostic before relying on this for a season.
+//
+// The endpoint shapes below follow bigballsdata's published documentation. Only the match
+// list and its envelope have been seen for real; teams, standings and pagination have
+// not. `npm run live:capture -w server` fetches and saves
 // real payloads under __fixtures__/ so the mapping can be pinned the way the
 // football-data one is — run it before relying on any of this.
 
@@ -707,10 +718,45 @@ export class BigBallsProvider implements LiveProvider {
     }
   }
 
-  async probe(competitionId: string, _season: string): Promise<ProviderProbe[]> {
-    const matchesPath = this.matchesPath(competitionId);
+  async probe(competitionId: string, season: string): Promise<ProviderProbe[]> {
+    // Exactly the request a whole-season sync makes, so the diagnostic reports on the
+    // call that is actually failing rather than a simplified cousin of it.
+    const seasonPath = this.matchesPath(competitionId, seasonDateRange(season));
+    const pagedPath = `${seasonPath}&limit=${PROBE_PAGE_SIZE}`;
 
-    return [
+    const describe = (matches: RawMatch[], body: unknown) => {
+      const total = BigBallsProvider.totalFrom(body);
+      const dated = matches.filter(m => !!m.kickoff_utc).length;
+      const named = matches.filter(m => m.home?.name && m.away?.name).length;
+
+      const notes = [
+        `${matches.length} returned${total !== null ? ` of ${total} reported` : ''}`,
+        `${dated} with a kickoff time`,
+        `${named} with both teams named`,
+        `envelope: ${Array.isArray(body) ? 'bare array' : Object.keys(object(body)).join(', ') || 'none'}`,
+        `next page: ${BigBallsProvider.nextPagePath(body, seasonPath, matches.length) ?? 'none offered'}`,
+      ];
+      // Their own note says whether a league is covered live or served from a stored
+      // table, which is the difference between "complete" and "whatever was ingested".
+      const providerNote = object(object(body).meta).note;
+      if (typeof providerNote === 'string') notes.push(`provider says: ${providerNote}`);
+      if (BigBallsProvider.looksTruncated(matches.length, total)) {
+        notes.push('⚠ this looks like a truncated page, not the whole season');
+      }
+
+      const rounds = countRounds(matches);
+      if (rounds.length > 0) {
+        notes.push(`rounds by date: ${rounds.map(r => `${r.date}×${r.count}`).join(', ')}`);
+      }
+
+      return {
+        count: matches.length,
+        countForSeason: matches.length,
+        detail: matches.length === 0 ? 'the response carried no matches at all' : notes.join(' · '),
+      };
+    };
+
+    const probes: ProviderProbe[] = [
       await this.probeOne('competition', '/v1/leagues?sport=football', body => {
         const leagues: any[] = Array.isArray(body) ? body : (body?.data ?? body?.leagues ?? []);
         const keys = leagues.map(l => String(l.key ?? l.id ?? l.slug ?? '')).filter(Boolean);
@@ -723,35 +769,28 @@ export class BigBallsProvider implements LiveProvider {
         };
       }),
 
-      await this.probeOne('matches_season', matchesPath, body => {
-        const matches = BigBallsProvider.matchesFrom(body, matchesPath);
-        const total = BigBallsProvider.totalFrom(body);
-        const dated = matches.filter(m => !!m.kickoff_utc).length;
-        const named = matches.filter(m => m.home?.name && m.away?.name).length;
-
-        // The three things that turn a full season into a short one, each named so the
-        // admin can tell them apart instead of guessing at a small number.
-        const notes = [
-          `${matches.length} on this page${total !== null ? ` of ${total} reported` : ''}`,
-          `${dated} with a kickoff time`,
-          `${named} with both teams named`,
-          `envelope: ${Array.isArray(body) ? 'bare array' : Object.keys(object(body)).join(', ') || 'none'}`,
-          `next page: ${BigBallsProvider.nextPagePath(body, matchesPath, matches.length) ?? 'none offered'}`,
-        ];
-        if (BigBallsProvider.looksTruncated(matches.length, total)) {
-          notes.push('⚠ this looks like a truncated page, not the whole season');
-        }
-        const rounds = countRounds(matches);
-        if (rounds.length > 0) {
-          notes.push(`rounds by date: ${rounds.map(r => `${r.date}×${r.count}`).join(', ')}`);
-        }
-
-        return {
-          count: matches.length,
-          countForSeason: matches.length,
-          detail: matches.length === 0 ? 'the response carried no matches at all' : notes.join(' · '),
-        };
-      }),
+      await this.probeOne('matches_season', seasonPath, body =>
+        describe(BigBallsProvider.matchesFrom(body, seasonPath), body),
+      ),
     ];
+
+    // Only worth a second request when the first came back page-shaped: this is the one
+    // question the envelope cannot answer, since it advertises no pagination at all.
+    const seasonProbe = probes[probes.length - 1];
+    if (seasonProbe.ok && BigBallsProvider.looksTruncated(seasonProbe.count ?? 0, null)) {
+      const paged = await this.probeOne('matches_paged', pagedPath, body =>
+        describe(BigBallsProvider.matchesFrom(body, pagedPath), body),
+      );
+      paged.detail =
+        `limit=${PROBE_PAGE_SIZE} → ${paged.ok ? `${paged.count} matches` : 'refused'}` +
+        ` (without it: ${seasonProbe.count})` +
+        (paged.ok && (paged.count ?? 0) > (seasonProbe.count ?? 0)
+          ? ' — the cap lifts, so syncing will page through'
+          : ' — the cap does not lift') +
+        (paged.detail ? ` · ${paged.detail}` : '');
+      probes.push(paged);
+    }
+
+    return probes;
   }
 }

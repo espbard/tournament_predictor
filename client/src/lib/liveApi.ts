@@ -144,7 +144,13 @@ export interface SaveLiveSelectionResult {
 
 /** One provider endpoint a diagnostic run asked about. Mirrors ProviderProbe. */
 export interface LiveProviderProbe {
-  key: 'competition' | 'matches_season' | 'matches_unfiltered' | 'teams' | 'standings';
+  key:
+    | 'competition'
+    | 'matches_season'
+    | 'matches_paged'
+    | 'matches_unfiltered'
+    | 'teams'
+    | 'standings';
   /** Which adapter answered — a tournament may read fixtures from a second one. */
   provider?: string;
   url: string;

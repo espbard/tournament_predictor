@@ -165,6 +165,15 @@ and the walk is capped — see `discoverPaging`, and it is **keyed by date rathe
 season**, so a whole-season fetch sends an explicit June-to-July range instead of trusting
 whatever window a "live + scheduled fixtures" endpoint defaults to.
 
+**What a real response turned out to say (30 August 2026).** The envelope carries no
+pagination whatsoever — `{ data, meta: {source, cached, request_id, note}, error }` — and its
+`meta.note` reads *"Upcoming matches served from the stored table (no live adapter covers this
+sport/league; refreshed by ingest)."* So the Champions League is not a competition this provider
+covers live; it serves what an ingest job stored. On that date that was 50 matches: roughly 10
+of each round's 18, and no round at all between 10 September and 13 October. The 50 may well be
+a page cap, but the thinness within each round is not paging — it is the data. Read the
+`rounds by date` line in the diagnostic before trusting a season to this.
+
 The adapter was written from bigballsdata's published documentation, not from captured
 payloads — unlike every football-data mapping here, which is pinned to real responses under
 `__fixtures__/`. `npm run live:capture -w server` fetches and saves the real ones and reports

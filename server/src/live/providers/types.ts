@@ -130,6 +130,8 @@ export interface FetchFixturesOptions {
 export type ProviderProbeKey =
   | 'competition'
   | 'matches_season'
+  /** The same request again, asking for a bigger page — does the cap lift? */
+  | 'matches_paged'
   | 'matches_unfiltered'
   | 'teams'
   | 'standings';

@@ -381,6 +381,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 const PROBE_LABEL_KEYS: Record<LiveProviderProbe['key'], string> = {
   competition: 'live.admin.probeCompetition',
   matches_season: 'live.admin.probeMatchesSeason',
+  matches_paged: 'live.admin.probeMatchesPaged',
   matches_unfiltered: 'live.admin.probeMatchesUnfiltered',
   teams: 'live.admin.probeTeams',
   standings: 'live.admin.probeStandings',
