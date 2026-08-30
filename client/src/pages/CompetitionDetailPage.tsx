@@ -17,6 +17,7 @@ import FinalResultsView from '@/components/FinalResultsView';
 import { buildFinalResultsPointSources } from '@/lib/pointSources';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import BackButton from '@/components/BackButton';
+import InviteButton from '@/components/InviteButton';
 import { useT } from '@/lib/useT';
 import { useTeamName } from '@/lib/teamTranslations';
 import type { Competition, Tournament, Prediction, MatchStage, LeaderboardEntry, BracketPredictions, BracketMatchPrediction, UserStatCardData, LeaderboardProgressionResponse, BonusQuestion } from '@tournament-predictor/shared';
@@ -1142,22 +1143,30 @@ export default function CompetitionDetailPage() {
                   </p>
                 )}
               </div>
-              {user?.isAdmin && !showEdit && (
-                <button
-                  onClick={openEdit}
-                  className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted flex-shrink-0"
-                >
-                  {t('common.edit')}
-                </button>
-              )}
-              {!user?.isAdmin && (
-                <button
-                  onClick={() => setShowLeaveConfirm(true)}
-                  className="rounded-md border border-red-600 bg-red-600 px-3 py-1.5 text-sm flex-shrink-0 text-white hover:bg-red-700 hover:border-red-700 transition-colors"
-                >
-                  {t('competitionDetail.leave')}
-                </button>
-              )}
+              {/* Leave (or Edit, for an admin) with Invite stacked underneath. */}
+              <div className="flex flex-col items-stretch gap-2 flex-shrink-0">
+                {user?.isAdmin && !showEdit && (
+                  <button
+                    onClick={openEdit}
+                    className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+                  >
+                    {t('common.edit')}
+                  </button>
+                )}
+                {!user?.isAdmin && (
+                  <button
+                    onClick={() => setShowLeaveConfirm(true)}
+                    className="rounded-md border border-red-600 bg-red-600 px-3 py-1.5 text-sm text-white hover:bg-red-700 hover:border-red-700 transition-colors"
+                  >
+                    {t('competitionDetail.leave')}
+                  </button>
+                )}
+                <InviteButton
+                  kind="manual"
+                  competitionId={competition.id}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+                />
+              </div>
             </div>
           </div>
         </div>

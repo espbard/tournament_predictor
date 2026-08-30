@@ -13,6 +13,7 @@ import { tournamentsRouter, matchesRouter, teamsRouter } from './routes/tourname
 import { uploadRouter } from './routes/upload';
 import { imagesRouter } from './routes/images';
 import { competitionsRouter } from './routes/competitions';
+import { invitesRouter } from './routes/invites';
 import { settingsRouter } from './routes/settings';
 import { feedbackRouter } from './routes/feedback';
 import { recalculateAllScoresForTournament } from './lib/scoringTrigger';
@@ -44,6 +45,8 @@ app.use('/api/teams', teamsRouter);
 app.use('/api/upload', uploadRouter);
 app.use('/api/images', imagesRouter);
 app.use('/api/competitions', competitionsRouter);
+// Competition share links — resolves to either tournament type. See routes/invites.ts.
+app.use('/api/invites', invitesRouter);
 app.use('/api/settings', settingsRouter);
 app.use('/api/feedback', feedbackRouter);
 // Live (API-linked) tournaments — see docs/LIVE_TOURNAMENTS_PLAN.md
@@ -80,6 +83,10 @@ async function start() {
   await db.execute(sql`ALTER TABLE competitions ADD COLUMN IF NOT EXISTS "allow_late_additions" boolean NOT NULL DEFAULT true`);
   // Defensive: ensure icon_color column exists regardless of migration state
   await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS "icon_color" text`);
+  // Defensive: ensure the competition share-link token exists regardless of migration
+  // state. Nullable — it is minted the first time somebody presses Invite.
+  await db.execute(sql`ALTER TABLE competitions ADD COLUMN IF NOT EXISTS "invite_token" text`);
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "competitions_invite_token_unique" ON competitions ("invite_token")`);
   // Defensive: ensure bracket_index and next_match_id columns exist regardless of migration state
   await db.execute(sql`ALTER TABLE matches ADD COLUMN IF NOT EXISTS "bracket_index" integer`);
   await db.execute(sql`ALTER TABLE matches ADD COLUMN IF NOT EXISTS "next_match_id" text REFERENCES matches(id) ON DELETE SET NULL`);

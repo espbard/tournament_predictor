@@ -119,6 +119,7 @@ export async function ensureLiveSchema(): Promise<void> {
       "name" text NOT NULL,
       "image_url" text,
       "invite_code" text NOT NULL UNIQUE,
+      "invite_token" text,
       "scoring_config" json NOT NULL,
       "created_at" timestamp NOT NULL DEFAULT now()
     )
@@ -214,6 +215,8 @@ export async function ensureLiveSchema(): Promise<void> {
   await db.execute(sql`ALTER TABLE "live_bonus_questions" ADD COLUMN IF NOT EXISTS "max_value" integer`);
   await db.execute(sql`ALTER TABLE "live_bonus_questions" ADD COLUMN IF NOT EXISTS "leeway" integer`);
   await db.execute(sql`ALTER TABLE "live_bonus_questions" ADD COLUMN IF NOT EXISTS "options" json`);
+  // Share-link token. Nullable: minted the first time somebody presses Invite.
+  await db.execute(sql`ALTER TABLE "live_competitions" ADD COLUMN IF NOT EXISTS "invite_token" text`);
 
   // ── Indexes ─────────────────────────────────────────────────────────────────
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "live_tournaments_provider_competition_season_unique" ON "live_tournaments" ("provider", "provider_competition_id", "season")`);
@@ -223,6 +226,7 @@ export async function ensureLiveSchema(): Promise<void> {
   await db.execute(sql`CREATE INDEX IF NOT EXISTS "live_fixtures_tournament_stage_idx" ON "live_fixtures" ("live_tournament_id", "stage_key")`);
   await db.execute(sql`CREATE INDEX IF NOT EXISTS "live_fixtures_status_idx" ON "live_fixtures" ("status")`);
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "live_standings_tournament_stage_team_unique" ON "live_standings" ("live_tournament_id", "stage_key", "team_id")`);
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "live_competitions_invite_token_unique" ON "live_competitions" ("invite_token")`);
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "live_competition_members_competition_user_unique" ON "live_competition_members" ("live_competition_id", "user_id")`);
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "live_predictions_competition_user_fixture_unique" ON "live_predictions" ("live_competition_id", "user_id", "live_fixture_id")`);
   await db.execute(sql`CREATE INDEX IF NOT EXISTS "live_predictions_fixture_idx" ON "live_predictions" ("live_fixture_id")`);

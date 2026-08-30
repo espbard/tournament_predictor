@@ -22,6 +22,7 @@ import {
   tablePredictionStage,
   withLiveScoringDefaults,
 } from '@tournament-predictor/shared';
+import type { CompetitionInvite } from '@tournament-predictor/shared';
 import { db } from '../../db/client';
 import {
   liveBonusAnswers,
@@ -43,6 +44,8 @@ import { redactLiveBonusAnswerPoints, redactLiveBonusQuestions } from '../bonusV
 import { recalculateLiveCompetition } from '../scoringTrigger';
 import { loadSelectionIndex } from '../selections';
 import { validateTableOrder } from '../tableScoring';
+import { joinLiveCompetition } from '../../lib/competitionJoin';
+import { ensureLiveInviteToken, inviteTokenPath } from '../../lib/inviteLinks';
 
 // ── Live competition API ──────────────────────────────────────────────────────
 //
@@ -120,24 +123,9 @@ liveCompetitionsRouter.post('/competitions/join', requireAuth, async (req, res) 
       .where(eq(liveCompetitions.inviteCode, parsed.data.inviteCode.trim()));
     if (!competition) return res.status(404).json({ error: 'Invalid invite code' });
 
-    const user = res.locals.user;
-    const [existing] = await db
-      .select({ id: liveCompetitionMembers.id })
-      .from(liveCompetitionMembers)
-      .where(
-        and(
-          eq(liveCompetitionMembers.liveCompetitionId, competition.id),
-          eq(liveCompetitionMembers.userId, user.id),
-        ),
-      );
-    if (existing) return res.json(competition);
-
-    await db.insert(liveCompetitionMembers).values({
-      id: generateId(15),
-      liveCompetitionId: competition.id,
-      userId: user.id,
-    });
-    return res.status(201).json(competition);
+    const result = await joinLiveCompetition(competition, res.locals.user.id);
+    if (!result.ok) return res.status(result.status).json({ error: result.error });
+    return res.status(result.alreadyMember ? 200 : 201).json(competition);
   } catch (err) {
     return fail(res, err);
   }
@@ -265,6 +253,35 @@ liveCompetitionsRouter.post('/competitions/:id/recalculate', requireAdmin, async
   try {
     const result = await recalculateLiveCompetition(req.params.id);
     return res.json(result);
+  } catch (err) {
+    return fail(res, err);
+  }
+});
+
+/**
+ * Mint (or re-read) this competition's share link. Any member may invite; the token is
+ * created on first use and then reused. Mirrors POST /api/competitions/:id/invite.
+ */
+liveCompetitionsRouter.post('/competitions/:id/invite', requireAuth, async (req, res) => {
+  try {
+    const [competition] = await db
+      .select()
+      .from(liveCompetitions)
+      .where(eq(liveCompetitions.id, req.params.id));
+    if (!competition) return res.status(404).json({ error: 'Not found' });
+    if (!(await assertMember(competition.id, res.locals.user))) {
+      return res.status(403).json({ error: 'Not a member of this competition' });
+    }
+
+    const token = await ensureLiveInviteToken(competition.id);
+    if (!token) return res.status(404).json({ error: 'Not found' });
+
+    const invite: CompetitionInvite = {
+      token,
+      path: inviteTokenPath(token),
+      inviteCode: competition.inviteCode,
+    };
+    return res.json(invite);
   } catch (err) {
     return fail(res, err);
   }

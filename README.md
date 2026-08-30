@@ -51,7 +51,9 @@ single tick may spend.
 ## Features
 
 - **Tournament management** — Admins create tournaments with groups, teams, and matches
-- **Private prediction groups** — Users join competitions via invite code
+- **Private prediction groups** — Users join competitions via invite code, or by opening a
+  share link the Invite button generates (works for both tournament types, and takes a new
+  user through registration and into the competition in one go)
 - **Match predictions** — Predict scores for group stage and knockout matches
 - **Bracket predictions** — Predict the full knockout bracket using resolved group standings
 - **Group position predictions** — Predict which teams finish where in each group

@@ -128,6 +128,8 @@ export const competitions = pgTable('competitions', {
   name: text('name').notNull(),
   imageUrl: text('image_url'),
   inviteCode: text('invite_code').notNull().unique(),
+  // Share-link token. Null until somebody presses Invite for the first time.
+  inviteToken: text('invite_token').unique(),
   scoringConfig: json('scoring_config').notNull().$type<ScoringConfig>(),
   predictionDeadline: timestamp('prediction_deadline'),
   allowLateAdditions: boolean('allow_late_additions').notNull().default(true),

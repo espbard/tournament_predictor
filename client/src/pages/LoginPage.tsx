@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
@@ -15,6 +15,12 @@ export default function LoginPage() {
   const { setUser } = useAuthStore();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  // An invite link sends people here with ?redirect= pointing back at it, so signing in
+  // or registering finishes the join instead of dropping them on the home page.
+  const [searchParams] = useSearchParams();
+  const redirectTo = safeRedirect(searchParams.get('redirect'));
+  // Carried across the login ↔ register link so switching does not lose the invite.
+  const redirectQuery = redirectTo === '/' ? '' : `?redirect=${encodeURIComponent(redirectTo)}`;
   const { t } = useT();
 
   async function handleSubmit(e: React.FormEvent) {
@@ -25,7 +31,7 @@ export default function LoginPage() {
       const user = await api.post<User>('/auth/login', { username, password });
       setUser(user);
       queryClient.setQueryData(['me'], user);
-      navigate('/');
+      navigate(redirectTo);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t('auth.loginFailed'));
     } finally {
@@ -76,11 +82,20 @@ export default function LoginPage() {
         </form>
         <p className="text-center text-sm text-muted-foreground">
           {t('auth.noAccount')}{' '}
-          <Link to="/register" className="font-medium text-primary hover:underline">
+          <Link to={`/register${redirectQuery}`} className="font-medium text-primary hover:underline">
             {t('auth.register')}
           </Link>
         </p>
       </div>
     </main>
   );
+}
+
+/**
+ * Only ever redirect inside the app. An absolute or protocol-relative URL from the query
+ * string would turn the login page into an open redirect.
+ */
+function safeRedirect(value: string | null): string {
+  if (!value || !value.startsWith('/') || value.startsWith('//')) return '/';
+  return value;
 }

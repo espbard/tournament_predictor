@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '@/lib/api';
 import { liveApi, liveKeys, type LiveFixtureView } from '@/lib/liveApi';
@@ -14,6 +14,7 @@ import LiveTablePrediction from '@/components/live/LiveTablePrediction';
 import LiveBonusQuestionsTab from '@/components/live/LiveBonusQuestionsTab';
 import LiveTablePredictionGate from '@/components/live/LiveTablePredictionGate';
 import LiveBonusQuestionsGate from '@/components/live/LiveBonusQuestionsGate';
+import InviteButton from '@/components/InviteButton';
 import { useAuthStore } from '@/store/authStore';
 import type { Team } from '@tournament-predictor/shared';
 
@@ -43,6 +44,8 @@ export default function LiveCompetitionDetailPage() {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
 
   const tabParam = searchParams.get('tab') as TabId | null;
   const activeTab: TabId = tabParam && TABS.includes(tabParam) ? tabParam : 'fixtures';
@@ -204,6 +207,14 @@ export default function LiveCompetitionDetailPage() {
   const handleSave = (fixtureId: string, homeScore: number, awayScore: number) =>
     saveMutation.mutate({ fixtureId, homeScore, awayScore });
 
+  const leaveMutation = useMutation({
+    mutationFn: () => liveApi.leave(id!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: liveKeys.competitions });
+      navigate('/');
+    },
+  });
+
   const [tableSavedAt, setTableSavedAt] = useState<number | null>(null);
   const [tableError, setTableError] = useState<string | null>(null);
 
@@ -246,6 +257,10 @@ export default function LiveCompetitionDetailPage() {
   );
 
   const canBeGated = !user?.isAdmin && !user?.isLeaderboardUser;
+
+  // The same group the gates apply to: an admin is a member of every competition
+  // implicitly and has nothing to leave, and a leaderboard viewer is not playing.
+  const canLeave = canBeGated;
 
   const mustPredictTable =
     canBeGated &&
@@ -304,19 +319,74 @@ export default function LiveCompetitionDetailPage() {
 
   return (
     <main className="mx-auto max-w-2xl md:max-w-4xl lg:max-w-[80%] px-4 pt-2.5 pb-12 sm:pt-8">
-      <header className="mb-6 flex items-center gap-4">
+      <header className="mb-6 flex items-start gap-4">
         {competition.imageUrl ? (
           <img src={competition.imageUrl} alt="" aria-hidden className="h-12 w-12 rounded-lg object-cover" />
         ) : (
           <div className="h-12 w-12 rounded-lg bg-muted" aria-hidden />
         )}
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h1 className="truncate text-2xl font-bold">{competition.name}</h1>
           <p className="truncate text-sm text-muted-foreground">
             {competition.tournament?.name ?? ''}
           </p>
+          <p className="mt-0.5 font-mono text-xs tracking-wider text-muted-foreground">
+            {t('competitionDetail.inviteCodeLabel')}: {competition.inviteCode}
+          </p>
+        </div>
+        {/* Leave with Invite stacked underneath, same as the manual competition page. */}
+        <div className="flex flex-col items-stretch gap-2 flex-shrink-0">
+          {canLeave && (
+            <button
+              onClick={() => setShowLeaveConfirm(true)}
+              className="rounded-md border border-red-600 bg-red-600 px-3 py-1.5 text-sm text-white transition-colors hover:border-red-700 hover:bg-red-700"
+            >
+              {t('competitionDetail.leave')}
+            </button>
+          )}
+          <InviteButton
+            kind="live"
+            competitionId={competition.id}
+            className="inline-flex items-center justify-center gap-1.5 rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+          />
         </div>
       </header>
+
+      {showLeaveConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-lg border bg-background p-6 shadow-xl">
+            <p className="mb-1 font-semibold">{t('competitionDetail.leaveConfirm.title')}</p>
+            <p className="mb-6 text-sm text-muted-foreground">
+              {t('competitionDetail.leaveConfirm.body', { name: competition.name })}
+            </p>
+            {leaveMutation.isError && (
+              <p className="mb-4 text-sm text-destructive">
+                {leaveMutation.error instanceof ApiError
+                  ? leaveMutation.error.message
+                  : t('competitionDetail.failedToLeave')}
+              </p>
+            )}
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowLeaveConfirm(false)}
+                disabled={leaveMutation.isPending}
+                className="rounded-md border px-4 py-2 text-sm hover:bg-muted disabled:opacity-50"
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                onClick={() => leaveMutation.mutate()}
+                disabled={leaveMutation.isPending}
+                className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
+              >
+                {leaveMutation.isPending
+                  ? t('competitionDetail.leaveConfirm.leaving')
+                  : t('competitionDetail.leaveConfirm.leave')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {activeTab === 'fixtures' && (
         <>

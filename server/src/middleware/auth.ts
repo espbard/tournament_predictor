@@ -58,6 +58,23 @@ export const requireAuth: RequestHandler = async (req, res, next) => {
   next();
 };
 
+/**
+ * Like requireAuth, but a signed-out visitor is let through with no user on res.locals.
+ * For endpoints a stranger may read — an invite link has to render before the person
+ * clicking it has an account.
+ */
+export const optionalAuth: RequestHandler = async (req, res, next) => {
+  const result = await getValidatedSession(req.headers.cookie);
+  if (result?.session) {
+    if (result.session.fresh) {
+      res.setHeader('Set-Cookie', lucia.createSessionCookie(result.session.id).serialize());
+    }
+    res.locals.user = result.user;
+    res.locals.session = result.session;
+  }
+  next();
+};
+
 export const requireAdmin: RequestHandler = async (req, res, next) => {
   const result = await getValidatedSession(req.headers.cookie);
   if (!result?.session) {
