@@ -165,6 +165,13 @@ and the walk is capped — see `discoverPaging`, and it is **keyed by date rathe
 season**, so a whole-season fetch sends an explicit June-to-July range instead of trusting
 whatever window a "live + scheduled fixtures" endpoint defaults to.
 
+**Its page size is `limit`, and it tops out at 200.** Asked for 500 it answers
+`400 {"fieldErrors":{"limit":["Number must be less than or equal to 200"]}}` — so the probe
+starts at 200 and, if a provider ever refuses while naming a size, reads that number out of the
+rejection and asks again for exactly it (`maxFromLimitError`). It also validates query
+parameters strictly, so the other paging conventions the discovery tries come back 400 and are
+discarded, which is what discovery is for.
+
 **Its date parameters are advisory.** `date_from`/`date_to` are accepted and ignored: asked
 for 2026/27 it returned 273 matches, every Champions League fixture it holds, last season's
 included. So `server/src/live/season.ts` defines the season as a span of dates once, the

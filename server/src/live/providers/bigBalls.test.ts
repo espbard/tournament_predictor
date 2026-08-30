@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   BigBallsProvider,
+  maxFromLimitError,
   mapBigBallsMatch,
   mapBigBallsScore,
   mapBigBallsStatus,
@@ -385,7 +386,7 @@ describe('BigBallsProvider', () => {
       const fixtures = await provider().fetchFixtures('ucl', '2026');
 
       expect(fixtures).toHaveLength(144);
-      expect(paths.some(p => p.includes('limit=500'))).toBe(true);
+      expect(paths.some(p => p.includes('limit=200'))).toBe(true);
     });
 
     it('walks page numbers when that is what the provider takes', async () => {
@@ -592,6 +593,43 @@ describe('BigBallsProvider', () => {
       await provider().fetchFixtures('CL', '2026');
 
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('outside the requested dates'));
+    });
+  });
+
+  // The API answers a too-large page with the size it would accept. Reading that is the
+  // difference between "the cap does not lift" and lifting it.
+  describe('a stated maximum page size', () => {
+    const REFUSAL =
+      '400 Bad Request: {"error":{"code":"bad_request","message":"One or more query ' +
+      'parameters are invalid.","validation_errors":{"fieldErrors":{"limit":["Number ' +
+      'must be less than or equal to 200"]}}}}';
+
+    it('reads the size out of the rejection', () => {
+      expect(maxFromLimitError(new Error(REFUSAL))).toBe(200);
+      expect(maxFromLimitError(REFUSAL)).toBe(200);
+    });
+
+    it('is null when nothing states one', () => {
+      expect(maxFromLimitError(new Error('400 Bad Request: nope'))).toBeNull();
+      expect(maxFromLimitError(null)).toBeNull();
+    });
+
+    it('asks again for exactly the size the provider named', async () => {
+      const paths = stubFetch(path => {
+        const limit = Number(new URLSearchParams(path.split('?')[1]).get('limit') ?? '0');
+        if (limit === 0) {
+          return { body: { data: Array.from({ length: 50 }, (_, i) => ({ ...IN_SEASON, id: `m${i}` })) } };
+        }
+        if (limit > 200) return { status: 400, body: JSON.parse(REFUSAL.slice(REFUSAL.indexOf('{'))) };
+        return {
+          body: { data: Array.from({ length: 144 }, (_, i) => ({ ...IN_SEASON, id: `m${i}` })) },
+        };
+      });
+
+      const fixtures = await provider().fetchFixtures('CL', '2026');
+
+      expect(fixtures).toHaveLength(144);
+      expect(paths.some(p => p.includes('limit=200'))).toBe(true);
     });
   });
 

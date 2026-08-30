@@ -75,8 +75,14 @@ const BASE_URL = process.env.BIG_BALLS_BASE_URL ?? 'https://api.bigballsdata.com
 const DEFAULT_RATE_LIMIT = 30;
 /** Pages a single fixture fetch will follow before giving up. */
 const MAX_PAGES = 20;
-/** Page size asked for when probing whether this API takes a size at all. */
-const PROBE_PAGE_SIZE = 500;
+/**
+ * Page size asked for when probing whether this API takes a size at all.
+ *
+ * 200 because that is bigballsdata's stated maximum — asking for 500 is refused outright:
+ * `{"fieldErrors":{"limit":["Number must be less than or equal to 200"]}}`. A provider
+ * that names its own limit that way is taken at its word; see maxFromLimitError.
+ */
+const PROBE_PAGE_SIZE = 200;
 /** Paging parameter names to try, in the order they are worth trying. */
 const LIMIT_PARAMS = ['limit', 'per_page', 'page_size', 'count'];
 const PAGE_PARAMS = ['page', 'page_number'];
@@ -267,6 +273,21 @@ export function seasonDateRange(season: string): FetchFixturesOptions {
 }
 
 /**
+ * The page size a rejection says it would have accepted, if it says.
+ *
+ * bigballsdata refuses `limit=500` with "Number must be less than or equal to 200". A
+ * provider that names the value it wants is the easiest kind to satisfy — better to read
+ * it than to keep guessing sizes.
+ */
+export function maxFromLimitError(err: unknown): number | null {
+  const message = err instanceof Error ? err.message : String(err ?? '');
+  const stated = /less than or equal to (\d+)/i.exec(message);
+  if (!stated) return null;
+  const max = Number.parseInt(stated[1], 10);
+  return Number.isFinite(max) && max > 0 ? max : null;
+}
+
+/**
  * Whether a kickoff falls inside an explicit date window, for the live-window sync.
  *
  * Same reason as the season check: the request's dates are advisory to this provider, so
@@ -349,8 +370,10 @@ export class BigBallsProvider implements LiveProvider {
 
       if (!res.ok) {
         const body = await res.text().catch(() => '');
+        // Long enough to keep a validation message intact: this provider answers a bad
+        // parameter by naming the value it would accept, which is worth reading.
         throw new ProviderError(
-          `${res.status} ${res.statusText}: ${body.slice(0, 200)}`,
+          `${res.status} ${res.statusText}: ${body.slice(0, 500)}`,
           res.status,
           path,
           res.status >= 500,
@@ -560,12 +583,18 @@ export class BigBallsProvider implements LiveProvider {
   ): Promise<boolean> {
     const pageSize = byId.size;
 
+    /** The last rejection, so a stated maximum can be read off it. */
+    let lastRefusal: unknown = null;
+
     /** Fetch one candidate, tolerating the rejection an unknown parameter may draw. */
     const tryPath = async (path: string): Promise<RawMatch[] | null> => {
       try {
         return BigBallsProvider.matchesFrom(await this.get<unknown>(path), path);
       } catch (err) {
-        if (err instanceof ProviderError) return null;
+        if (err instanceof ProviderError) {
+          lastRefusal = err;
+          return null;
+        }
         throw err;
       }
     };
@@ -578,13 +607,25 @@ export class BigBallsProvider implements LiveProvider {
 
     // 1. A bigger page. The cheapest fix by far when it works: one request, no walking.
     for (const name of LIMIT_PARAMS) {
-      const matches = await tryPath(withParam(name, PROBE_PAGE_SIZE));
+      let size = PROBE_PAGE_SIZE;
+      let matches = await tryPath(withParam(name, size));
+
+      // Refused while naming the size it wants — so ask again for exactly that. This is
+      // the difference between "the cap does not lift" and lifting it.
+      const stated = matches === null ? maxFromLimitError(lastRefusal) : null;
+      if (stated !== null && stated !== size) {
+        size = stated;
+        console.warn(`[big-balls] "${name}" tops out at ${size}; asking for that`);
+        matches = await tryPath(withParam(name, size));
+      }
+
       if (matches !== null && matches.length > pageSize) {
         add(matches);
-        console.warn(`[big-balls] paging by "${name}": ${byId.size} matches`);
+        console.warn(`[big-balls] paging by "${name}" (${size}): ${byId.size} matches`);
         // A response that filled the bigger page may still be short of the whole season.
-        if (matches.length >= PROBE_PAGE_SIZE) {
-          await this.walk(basePath, byId, add, n => withParam(name, PROBE_PAGE_SIZE) + `&offset=${n}`);
+        if (matches.length >= size) {
+          const page = (n: number) => `${withParam(name, size)}&offset=${n}`;
+          await this.walk(basePath, byId, add, n => page(n));
         }
         return true;
       }
@@ -804,11 +845,22 @@ export class BigBallsProvider implements LiveProvider {
     // question the envelope cannot answer, since it advertises no pagination at all.
     const seasonProbe = probes[probes.length - 1];
     if (seasonProbe.ok && BigBallsProvider.looksTruncated(seasonProbe.count ?? 0, null)) {
-      const paged = await this.probeOne('matches_paged', pagedPath, body =>
+      let paged = await this.probeOne('matches_paged', pagedPath, body =>
         describe(BigBallsProvider.matchesFrom(body, pagedPath), body),
       );
+
+      // Refused while naming the size it wants: ask again for that, exactly as a sync
+      // would, so the diagnostic reports what syncing will actually get.
+      const stated = paged.ok ? null : maxFromLimitError(paged.detail);
+      if (stated !== null) {
+        const statedPath = `${seasonPath}&limit=${stated}`;
+        paged = await this.probeOne('matches_paged', statedPath, body =>
+          describe(BigBallsProvider.matchesFrom(body, statedPath), body),
+        );
+      }
       paged.detail =
-        `limit=${PROBE_PAGE_SIZE} → ${paged.ok ? `${paged.count} matches` : 'refused'}` +
+        `${new URL(paged.url).searchParams.get('limit') ?? PROBE_PAGE_SIZE} per page → ` +
+        `${paged.ok ? `${paged.count} matches` : 'refused'}` +
         ` (without it: ${seasonProbe.count})` +
         (paged.ok && (paged.count ?? 0) > (seasonProbe.count ?? 0)
           ? ' — the cap lifts, so syncing will page through'

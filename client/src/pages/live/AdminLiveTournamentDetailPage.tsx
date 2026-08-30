@@ -75,7 +75,15 @@ export default function AdminLiveTournamentDetailPage() {
     },
     onError: err => {
       setMessage('');
-      setError(err instanceof ApiError ? err.message : t('live.admin.syncFailed'));
+      // The route sends the provider's own words in `details`; showing only "Provider
+      // sync failed" throws away the one part that says what to do about it.
+      setError(
+        err instanceof ApiError
+          ? [err.message, typeof err.details === 'string' ? err.details : null]
+              .filter(Boolean)
+              .join(' — ')
+          : t('live.admin.syncFailed'),
+      );
     },
   });
 
@@ -311,7 +319,7 @@ export default function AdminLiveTournamentDetailPage() {
         </div>
 
         {message && <p className="mt-3 text-sm text-green-600 dark:text-green-400">{message}</p>}
-        {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
+        {error && <p className="mt-3 whitespace-pre-wrap break-words text-sm text-destructive">{error}</p>}
       </div>
 
       <FixtureSourcePanel
