@@ -1,4 +1,5 @@
 import { eq, sql } from 'drizzle-orm';
+import type { LiveProviderId } from '@tournament-predictor/shared';
 import { db } from '../db/client';
 import { liveFixtures, liveTeams, liveTournaments } from '../db/liveSchema';
 import { getProvider } from './providers';
@@ -14,6 +15,11 @@ import type { ProviderProbe, ProviderProbeKey } from './providers/types';
 // So rather than guess, this asks each provider endpoint separately and reports the
 // answers verbatim next to what the database holds. Read-only on both sides: nothing is
 // written, and a failed probe is data, not an error.
+//
+// A tournament that reads fixtures from a second provider is asked twice — once of each,
+// with each provider's own identifier for the competition. Asking only the main one, as
+// this did before the split existed, answers a question nobody asked: it reports on the
+// provider that is not serving the fixtures.
 
 /** Which of the causes above the probes point at. Rendered client-side. */
 export type FixtureDiagnosisVerdict =
@@ -27,6 +33,9 @@ export type FixtureDiagnosisVerdict =
 export interface FixtureDiagnosis {
   provider: string;
   providerCompetitionId: string;
+  /** The fixture provider and its identifier, when they differ from the above. */
+  fixtureProvider: string | null;
+  fixtureProviderCompetitionId: string | null;
   season: string;
   /** What the database holds right now, for comparison with the probes. */
   storedFixtures: number;
@@ -51,15 +60,33 @@ export function verdictFrom(
   probes: ProviderProbe[],
   storedFixtures: number,
   lastStructureSyncAt: Date | null,
+  /** Which provider's match probes decide the verdict. Defaults to all of them. */
+  fixtureProviderId?: LiveProviderId,
 ): FixtureDiagnosisVerdict {
+  // Only the fixture provider's answers say anything about missing fixtures. The other
+  // provider's match list is reported for context — is it worth switching back yet? —
+  // and must not be read as evidence either way.
+  const matchProbes = byKey(
+    fixtureProviderId === undefined
+      ? probes
+      : probes.filter(probe => (probe.provider ?? fixtureProviderId) === fixtureProviderId),
+  );
   const p = byKey(probes);
-  const filtered = p.get('matches_season');
-  const unfiltered = p.get('matches_unfiltered');
+  const filtered = matchProbes.get('matches_season');
+  const unfiltered = matchProbes.get('matches_unfiltered');
   const teams = p.get('teams');
   const standings = p.get('standings');
 
   // Nothing answered at all: a bad key, a blocked host, or the provider being down.
   if (probes.every(probe => !probe.ok)) return 'provider_unreachable';
+  // ...or nothing from the provider that serves fixtures, while the other one answers.
+  if (
+    fixtureProviderId !== undefined &&
+    matchProbes.size > 0 &&
+    [...matchProbes.values()].every(probe => !probe.ok)
+  ) {
+    return 'provider_unreachable';
+  }
 
   if ((filtered?.countForSeason ?? 0) > 0) {
     // The provider has them on the endpoint the sync engine uses. If they are not in the
@@ -90,22 +117,44 @@ export async function diagnoseTournamentFixtures(tournamentId: string): Promise<
     .from(liveTeams)
     .where(eq(liveTeams.liveTournamentId, tournament.id));
 
-  const probes = await getProvider(tournament.provider).probe(
-    tournament.providerCompetitionId,
-    tournament.season,
+  const fixtureProviderId: LiveProviderId = tournament.fixtureProvider ?? tournament.provider;
+  const fixtureCompetitionId =
+    tournament.fixtureProviderCompetitionId ?? tournament.providerCompetitionId;
+
+  /** Stamp each probe with the adapter that answered it, so the two are told apart. */
+  const stamp = (provider: LiveProviderId, probes: ProviderProbe[]): ProviderProbe[] =>
+    probes.map(probe => ({ ...probe, provider }));
+
+  const probes = stamp(
+    tournament.provider,
+    await getProvider(tournament.provider).probe(
+      tournament.providerCompetitionId,
+      tournament.season,
+    ),
   );
+
+  if (fixtureProviderId !== tournament.provider) {
+    probes.push(
+      ...stamp(
+        fixtureProviderId,
+        await getProvider(fixtureProviderId).probe(fixtureCompetitionId, tournament.season),
+      ),
+    );
+  }
 
   const storedFixtures = fixtures?.count ?? 0;
 
   return {
     provider: tournament.provider,
     providerCompetitionId: tournament.providerCompetitionId,
+    fixtureProvider: tournament.fixtureProvider,
+    fixtureProviderCompetitionId: tournament.fixtureProviderCompetitionId,
     season: tournament.season,
     storedFixtures,
     storedTeams: teams?.count ?? 0,
     lastStructureSyncAt: tournament.lastStructureSyncAt?.toISOString() ?? null,
     lastSyncError: tournament.lastSyncError,
     probes,
-    verdict: verdictFrom(probes, storedFixtures, tournament.lastStructureSyncAt),
+    verdict: verdictFrom(probes, storedFixtures, tournament.lastStructureSyncAt, fixtureProviderId),
   };
 }

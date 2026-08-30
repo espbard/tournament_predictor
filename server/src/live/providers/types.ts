@@ -136,6 +136,12 @@ export type ProviderProbeKey =
 
 export interface ProviderProbe {
   key: ProviderProbeKey;
+  /**
+   * Which adapter answered. Set by the diagnostic rather than the adapter, because a
+   * tournament may read fixtures from one provider and everything else from another, and
+   * a probe list that does not say which is which cannot be read at all.
+   */
+  provider?: LiveProviderId;
   /** The request as made, credentials excluded. Shown to an admin verbatim. */
   url: string;
   status: number | null;

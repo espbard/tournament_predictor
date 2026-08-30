@@ -10,6 +10,7 @@ import type { ProviderProbe, ProviderProbeKey } from './providers/types';
 function probe(key: ProviderProbeKey, over: Partial<ProviderProbe> = {}): ProviderProbe {
   return {
     key,
+    provider: 'football_data',
     url: `https://example.test/${key}`,
     status: 200,
     ok: true,
@@ -114,5 +115,60 @@ describe('verdictFrom', () => {
   it('reports the provider as unreachable when nothing answered', () => {
     const probes = ALL_KEYS.map(key => failed(key, 400));
     expect(verdictFrom(probes, 0, null)).toBe('provider_unreachable');
+  });
+});
+
+// ── Two providers ─────────────────────────────────────────────────────────────
+//
+// When fixtures come from a second provider, only that provider's match probes say
+// anything about missing fixtures. The main provider is still asked — is it worth
+// switching back yet? — and its answer must not be mistaken for evidence either way.
+describe('verdictFrom with a split fixture provider', () => {
+  const bb = (key: ProviderProbeKey, over: Partial<ProviderProbe> = {}): ProviderProbe =>
+    probe(key, { provider: 'big_balls', ...over });
+
+  it('reads the fixture provider’s matches, not the main one’s', () => {
+    const probes = [
+      // football-data still has no calendar; that is why fixtures were moved.
+      probe('matches_season', { count: 0, countForSeason: 0 }),
+      probe('teams', { count: 36, countForSeason: 36 }),
+      // The provider actually serving fixtures has them.
+      bb('matches_season', { count: 144, countForSeason: 144 }),
+    ];
+
+    expect(verdictFrom(probes, 144, syncedAt, 'big_balls')).toBe('fixtures_available');
+  });
+
+  it('does not let the main provider’s fixtures excuse a fixture provider with none', () => {
+    const probes = [
+      // football-data has caught up, but it is not the one being read.
+      probe('matches_season', { count: 144, countForSeason: 144 }),
+      probe('teams', { count: 36, countForSeason: 36 }),
+      bb('matches_season', { count: 0, countForSeason: 0 }),
+      bb('matches_unfiltered', { count: 0, countForSeason: 0 }),
+    ];
+
+    expect(verdictFrom(probes, 0, syncedAt, 'big_balls')).toBe('provider_has_no_fixtures');
+  });
+
+  it('reports the fixture provider as unreachable even when the other one answers', () => {
+    const probes = [
+      probe('teams', { count: 36, countForSeason: 36 }),
+      probe('matches_season', { count: 144, countForSeason: 144 }),
+      bb('competition', { status: 401, ok: false, count: null, countForSeason: null }),
+      bb('matches_season', { status: 401, ok: false, count: null, countForSeason: null }),
+    ];
+
+    expect(verdictFrom(probes, 0, syncedAt, 'big_balls')).toBe('provider_unreachable');
+  });
+
+  it('is unchanged when one provider serves everything', () => {
+    const probes = [
+      probe('matches_season', { count: 144, countForSeason: 144 }),
+      probe('teams', { count: 36, countForSeason: 36 }),
+    ];
+
+    expect(verdictFrom(probes, 144, syncedAt, 'football_data')).toBe('fixtures_available');
+    expect(verdictFrom(probes, 144, syncedAt)).toBe('fixtures_available');
   });
 });

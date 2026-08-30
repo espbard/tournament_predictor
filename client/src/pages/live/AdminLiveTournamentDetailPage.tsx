@@ -403,6 +403,15 @@ function DiagnosisReport({ diagnosis }: { diagnosis: LiveFixtureDiagnosis }) {
     <div className="mt-4">
       <p className="mb-3 text-sm text-muted-foreground">
         {diagnosis.provider} · {diagnosis.providerCompetitionId} · {diagnosis.season}
+        {diagnosis.fixtureProvider && diagnosis.fixtureProvider !== diagnosis.provider && (
+          <>
+            {' · '}
+            {t('live.admin.diagnoseFixturesFrom', {
+              provider: diagnosis.fixtureProvider,
+              competition: diagnosis.fixtureProviderCompetitionId ?? diagnosis.providerCompetitionId,
+            })}
+          </>
+        )}
         {' — '}
         {t('live.admin.diagnoseStored', {
           fixtures: diagnosis.storedFixtures,
@@ -413,9 +422,14 @@ function DiagnosisReport({ diagnosis }: { diagnosis: LiveFixtureDiagnosis }) {
 
       <div className="grid gap-2">
         {diagnosis.probes.map(probe => (
-          <div key={probe.key} className="rounded-md border p-3 text-sm">
+          <div key={`${probe.provider ?? ''}:${probe.key}`} className="rounded-md border p-3 text-sm">
             <div className="flex flex-wrap items-baseline gap-x-2">
               <span className="font-medium">{t(PROBE_LABEL_KEYS[probe.key])}</span>
+              {probe.provider && (
+                <span className="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">
+                  {probe.provider}
+                </span>
+              )}
               <span
                 className={`rounded px-1.5 py-0.5 text-xs font-mono ${
                   probe.ok
