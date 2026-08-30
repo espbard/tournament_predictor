@@ -153,6 +153,14 @@ Three things to know before extending it:
    cannot be applied to it, so it must not be used for knockout rounds. Move fixtures back to
    football-data before February, or verify a richer field set exists.
 
+Two more things its documentation does not describe, both found the hard way when a
+league phase arrived as 5 rounds of 10 instead of 8 of 18, and both handled in the adapter:
+its match list **pages** (the response envelope is followed through `next` / `meta.page` /
+`next_cursor` / `total`, with a de-duplicating 20-page cap and a loud warning when a
+page-sized response offers no pagination to follow), and it is **keyed by date rather than
+season**, so a whole-season fetch sends an explicit June-to-July range instead of trusting
+whatever window a "live + scheduled fixtures" endpoint defaults to.
+
 The adapter was written from bigballsdata's published documentation, not from captured
 payloads — unlike every football-data mapping here, which is pinned to real responses under
 `__fixtures__/`. `npm run live:capture -w server` fetches and saves the real ones and reports

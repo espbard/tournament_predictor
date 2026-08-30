@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { BigBallsProvider, mapBigBallsMatch, mapBigBallsScore, mapBigBallsStatus, mapBigBallsTeam } from './bigBalls';
+import {
+  BigBallsProvider,
+  mapBigBallsMatch,
+  mapBigBallsScore,
+  mapBigBallsStatus,
+  mapBigBallsTeam,
+  seasonDateRange,
+} from './bigBalls';
 import { RateLimiter } from './rateLimiter';
 import { ProviderError } from './types';
 
@@ -138,6 +145,81 @@ describe('mapBigBallsMatch', () => {
   });
 });
 
+// Why this exists: a Champions League league phase is 8 rounds of 18. Getting 5 rounds
+// of 10 back is what a paged endpoint and a default date window look like from the
+// outside, and neither announced itself.
+describe('seasonDateRange', () => {
+  it('spans a European season from its starting year', () => {
+    expect(seasonDateRange('2026')).toEqual({ dateFrom: '2026-06-01', dateTo: '2027-07-31' });
+  });
+
+  it('asks without a range when the season is not a year', () => {
+    expect(seasonDateRange('not-a-year')).toEqual({});
+  });
+});
+
+describe('BigBallsProvider.nextPagePath', () => {
+  const path = '/v1/matches?sport=football&league=ucl';
+
+  it('follows a next link verbatim, absolute or relative', () => {
+    expect(BigBallsProvider.nextPagePath({ next: '/v1/matches?page=2' }, path, 50)).toBe(
+      '/v1/matches?page=2',
+    );
+    expect(
+      BigBallsProvider.nextPagePath(
+        { links: { next: 'https://api.bigballsdata.com/v1/matches?page=3' } },
+        path,
+        100,
+      ),
+    ).toBe('/v1/matches?page=3');
+  });
+
+  it('advances the page number from pagination metadata', () => {
+    const next = BigBallsProvider.nextPagePath(
+      { data: [], meta: { page: 1, total_pages: 3 } },
+      path,
+      50,
+    );
+    expect(next).toBe('/v1/matches?sport=football&league=ucl&page=2');
+  });
+
+  it('stops on the last page', () => {
+    expect(
+      BigBallsProvider.nextPagePath({ meta: { page: 3, total_pages: 3 } }, path, 144),
+    ).toBeNull();
+    expect(BigBallsProvider.nextPagePath({ has_more: false }, path, 50)).toBeNull();
+  });
+
+  it('keeps going while a reported total is short of what we hold', () => {
+    expect(BigBallsProvider.nextPagePath({ total: 144 }, path, 50)).toContain('page=2');
+    expect(BigBallsProvider.nextPagePath({ total: 144 }, path, 144)).toBeNull();
+  });
+
+  it('follows a cursor when one is offered', () => {
+    expect(BigBallsProvider.nextPagePath({ next_cursor: 'abc' }, path, 50)).toBe(
+      '/v1/matches?sport=football&league=ucl&cursor=abc',
+    );
+  });
+
+  it('offers no next page for a plain array', () => {
+    expect(BigBallsProvider.nextPagePath([{ id: '1' }], path, 1)).toBeNull();
+  });
+});
+
+describe('BigBallsProvider.looksTruncated', () => {
+  it('knows a page-sized response with nothing to explain it', () => {
+    expect(BigBallsProvider.looksTruncated(50, null)).toBe(true);
+    expect(BigBallsProvider.looksTruncated(100, null)).toBe(true);
+    // 144 is a whole league phase, not a page size.
+    expect(BigBallsProvider.looksTruncated(144, null)).toBe(false);
+  });
+
+  it('trusts a reported total over the shape of the number', () => {
+    expect(BigBallsProvider.looksTruncated(50, 50)).toBe(false);
+    expect(BigBallsProvider.looksTruncated(144, 288)).toBe(true);
+  });
+});
+
 describe('BigBallsProvider', () => {
   const originalFetch = globalThis.fetch;
   afterEach(() => {
@@ -165,7 +247,9 @@ describe('BigBallsProvider', () => {
 
     const fixtures = await provider().fetchFixtures('ucl', '2026');
 
-    expect(paths).toEqual(['/v1/matches?sport=football&league=ucl']);
+    expect(paths).toEqual([
+      '/v1/matches?sport=football&league=ucl&date_from=2026-06-01&date_to=2027-07-31',
+    ]);
     expect(fixtures).toHaveLength(1);
     expect(fixtures[0].homeTeam?.name).toBe('Arsenal');
   });
@@ -208,6 +292,69 @@ describe('BigBallsProvider', () => {
       ),
     ).rejects.toThrow(/BIG_BALLS_API_KEY is not set/);
     expect(paths).toEqual([]);
+  });
+
+  it('asks for the whole season rather than trusting the endpoint default', async () => {
+    const paths = stubFetch(() => ({ body: [] }));
+
+    await provider().fetchFixtures('ucl', '2026');
+
+    expect(paths[0]).toBe(
+      '/v1/matches?sport=football&league=ucl&date_from=2026-06-01&date_to=2027-07-31',
+    );
+  });
+
+  it('follows pagination until the whole season is in hand', async () => {
+    const page = (n: number, ids: string[], totalPages: number) => ({
+      data: ids.map(id => ({ ...DOCUMENTED_MATCH, id })),
+      meta: { page: n, total_pages: totalPages, total: 3 },
+    });
+    const paths = stubFetch(path => {
+      const n = Number(new URLSearchParams(path.split('?')[1]).get('page') ?? '1');
+      return { body: page(n, [`m${n}`], 3) };
+    });
+
+    const fixtures = await provider().fetchFixtures('ucl', '2026');
+
+    expect(fixtures.map(f => f.providerFixtureId)).toEqual(['m1', 'm2', 'm3']);
+    expect(paths).toHaveLength(3);
+  });
+
+  it('does not return one match twice when pages overlap', async () => {
+    stubFetch(path => {
+      const n = Number(new URLSearchParams(path.split('?')[1]).get('page') ?? '1');
+      return {
+        body: {
+          data: [{ ...DOCUMENTED_MATCH, id: 'shared' }, { ...DOCUMENTED_MATCH, id: `m${n}` }],
+          meta: { page: n, total_pages: 2 },
+        },
+      };
+    });
+
+    const fixtures = await provider().fetchFixtures('ucl', '2026');
+    expect(fixtures.map(f => f.providerFixtureId).sort()).toEqual(['m1', 'm2', 'shared']);
+  });
+
+  it('gives up rather than looping on a provider that always offers the same next page', async () => {
+    const paths = stubFetch(() => ({
+      body: { data: [DOCUMENTED_MATCH], next: '/v1/matches?page=2' },
+    }));
+
+    await provider().fetchFixtures('ucl', '2026');
+
+    // The first request, then the repeated "next" once — never again.
+    expect(paths).toHaveLength(2);
+  });
+
+  it('warns when a response looks like an unexplained page', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    stubFetch(() => ({
+      body: Array.from({ length: 50 }, (_, i) => ({ ...DOCUMENTED_MATCH, id: `m${i}` })),
+    }));
+
+    await provider().fetchFixtures('ucl', '2026');
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('truncated page'));
   });
 
   it('probes the league list and the match list without throwing', async () => {

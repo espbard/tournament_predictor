@@ -198,6 +198,15 @@ liveTournamentsRouter.get('/tournaments/:id', requireAuth, async (req, res) => {
       fixtureCount: fixtures.length,
       unscorableFixtures,
       fixtureProviderCompetitionId: tournament.fixtureProviderCompetitionId,
+      // Fixtures that no gameweek can hold — no stage, or no matchday — among the ones
+      // that were supposed to be predictable. Since a selection is registered per
+      // gameweek, these can never be selected, and under the "nothing counts until
+      // picked" default that makes them invisible rather than merely unselected.
+      fixturesOutsideGameweek: fixtures.filter(
+        f =>
+          f.matchday === null &&
+          isStageAtOrAfter(getLiveFormat(tournament.format), f.stageKey, tournament.startStageKey),
+      ).length,
       // A fixture with a kickoff time but no team on one side. Undrawn knockout slots
       // legitimately look like this, so it only counts once a fixture has a date — and
       // with a split fixture provider it is how a failed name match surfaces.

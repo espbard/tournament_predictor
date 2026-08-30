@@ -111,6 +111,8 @@ export interface LiveTournamentDetail extends LiveTournament {
   unmappedStages: string[];
   /** Fixtures with a kickoff time but a team missing on one side. */
   fixturesMissingTeams: number;
+  /** Predictable fixtures that belong to no gameweek, so nobody can ever select them. */
+  fixturesOutsideGameweek: number;
 }
 
 /** What an admin may narrow about a bonus question. See shared/src/live/bonus.ts. */

@@ -183,6 +183,20 @@ export default function AdminLiveTournamentDetailPage() {
         </div>
       )}
 
+      {tournament.fixturesOutsideGameweek > 0 && (
+        <div className="mb-4 flex gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4">
+          <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-amber-700 dark:text-amber-400">
+              {t('live.admin.outsideGameweekTitle')}
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {t('live.admin.outsideGameweekBody', { count: tournament.fixturesOutsideGameweek })}
+            </p>
+          </div>
+        </div>
+      )}
+
       {tournament.fixturesMissingTeams > 0 && (
         <div className="mb-4 flex gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4">
           <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />

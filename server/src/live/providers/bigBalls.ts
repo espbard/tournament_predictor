@@ -60,6 +60,8 @@ const BASE_URL = process.env.BIG_BALLS_BASE_URL ?? 'https://api.bigballsdata.com
 
 /** Free tier: 1,000 requests per day. The per-minute cap is a courtesy, not a rule. */
 const DEFAULT_RATE_LIMIT = 30;
+/** Pages a single fixture fetch will follow before giving up. */
+const MAX_PAGES = 20;
 const RATE_WINDOW_MS = 60_000;
 const REQUEST_TIMEOUT_MS = 20_000;
 
@@ -170,6 +172,11 @@ export function mapBigBallsScore(raw: RawScore | null | undefined): ProviderFixt
 
 // ── Entity mapping ────────────────────────────────────────────────────────────
 
+/** Narrow an unknown body to something indexable, without throwing on null. */
+function object(value: unknown): Record<string, any> {
+  return value !== null && typeof value === 'object' ? (value as Record<string, any>) : {};
+}
+
 function emptyToNull(value: string | null | undefined): string | null {
   const trimmed = (value ?? '').trim();
   return trimmed === '' ? null : trimmed;
@@ -228,6 +235,39 @@ export function mapBigBallsMatch(raw: RawMatch): ProviderFixture {
     minute: typeof raw.minute === 'number' ? raw.minute : null,
     providerLastUpdated: emptyToNull(raw.updated_at),
   };
+}
+
+/**
+ * The calendar span of a season the provider names by its starting year.
+ *
+ * June of that year through July of the next: wide enough for qualifiers in July and a
+ * final in June, and narrow enough that it cannot pull in a neighbouring season.
+ */
+export function seasonDateRange(season: string): FetchFixturesOptions {
+  const start = Number.parseInt(season, 10);
+  // Not a year we understand, so ask without a range and let the provider decide.
+  if (!Number.isFinite(start)) return {};
+  return { dateFrom: `${start}-06-01`, dateTo: `${start + 1}-07-31` };
+}
+
+/**
+ * Matches per calendar date, for the diagnostic.
+ *
+ * A Champions League league-phase round is 18 matches across two nights. Seeing "9, 9,
+ * 9, 9" or "10, 10" instead is the quickest way to tell a truncated response from a
+ * complete one, without anyone having to count fixtures in the UI.
+ */
+function countRounds(matches: RawMatch[]): Array<{ date: string; count: number }> {
+  const byDate = new Map<string, number>();
+  for (const match of matches) {
+    const date = (match.kickoff_utc ?? '').slice(0, 10);
+    if (date === '') continue;
+    byDate.set(date, (byDate.get(date) ?? 0) + 1);
+  }
+  return [...byDate.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .slice(0, 12)
+    .map(([date, count]) => ({ date, count }));
 }
 
 // ── Adapter ───────────────────────────────────────────────────────────────────
@@ -299,7 +339,7 @@ export class BigBallsProvider implements LiveProvider {
    * down. An unrecognised shape throws rather than being read as "no matches" — the one
    * outcome this whole exercise exists to stop being silent.
    */
-  private static matchesFrom(body: unknown, path: string): RawMatch[] {
+  static matchesFrom(body: unknown, path: string): RawMatch[] {
     if (Array.isArray(body)) return body as RawMatch[];
     for (const key of ['data', 'matches', 'results', 'items']) {
       const value = (body as Record<string, unknown> | null)?.[key];
@@ -308,11 +348,106 @@ export class BigBallsProvider implements LiveProvider {
     throw new ProviderError(
       `unrecognised response shape: expected an array of matches, got ${
         body === null ? 'null' : typeof body
-      } with keys ${Object.keys((body as object) ?? {}).slice(0, 8).join(', ') || 'none'}`,
+      } with keys ${Object.keys((object(body))).slice(0, 8).join(', ') || 'none'}`,
       200,
       path,
       false,
     );
+  }
+
+  /**
+   * How many matches the provider says exist for this query, if it says at all.
+   *
+   * Worth more than the array length: it is the only way to notice that a response was
+   * a page rather than the whole answer.
+   */
+  static totalFrom(body: unknown): number | null {
+    const b = object(body);
+    const meta = object(b.meta ?? b.pagination ?? b);
+    for (const key of ['total', 'total_count', 'count', 'total_results']) {
+      const value = (meta as Record<string, unknown>)[key];
+      if (typeof value === 'number' && Number.isFinite(value)) return value;
+    }
+    return null;
+  }
+
+  /**
+   * The request that fetches the next page, or null when this is the last one.
+   *
+   * Written against the pagination shapes a JSON API is likely to use, because
+   * bigballsdata's documentation shows a single match object and never a whole response.
+   * A `next` link is followed verbatim; otherwise page/offset are advanced from whatever
+   * metadata is present. When nothing is recognised this returns null and
+   * `looksTruncated` below is what catches a silently paged response.
+   */
+  static nextPagePath(body: unknown, currentPath: string, fetched: number): string | null {
+    const b = object(body);
+    const meta = object(b.meta ?? b.pagination ?? b);
+
+    // Best case: the provider hands us the URL.
+    const link = b.next ?? b.next_url ?? object(b.links).next;
+    if (typeof link === 'string' && link !== '') {
+      return link.startsWith('http') ? link.slice(new URL(link).origin.length) : link;
+    }
+
+    const url = new URL(currentPath, 'https://x');
+    const params = url.searchParams;
+    const num = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : null);
+
+    const cursor = b.next_cursor ?? meta.next_cursor;
+    if (typeof cursor === 'string' && cursor !== '') {
+      params.set('cursor', cursor);
+      return `${url.pathname}?${params}`;
+    }
+
+    const total = BigBallsProvider.totalFrom(body);
+    const hasMore =
+      typeof b.has_more === 'boolean'
+        ? b.has_more
+        : total !== null
+          ? fetched < total
+          : null;
+    if (hasMore === false) return null;
+
+    const page = num(meta.page ?? meta.current_page);
+    const totalPages = num(meta.total_pages ?? meta.last_page);
+    if (page !== null && (totalPages === null || page < totalPages)) {
+      params.set('page', String(page + 1));
+      return `${url.pathname}?${params}`;
+    }
+
+    // Offset/limit, either stated in the metadata or inferred from what we asked for.
+    // Note the guard on the query parameter: an absent one reads as 0 through Number(),
+    // which would ask for a page of nothing and end the walk one page in.
+    const askedLimit = params.get('limit');
+    const limit =
+      num(meta.limit ?? meta.per_page ?? meta.page_size) ??
+      (askedLimit !== null ? num(Number(askedLimit)) : null);
+    if (limit !== null && hasMore === true) {
+      params.set('offset', String(fetched));
+      params.set('limit', String(limit));
+      return `${url.pathname}?${params}`;
+    }
+
+    if (hasMore === true && page === null) {
+      params.set('page', '2');
+      return `${url.pathname}?${params}`;
+    }
+
+    return null;
+  }
+
+  /**
+   * Whether a response that claimed no more pages looks like it was one anyway.
+   *
+   * A whole Champions League league phase is 144 matches. Getting back exactly 50, or any
+   * other round page size, with no pagination metadata to explain it, is the signature of
+   * a provider that pages by default and describes it somewhere this adapter does not
+   * read. Loud, because the alternative is quietly playing a season on a third of it.
+   */
+  static looksTruncated(count: number, total: number | null): boolean {
+    if (total !== null) return count < total;
+    return [20, 25, 50, 100, 200, 250, 500].includes(count);
   }
 
   private matchesPath(competitionId: string, opts: FetchFixturesOptions = {}): string {
@@ -320,6 +455,41 @@ export class BigBallsProvider implements LiveProvider {
     if (opts.dateFrom) params.set('date_from', opts.dateFrom);
     if (opts.dateTo) params.set('date_to', opts.dateTo);
     return `/v1/matches?${params}`;
+  }
+
+  /** Follow pagination until the provider runs out, or the cap trips. */
+  private async fetchAllMatches(firstPath: string): Promise<RawMatch[]> {
+    const all: RawMatch[] = [];
+    const seen = new Set<string>();
+    let path: string | null = firstPath;
+
+    for (let page = 0; page < MAX_PAGES && path !== null; page++) {
+      // A provider that returns the same "next" forever must not spin the sync forever.
+      if (seen.has(path)) break;
+      seen.add(path);
+
+      const body: unknown = await this.get<unknown>(path);
+      const matches = BigBallsProvider.matchesFrom(body, path);
+      all.push(...matches);
+
+      const next: string | null = BigBallsProvider.nextPagePath(body, path, all.length);
+      if (next === null) {
+        const total = BigBallsProvider.totalFrom(body);
+        if (BigBallsProvider.looksTruncated(all.length, total)) {
+          console.warn(
+            `[big-balls] ${firstPath}: stopped at ${all.length} matches` +
+              (total !== null ? ` of ${total} the provider reports` : '') +
+              ' with no pagination to follow — this response may be a truncated page',
+          );
+        }
+      }
+      path = next;
+    }
+
+    // De-duplicate: an overlapping page must not create two rows for one match.
+    const byId = new Map<string, RawMatch>();
+    for (const match of all) if (!byId.has(String(match.id))) byId.set(String(match.id), match);
+    return [...byId.values()];
   }
 
   async listCompetitions(): Promise<ProviderCompetitionSummary[]> {
@@ -359,21 +529,28 @@ export class BigBallsProvider implements LiveProvider {
   }
 
   /**
-   * The season is not a parameter here.
+   * Fetch a season's fixtures, or a window of them.
    *
-   * bigballsdata's match list is keyed by league and date, not by season the way
-   * football-data's is, so a season is expressed as a date range. Callers that pass one
-   * without dates get the league's current calendar, which for an in-progress season is
-   * what they want; `syncLiveWindow` passes the window it cares about.
+   * bigballsdata's match list is keyed by league and date rather than by season the way
+   * football-data's is, so a whole season is asked for as an explicit date range. That
+   * range is deliberate rather than left to the endpoint's default: a "live + scheduled
+   * fixtures" list may well answer with only the near-term matches, and a season that
+   * quietly arrives two-thirds short is the failure this adapter exists to avoid.
+   *
+   * A European season starting in year N runs to the summer of N+1, so the range is
+   * generous on both ends — asking for more days than exist costs nothing.
    */
   async fetchFixtures(
     competitionId: string,
-    _season: string,
+    season: string,
     opts: FetchFixturesOptions = {},
   ): Promise<ProviderFixture[]> {
-    const path = this.matchesPath(competitionId, opts);
-    const body = await this.get<unknown>(path);
-    return BigBallsProvider.matchesFrom(body, path).map(mapBigBallsMatch);
+    const window: FetchFixturesOptions =
+      opts.dateFrom || opts.dateTo ? opts : seasonDateRange(season);
+
+    return (await this.fetchAllMatches(this.matchesPath(competitionId, window))).map(
+      mapBigBallsMatch,
+    );
   }
 
   // ── Diagnostics ─────────────────────────────────────────────────────────────
@@ -418,17 +595,31 @@ export class BigBallsProvider implements LiveProvider {
 
       await this.probeOne('matches_season', matchesPath, body => {
         const matches = BigBallsProvider.matchesFrom(body, matchesPath);
+        const total = BigBallsProvider.totalFrom(body);
         const dated = matches.filter(m => !!m.kickoff_utc).length;
         const named = matches.filter(m => m.home?.name && m.away?.name).length;
+
+        // The three things that turn a full season into a short one, each named so the
+        // admin can tell them apart instead of guessing at a small number.
+        const notes = [
+          `${matches.length} on this page${total !== null ? ` of ${total} reported` : ''}`,
+          `${dated} with a kickoff time`,
+          `${named} with both teams named`,
+          `envelope: ${Array.isArray(body) ? 'bare array' : Object.keys(object(body)).join(', ') || 'none'}`,
+          `next page: ${BigBallsProvider.nextPagePath(body, matchesPath, matches.length) ?? 'none offered'}`,
+        ];
+        if (BigBallsProvider.looksTruncated(matches.length, total)) {
+          notes.push('⚠ this looks like a truncated page, not the whole season');
+        }
+        const rounds = countRounds(matches);
+        if (rounds.length > 0) {
+          notes.push(`rounds by date: ${rounds.map(r => `${r.date}×${r.count}`).join(', ')}`);
+        }
+
         return {
           count: matches.length,
           countForSeason: matches.length,
-          detail:
-            matches.length === 0
-              ? 'the response carried no matches at all'
-              : `${dated} with a kickoff time, ${named} with both teams named · ` +
-                `first: ${matches[0]?.home?.name ?? '?'} v ${matches[0]?.away?.name ?? '?'} ` +
-                `${matches[0]?.kickoff_utc ?? 'no date'}`,
+          detail: matches.length === 0 ? 'the response carried no matches at all' : notes.join(' · '),
         };
       }),
     ];
