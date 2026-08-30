@@ -566,6 +566,26 @@ describe('BigBallsProvider', () => {
       expect(fixtures.map(f => f.providerFixtureId)).toEqual(['dated']);
     });
 
+    it('takes the season window from the caller, which knows the competition', async () => {
+      const paths = stubFetch(() => ({
+        body: {
+          data: [
+            at('2026-08-15T19:00:00.000Z', 'before-the-window'),
+            at('2026-09-15T19:00:00.000Z', 'inside'),
+          ],
+        },
+      }));
+
+      const fixtures = await provider().fetchFixtures('CL', '2026', {
+        seasonWindow: { dateFrom: '2026-09-01', dateTo: '2027-06-01' },
+      });
+
+      // Sent as the request...
+      expect(paths[0]).toContain('date_from=2026-09-01&date_to=2027-06-01');
+      // ...and enforced on the answer, which is the half that actually holds.
+      expect(fixtures.map(f => f.providerFixtureId)).toEqual(['inside']);
+    });
+
     it('enforces an explicit window too', async () => {
       stubFetch(() => ({
         body: {

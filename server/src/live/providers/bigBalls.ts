@@ -730,16 +730,17 @@ export class BigBallsProvider implements LiveProvider {
     opts: FetchFixturesOptions = {},
   ): Promise<ProviderFixture[]> {
     const windowed = Boolean(opts.dateFrom || opts.dateTo);
-    const window: FetchFixturesOptions = windowed ? opts : seasonDateRange(season);
+    // The season as dates, from the caller when it knows the competition's calendar —
+    // it does — and worked out here only as a fallback.
+    const asSeason: FetchFixturesOptions = opts.seasonWindow ?? seasonDateRange(season);
+    const window: FetchFixturesOptions = windowed ? opts : asSeason;
 
     const matches = await this.fetchAllMatches(this.matchesPath(competitionId, window));
 
     // The date parameters above are a request, not a guarantee: this API accepts them and
     // answers with every match it holds for the league, other seasons included. So the
-    // season is enforced here, on what came back.
-    const kept = windowed
-      ? matches.filter(m => withinDates(m.kickoff_utc, opts))
-      : matches.filter(m => isWithinSeason(m.kickoff_utc ?? null, season));
+    // window is enforced here, on what came back.
+    const kept = matches.filter(m => withinDates(m.kickoff_utc, window));
 
     if (kept.length !== matches.length) {
       console.warn(
@@ -785,10 +786,14 @@ export class BigBallsProvider implements LiveProvider {
     }
   }
 
-  async probe(competitionId: string, season: string): Promise<ProviderProbe[]> {
+  async probe(
+    competitionId: string,
+    season: string,
+    window?: { dateFrom: string; dateTo: string },
+  ): Promise<ProviderProbe[]> {
     // Exactly the request a whole-season sync makes, so the diagnostic reports on the
     // call that is actually failing rather than a simplified cousin of it.
-    const seasonPath = this.matchesPath(competitionId, seasonDateRange(season));
+    const seasonPath = this.matchesPath(competitionId, window ?? seasonDateRange(season));
     const pagedPath = `${seasonPath}&limit=${PROBE_PAGE_SIZE}`;
 
     const describe = (matches: RawMatch[], body: unknown) => {

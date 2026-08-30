@@ -1,7 +1,8 @@
-import { and, eq, inArray, notInArray, sql } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNotNull, lt, notInArray, or, sql } from 'drizzle-orm';
 import { generateId } from 'lucia';
 import {
   getLiveFormat,
+  getLiveTournamentPreset,
   isStageAtOrAfter,
   resolveStageKey,
   type LiveFormatDef,
@@ -22,6 +23,7 @@ import { getProvider } from './providers';
 import { buildTeamNameIndex, matchTeamByName } from './teamMatching';
 import {
   ProviderError,
+  type FetchFixturesOptions,
   type ProviderFixture,
   type ProviderStandingRow,
   type ProviderTeam,
@@ -701,20 +703,23 @@ async function refreshQualificationStatuses(
  * predictions and points, and that is not a call a sync gets to make quietly.
  */
 async function removeOutOfSeasonFixtures(tournament: TournamentRow): Promise<number> {
-  const window = seasonWindow(tournament.season);
+  const window = seasonWindow(tournament.season, seasonBoundsFor(tournament));
   if (!window) return 0;
 
   const from = new Date(`${window.dateFrom}T00:00:00Z`);
   const to = new Date(`${window.dateTo}T23:59:59Z`);
 
+  // Drizzle's own operators rather than a sql`` template: a Date interpolated into a raw
+  // fragment reaches Postgres as an untyped parameter, and comparing a timestamp against
+  // one is rejected outright. lt/gt carry the column's type with them.
   const strays = await db
     .select({ id: liveFixtures.id })
     .from(liveFixtures)
     .where(
       and(
         eq(liveFixtures.liveTournamentId, tournament.id),
-        sql`${liveFixtures.kickoffAt} IS NOT NULL`,
-        sql`(${liveFixtures.kickoffAt} < ${from} OR ${liveFixtures.kickoffAt} > ${to})`,
+        isNotNull(liveFixtures.kickoffAt),
+        or(lt(liveFixtures.kickoffAt, from), gt(liveFixtures.kickoffAt, to)),
       ),
     );
   if (strays.length === 0) return 0;
@@ -788,6 +793,24 @@ function describeError(err: unknown): { message: string; seasonUnavailable: bool
  */
 export function fixtureCompetitionId(tournament: TournamentRow): string {
   return tournament.fixtureProviderCompetitionId ?? tournament.providerCompetitionId;
+}
+
+/**
+ * When this tournament's season starts and ends, from its preset.
+ *
+ * Competitions do not share a calendar, so this is not one rule for all of them: the
+ * Champions League league phase opens in September and finishes in late May, a domestic
+ * league a month either side of that. Undefined for a tournament created outside the
+ * presets, which leaves the generous default in season.ts.
+ */
+function seasonBoundsFor(tournament: TournamentRow) {
+  return getLiveTournamentPreset(tournament.presetKey ?? '')?.seasonBounds;
+}
+
+/** The season as a date range, for a provider that filters by date rather than season. */
+function seasonWindowFor(tournament: TournamentRow): FetchFixturesOptions {
+  const window = seasonWindow(tournament.season, seasonBoundsFor(tournament));
+  return window ? { seasonWindow: window } : {};
 }
 
 /**
@@ -870,6 +893,9 @@ export async function syncTournamentStructure(tournamentId: string): Promise<Syn
         // A split fixture provider has its own identifier for the competition.
         fixtureCompetitionId(tournament),
         tournament.season,
+        // ...and may need telling where the season sits in the calendar, for want of a
+        // season parameter of its own.
+        seasonWindowFor(tournament),
       ),
     ]);
 
@@ -973,7 +999,7 @@ export async function syncLiveWindow(tournamentId: string): Promise<SyncResult> 
     const providerFixtures = await fixtureProvider.fetchFixtures(
       fixtureCompetitionId(tournament),
       tournament.season,
-      liveWindowDates(),
+      { ...liveWindowDates(), ...seasonWindowFor(tournament) },
     );
 
     const existingTeams = await db

@@ -1,5 +1,6 @@
 import { eq, sql } from 'drizzle-orm';
 import { getLiveTournamentPreset, type LiveProviderId } from '@tournament-predictor/shared';
+import { seasonWindow } from './season';
 import { db } from '../db/client';
 import { liveFixtures, liveTeams, liveTournaments } from '../db/liveSchema';
 import { getProvider } from './providers';
@@ -154,11 +155,16 @@ export async function diagnoseTournamentFixtures(tournamentId: string): Promise<
   const stamp = (provider: LiveProviderId, probes: ProviderProbe[]): ProviderProbe[] =>
     probes.map(probe => ({ ...probe, provider }));
 
+  // The competition's own calendar, so a date-keyed provider is probed with the same
+  // window a sync would send it.
+  const window = seasonWindow(tournament.season, preset?.seasonBounds) ?? undefined;
+
   const probes = stamp(
     tournament.provider,
     await getProvider(tournament.provider).probe(
       tournament.providerCompetitionId,
       tournament.season,
+      window,
     ),
   );
 
@@ -166,7 +172,8 @@ export async function diagnoseTournamentFixtures(tournamentId: string): Promise<
     probes.push(
       ...stamp(
         fixtureProviderId,
-        await getProvider(fixtureProviderId).probe(fixtureCompetitionId, tournament.season),
+        await getProvider(fixtureProviderId)
+          .probe(fixtureCompetitionId, tournament.season, window),
       ),
     );
   }

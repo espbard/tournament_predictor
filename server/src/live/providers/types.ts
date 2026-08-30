@@ -117,6 +117,13 @@ export interface FetchFixturesOptions {
   /** ISO date, inclusive. Used by the live window sync to fetch only today's fixtures. */
   dateFrom?: string;
   dateTo?: string;
+  /**
+   * Where the season sits in the calendar, for an adapter whose provider has no season
+   * parameter — bigballsdata is keyed by date instead. Supplied by the sync engine,
+   * which knows the competition and therefore its calendar; ignored by an adapter that
+   * can simply ask for a season by name.
+   */
+  seasonWindow?: { dateFrom: string; dateTo: string };
 }
 
 /**
@@ -185,7 +192,11 @@ export interface LiveProvider {
    * calendar, a filter that returns nothing, and a competition or season we have wrong.
    * Nothing here writes to the database.
    */
-  probe(competitionId: string, season: string): Promise<ProviderProbe[]>;
+  probe(
+    competitionId: string,
+    season: string,
+    seasonWindow?: { dateFrom: string; dateTo: string },
+  ): Promise<ProviderProbe[]>;
 }
 
 // ── Errors ────────────────────────────────────────────────────────────────────

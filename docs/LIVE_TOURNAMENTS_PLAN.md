@@ -172,6 +172,13 @@ rejection and asks again for exactly it (`maxFromLimitError`). It also validates
 parameters strictly, so the other paging conventions the discovery tries come back 400 and are
 discarded, which is what discovery is for.
 
+**A season is a span of dates, per competition.** `LiveTournamentPreset.seasonBounds` says
+where one sits in the calendar — the Champions League 1 September to 1 June, a domestic league
+1 August to 30 June — because they do not share a calendar and a single hardcoded span would
+silently drop a domestic August. `server/src/live/season.ts` turns those bounds and a season
+year into dates; the sync engine passes them to the adapter as `FetchFixturesOptions.seasonWindow`,
+since a date-keyed provider has no season parameter to be asked with.
+
 **Its date parameters are advisory.** `date_from`/`date_to` are accepted and ignored: asked
 for 2026/27 it returned 273 matches, every Champions League fixture it holds, last season's
 included. So `server/src/live/season.ts` defines the season as a span of dates once, the

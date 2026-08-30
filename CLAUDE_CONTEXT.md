@@ -241,6 +241,11 @@ indistinguishable from the outside.
   kickoff calendar (`matchdays.ts`) because the matchday is what a gameweek is keyed by. See the header of `providers/bigBalls.ts` for
   what that provider's schema cannot express — no team ids, no stage, and no split between
   normal time and extra time, which makes it unfit for two-legged knockouts.
+- **A season is a span of dates, and each competition's is its own.** `seasonBounds` on the
+  preset (CL: 1 Sep – 1 Jun; PL: 1 Aug – 30 Jun) feeds `server/src/live/season.ts`, which decides
+  what belongs to a season when a provider will not. bigballsdata accepts `date_from`/`date_to`
+  and ignores them, so the window is enforced on the response as well as sent with the request,
+  and a structure sync deletes stored fixtures outside it.
 - **An empty match list is not an error either.** A season can exist at the provider — teams and
   a table and all — days before its match calendar is ingested. Note the asymmetry this creates:
   if `/matches` 404s the whole structure sync aborts before teams are written, so a tournament

@@ -16,19 +16,31 @@ export interface SeasonWindow {
 }
 
 /**
+ * Where a season sits in the calendar, when nothing more specific is known.
+ *
+ * Wide on purpose: it has to hold any competition, so it stretches from a summer
+ * qualifier to a final the following June. A preset that knows its own competition
+ * supplies tighter bounds — see LiveTournamentPreset.seasonBounds.
+ */
+const DEFAULT_BOUNDS = { from: '06-01', to: '07-31' };
+
+/**
  * The calendar span of a season the provider names by its starting year.
  *
- * June of that year through July of the next: wide enough for qualifiers in July and a
- * final in June, and narrow enough that it cannot reach into a neighbouring season.
- * Null when the season is not a year we can read, in which case nothing is filtered —
- * refusing to guess beats discarding a competition whose seasons are named differently.
+ * `bounds.from` falls in that year and `bounds.to` in the next, so the Champions League's
+ * 1 September to 1 June becomes 2026-09-01 to 2027-06-01. Null when the season is not a
+ * year we can read, in which case nothing is filtered — refusing to guess beats
+ * discarding a competition whose seasons are named differently.
  */
-export function seasonWindow(season: string): SeasonWindow | null {
+export function seasonWindow(
+  season: string,
+  bounds: { from: string; to: string } = DEFAULT_BOUNDS,
+): SeasonWindow | null {
   // A whole four-digit year and nothing else. parseInt would read "2026/27" as 2026 and
   // build a window for a season that is not the one being named.
   if (!/^\d{4}$/.test(season.trim())) return null;
   const start = Number.parseInt(season.trim(), 10);
-  return { dateFrom: `${start}-06-01`, dateTo: `${start + 1}-07-31` };
+  return { dateFrom: `${start}-${bounds.from}`, dateTo: `${start + 1}-${bounds.to}` };
 }
 
 /**
@@ -38,8 +50,12 @@ export function seasonWindow(season: string): SeasonWindow | null {
  * there is nothing to place it by, and a provider serving several seasons from one table
  * makes "assume it is the current one" a way to import last season's fixtures.
  */
-export function isWithinSeason(kickoff: string | Date | null, season: string): boolean {
-  const window = seasonWindow(season);
+export function isWithinSeason(
+  kickoff: string | Date | null,
+  season: string,
+  bounds?: { from: string; to: string },
+): boolean {
+  const window = seasonWindow(season, bounds);
   if (!window) return true;
   if (kickoff === null) return false;
 
