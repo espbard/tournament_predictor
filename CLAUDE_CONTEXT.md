@@ -158,7 +158,7 @@ configured, so shared-package specs go under `server/src/` too. Existing example
 | `groups` | Named groups in a tournament | |
 | `teams` | Participating teams | `groupId` FK, `imageUrl` |
 | `matches` | Fixtures | `stage` enum, `scheduledAt`, `homeScore`/`awayScore`, `progressingTeamId`, `bracketIndex`, self-referencing `nextMatchId` |
-| `competitions` | A private prediction league on one tournament | `inviteCode`, `scoringConfig` JSON, `predictionDeadline`, `allowLateAdditions` |
+| `competitions` | A private prediction league on one tournament | `inviteCode`, `inviteToken` (nullable share-link token, minted on first Invite), `scoringConfig` JSON, `predictionDeadline`, `allowLateAdditions` |
 | `competition_members` | Membership **and** the per-user score aggregate | 8 denormalised `*_points` columns, `groupStageLocked`, tiebreak choice JSON, late-addition fields. **Has no primary key** |
 | `predictions` | Per-match score predictions | **No unique constraint** on (competition, user, match) — enforced only in app code |
 | `bracket_predictions` | Whole knockout bracket as one JSON blob | PK `(competitionId, userId)`; keys are `${stage}_${index}` |
@@ -193,7 +193,7 @@ the data requires, unlike their manual counterparts:
 | `live_teams` | Unique on `(tournament, provider_team_id)`; `qualification_status` derived by the sync engine |
 | `live_fixtures` | Unique on `(tournament, provider_fixture_id)`. Nullable team FKs — knockout fixtures exist before the draw. Scores split into `normal_time_*` (the only score that awards points), `half_time_*`, `extra_time_*`, `penalties_*`, `final_*` |
 | `live_standings` | Stored verbatim from the provider, never recomputed. Unique on `(tournament, stage_key, team_id)` — `group_name` is excluded on purpose, being nullable |
-| `live_competitions` | **No `prediction_deadline` column** — the live type locks per fixture only |
+| `live_competitions` | **No `prediction_deadline` column** — the live type locks per fixture only. `inviteToken` mirrors the manual column |
 | `live_competition_members` | Membership + denormalised 3-source score aggregate |
 | `live_predictions` | Unique on `(competition, user, fixture)` — the constraint the manual `predictions` table lacks |
 | `live_gameweek_selections` | One row per gameweek (`(tournament, stage_key, matchday)`, unique) holding the fixture ids users predict on, as a single `json` array. **No row means every fixture in that gameweek counts** — the default — so a row is never stored empty |
@@ -307,7 +307,42 @@ POST   /api/competitions/:id/join
 
 GET    /api/competitions/:id/predictions   — returns current user's predictions
 POST   /api/competitions/:id/predictions   — upsert a prediction (checks deadline)
+
+DELETE /api/competitions/:id/bonus-answers      — clear the caller's own bonus answers
+DELETE /api/live/competitions/:id/bonus-answers — the same, for questions still open
+DELETE /api/live/competitions/:id/table-prediction — withdraw the caller's predicted table
+
+POST   /api/competitions/:id/invite        — mint (or re-read) the share link (any member)
+POST   /api/live/competitions/:id/invite   — the same, for a live competition
+GET    /api/invites/:token                 — what a share link points at (no auth needed)
+POST   /api/invites/:token/accept          — join whatever the link points at
 ```
+
+> **Clearing bonus answers.** Both bonus tabs offer "Clear all my answers", behind the
+> same deadline that governs saving one — so the manual type stops offering it once the
+> competition's deadline has passed, and the live type deletes only the answers to
+> questions that have not locked yet, keeping the rest. The button lives in the shared
+> `BonusQuestionsPanel` and appears only when its wrapper supplies `api.clearAnswers`,
+> which is why the admin tournament page (no competition, so no answers of one's own)
+> never shows it.
+
+> **Clearing a table prediction.** The live table tab offers "Clear table prediction"
+> while the table is still open — the same lock the save route enforces, an hour before
+> the stage's first kickoff. Confirming deletes the row and reloads the page, which puts
+> the member back in front of the first-run gate in `LiveCompetitionDetailPage`, since
+> that gate is driven by `tableView.prediction == null`. The button is deliberately absent
+> from the gate variant itself and after the lock; nothing needs rescoring, because table
+> points are only awarded once the stage finishes.
+
+> **Invite links.** Every competition can hand out `/invite/<token>` alongside its
+> five-digit code, for both tournament types. The token is 32 url-safe random characters
+> stored on the competition row, minted the first time somebody presses Invite and then
+> reused, so a link already sent to the group chat keeps working. `GET /api/invites/:token`
+> is readable signed out — it returns only the competition's name, logo and tournament —
+> so `client/src/pages/InvitePage.tsx` can show what the invitation is for and send a new
+> user through register/login with `?redirect=` pointing back at the link. The join rules
+> themselves (a closed tournament, a passed deadline, the late-addition handling) live in
+> `server/src/lib/competitionJoin.ts` so the code and the link can never drift apart.
 
 > This map is **partial**. `routes/competitions.ts` alone exposes ~40 endpoints (bracket
 > predictions, leaderboard progression, user stats, tiebreak choices, bonus answers, an SSE

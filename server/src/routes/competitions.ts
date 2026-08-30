@@ -5,11 +5,13 @@ import { db } from '../db/client.js';
 import { competitions, competitionMembers, users, tournaments, predictions, matches, teams, groups, bracketPredictions, bonusQuestions, bonusAnswers, players } from '../db/schema.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { CreateCompetitionSchema, CreatePredictionSchema, SaveBracketPredictionsSchema, AdminSetBracketProgressingTeamSchema, DEFAULT_SCORING_CONFIG, SaveBonusAnswerSchema, resolveFirstRoundSlots } from '@tournament-predictor/shared';
-import type { UserStatCardData, ScoringConfig, KnockoutConfig, BracketPredictions, LeaderboardProgressionMatch, LeaderboardProgressionResponse } from '@tournament-predictor/shared';
+import type { UserStatCardData, ScoringConfig, KnockoutConfig, BracketPredictions, LeaderboardProgressionMatch, LeaderboardProgressionResponse, CompetitionInvite } from '@tournament-predictor/shared';
 import { recalculateAllScoresForTournament, loadUserPredictedKnockoutMatchesByStage, computeBonusAnswerPoints } from '../lib/scoringTrigger.js';
 import { redactBonusQuestions, redactBonusAnswerPoints } from '../lib/bonusVisibility.js';
 import { computeGroupStandings, calculateMatchPoints, getUserPredictedTeamForKnockoutSlot, getUserPredictedBronzeFinalTeam, calculateGroupPositionPoints, calculateKnockoutPoints, BRACKET_STAGE_ORDER, type KnockoutMatchSlot, type FirstRoundPredTeams, type CompletedKnockoutMatch } from '../lib/scoring.js';
 import { subscribeLeaderboard, unsubscribeLeaderboard } from '../lib/leaderboardEvents.js';
+import { joinManualCompetition } from '../lib/competitionJoin.js';
+import { ensureManualInviteToken, inviteTokenPath } from '../lib/inviteLinks.js';
 
 const router = Router();
 
@@ -129,187 +131,11 @@ router.post('/join', requireAuth, async (req, res) => {
       .where(eq(competitions.inviteCode, inviteCode.trim()));
     if (!competition) return res.status(404).json({ error: 'Invalid invite code' });
 
-    const [tournament] = await db
-      .select()
-      .from(tournaments)
-      .where(eq(tournaments.id, competition.tournamentId));
-
-    const userId: string = res.locals.user.id;
-
-    // Read isLateAddition directly from DB to avoid stale session values
-    const [dbUser] = await db
-      .select({ isLateAddition: users.isLateAddition })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
-    const isLateAdditionJoin = (dbUser?.isLateAddition ?? false) && tournament?.status === 'active';
-
-    if (tournament && tournament.status === 'completed') {
-      return res.status(403).json({ error: 'This competition is no longer open for new members' });
-    }
-
-    if (isLateAdditionJoin && !competition.allowLateAdditions) {
-      return res.status(403).json({ error: 'This competition does not allow late additions' });
-    }
-
-    if (!isLateAdditionJoin && tournament && tournament.status !== 'upcoming') {
-      return res.status(403).json({ error: 'This competition is no longer open for new members' });
-    }
-
-    if (!isLateAdditionJoin && competition.predictionDeadline && new Date() > new Date(competition.predictionDeadline)) {
-      return res.status(403).json({ error: 'The prediction deadline for this competition has passed' });
-    }
-
-    const [existing] = await db
-      .select()
-      .from(competitionMembers)
-      .where(and(eq(competitionMembers.competitionId, competition.id), eq(competitionMembers.userId, userId)));
-    if (existing) return res.status(409).json({ error: 'Already a member of this competition' });
-
-    if (isLateAdditionJoin) {
-      // Find last-place score among active users (those with predictions in the 5 most recent completed matches)
-      const memberScores = await db
-        .select({
-          userId: competitionMembers.userId,
-          exactScorePoints: competitionMembers.exactScorePoints,
-          correctResultPoints: competitionMembers.correctResultPoints,
-          correctTeamProgressesPoints: competitionMembers.correctTeamProgressesPoints,
-          correctGroupPositionPoints: competitionMembers.correctGroupPositionPoints,
-          correctTeamInKnockoutTiePoints: competitionMembers.correctTeamInKnockoutTiePoints,
-          correctTeamInFinalPoints: competitionMembers.correctTeamInFinalPoints,
-          correctWinnerPoints: competitionMembers.correctWinnerPoints,
-          bonusQuestionPoints: competitionMembers.bonusQuestionPoints,
-          lateAdditionPoints: competitionMembers.lateAdditionPoints,
-          isLeaderboardUser: users.isLeaderboardUser,
-          isComparisonUser: users.isComparisonUser,
-        })
-        .from(competitionMembers)
-        .innerJoin(users, eq(competitionMembers.userId, users.id))
-        .where(eq(competitionMembers.competitionId, competition.id));
-
-      const recentCompletedMatches = await db
-        .select({ id: matches.id })
-        .from(matches)
-        .where(and(eq(matches.tournamentId, competition.tournamentId), eq(matches.status, 'completed')))
-        .orderBy(desc(matches.scheduledAt))
-        .limit(5);
-
-      let activeUserIds: Set<string> | null = null;
-      if (recentCompletedMatches.length >= 5) {
-        const recentMatchIds = recentCompletedMatches.map(m => m.id);
-        const recentPredRows = await db
-          .select({ userId: predictions.userId })
-          .from(predictions)
-          .where(and(eq(predictions.competitionId, competition.id), inArray(predictions.matchId, recentMatchIds)));
-        activeUserIds = new Set(recentPredRows.map(p => p.userId));
-      }
-
-      const regularMembers = memberScores.filter(m => !m.isLeaderboardUser && !m.isComparisonUser);
-      const candidateMembers = activeUserIds != null
-        ? regularMembers.filter(m => activeUserIds!.has(m.userId))
-        : regularMembers;
-      const pool = candidateMembers.length > 0 ? candidateMembers : regularMembers;
-
-      const totals = pool.map(m =>
-        m.exactScorePoints + m.correctResultPoints + m.correctTeamProgressesPoints +
-        m.correctGroupPositionPoints + m.correctTeamInKnockoutTiePoints +
-        m.correctTeamInFinalPoints + m.correctWinnerPoints + m.bonusQuestionPoints +
-        m.lateAdditionPoints,
-      );
-      const lastPlaceScore = totals.length > 0 ? Math.min(...totals) : 0;
-      const windowEndsAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-      const joinTime = new Date();
-
-      await db.insert(competitionMembers).values({
-        competitionId: competition.id,
-        userId,
-        lateAdditionPoints: lastPlaceScore,
-        lateAdditionWindowEndsAt: windowEndsAt,
-      });
-
-      // Create replacement predictions for completed group matches before join time,
-      // copying from the lowest-ranked member who predicted each specific match.
-      const completedGroupMatches = await db
-        .select({ id: matches.id, scheduledAt: matches.scheduledAt })
-        .from(matches)
-        .where(and(eq(matches.tournamentId, competition.tournamentId), eq(matches.stage, 'group'), eq(matches.status, 'completed')));
-
-      // All completed group matches happened before the user joined; include those
-      // without a scheduledAt too since they're provably already played.
-      const matchesBefore = completedGroupMatches.filter(
-        m => m.scheduledAt == null || m.scheduledAt < joinTime,
-      );
-
-      if (matchesBefore.length > 0) {
-        const matchIdsBefore = matchesBefore.map(m => m.id);
-
-        const existingPreds = await db
-          .select({ userId: predictions.userId, matchId: predictions.matchId, homeScore: predictions.homeScore, awayScore: predictions.awayScore })
-          .from(predictions)
-          .where(and(eq(predictions.competitionId, competition.id), inArray(predictions.matchId, matchIdsBefore), eq(predictions.isReplacement, false)));
-
-        // Score map: userId → total score (regular non-leaderboard non-comparison members only).
-        // Comparison/leaderboard users are not included here; if a match was only predicted by
-        // those users their predictions still serve as fallback (see lowestScore init below).
-        const scoreByUser = new Map<string, number>();
-        for (const m of memberScores) {
-          if (!m.isLeaderboardUser && !m.isComparisonUser) {
-            scoreByUser.set(m.userId,
-              m.exactScorePoints + m.correctResultPoints + m.correctTeamProgressesPoints +
-              m.correctGroupPositionPoints + m.correctTeamInKnockoutTiePoints +
-              m.correctTeamInFinalPoints + m.correctWinnerPoints + m.bonusQuestionPoints +
-              m.lateAdditionPoints,
-            );
-          }
-        }
-
-        const predsByMatch = new Map<string, typeof existingPreds>();
-        for (const p of existingPreds) {
-          if (!predsByMatch.has(p.matchId)) predsByMatch.set(p.matchId, []);
-          predsByMatch.get(p.matchId)!.push(p);
-        }
-
-        const replacements: Array<typeof predictions.$inferInsert> = [];
-        for (const match of matchesBefore) {
-          const matchPreds = predsByMatch.get(match.id) ?? [];
-          if (matchPreds.length === 0) continue;
-
-          // Pick the predictor with the lowest competition score among regular members.
-          // Initialize lowestScore as null so the first prediction is always accepted as a
-          // baseline — this handles the case where all predictors are comparison/leaderboard
-          // users (scoreByUser returns Infinity for them, and Infinity < Infinity is false).
-          let lowestScore: number | null = null;
-          let lowestPred: typeof matchPreds[number] | null = null;
-          for (const p of matchPreds) {
-            const score = scoreByUser.get(p.userId) ?? Infinity;
-            if (lowestScore === null || score < lowestScore) {
-              lowestScore = score;
-              lowestPred = p;
-            }
-          }
-          if (!lowestPred) continue;
-
-          replacements.push({
-            id: generateId(15),
-            competitionId: competition.id,
-            userId,
-            matchId: match.id,
-            homeScore: lowestPred.homeScore,
-            awayScore: lowestPred.awayScore,
-            progressingTeamId: null,
-            isReplacement: true,
-          });
-        }
-
-        if (replacements.length > 0) {
-          await db.insert(predictions).values(replacements);
-        }
-      }
-    } else {
-      await db.insert(competitionMembers).values({
-        competitionId: competition.id,
-        userId,
-      });
+    const result = await joinManualCompetition(competition, res.locals.user.id);
+    if (!result.ok) return res.status(result.status).json({ error: result.error });
+    // Typing a code you have already used says so; the share link is the forgiving door.
+    if (result.alreadyMember) {
+      return res.status(409).json({ error: 'Already a member of this competition' });
     }
 
     res.json(competition);
@@ -380,6 +206,43 @@ router.delete('/:id', requireAdmin, async (req, res) => {
   } catch (err) {
     console.error('Delete competition error:', err);
     res.status(500).json({ error: 'Failed to delete competition' });
+  }
+});
+
+/**
+ * Mint (or re-read) this competition's share link.
+ *
+ * Any member may invite — the competition is a private group of friends, not something
+ * with an owner. The token is created on first use and then reused, so pressing Invite
+ * twice does not invalidate a link already sent to somebody.
+ */
+router.post('/:id/invite', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
+    if (!competition) return res.status(404).json({ error: 'Competition not found' });
+
+    const user = res.locals.user;
+    if (!user.isAdmin) {
+      const [membership] = await db
+        .select()
+        .from(competitionMembers)
+        .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
+      if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+    }
+
+    const token = await ensureManualInviteToken(id);
+    if (!token) return res.status(404).json({ error: 'Competition not found' });
+
+    const invite: CompetitionInvite = {
+      token,
+      path: inviteTokenPath(token),
+      inviteCode: competition.inviteCode,
+    };
+    res.json(invite);
+  } catch (err) {
+    console.error('Create competition invite error:', err);
+    res.status(500).json({ error: 'Failed to create invite link' });
   }
 });
 
@@ -5235,6 +5098,60 @@ router.post('/:id/bonus-answers', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Save bonus answer error:', err);
     res.status(500).json({ error: 'Failed to save bonus answer' });
+  }
+});
+
+/**
+ * Clear every bonus answer the caller has given in this competition.
+ *
+ * Gated by the same deadline as saving one: once the deadline has passed an answer is
+ * final, so there is nothing left to clear.
+ */
+router.delete('/:id/bonus-answers', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = res.locals.user;
+
+    const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
+    if (!competition) return res.status(404).json({ error: 'Competition not found' });
+
+    let membership: typeof competitionMembers.$inferSelect | undefined;
+    if (!user.isAdmin) {
+      const [mem] = await db
+        .select()
+        .from(competitionMembers)
+        .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
+      if (!mem) return res.status(403).json({ error: 'Not a member of this competition' });
+      membership = mem;
+    }
+
+    // Mirrors POST /:id/bonus-answers exactly: a late addition answers inside their own
+    // 24-hour window, everybody else until the competition's deadline.
+    if (membership?.lateAdditionWindowEndsAt != null) {
+      if (new Date() > new Date(membership.lateAdditionWindowEndsAt)) {
+        return res.status(400).json({ error: 'Your 24-hour prediction window has expired' });
+      }
+    } else if (!user.isComparisonUser && competition.predictionDeadline && new Date() > new Date(competition.predictionDeadline)) {
+      return res.status(400).json({ error: 'Prediction deadline has passed' });
+    }
+
+    await db
+      .delete(bonusAnswers)
+      .where(and(eq(bonusAnswers.competitionId, id), eq(bonusAnswers.userId, user.id)));
+
+    // Every answer is gone, so the denormalised rollup has to follow it to zero. It is
+    // normally zero already — points are only awarded once the tournament is completed,
+    // long after this deadline — but a test account can hold scored answers earlier, and
+    // a stale total would keep counting on the leaderboard.
+    await db
+      .update(competitionMembers)
+      .set({ bonusQuestionPoints: 0 })
+      .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
+
+    res.status(204).send();
+  } catch (err) {
+    console.error('Clear bonus answers error:', err);
+    res.status(500).json({ error: 'Failed to clear bonus answers' });
   }
 });
 

@@ -190,6 +190,13 @@
       "when": 1787779887546,
       "tag": "0029_live_fixture_provider",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1787866287546,
+      "tag": "0030_competition_invite_tokens",
+      "breakpoints": true
     }
   ]
 }

@@ -228,3 +228,39 @@ export interface BonusAnswer {
   points: number | null;
   createdAt: string;
 }
+
+// ── Invite links ──────────────────────────────────────────────────────────────
+//
+// A second way into a competition, alongside the five-digit invite code: a share link
+// carrying an unguessable token. The token lives on the competition row itself, is
+// created the first time somebody presses Invite, and never expires — it is the same
+// standing invitation as the code, just clickable.
+
+/** Which of the two tournament types a competition belongs to. */
+export type CompetitionKind = 'manual' | 'live';
+
+/** What the Invite button gets back. The client builds the absolute URL from `path`. */
+export interface CompetitionInvite {
+  token: string;
+  /** Client-side route the token resolves at, e.g. `/invite/abc123`. */
+  path: string;
+  /** The five-digit code, so the dialog can offer both ways in. */
+  inviteCode: string;
+}
+
+/** What an invite link shows before the visitor commits to joining. */
+export interface InvitePreview {
+  kind: CompetitionKind;
+  competitionId: string;
+  competitionName: string;
+  imageUrl: string | null;
+  tournamentName: string | null;
+  /** False whenever the visitor is not signed in. */
+  isMember: boolean;
+}
+
+/** Where to send the visitor once the invite is accepted. */
+export interface InviteAcceptResult {
+  kind: CompetitionKind;
+  competitionId: string;
+}

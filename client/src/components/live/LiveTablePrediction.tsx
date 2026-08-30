@@ -36,6 +36,14 @@ interface Props {
    * order shown counts as a submission even if the user reorders nothing.
    */
   variant?: 'default' | 'gate';
+  /**
+   * Withdraw the submitted table, sending the member back to the first-run gate to build
+   * it again. Omitted where there is nothing of one's own to withdraw — the gate itself,
+   * and another member's table.
+   */
+  onClear?: () => void;
+  isClearing?: boolean;
+  clearError?: string | null;
 }
 
 function bandClasses(bandKey: string | null): string {
@@ -58,6 +66,9 @@ export default function LiveTablePrediction({
   savedAt,
   error,
   variant = 'default',
+  onClear,
+  isClearing = false,
+  clearError = null,
 }: Props) {
   const { t } = useT();
   const teamById = useMemo(() => new Map(view.teams.map(team => [team.id, team])), [view.teams]);
@@ -67,6 +78,7 @@ export default function LiveTablePrediction({
   );
   const [dragging, setDragging] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   // Adopt a saved order arriving later (a refetch, or another device) — but never on top
   // of edits in progress.
@@ -113,6 +125,10 @@ export default function LiveTablePrediction({
   // it untouched has to be possible — otherwise a user who agrees with it cannot get past.
   const isGate = variant === 'gate';
   const canSave = isGate ? order.length > 0 : dirty;
+
+  // Withdrawing is offered only while the table is still open and there is a submitted
+  // table to withdraw. Once it locks it is what the season is scored against.
+  const canClear = !!onClear && !isGate && !view.isLocked && !!view.prediction;
 
   return (
     <div>
@@ -193,6 +209,42 @@ export default function LiveTablePrediction({
           {dirty && !isSaving && (
             <span className="text-xs text-muted-foreground">{t('live.table.unsaved')}</span>
           )}
+          {canClear && (
+            <button
+              onClick={() => setShowClearConfirm(true)}
+              className="ml-auto rounded border border-destructive/30 px-2.5 py-1 text-xs text-destructive hover:bg-destructive/5"
+            >
+              {t('live.table.clear')}
+            </button>
+          )}
+        </div>
+      )}
+
+      {showClearConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-lg border bg-background p-6 shadow-xl">
+            <p className="mb-1 font-semibold">{t('live.table.clearConfirm.title')}</p>
+            <p className="mb-6 text-sm text-muted-foreground">
+              {t('live.table.clearConfirm.body')}
+            </p>
+            {clearError && <p className="mb-4 text-sm text-destructive">{clearError}</p>}
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowClearConfirm(false)}
+                disabled={isClearing}
+                className="rounded-md border px-4 py-2 text-sm hover:bg-muted disabled:opacity-50"
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                onClick={() => onClear?.()}
+                disabled={isClearing}
+                className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
+              >
+                {isClearing ? t('live.table.clearConfirm.clearing') : t('live.table.clearConfirm.clear')}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

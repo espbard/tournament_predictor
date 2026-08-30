@@ -231,6 +231,8 @@ export const liveCompetitions = pgTable('live_competitions', {
   name: text('name').notNull(),
   imageUrl: text('image_url'),
   inviteCode: text('invite_code').notNull().unique(),
+  // Share-link token. Null until somebody presses Invite for the first time.
+  inviteToken: text('invite_token').unique(),
   scoringConfig: json('scoring_config').notNull().$type<LiveScoringConfig>(),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   // Deliberately no prediction_deadline column: the live type locks per fixture only.

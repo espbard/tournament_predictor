@@ -22,6 +22,7 @@ import {
   tablePredictionStage,
   withLiveScoringDefaults,
 } from '@tournament-predictor/shared';
+import type { CompetitionInvite } from '@tournament-predictor/shared';
 import { db } from '../../db/client';
 import {
   liveBonusAnswers,
@@ -43,6 +44,8 @@ import { redactLiveBonusAnswerPoints, redactLiveBonusQuestions } from '../bonusV
 import { recalculateLiveCompetition } from '../scoringTrigger';
 import { loadSelectionIndex } from '../selections';
 import { validateTableOrder } from '../tableScoring';
+import { joinLiveCompetition } from '../../lib/competitionJoin';
+import { ensureLiveInviteToken, inviteTokenPath } from '../../lib/inviteLinks';
 
 // ── Live competition API ──────────────────────────────────────────────────────
 //
@@ -120,24 +123,9 @@ liveCompetitionsRouter.post('/competitions/join', requireAuth, async (req, res) 
       .where(eq(liveCompetitions.inviteCode, parsed.data.inviteCode.trim()));
     if (!competition) return res.status(404).json({ error: 'Invalid invite code' });
 
-    const user = res.locals.user;
-    const [existing] = await db
-      .select({ id: liveCompetitionMembers.id })
-      .from(liveCompetitionMembers)
-      .where(
-        and(
-          eq(liveCompetitionMembers.liveCompetitionId, competition.id),
-          eq(liveCompetitionMembers.userId, user.id),
-        ),
-      );
-    if (existing) return res.json(competition);
-
-    await db.insert(liveCompetitionMembers).values({
-      id: generateId(15),
-      liveCompetitionId: competition.id,
-      userId: user.id,
-    });
-    return res.status(201).json(competition);
+    const result = await joinLiveCompetition(competition, res.locals.user.id);
+    if (!result.ok) return res.status(result.status).json({ error: result.error });
+    return res.status(result.alreadyMember ? 200 : 201).json(competition);
   } catch (err) {
     return fail(res, err);
   }
@@ -265,6 +253,35 @@ liveCompetitionsRouter.post('/competitions/:id/recalculate', requireAdmin, async
   try {
     const result = await recalculateLiveCompetition(req.params.id);
     return res.json(result);
+  } catch (err) {
+    return fail(res, err);
+  }
+});
+
+/**
+ * Mint (or re-read) this competition's share link. Any member may invite; the token is
+ * created on first use and then reused. Mirrors POST /api/competitions/:id/invite.
+ */
+liveCompetitionsRouter.post('/competitions/:id/invite', requireAuth, async (req, res) => {
+  try {
+    const [competition] = await db
+      .select()
+      .from(liveCompetitions)
+      .where(eq(liveCompetitions.id, req.params.id));
+    if (!competition) return res.status(404).json({ error: 'Not found' });
+    if (!(await assertMember(competition.id, res.locals.user))) {
+      return res.status(403).json({ error: 'Not a member of this competition' });
+    }
+
+    const token = await ensureLiveInviteToken(competition.id);
+    if (!token) return res.status(404).json({ error: 'Not found' });
+
+    const invite: CompetitionInvite = {
+      token,
+      path: inviteTokenPath(token),
+      inviteCode: competition.inviteCode,
+    };
+    return res.json(invite);
   } catch (err) {
     return fail(res, err);
   }
@@ -688,6 +705,80 @@ liveCompetitionsRouter.put('/competitions/:id/table-prediction', requireAuth, as
 });
 
 /**
+ * Delete the caller's table prediction, putting them back in front of the first-run gate.
+ *
+ * Only while the table is still open. Once it locks the prediction is what the season is
+ * scored against, so there is nothing to withdraw — the same instant the save route stops
+ * accepting changes. Nothing needs recomputing either: table points are only awarded once
+ * the stage finishes, long after this deadline, so the member's stored total is still zero.
+ */
+liveCompetitionsRouter.delete('/competitions/:id/table-prediction', requireAuth, async (req, res) => {
+  try {
+    const user = res.locals.user;
+
+    const [competition] = await db
+      .select()
+      .from(liveCompetitions)
+      .where(eq(liveCompetitions.id, req.params.id));
+    if (!competition) return res.status(404).json({ error: 'Not found' });
+
+    const [membership] = await db
+      .select({ id: liveCompetitionMembers.id })
+      .from(liveCompetitionMembers)
+      .where(
+        and(
+          eq(liveCompetitionMembers.liveCompetitionId, competition.id),
+          eq(liveCompetitionMembers.userId, user.id),
+        ),
+      );
+    if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+
+    const [tournament] = await db
+      .select()
+      .from(liveTournaments)
+      .where(eq(liveTournaments.id, competition.liveTournamentId));
+    if (!tournament) return res.status(404).json({ error: 'Live tournament not found' });
+
+    const stage = tablePredictionStage(getLiveFormat(tournament.format), tournament.startStageKey);
+    if (!stage) return res.status(400).json({ error: 'That stage does not take a table prediction' });
+
+    const stageFixtures = await db
+      .select({ kickoffAt: liveFixtures.kickoffAt })
+      .from(liveFixtures)
+      .where(
+        and(
+          eq(liveFixtures.liveTournamentId, tournament.id),
+          eq(liveFixtures.stageKey, stage.key),
+        ),
+      );
+
+    const kickoffs = stageFixtures.map(f => f.kickoffAt);
+    if (isTablePredictionLocked(kickoffs)) {
+      const lockAt = tablePredictionLockAt(kickoffs);
+      return res.status(400).json({
+        error: 'Table predictions for this competition are closed',
+        lockedAt: lockAt ? lockAt.toISOString() : null,
+      });
+    }
+
+    const deleted = await db
+      .delete(liveTablePredictions)
+      .where(
+        and(
+          eq(liveTablePredictions.liveCompetitionId, competition.id),
+          eq(liveTablePredictions.userId, user.id),
+          eq(liveTablePredictions.stageKey, stage.key),
+        ),
+      )
+      .returning({ id: liveTablePredictions.id });
+
+    return res.json({ deleted: deleted.length });
+  } catch (err) {
+    return fail(res, err);
+  }
+});
+
+/**
  * Another member's table prediction — only once the deadline has passed, so nobody can
  * copy an order while it still matters.
  */
@@ -1049,6 +1140,68 @@ liveCompetitionsRouter.get(
     }
   },
 );
+
+/**
+ * Clear the caller's bonus answers — every one whose question is still open.
+ *
+ * A question that has already locked keeps its answer: the live type closes each question
+ * on its own schedule, and once one is closed its answer is as final as a played fixture's
+ * prediction. Deleting those would be a way to walk back an answer after the fact.
+ */
+liveCompetitionsRouter.delete('/competitions/:id/bonus-answers', requireAuth, async (req, res) => {
+  try {
+    const user = res.locals.user;
+
+    const [competition] = await db
+      .select()
+      .from(liveCompetitions)
+      .where(eq(liveCompetitions.id, req.params.id));
+    if (!competition) return res.status(404).json({ error: 'Not found' });
+
+    const [membership] = await db
+      .select({ id: liveCompetitionMembers.id })
+      .from(liveCompetitionMembers)
+      .where(
+        and(
+          eq(liveCompetitionMembers.liveCompetitionId, competition.id),
+          eq(liveCompetitionMembers.userId, user.id),
+        ),
+      );
+    if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+
+    const [tournament] = await db
+      .select()
+      .from(liveTournaments)
+      .where(eq(liveTournaments.id, competition.liveTournamentId));
+    if (!tournament) return res.status(404).json({ error: 'Live tournament not found' });
+
+    const questions = await db
+      .select({ id: liveBonusQuestions.id, lockAt: liveBonusQuestions.lockAt })
+      .from(liveBonusQuestions)
+      .where(eq(liveBonusQuestions.liveTournamentId, tournament.id));
+
+    const kickoffs = await tablePredictionStageKickoffs(tournament);
+    const openQuestionIds = questions
+      .filter(q => !isBonusQuestionLocked(q.lockAt, kickoffs))
+      .map(q => q.id);
+    if (openQuestionIds.length === 0) return res.json({ deleted: 0 });
+
+    const deleted = await db
+      .delete(liveBonusAnswers)
+      .where(
+        and(
+          eq(liveBonusAnswers.liveCompetitionId, competition.id),
+          eq(liveBonusAnswers.userId, user.id),
+          inArray(liveBonusAnswers.questionId, openQuestionIds),
+        ),
+      )
+      .returning({ id: liveBonusAnswers.id });
+
+    return res.json({ deleted: deleted.length });
+  } catch (err) {
+    return fail(res, err);
+  }
+});
 
 /** Upsert one answer. This is the only place the bonus deadline is enforced. */
 liveCompetitionsRouter.put('/competitions/:id/bonus-answers', requireAuth, async (req, res) => {
