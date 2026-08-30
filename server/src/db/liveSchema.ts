@@ -348,7 +348,7 @@ export const liveGameweekSelections = pgTable(
      * row per fixture because it is only ever read and written complete. No FK, so a
      * fixture the provider drops degrades to a stale id rather than silently widening the
      * selection. A row is never stored empty — see the route — because "no row" already
-     * means "every fixture selected".
+     * means "nothing selected".
      */
     selectedFixtureIds: json('selected_fixture_ids').notNull().$type<string[]>(),
     createdAt: timestamp('created_at').notNull().defaultNow(),

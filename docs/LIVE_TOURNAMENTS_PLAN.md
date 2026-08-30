@@ -571,11 +571,15 @@ matters doubly here because the UCL league phase has its own tiebreak rules.
 **Unique** `(live_tournament_id, stage_key, matchday)`.
 
 Which matches of a gameweek — one matchday inside one stage — users actually predict on. A
-gameweek with **no row here has every fixture selected**: that default is what makes a tournament
-playable the moment it is created, and it means an admin only ever touches the gameweeks they
-want to narrow. A row is therefore never stored with an empty array; saving an empty selection
-deletes the row instead, because "nothing selected" and "no selection registered" would otherwise
-be indistinguishable and a gameweek nobody can predict on is never the intent.
+gameweek with **no row here has nothing selected**: a tournament is not playable until an admin
+has been through its gameweeks and picked, so no match becomes part of the game without someone
+choosing it — including one the provider adds mid-season. A row is never stored with an empty
+array; saving an empty selection deletes the row instead, which under this default means exactly
+the same thing.
+
+A fixture that sits in no gameweek at all — no stage key, or no matchday — is excluded for the
+same reason: there is no gameweek an admin could register it under, so it cannot be opted in and
+must not be included by default.
 
 No FK on the fixture ids, for the same reason as `live_table_predictions.orderedTeamIds`: a
 fixture the provider drops degrades to a stale id rather than silently widening the selection.

@@ -471,8 +471,8 @@ liveTournamentsRouter.get('/tournaments/:id/standings', requireAuth, async (req,
 // ── Selected matches ──────────────────────────────────────────────────────────
 //
 // The admin picks which fixtures of a gameweek users predict on. Everything not picked is
-// ignored: no inputs, no points. A gameweek nobody has touched has every fixture selected,
-// so a tournament is playable from the moment it is created.
+// ignored: no inputs, no points. A gameweek nobody has touched has nothing selected, so a
+// tournament is not playable until an admin has been through it.
 //
 // See shared/src/live/selection.ts for the rule itself.
 
@@ -505,8 +505,9 @@ liveTournamentsRouter.get('/tournaments/:id/selected-matches', requireAuth, asyn
 /**
  * Register one gameweek's selection.
  *
- * `fixtureIds: null` (or an empty list) resets the gameweek to its default of every
- * fixture selected, which is why it deletes the row rather than storing an empty one.
+ * `fixtureIds: null` (or an empty list) clears the gameweek back to its default of nothing
+ * selected, which is why it deletes the row rather than storing an empty one — under that
+ * default the two are the same thing.
  *
  * Scores are rebuilt afterwards: a fixture that has just been deselected must give back
  * the points it awarded, and one that has just been selected must award the points it
@@ -605,9 +606,8 @@ liveTournamentsRouter.put('/tournaments/:id/selected-matches', requireAdmin, asy
     return res.json({
       selection,
       isCustomised: selection !== null,
-      selectedFixtureIds: selection
-        ? selection.selectedFixtureIds
-        : gameweekFixtures.map(f => f.id),
+      // No row means nothing is selected, so there is nothing to echo back.
+      selectedFixtureIds: selection ? selection.selectedFixtureIds : [],
       fixtureCount: gameweekFixtures.length,
       scoredPredictions: recalculated.scoredPredictions,
     });

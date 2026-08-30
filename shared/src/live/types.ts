@@ -230,7 +230,7 @@ export interface LiveTablePrediction {
  * The set of fixtures an admin has picked out of one gameweek (a matchday within a
  * stage) as the ones users predict on.
  *
- * A gameweek with no row here has every fixture selected — the default. `selectedFixtureIds`
+ * A gameweek with no row here has nothing selected — the default. `selectedFixtureIds`
  * is stored whole rather than a row per fixture because it is only ever read and written
  * complete, and because "no row" is what expresses the default.
  */

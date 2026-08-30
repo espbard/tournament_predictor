@@ -275,21 +275,12 @@ export default function LiveSelectedMatchesPanel({ tournamentId }: Props) {
             >
               {t('live.admin.selection.clear')}
             </button>
-            {summary?.isCustomised && (
-              <button
-                onClick={() => saveMutation.mutate(null)}
-                disabled={saveMutation.isPending}
-                className="rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50"
-              >
-                {t('live.admin.selection.reset')}
-              </button>
-            )}
           </div>
 
-          {/* Saving nothing is the reset, which is not obvious from the buttons alone. */}
+          {/* Spelled out because an empty save looks like it might do nothing at all. */}
           {selectedIds.size === 0 && (
             <p className="mt-2 text-xs text-muted-foreground">
-              {t('live.admin.selection.emptyMeansAll')}
+              {t('live.admin.selection.emptyMeansNone')}
             </p>
           )}
           {message && <p className="mt-3 text-sm text-green-600 dark:text-green-400">{message}</p>}

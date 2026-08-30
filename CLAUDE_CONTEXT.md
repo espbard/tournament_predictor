@@ -463,7 +463,8 @@ sums every source.
 **Selected matches** — an admin may narrow a gameweek (one matchday inside one stage) to a set of
 fixtures through `PUT /api/live/tournaments/:id/selected-matches`. Anything left out is not part
 of the game: predictions on it are rejected and it never awards points. A gameweek nobody has
-narrowed has every fixture selected, which is why a new tournament is playable immediately. The
+touched has **nothing** selected, so a live competition shows players no fixtures until an admin
+has been through its gameweeks. The
 rule lives in `shared/src/live/selection.ts` and is applied by the fixtures read models, the
 prediction route and the scoring trigger alike — changing a selection recalculates the tournament
 so points already awarded on a now-deselected match are given back.
