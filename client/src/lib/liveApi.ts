@@ -294,6 +294,9 @@ export const liveApi = {
     api.get<LiveBonusAnswer[]>(`/live/competitions/${competitionId}/bonus-answers/${userId}`),
   saveBonusAnswer: (competitionId: string, body: { questionId: string; answer: string }) =>
     api.put<LiveBonusAnswer>(`/live/competitions/${competitionId}/bonus-answers`, body),
+  /** Drops the caller's answers to every question that has not locked yet. */
+  clearBonusAnswers: (competitionId: string) =>
+    api.delete<{ deleted: number }>(`/live/competitions/${competitionId}/bonus-answers`),
 
   otherUserPredictions: (competitionId: string, userId: string) =>
     api.get<Array<{ liveFixtureId: string; homeScore: number; awayScore: number; points: number | null }>>(

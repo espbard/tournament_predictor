@@ -68,6 +68,11 @@ export default function BonusQuestionsTab({
           competitionId
             ? api.post(`/competitions/${competitionId}/bonus-answers`, { questionId, answer })
             : Promise.resolve(),
+        // Same reason as above: with no competition there are no answers of one's own, so
+        // the panel is left without a Clear button entirely.
+        clearAnswers: competitionId
+          ? () => api.delete(`/competitions/${competitionId}/bonus-answers`)
+          : undefined,
       }}
       onQuestionsChanged={() =>
         queryClient.invalidateQueries({ queryKey: ['tournaments', tournamentId, 'bonus-questions'] })

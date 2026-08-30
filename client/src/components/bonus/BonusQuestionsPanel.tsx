@@ -107,6 +107,12 @@ export interface BonusPanelApi {
   ): Promise<unknown>;
   deleteQuestion(questionId: string): Promise<unknown>;
   saveAnswer(questionId: string, answer: string): Promise<unknown>;
+  /**
+   * Delete every answer the viewer has given that a deadline has not closed yet. Optional:
+   * the admin tournament page renders this panel with no competition behind it, and there
+   * are no answers of one's own to clear there.
+   */
+  clearAnswers?(): Promise<unknown>;
 }
 
 interface Props {
@@ -180,12 +186,25 @@ export default function BonusQuestionsPanel({
   const [correctAnswerList, setCorrectAnswerList] = useState<string[]>([]);
   const [setAnswerError, setSetAnswerError] = useState('');
 
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [clearError, setClearError] = useState('');
+
   const [localAnswers, setLocalAnswers] = useState<Record<string, string>>({});
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [saveErrors, setSaveErrors] = useState<Record<string, string>>({});
 
   const answerMap = Object.fromEntries(answers.map(a => [a.questionId, a]));
+
+  // Clearing is offered while there is something to clear that a deadline has not closed.
+  // The manual type shuts every question at once (`deadlinePassed`); the live type shuts
+  // them one at a time, so it is the individual question's lock that counts.
+  const questionMap = Object.fromEntries(questions.map(q => [q.id, q]));
+  const hasClearableAnswers = answers.some(a => {
+    const q = questionMap[a.questionId];
+    return q ? !(q.isLocked ?? deadlinePassed) : false;
+  });
+  const canClearAnswers = !!api.clearAnswers && !viewUserId && hasClearableAnswers;
 
   const addMutation = useMutation({
     mutationFn: (
@@ -231,6 +250,22 @@ export default function BonusQuestionsPanel({
       onQuestionsChanged();
     },
     onError: (err) => setSetAnswerError(err instanceof ApiError ? err.message : t('bonusQuestions.failedToSetAnswer')),
+  });
+
+  const clearAnswersMutation = useMutation({
+    mutationFn: () => api.clearAnswers!(),
+    onSuccess: () => {
+      // The inputs render `localAnswers` over the server's copy, so they have to be
+      // dropped too — otherwise a cleared question still shows what was typed into it.
+      setLocalAnswers({});
+      setSavedIds(new Set());
+      setSaveErrors({});
+      setShowClearConfirm(false);
+      setClearError('');
+      onAnswersChanged();
+    },
+    onError: err =>
+      setClearError(err instanceof ApiError ? err.message : t('bonusQuestions.failedToClear')),
   });
 
   function handleAddQuestion(e: React.FormEvent) {
@@ -377,6 +412,51 @@ export default function BonusQuestionsPanel({
             {addMutation.isPending ? t('bonusQuestions.adding') : t('bonusQuestions.addQuestion')}
           </button>
         </form>
+      )}
+
+      {/* Clear my answers */}
+      {canClearAnswers && (
+        <div className="flex justify-end">
+          <button
+            onClick={() => {
+              setClearError('');
+              setShowClearConfirm(true);
+            }}
+            className="text-xs rounded border border-destructive/30 px-2.5 py-1 text-destructive hover:bg-destructive/5"
+          >
+            {t('bonusQuestions.clearAll')}
+          </button>
+        </div>
+      )}
+
+      {showClearConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-lg border bg-background p-6 shadow-xl">
+            <p className="mb-1 font-semibold">{t('bonusQuestions.clearConfirm.title')}</p>
+            <p className="mb-6 text-sm text-muted-foreground">
+              {t('bonusQuestions.clearConfirm.body')}
+            </p>
+            {clearError && <p className="mb-4 text-sm text-destructive">{clearError}</p>}
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowClearConfirm(false)}
+                disabled={clearAnswersMutation.isPending}
+                className="rounded-md border px-4 py-2 text-sm hover:bg-muted disabled:opacity-50"
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                onClick={() => clearAnswersMutation.mutate()}
+                disabled={clearAnswersMutation.isPending}
+                className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
+              >
+                {clearAnswersMutation.isPending
+                  ? t('bonusQuestions.clearConfirm.clearing')
+                  : t('bonusQuestions.clearConfirm.clear')}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Question list */}

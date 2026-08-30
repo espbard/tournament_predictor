@@ -281,11 +281,22 @@ POST   /api/competitions/:id/join
 GET    /api/competitions/:id/predictions   — returns current user's predictions
 POST   /api/competitions/:id/predictions   — upsert a prediction (checks deadline)
 
+DELETE /api/competitions/:id/bonus-answers      — clear the caller's own bonus answers
+DELETE /api/live/competitions/:id/bonus-answers — the same, for questions still open
+
 POST   /api/competitions/:id/invite        — mint (or re-read) the share link (any member)
 POST   /api/live/competitions/:id/invite   — the same, for a live competition
 GET    /api/invites/:token                 — what a share link points at (no auth needed)
 POST   /api/invites/:token/accept          — join whatever the link points at
 ```
+
+> **Clearing bonus answers.** Both bonus tabs offer "Clear all my answers", behind the
+> same deadline that governs saving one — so the manual type stops offering it once the
+> competition's deadline has passed, and the live type deletes only the answers to
+> questions that have not locked yet, keeping the rest. The button lives in the shared
+> `BonusQuestionsPanel` and appears only when its wrapper supplies `api.clearAnswers`,
+> which is why the admin tournament page (no competition, so no answers of one's own)
+> never shows it.
 
 > **Invite links.** Every competition can hand out `/invite/<token>` alongside its
 > five-digit code, for both tournament types. The token is 32 url-safe random characters

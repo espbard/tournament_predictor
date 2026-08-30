@@ -311,6 +311,14 @@ const translations = {
       removeAnswer: 'Remove answer',
       pt: 'pt',
       pts: 'pts',
+      clearAll: 'Clear all my answers',
+      failedToClear: 'Failed to clear your answers',
+      clearConfirm: {
+        title: 'Clear all your bonus answers?',
+        body: 'Every answer you have given to a question that is still open will be deleted. Answers to questions that have already closed are kept.',
+        clearing: 'Clearing…',
+        clear: 'Clear all',
+      },
     },
     tournaments: {
       title: 'Tournaments',
@@ -1090,6 +1098,14 @@ const translations = {
       removeAnswer: 'Fjern svar',
       pt: 'poeng',
       pts: 'poeng',
+      clearAll: 'Slett alle svarene mine',
+      failedToClear: 'Kunne ikke slette svarene dine',
+      clearConfirm: {
+        title: 'Slette alle bonussvarene dine?',
+        body: 'Alle svar du har gitt på spørsmål som fortsatt er åpne blir slettet. Svar på spørsmål som allerede er stengt beholdes.',
+        clearing: 'Sletter…',
+        clear: 'Slett alle',
+      },
     },
     tournaments: {
       title: 'Turneringer',
@@ -1868,6 +1884,14 @@ const translations = {
       removeAnswer: 'Antwort entfernen',
       pt: 'Pkt',
       pts: 'Pkte',
+      clearAll: 'Alle meine Antworten löschen',
+      failedToClear: 'Antworten konnten nicht gelöscht werden',
+      clearConfirm: {
+        title: 'Alle deine Bonusantworten löschen?',
+        body: 'Jede Antwort auf eine noch offene Frage wird gelöscht. Antworten auf bereits geschlossene Fragen bleiben erhalten.',
+        clearing: 'Wird gelöscht…',
+        clear: 'Alle löschen',
+      },
     },
     tournaments: {
       title: 'Turniere',

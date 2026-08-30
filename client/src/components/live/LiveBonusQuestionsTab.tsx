@@ -106,6 +106,9 @@ export default function LiveBonusQuestionsTab({
         deleteQuestion: questionId => liveApi.deleteBonusQuestion(liveTournamentId, questionId),
         saveAnswer: (questionId, answer) =>
           liveApi.saveBonusAnswer(competitionId, { questionId, answer }),
+        // Only answers to questions that are still open are removed; the server decides
+        // which those are, on the same lock the save route enforces.
+        clearAnswers: () => liveApi.clearBonusAnswers(competitionId),
       }}
       onQuestionsChanged={() => {
         queryClient.invalidateQueries({ queryKey: liveKeys.bonusQuestions(competitionId) });

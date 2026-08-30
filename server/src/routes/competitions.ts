@@ -5101,6 +5101,60 @@ router.post('/:id/bonus-answers', requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * Clear every bonus answer the caller has given in this competition.
+ *
+ * Gated by the same deadline as saving one: once the deadline has passed an answer is
+ * final, so there is nothing left to clear.
+ */
+router.delete('/:id/bonus-answers', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = res.locals.user;
+
+    const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
+    if (!competition) return res.status(404).json({ error: 'Competition not found' });
+
+    let membership: typeof competitionMembers.$inferSelect | undefined;
+    if (!user.isAdmin) {
+      const [mem] = await db
+        .select()
+        .from(competitionMembers)
+        .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
+      if (!mem) return res.status(403).json({ error: 'Not a member of this competition' });
+      membership = mem;
+    }
+
+    // Mirrors POST /:id/bonus-answers exactly: a late addition answers inside their own
+    // 24-hour window, everybody else until the competition's deadline.
+    if (membership?.lateAdditionWindowEndsAt != null) {
+      if (new Date() > new Date(membership.lateAdditionWindowEndsAt)) {
+        return res.status(400).json({ error: 'Your 24-hour prediction window has expired' });
+      }
+    } else if (!user.isComparisonUser && competition.predictionDeadline && new Date() > new Date(competition.predictionDeadline)) {
+      return res.status(400).json({ error: 'Prediction deadline has passed' });
+    }
+
+    await db
+      .delete(bonusAnswers)
+      .where(and(eq(bonusAnswers.competitionId, id), eq(bonusAnswers.userId, user.id)));
+
+    // Every answer is gone, so the denormalised rollup has to follow it to zero. It is
+    // normally zero already — points are only awarded once the tournament is completed,
+    // long after this deadline — but a test account can hold scored answers earlier, and
+    // a stale total would keep counting on the leaderboard.
+    await db
+      .update(competitionMembers)
+      .set({ bonusQuestionPoints: 0 })
+      .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
+
+    res.status(204).send();
+  } catch (err) {
+    console.error('Clear bonus answers error:', err);
+    res.status(500).json({ error: 'Failed to clear bonus answers' });
+  }
+});
+
 // ── Admin: copy comparison user predictions across same-tournament competitions ──
 
 router.post('/admin/copy-comparison-predictions', requireAdmin, async (req, res) => {

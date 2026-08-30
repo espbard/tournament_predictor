@@ -1067,6 +1067,68 @@ liveCompetitionsRouter.get(
   },
 );
 
+/**
+ * Clear the caller's bonus answers — every one whose question is still open.
+ *
+ * A question that has already locked keeps its answer: the live type closes each question
+ * on its own schedule, and once one is closed its answer is as final as a played fixture's
+ * prediction. Deleting those would be a way to walk back an answer after the fact.
+ */
+liveCompetitionsRouter.delete('/competitions/:id/bonus-answers', requireAuth, async (req, res) => {
+  try {
+    const user = res.locals.user;
+
+    const [competition] = await db
+      .select()
+      .from(liveCompetitions)
+      .where(eq(liveCompetitions.id, req.params.id));
+    if (!competition) return res.status(404).json({ error: 'Not found' });
+
+    const [membership] = await db
+      .select({ id: liveCompetitionMembers.id })
+      .from(liveCompetitionMembers)
+      .where(
+        and(
+          eq(liveCompetitionMembers.liveCompetitionId, competition.id),
+          eq(liveCompetitionMembers.userId, user.id),
+        ),
+      );
+    if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+
+    const [tournament] = await db
+      .select()
+      .from(liveTournaments)
+      .where(eq(liveTournaments.id, competition.liveTournamentId));
+    if (!tournament) return res.status(404).json({ error: 'Live tournament not found' });
+
+    const questions = await db
+      .select({ id: liveBonusQuestions.id, lockAt: liveBonusQuestions.lockAt })
+      .from(liveBonusQuestions)
+      .where(eq(liveBonusQuestions.liveTournamentId, tournament.id));
+
+    const kickoffs = await tablePredictionStageKickoffs(tournament);
+    const openQuestionIds = questions
+      .filter(q => !isBonusQuestionLocked(q.lockAt, kickoffs))
+      .map(q => q.id);
+    if (openQuestionIds.length === 0) return res.json({ deleted: 0 });
+
+    const deleted = await db
+      .delete(liveBonusAnswers)
+      .where(
+        and(
+          eq(liveBonusAnswers.liveCompetitionId, competition.id),
+          eq(liveBonusAnswers.userId, user.id),
+          inArray(liveBonusAnswers.questionId, openQuestionIds),
+        ),
+      )
+      .returning({ id: liveBonusAnswers.id });
+
+    return res.json({ deleted: deleted.length });
+  } catch (err) {
+    return fail(res, err);
+  }
+});
+
 /** Upsert one answer. This is the only place the bonus deadline is enforced. */
 liveCompetitionsRouter.put('/competitions/:id/bonus-answers', requireAuth, async (req, res) => {
   try {
