@@ -1,4 +1,5 @@
 import type { LiveFixtureStatus, LiveProviderId } from '@tournament-predictor/shared';
+import { isWithinSeason, seasonWindow } from '../season';
 import { RateLimiter } from './rateLimiter';
 import { trimmedSample } from './sample';
 import {
@@ -256,16 +257,27 @@ export function mapBigBallsMatch(raw: RawMatch): ProviderFixture {
 }
 
 /**
- * The calendar span of a season the provider names by its starting year.
+ * The calendar span of a season, as this API's date parameters want it.
  *
- * June of that year through July of the next: wide enough for qualifiers in July and a
- * final in June, and narrow enough that it cannot pull in a neighbouring season.
+ * Thin wrapper over the shared rule so both the request and the check on what comes back
+ * use one definition of the season — see ../season.ts for why both are needed.
  */
 export function seasonDateRange(season: string): FetchFixturesOptions {
-  const start = Number.parseInt(season, 10);
-  // Not a year we understand, so ask without a range and let the provider decide.
-  if (!Number.isFinite(start)) return {};
-  return { dateFrom: `${start}-06-01`, dateTo: `${start + 1}-07-31` };
+  return seasonWindow(season) ?? {};
+}
+
+/**
+ * Whether a kickoff falls inside an explicit date window, for the live-window sync.
+ *
+ * Same reason as the season check: the request's dates are advisory to this provider, so
+ * a match outside them must be dropped rather than stored as today's.
+ */
+function withinDates(kickoff: string | null | undefined, opts: FetchFixturesOptions): boolean {
+  const day = (kickoff ?? '').slice(0, 10);
+  if (day === '') return false;
+  if (opts.dateFrom && day < opts.dateFrom) return false;
+  if (opts.dateTo && day > opts.dateTo) return false;
+  return true;
 }
 
 /**
@@ -676,12 +688,26 @@ export class BigBallsProvider implements LiveProvider {
     season: string,
     opts: FetchFixturesOptions = {},
   ): Promise<ProviderFixture[]> {
-    const window: FetchFixturesOptions =
-      opts.dateFrom || opts.dateTo ? opts : seasonDateRange(season);
+    const windowed = Boolean(opts.dateFrom || opts.dateTo);
+    const window: FetchFixturesOptions = windowed ? opts : seasonDateRange(season);
 
-    return (await this.fetchAllMatches(this.matchesPath(competitionId, window))).map(
-      mapBigBallsMatch,
-    );
+    const matches = await this.fetchAllMatches(this.matchesPath(competitionId, window));
+
+    // The date parameters above are a request, not a guarantee: this API accepts them and
+    // answers with every match it holds for the league, other seasons included. So the
+    // season is enforced here, on what came back.
+    const kept = windowed
+      ? matches.filter(m => withinDates(m.kickoff_utc, opts))
+      : matches.filter(m => isWithinSeason(m.kickoff_utc ?? null, season));
+
+    if (kept.length !== matches.length) {
+      console.warn(
+        `[big-balls] ${competitionId}: dropped ${matches.length - kept.length} of ` +
+          `${matches.length} matches outside the requested dates — the provider ignored them`,
+      );
+    }
+
+    return kept.map(mapBigBallsMatch);
   }
 
   // ── Diagnostics ─────────────────────────────────────────────────────────────

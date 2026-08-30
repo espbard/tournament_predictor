@@ -197,6 +197,8 @@ export interface LiveSyncResult {
   unmappedStages: string[];
   /** True when the provider has not published this season yet — a state, not an error. */
   seasonUnavailable: boolean;
+  /** Fixtures removed because their kickoff falls outside the tournament's season. */
+  outOfSeasonRemoved: number;
   /** Crests copied into R2 by this sync. Zero on every sync after the first. */
   crestsMirrored: number;
 }

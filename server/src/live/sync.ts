@@ -8,9 +8,16 @@ import {
   type LiveQualificationStatus,
 } from '@tournament-predictor/shared';
 import { db } from '../db/client';
-import { liveFixtures, liveStandings, liveTeams, liveTournaments } from '../db/liveSchema';
+import {
+  liveFixtures,
+  livePredictions,
+  liveStandings,
+  liveTeams,
+  liveTournaments,
+} from '../db/liveSchema';
 import { mirrorTeamCrests } from './crests';
 import { deriveMatchdays } from './matchdays';
+import { seasonWindow } from './season';
 import { getProvider } from './providers';
 import { buildTeamNameIndex, matchTeamByName } from './teamMatching';
 import {
@@ -69,6 +76,8 @@ export interface SyncResult {
   seasonUnavailable: boolean;
   /** Team crests copied into R2 by this sync. Zero on every sync after the first. */
   crestsMirrored: number;
+  /** Fixtures removed because their kickoff falls outside the tournament's season. */
+  outOfSeasonRemoved: number;
 }
 
 function emptyResult(): SyncResult {
@@ -82,6 +91,7 @@ function emptyResult(): SyncResult {
     unresolvedTeamNames: [],
     seasonUnavailable: false,
     crestsMirrored: 0,
+    outOfSeasonRemoved: 0,
   };
 }
 
@@ -678,6 +688,64 @@ async function refreshQualificationStatuses(
   }
 }
 
+/**
+ * Remove fixtures whose kickoff falls outside the tournament's season.
+ *
+ * A provider that ignores the date range it was given writes a neighbouring season's
+ * fixtures into the tournament, and upserting never takes them back out again — so a
+ * single bad sync leaves them there for good. bigballsdata did exactly this: asked for
+ * 2026/27 it answered with all 273 Champions League matches it holds.
+ *
+ * Fixtures carrying predictions are left alone and reported instead. Nobody should have
+ * predicted a fixture from another season, but deleting one would cascade to real
+ * predictions and points, and that is not a call a sync gets to make quietly.
+ */
+async function removeOutOfSeasonFixtures(tournament: TournamentRow): Promise<number> {
+  const window = seasonWindow(tournament.season);
+  if (!window) return 0;
+
+  const from = new Date(`${window.dateFrom}T00:00:00Z`);
+  const to = new Date(`${window.dateTo}T23:59:59Z`);
+
+  const strays = await db
+    .select({ id: liveFixtures.id })
+    .from(liveFixtures)
+    .where(
+      and(
+        eq(liveFixtures.liveTournamentId, tournament.id),
+        sql`${liveFixtures.kickoffAt} IS NOT NULL`,
+        sql`(${liveFixtures.kickoffAt} < ${from} OR ${liveFixtures.kickoffAt} > ${to})`,
+      ),
+    );
+  if (strays.length === 0) return 0;
+
+  const strayIds = strays.map(f => f.id);
+  const predicted = await db
+    .select({ liveFixtureId: livePredictions.liveFixtureId })
+    .from(livePredictions)
+    .where(inArray(livePredictions.liveFixtureId, strayIds));
+  const keep = new Set(predicted.map(p => p.liveFixtureId));
+
+  const removable = strayIds.filter(id => !keep.has(id));
+  if (keep.size > 0) {
+    console.warn(
+      `[live-sync] ${tournament.id}: ${keep.size} out-of-season fixture(s) have predictions ` +
+        'attached and were left in place — remove them by hand if they are wrong',
+    );
+  }
+  if (removable.length === 0) return 0;
+
+  await chunked(removable, async chunk => {
+    await db.delete(liveFixtures).where(inArray(liveFixtures.id, chunk));
+  });
+
+  console.warn(
+    `[live-sync] ${tournament.id}: removed ${removable.length} fixture(s) outside season ` +
+      `${tournament.season} (${window.dateFrom} to ${window.dateTo})`,
+  );
+  return removable.length;
+}
+
 async function recordSyncOutcome(
   tournamentId: string,
   field: 'structure' | 'window',
@@ -854,6 +922,10 @@ export async function syncTournamentStructure(tournamentId: string): Promise<Syn
     } catch (err) {
       if (!(err instanceof ProviderError && err.isSeasonUnavailable)) throw err;
     }
+
+    // After the upsert, so a provider that ignored the season it was asked for does not
+    // leave another season's fixtures behind for good.
+    result.outOfSeasonRemoved = await removeOutOfSeasonFixtures(tournament);
 
     await refreshQualificationStatuses(tournament, format);
 

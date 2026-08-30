@@ -32,6 +32,13 @@ const DOCUMENTED_MATCH = {
   has_odds: true,
 };
 
+/**
+ * The documented example is a May 2026 kickoff, which belongs to season 2025 — so a fetch
+ * for 2026 correctly drops it. Tests about fetching and paging use a date inside the
+ * season they ask for; tests about mapping keep the documented payload as it is.
+ */
+const IN_SEASON = { ...DOCUMENTED_MATCH, kickoff_utc: '2026-09-08T16:45:00.000Z' };
+
 describe('mapBigBallsStatus', () => {
   it.each([
     ['scheduled', 'scheduled'],
@@ -243,7 +250,7 @@ describe('BigBallsProvider', () => {
     new BigBallsProvider('test-key', new RateLimiter({ limit: 50, intervalMs: 1000 }));
 
   it('asks for the league by key and maps what comes back', async () => {
-    const paths = stubFetch(() => ({ body: { data: [DOCUMENTED_MATCH] } }));
+    const paths = stubFetch(() => ({ body: { data: [IN_SEASON] } }));
 
     const fixtures = await provider().fetchFixtures('ucl', '2026');
 
@@ -265,7 +272,7 @@ describe('BigBallsProvider', () => {
   });
 
   it('accepts a bare array or any of the usual envelopes', async () => {
-    for (const body of [[DOCUMENTED_MATCH], { data: [DOCUMENTED_MATCH] }, { matches: [DOCUMENTED_MATCH] }]) {
+    for (const body of [[IN_SEASON], { data: [IN_SEASON] }, { matches: [IN_SEASON] }]) {
       stubFetch(() => ({ body }));
       expect(await provider().fetchFixtures('ucl', '2026')).toHaveLength(1);
     }
@@ -306,7 +313,7 @@ describe('BigBallsProvider', () => {
 
   it('follows pagination until the whole season is in hand', async () => {
     const page = (n: number, ids: string[], totalPages: number) => ({
-      data: ids.map(id => ({ ...DOCUMENTED_MATCH, id })),
+      data: ids.map(id => ({ ...IN_SEASON, id })),
       meta: { page: n, total_pages: totalPages, total: 3 },
     });
     const paths = stubFetch(path => {
@@ -325,7 +332,7 @@ describe('BigBallsProvider', () => {
       const n = Number(new URLSearchParams(path.split('?')[1]).get('page') ?? '1');
       return {
         body: {
-          data: [{ ...DOCUMENTED_MATCH, id: 'shared' }, { ...DOCUMENTED_MATCH, id: `m${n}` }],
+          data: [{ ...IN_SEASON, id: 'shared' }, { ...IN_SEASON, id: `m${n}` }],
           meta: { page: n, total_pages: 2 },
         },
       };
@@ -337,7 +344,7 @@ describe('BigBallsProvider', () => {
 
   it('gives up rather than looping on a provider that always offers the same next page', async () => {
     const paths = stubFetch(() => ({
-      body: { data: [DOCUMENTED_MATCH], next: '/v1/matches?page=2' },
+      body: { data: [IN_SEASON], next: '/v1/matches?page=2' },
     }));
 
     await provider().fetchFixtures('ucl', '2026');
@@ -349,7 +356,7 @@ describe('BigBallsProvider', () => {
   it('warns when a response looks like an unexplained page', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     stubFetch(() => ({
-      body: Array.from({ length: 50 }, (_, i) => ({ ...DOCUMENTED_MATCH, id: `m${i}` })),
+      body: Array.from({ length: 50 }, (_, i) => ({ ...IN_SEASON, id: `m${i}` })),
     }));
 
     await provider().fetchFixtures('ucl', '2026');
@@ -363,14 +370,14 @@ describe('BigBallsProvider', () => {
   // matches it does not already hold.
   describe('paging discovery', () => {
     const fifty = (offset = 0) =>
-      Array.from({ length: 50 }, (_, i) => ({ ...DOCUMENTED_MATCH, id: `m${offset + i}` }));
+      Array.from({ length: 50 }, (_, i) => ({ ...IN_SEASON, id: `m${offset + i}` }));
 
     it('takes a bigger page when the provider honours a size parameter', async () => {
       const paths = stubFetch(path => {
         const limit = new URLSearchParams(path.split('?')[1]).get('limit');
         return {
           body: limit
-            ? Array.from({ length: 144 }, (_, i) => ({ ...DOCUMENTED_MATCH, id: `m${i}` }))
+            ? Array.from({ length: 144 }, (_, i) => ({ ...IN_SEASON, id: `m${i}` }))
             : fifty(),
         };
       });
@@ -430,7 +437,7 @@ describe('BigBallsProvider', () => {
 
     it('does not probe at all when the count is not page-shaped', async () => {
       const paths = stubFetch(() => ({
-        body: Array.from({ length: 144 }, (_, i) => ({ ...DOCUMENTED_MATCH, id: `m${i}` })),
+        body: Array.from({ length: 144 }, (_, i) => ({ ...IN_SEASON, id: `m${i}` })),
       }));
 
       await provider().fetchFixtures('ucl', '2026');
@@ -525,6 +532,67 @@ describe('BigBallsProvider', () => {
 
     expect(probes.map(p => p.key)).toEqual(['competition', 'matches_season']);
     expect(paths).toHaveLength(2);
+  });
+
+  // The regression this exists for: 273 fixtures, two seasons' worth, from a request that
+  // asked for one. The date parameters are advisory to this provider.
+  describe('when the provider ignores the dates it was given', () => {
+    const at = (kickoff: string, id: string) => ({ ...DOCUMENTED_MATCH, id, kickoff_utc: kickoff });
+
+    it('keeps only the season asked for', async () => {
+      stubFetch(() => ({
+        body: {
+          data: [
+            at('2025-09-16T19:00:00.000Z', 'last-season'),
+            at('2026-09-08T16:45:00.000Z', 'this-season'),
+            at('2027-06-05T19:00:00.000Z', 'this-season-final'),
+            at('2027-09-14T19:00:00.000Z', 'next-season'),
+          ],
+        },
+      }));
+
+      const fixtures = await provider().fetchFixtures('CL', '2026');
+
+      expect(fixtures.map(f => f.providerFixtureId)).toEqual(['this-season', 'this-season-final']);
+    });
+
+    it('drops a match with no kickoff time, having nothing to place it by', async () => {
+      stubFetch(() => ({
+        body: { data: [at('2026-09-08T16:45:00.000Z', 'dated'), { ...DOCUMENTED_MATCH, id: 'undated', kickoff_utc: null }] },
+      }));
+
+      const fixtures = await provider().fetchFixtures('CL', '2026');
+      expect(fixtures.map(f => f.providerFixtureId)).toEqual(['dated']);
+    });
+
+    it('enforces an explicit window too', async () => {
+      stubFetch(() => ({
+        body: {
+          data: [
+            at('2026-09-08T16:45:00.000Z', 'inside'),
+            at('2026-10-20T19:00:00.000Z', 'outside'),
+          ],
+        },
+      }));
+
+      const fixtures = await provider().fetchFixtures('CL', '2026', {
+        dateFrom: '2026-09-07',
+        dateTo: '2026-09-09',
+      });
+
+      expect(fixtures.map(f => f.providerFixtureId)).toEqual(['inside']);
+    });
+
+    it('says how many it dropped rather than doing it silently', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      stubFetch(() => ({
+        body: { data: [at('2025-09-16T19:00:00.000Z', 'last'), at('2026-09-08T16:45:00.000Z', 'this')] },
+      }));
+
+      await provider().fetchFixtures('CL', '2026');
+
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('outside the requested dates'));
+    });
   });
 
   it('probes the league list and the match list without throwing', async () => {

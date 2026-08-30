@@ -165,6 +165,13 @@ and the walk is capped — see `discoverPaging`, and it is **keyed by date rathe
 season**, so a whole-season fetch sends an explicit June-to-July range instead of trusting
 whatever window a "live + scheduled fixtures" endpoint defaults to.
 
+**Its date parameters are advisory.** `date_from`/`date_to` are accepted and ignored: asked
+for 2026/27 it returned 273 matches, every Champions League fixture it holds, last season's
+included. So `server/src/live/season.ts` defines the season as a span of dates once, the
+adapter applies it to what comes *back* rather than trusting the request, and a structure sync
+deletes stored fixtures outside it — skipping any that carry predictions, which are reported
+instead of cascaded away. A request filter you cannot verify is not a filter.
+
 **And football-data, asked the same day:** `GET /v4/competitions/CL/matches` with no filter
 comes back `{"filters":{"season":"2026"},"resultSet":{"count":0},"matches":[]}` — it applies
 2026 as the competition's *current* season and has no matches for it. So the season is real,
