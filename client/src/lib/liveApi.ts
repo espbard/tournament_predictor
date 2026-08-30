@@ -113,6 +113,9 @@ export interface LiveTournamentDetail extends LiveTournament {
   fixturesMissingTeams: number;
   /** Predictable fixtures that belong to no gameweek, so nobody can ever select them. */
   fixturesOutsideGameweek: number;
+  /** What a complete starting stage looks like, and how much of it we hold. */
+  expectedStartStageFixtures: number | null;
+  startStageFixtureCount: number;
 }
 
 /** What an admin may narrow about a bonus question. See shared/src/live/bonus.ts. */
@@ -174,8 +177,10 @@ export interface LiveFixtureDiagnosis {
   lastStructureSyncAt: string | null;
   lastSyncError: string | null;
   probes: LiveProviderProbe[];
+  expectedStartStageFixtures: number | null;
   verdict:
     | 'fixtures_available'
+    | 'provider_has_partial_fixtures'
     | 'season_filter_hides_fixtures'
     | 'provider_has_no_fixtures'
     | 'season_not_published'

@@ -183,6 +183,27 @@ export default function AdminLiveTournamentDetailPage() {
         </div>
       )}
 
+      {/* Partial data is the dangerous state: it passes every other check on this page,
+          because "some fixtures" and "the fixtures" look identical from here. */}
+      {tournament.expectedStartStageFixtures !== null &&
+        tournament.startStageFixtureCount > 0 &&
+        tournament.startStageFixtureCount < tournament.expectedStartStageFixtures && (
+          <div className="mb-4 flex gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4">
+            <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+            <div className="min-w-0">
+              <h2 className="text-sm font-semibold text-amber-700 dark:text-amber-400">
+                {t('live.admin.partialFixturesTitle')}
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {t('live.admin.partialFixturesBody', {
+                  held: tournament.startStageFixtureCount,
+                  expected: tournament.expectedStartStageFixtures,
+                })}
+              </p>
+            </div>
+          </div>
+        )}
+
       {tournament.fixturesOutsideGameweek > 0 && (
         <div className="mb-4 flex gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4">
           <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
@@ -389,6 +410,7 @@ const PROBE_LABEL_KEYS: Record<LiveProviderProbe['key'], string> = {
 
 const VERDICT_KEYS: Record<LiveFixtureDiagnosis['verdict'], string> = {
   fixtures_available: 'live.admin.verdictFixturesAvailable',
+  provider_has_partial_fixtures: 'live.admin.verdictPartialFixtures',
   never_fully_synced: 'live.admin.verdictNeverFullySynced',
   season_filter_hides_fixtures: 'live.admin.verdictSeasonFilterHides',
   provider_has_no_fixtures: 'live.admin.verdictProviderHasNoFixtures',

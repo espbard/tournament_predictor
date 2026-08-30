@@ -198,6 +198,11 @@ liveTournamentsRouter.get('/tournaments/:id', requireAuth, async (req, res) => {
       fixtureCount: fixtures.length,
       unscorableFixtures,
       fixtureProviderCompetitionId: tournament.fixtureProviderCompetitionId,
+      // A complete starting stage, and how much of it we hold. The check that was
+      // missing while a Champions League league phase sat at 50 of its 144 fixtures:
+      // partial data passes every other test on this page.
+      expectedStartStageFixtures: preset?.expectedStartStageFixtures ?? null,
+      startStageFixtureCount: fixtures.filter(f => f.stageKey === tournament.startStageKey).length,
       // Fixtures that no gameweek can hold — no stage, or no matchday — among the ones
       // that were supposed to be predictable. Since a selection is registered per
       // gameweek, these can never be selected, and under the "nothing counts until

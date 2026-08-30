@@ -172,3 +172,47 @@ describe('verdictFrom with a split fixture provider', () => {
     expect(verdictFrom(probes, 144, syncedAt)).toBe('fixtures_available');
   });
 });
+
+// ── Partial coverage ──────────────────────────────────────────────────────────
+//
+// The failure that got past everything else: bigballsdata answered with 50 Champions
+// League fixtures of a 144-fixture league phase — about ten of each round's eighteen,
+// with one round missing altogether — and every check here called that healthy, because
+// it only ever asked whether there were *any* fixtures.
+describe('verdictFrom with an expected fixture count', () => {
+  it('calls a third of a league phase what it is', () => {
+    const probes = [probe('matches_season', { count: 50, countForSeason: 50 })];
+    expect(verdictFrom(probes, 50, syncedAt, 'football_data', 144)).toBe(
+      'provider_has_partial_fixtures',
+    );
+  });
+
+  it('accepts a season a fixture or two short of the full count', () => {
+    // A postponement being rescheduled is not a coverage problem.
+    const probes = [probe('matches_season', { count: 142, countForSeason: 142 })];
+    expect(verdictFrom(probes, 142, syncedAt, 'football_data', 144)).toBe('fixtures_available');
+  });
+
+  it('is unchanged when nothing says what a complete stage looks like', () => {
+    const probes = [probe('matches_season', { count: 50, countForSeason: 50 })];
+    expect(verdictFrom(probes, 50, syncedAt, 'football_data', null)).toBe('fixtures_available');
+    expect(verdictFrom(probes, 50, syncedAt)).toBe('fixtures_available');
+  });
+
+  // Partial is still partial when nothing has synced; the provider is the problem either
+  // way, and telling an admin to press Full sync would waste their time.
+  it('reports partial coverage ahead of a missing sync', () => {
+    const probes = [probe('matches_season', { count: 50, countForSeason: 50 })];
+    expect(verdictFrom(probes, 0, null, 'football_data', 144)).toBe(
+      'provider_has_partial_fixtures',
+    );
+  });
+
+  it('still reports no fixtures when there are none at all', () => {
+    const probes = [
+      probe('matches_season', { count: 0, countForSeason: 0 }),
+      probe('teams', { count: 36, countForSeason: 36 }),
+    ];
+    expect(verdictFrom(probes, 0, syncedAt, 'football_data', 144)).toBe('provider_has_no_fixtures');
+  });
+});

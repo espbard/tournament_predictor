@@ -21,6 +21,15 @@ export interface LiveTournamentPreset {
   startStageKey: string;
   /** Used to show "N of M teams confirmed" before a draw has been made. */
   expectedTeamCount: number | null;
+  /**
+   * How many fixtures the starting stage has when complete.
+   *
+   * The check that was missing: a provider returning *some* fixtures passes every other
+   * test we have, and a Champions League league phase arriving as 50 of its 144 looks
+   * exactly like a healthy sync. 36 teams playing 8 matches each is 144; a 20-team
+   * double round-robin is 380.
+   */
+  expectedStartStageFixtures: number | null;
   defaultImageUrl?: string | null;
 }
 
@@ -37,6 +46,7 @@ export const LIVE_TOURNAMENT_PRESETS: LiveTournamentPreset[] = [
     // ingested only so qualification status can be derived.
     startStageKey: 'league_phase',
     expectedTeamCount: 36,
+    expectedStartStageFixtures: 144,
   },
   {
     key: 'pl_2026_27',
@@ -48,6 +58,7 @@ export const LIVE_TOURNAMENT_PRESETS: LiveTournamentPreset[] = [
     format: 'domestic_league',
     startStageKey: 'regular_season',
     expectedTeamCount: 20,
+    expectedStartStageFixtures: 380,
   },
 ];
 

@@ -1,5 +1,5 @@
 import { eq, sql } from 'drizzle-orm';
-import type { LiveProviderId } from '@tournament-predictor/shared';
+import { getLiveTournamentPreset, type LiveProviderId } from '@tournament-predictor/shared';
 import { db } from '../db/client';
 import { liveFixtures, liveTeams, liveTournaments } from '../db/liveSchema';
 import { getProvider } from './providers';
@@ -24,6 +24,7 @@ import type { ProviderProbe, ProviderProbeKey } from './providers/types';
 /** Which of the causes above the probes point at. Rendered client-side. */
 export type FixtureDiagnosisVerdict =
   | 'fixtures_available'
+  | 'provider_has_partial_fixtures'
   | 'season_filter_hides_fixtures'
   | 'provider_has_no_fixtures'
   | 'season_not_published'
@@ -44,6 +45,8 @@ export interface FixtureDiagnosis {
   lastSyncError: string | null;
   probes: ProviderProbe[];
   verdict: FixtureDiagnosisVerdict;
+  /** Fixtures the starting stage should have when complete, if the preset says. */
+  expectedStartStageFixtures: number | null;
 }
 
 function byKey(probes: ProviderProbe[]): Map<ProviderProbeKey, ProviderProbe> {
@@ -56,12 +59,22 @@ function byKey(probes: ProviderProbe[]): Map<ProviderProbeKey, ProviderProbe> {
  * Ordered most-actionable first: fixtures we could have but do not is worth knowing
  * before anything else, and an unreachable provider makes every other reading worthless.
  */
+/**
+ * Below this share of the expected fixtures, a provider is reporting a partial season.
+ *
+ * Not 100%: a competition can legitimately be a fixture or two short while a postponement
+ * is rescheduled. A third of a league phase is not that.
+ */
+const PARTIAL_THRESHOLD = 0.95;
+
 export function verdictFrom(
   probes: ProviderProbe[],
   storedFixtures: number,
   lastStructureSyncAt: Date | null,
   /** Which provider's match probes decide the verdict. Defaults to all of them. */
   fixtureProviderId?: LiveProviderId,
+  /** What a complete starting stage looks like, when the preset knows. */
+  expectedStartStageFixtures?: number | null,
 ): FixtureDiagnosisVerdict {
   // Only the fixture provider's answers say anything about missing fixtures. The other
   // provider's match list is reported for context — is it worth switching back yet? —
@@ -92,7 +105,18 @@ export function verdictFrom(
     return 'provider_unreachable';
   }
 
-  if ((filtered?.countForSeason ?? 0) > 0) {
+  const available = filtered?.countForSeason ?? 0;
+  if (available > 0) {
+    // Some fixtures is not the same as the fixtures. A provider that serves a third of a
+    // league phase passes every other check here, which is how a season quietly runs on
+    // partial data — so say so before anything else.
+    if (
+      expectedStartStageFixtures != null &&
+      available < expectedStartStageFixtures * PARTIAL_THRESHOLD
+    ) {
+      return 'provider_has_partial_fixtures';
+    }
+
     // The provider has them on the endpoint the sync engine uses. If they are not in the
     // database, the sync has not run — not that the data is missing.
     return storedFixtures === 0 && !lastStructureSyncAt ? 'never_fully_synced' : 'fixtures_available';
@@ -121,6 +145,7 @@ export async function diagnoseTournamentFixtures(tournamentId: string): Promise<
     .from(liveTeams)
     .where(eq(liveTeams.liveTournamentId, tournament.id));
 
+  const preset = getLiveTournamentPreset(tournament.presetKey ?? '');
   const fixtureProviderId: LiveProviderId = tournament.fixtureProvider ?? tournament.provider;
   const fixtureCompetitionId =
     tournament.fixtureProviderCompetitionId ?? tournament.providerCompetitionId;
@@ -159,6 +184,13 @@ export async function diagnoseTournamentFixtures(tournamentId: string): Promise<
     lastStructureSyncAt: tournament.lastStructureSyncAt?.toISOString() ?? null,
     lastSyncError: tournament.lastSyncError,
     probes,
-    verdict: verdictFrom(probes, storedFixtures, tournament.lastStructureSyncAt, fixtureProviderId),
+    expectedStartStageFixtures: preset?.expectedStartStageFixtures ?? null,
+    verdict: verdictFrom(
+      probes,
+      storedFixtures,
+      tournament.lastStructureSyncAt,
+      fixtureProviderId,
+      preset?.expectedStartStageFixtures ?? null,
+    ),
   };
 }

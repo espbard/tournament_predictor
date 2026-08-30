@@ -165,6 +165,18 @@ and the walk is capped — see `discoverPaging`, and it is **keyed by date rathe
 season**, so a whole-season fetch sends an explicit June-to-July range instead of trusting
 whatever window a "live + scheduled fixtures" endpoint defaults to.
 
+**And football-data, asked the same day:** `GET /v4/competitions/CL/matches` with no filter
+comes back `{"filters":{"season":"2026"},"resultSet":{"count":0},"matches":[]}` — it applies
+2026 as the competition's *current* season and has no matches for it. So the season is real,
+its teams and table are real, and the calendar simply is not there. Not a filter problem, not a
+request problem.
+
+Which leaves the state this branch ends in: **neither provider has a complete Champions League
+2026/27 calendar.** Hence `expectedStartStageFixtures` on the preset (144 for the UCL league
+phase, 380 for a Premier League season) and the `provider_has_partial_fixtures` verdict — the
+check that was missing while 50 fixtures passed for a season, because everything here only ever
+asked whether there were *any*.
+
 **What a real response turned out to say (30 August 2026).** The envelope carries no
 pagination whatsoever — `{ data, meta: {source, cached, request_id, note}, error }` — and its
 `meta.note` reads *"Upcoming matches served from the stored table (no live adapter covers this
