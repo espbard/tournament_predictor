@@ -14,6 +14,7 @@ export * from './types';
 export { BigBallsProvider } from './bigBalls';
 export { FootballDataProvider } from './footballData';
 export { RateLimiter } from './rateLimiter';
+export { trimmedSample } from './sample';
 
 const factories: Record<LiveProviderId, () => LiveProvider> = {
   football_data: () => new FootballDataProvider(),

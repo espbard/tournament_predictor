@@ -155,9 +155,13 @@ Three things to know before extending it:
 
 Two more things its documentation does not describe, both found the hard way when a
 league phase arrived as 5 rounds of 10 instead of 8 of 18, and both handled in the adapter:
-its match list **pages** (the response envelope is followed through `next` / `meta.page` /
-`next_cursor` / `total`, with a de-duplicating 20-page cap and a loud warning when a
-page-sized response offers no pagination to follow), and it is **keyed by date rather than
+its match list **pages** — and does not say so in the response. The adapter first follows
+whatever the envelope advertises (`next` / `meta.page` / `next_cursor` / `total`); when a
+page-shaped count comes back with nothing to follow, it *discovers* the convention by
+trying it: a size parameter (`limit`, `per_page`, `page_size`, `count`), then page numbers,
+then offsets, keeping whichever actually returns matches not already held. A parameter the
+API ignores returns the same page and is discarded, everything is de-duplicated by match id,
+and the walk is capped — see `discoverPaging`, and it is **keyed by date rather than
 season**, so a whole-season fetch sends an explicit June-to-July range instead of trusting
 whatever window a "live + scheduled fixtures" endpoint defaults to.
 

@@ -357,6 +357,88 @@ describe('BigBallsProvider', () => {
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('truncated page'));
   });
 
+  // The failure this exists for: three rounds of "still exactly 50" against an API whose
+  // paging convention is not documented and not in its envelope. Rather than guess a
+  // fourth time, the adapter tries the conventions and keeps whichever actually returns
+  // matches it does not already hold.
+  describe('paging discovery', () => {
+    const fifty = (offset = 0) =>
+      Array.from({ length: 50 }, (_, i) => ({ ...DOCUMENTED_MATCH, id: `m${offset + i}` }));
+
+    it('takes a bigger page when the provider honours a size parameter', async () => {
+      const paths = stubFetch(path => {
+        const limit = new URLSearchParams(path.split('?')[1]).get('limit');
+        return {
+          body: limit
+            ? Array.from({ length: 144 }, (_, i) => ({ ...DOCUMENTED_MATCH, id: `m${i}` }))
+            : fifty(),
+        };
+      });
+
+      const fixtures = await provider().fetchFixtures('ucl', '2026');
+
+      expect(fixtures).toHaveLength(144);
+      expect(paths.some(p => p.includes('limit=500'))).toBe(true);
+    });
+
+    it('walks page numbers when that is what the provider takes', async () => {
+      stubFetch(path => {
+        const params = new URLSearchParams(path.split('?')[1]);
+        if (params.has('limit') || params.has('per_page') || params.has('page_size') || params.has('count')) {
+          // A size parameter this API does not take.
+          return { status: 400, body: { message: 'unknown parameter' } };
+        }
+        const page = Number(params.get('page') ?? '1');
+        return { body: page <= 3 ? fifty((page - 1) * 50) : [] };
+      });
+
+      const fixtures = await provider().fetchFixtures('ucl', '2026');
+
+      expect(fixtures).toHaveLength(150);
+    });
+
+    it('walks offsets when that is what the provider takes', async () => {
+      stubFetch(path => {
+        const params = new URLSearchParams(path.split('?')[1]);
+        if (params.has('limit') || params.has('per_page') || params.has('page_size') || params.has('count')) {
+          return { status: 400, body: { message: 'unknown parameter' } };
+        }
+        // Ignores page entirely, which is what makes it look like the same page again.
+        if (params.has('page')) return { body: fifty() };
+        const offset = Number(params.get('offset') ?? '0');
+        return { body: offset < 100 ? fifty(offset) : [] };
+      });
+
+      const fixtures = await provider().fetchFixtures('ucl', '2026');
+
+      expect(fixtures).toHaveLength(100);
+    });
+
+    // The important negative: a provider that ignores every unknown parameter returns
+    // the same page each time, and must not be walked forever or double-counted.
+    it('stops, and says so, when nothing it tries returns anything new', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const paths = stubFetch(() => ({ body: fifty() }));
+
+      const fixtures = await provider().fetchFixtures('ucl', '2026');
+
+      expect(fixtures).toHaveLength(50);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('no paging convention found'));
+      // Bounded: the probe tries each convention once and gives up.
+      expect(paths.length).toBeLessThan(15);
+    });
+
+    it('does not probe at all when the count is not page-shaped', async () => {
+      const paths = stubFetch(() => ({
+        body: Array.from({ length: 144 }, (_, i) => ({ ...DOCUMENTED_MATCH, id: `m${i}` })),
+      }));
+
+      await provider().fetchFixtures('ucl', '2026');
+
+      expect(paths).toHaveLength(1);
+    });
+  });
+
   it('probes the league list and the match list without throwing', async () => {
     stubFetch(path =>
       path.startsWith('/v1/leagues')

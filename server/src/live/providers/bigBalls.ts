@@ -1,5 +1,6 @@
 import type { LiveFixtureStatus, LiveProviderId } from '@tournament-predictor/shared';
 import { RateLimiter } from './rateLimiter';
+import { trimmedSample } from './sample';
 import {
   ProviderError,
   type FetchFixturesOptions,
@@ -62,6 +63,12 @@ const BASE_URL = process.env.BIG_BALLS_BASE_URL ?? 'https://api.bigballsdata.com
 const DEFAULT_RATE_LIMIT = 30;
 /** Pages a single fixture fetch will follow before giving up. */
 const MAX_PAGES = 20;
+/** Page size asked for when probing whether this API takes a size at all. */
+const PROBE_PAGE_SIZE = 500;
+/** Paging parameter names to try, in the order they are worth trying. */
+const LIMIT_PARAMS = ['limit', 'per_page', 'page_size', 'count'];
+const PAGE_PARAMS = ['page', 'page_number'];
+const OFFSET_PARAMS = ['offset', 'skip', 'start'];
 const RATE_WINDOW_MS = 60_000;
 const REQUEST_TIMEOUT_MS = 20_000;
 
@@ -459,38 +466,151 @@ export class BigBallsProvider implements LiveProvider {
 
   /** Follow pagination until the provider runs out, or the cap trips. */
   private async fetchAllMatches(firstPath: string): Promise<RawMatch[]> {
-    const all: RawMatch[] = [];
-    const seen = new Set<string>();
-    let path: string | null = firstPath;
-
-    for (let page = 0; page < MAX_PAGES && path !== null; page++) {
-      // A provider that returns the same "next" forever must not spin the sync forever.
-      if (seen.has(path)) break;
-      seen.add(path);
-
-      const body: unknown = await this.get<unknown>(path);
-      const matches = BigBallsProvider.matchesFrom(body, path);
-      all.push(...matches);
-
-      const next: string | null = BigBallsProvider.nextPagePath(body, path, all.length);
-      if (next === null) {
-        const total = BigBallsProvider.totalFrom(body);
-        if (BigBallsProvider.looksTruncated(all.length, total)) {
-          console.warn(
-            `[big-balls] ${firstPath}: stopped at ${all.length} matches` +
-              (total !== null ? ` of ${total} the provider reports` : '') +
-              ' with no pagination to follow — this response may be a truncated page',
-          );
-        }
+    const byId = new Map<string, RawMatch>();
+    const add = (matches: RawMatch[]): number => {
+      let added = 0;
+      for (const match of matches) {
+        const id = String(match.id);
+        if (byId.has(id)) continue;
+        byId.set(id, match);
+        added++;
       }
-      path = next;
+      return added;
+    };
+
+    const firstBody = await this.get<unknown>(firstPath);
+    const first = BigBallsProvider.matchesFrom(firstBody, firstPath);
+    add(first);
+
+    // Best case: the response says how to get the rest, and we just follow it.
+    const requested = new Set([firstPath]);
+    let path = BigBallsProvider.nextPagePath(firstBody, firstPath, byId.size);
+    while (path !== null && requested.size < MAX_PAGES && !requested.has(path)) {
+      requested.add(path);
+      const body: unknown = await this.get<unknown>(path);
+      add(BigBallsProvider.matchesFrom(body, path));
+      path = BigBallsProvider.nextPagePath(body, path, byId.size);
     }
 
-    // De-duplicate: an overlapping page must not create two rows for one match.
-    const byId = new Map<string, RawMatch>();
-    for (const match of all) if (!byId.has(String(match.id))) byId.set(String(match.id), match);
+    const total = BigBallsProvider.totalFrom(firstBody);
+    if (requested.size > 1 || !BigBallsProvider.looksTruncated(byId.size, total)) {
+      return [...byId.values()];
+    }
+
+    // Nothing in the envelope explained a suspiciously round count, so find out by
+    // asking. Every convention below is tried against the provider and kept only if it
+    // actually returns matches we do not already hold — no guessing at which one this
+    // API uses, and a provider that ignores an unknown parameter simply returns the same
+    // page again and is discarded. See discoverPaging.
+    console.warn(
+      `[big-balls] ${firstPath}: ${byId.size} matches with no pagination in the response — ` +
+        'probing for a paging convention',
+    );
+    const walked = await this.discoverPaging(firstPath, byId, add);
+    if (!walked) {
+      console.warn(
+        `[big-balls] ${firstPath}: no paging convention found; ${byId.size} matches may be ` +
+          'a truncated page. Run the tournament diagnostic and check the response envelope.',
+      );
+    }
+
     return [...byId.values()];
   }
+
+  /**
+   * Work out how this API pages, by trying.
+   *
+   * The documentation shows one match object and never a whole response, so the paging
+   * convention is unknown — and three rounds of guessing at it is three rounds of a
+   * season quietly arriving one page short. So rather than assume, each candidate is
+   * sent and judged by its answer: a parameter that yields matches we do not already
+   * hold is the right one, and anything else (an error, an ignored parameter, the same
+   * page again) is not. Costs a handful of requests, once, only when a response looked
+   * truncated.
+   *
+   * Returns true if it found a convention and walked it to the end.
+   */
+  private async discoverPaging(
+    basePath: string,
+    byId: Map<string, RawMatch>,
+    add: (matches: RawMatch[]) => number,
+  ): Promise<boolean> {
+    const pageSize = byId.size;
+
+    /** Fetch one candidate, tolerating the rejection an unknown parameter may draw. */
+    const tryPath = async (path: string): Promise<RawMatch[] | null> => {
+      try {
+        return BigBallsProvider.matchesFrom(await this.get<unknown>(path), path);
+      } catch (err) {
+        if (err instanceof ProviderError) return null;
+        throw err;
+      }
+    };
+
+    const withParam = (name: string, value: string | number): string => {
+      const url = new URL(basePath, 'https://x');
+      url.searchParams.set(name, String(value));
+      return `${url.pathname}?${url.searchParams}`;
+    };
+
+    // 1. A bigger page. The cheapest fix by far when it works: one request, no walking.
+    for (const name of LIMIT_PARAMS) {
+      const matches = await tryPath(withParam(name, PROBE_PAGE_SIZE));
+      if (matches !== null && matches.length > pageSize) {
+        add(matches);
+        console.warn(`[big-balls] paging by "${name}": ${byId.size} matches`);
+        // A response that filled the bigger page may still be short of the whole season.
+        if (matches.length >= PROBE_PAGE_SIZE) {
+          await this.walk(basePath, byId, add, n => withParam(name, PROBE_PAGE_SIZE) + `&offset=${n}`);
+        }
+        return true;
+      }
+    }
+
+    // 2. Page numbers, then offsets. Judged the same way: does page two hold anything
+    //    page one did not?
+    for (const name of PAGE_PARAMS) {
+      const matches = await tryPath(withParam(name, 2));
+      if (matches !== null && add(matches) > 0) {
+        console.warn(`[big-balls] paging by "${name}": walking from page 3`);
+        await this.walk(basePath, byId, add, (_n, page) => withParam(name, page + 1));
+        return true;
+      }
+    }
+
+    for (const name of OFFSET_PARAMS) {
+      const matches = await tryPath(withParam(name, pageSize));
+      if (matches !== null && add(matches) > 0) {
+        console.warn(`[big-balls] paging by "${name}": walking from offset ${byId.size}`);
+        await this.walk(basePath, byId, add, n => withParam(name, n));
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /** Keep requesting until a page adds nothing new, or the cap trips. */
+  private async walk(
+    basePath: string,
+    byId: Map<string, RawMatch>,
+    add: (matches: RawMatch[]) => number,
+    pathFor: (fetched: number, page: number) => string,
+  ): Promise<void> {
+    for (let page = 2; page < MAX_PAGES; page++) {
+      const path = pathFor(byId.size, page);
+      let matches: RawMatch[];
+      try {
+        matches = BigBallsProvider.matchesFrom(await this.get<unknown>(path), path);
+      } catch (err) {
+        if (err instanceof ProviderError) return;
+        throw err;
+      }
+      // Nothing new means the end, whether the provider says so or just repeats itself.
+      if (add(matches) === 0) return;
+    }
+  }
+
 
   async listCompetitions(): Promise<ProviderCompetitionSummary[]> {
     const body = await this.get<any>('/v1/leagues?sport=football');
@@ -563,7 +683,16 @@ export class BigBallsProvider implements LiveProvider {
     try {
       const body = await this.get<any>(path);
       const { count, countForSeason, detail } = summarise(body);
-      return { key, url: `${BASE_URL}${path}`, status: 200, ok: true, count, countForSeason, detail };
+      return {
+        key,
+        url: `${BASE_URL}${path}`,
+        status: 200,
+        ok: true,
+        count,
+        countForSeason,
+        detail,
+        rawSample: trimmedSample(body),
+      };
     } catch (err) {
       return {
         key,
@@ -573,6 +702,7 @@ export class BigBallsProvider implements LiveProvider {
         count: null,
         countForSeason: null,
         detail: err instanceof Error ? err.message : String(err),
+        rawSample: null,
       };
     }
   }

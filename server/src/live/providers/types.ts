@@ -149,6 +149,14 @@ export interface ProviderProbe {
   countForSeason: number | null;
   /** Anything else worth reading: a stage breakdown, the seasons listed, an error. */
   detail: string | null;
+  /**
+   * The response itself, trimmed: the envelope with its list cut to one item.
+   *
+   * The point is the *shape* — which keys wrap the data, what pagination is advertised,
+   * what a record actually looks like — for a provider whose documentation does not say.
+   * Never contains credentials: it is the response body, and the key travels in a header.
+   */
+  rawSample?: string | null;
 }
 
 export interface LiveProvider {

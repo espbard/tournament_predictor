@@ -436,6 +436,19 @@ function DiagnosisReport({ diagnosis }: { diagnosis: LiveFixtureDiagnosis }) {
             </div>
             <p className="mt-1 break-all font-mono text-xs text-muted-foreground">{probe.url}</p>
             {probe.detail && <p className="mt-1 text-xs text-muted-foreground">{probe.detail}</p>}
+            {probe.rawSample && (
+              // The shape of the response, with its list cut to one item. For a provider
+              // whose documentation never shows a whole response, this is the only way to
+              // see how it paginates without guessing.
+              <details className="mt-2">
+                <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
+                  {t('live.admin.probeShowResponse')}
+                </summary>
+                <pre className="mt-2 max-h-72 overflow-auto rounded bg-muted p-2 text-[11px] leading-relaxed">
+                  {probe.rawSample}
+                </pre>
+              </details>
+            )}
           </div>
         ))}
       </div>

@@ -151,6 +151,8 @@ export interface LiveProviderProbe {
   count: number | null;
   countForSeason: number | null;
   detail: string | null;
+  /** The response envelope with its list trimmed to one item — the shape, not the data. */
+  rawSample?: string | null;
 }
 
 export interface LiveFixtureDiagnosis {

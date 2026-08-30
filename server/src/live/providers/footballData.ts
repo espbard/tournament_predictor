@@ -1,5 +1,6 @@
 import type { LiveFixtureStatus, LiveProviderId } from '@tournament-predictor/shared';
 import { RateLimiter } from './rateLimiter';
+import { trimmedSample } from './sample';
 import {
   ProviderError,
   type FetchFixturesOptions,
@@ -414,7 +415,16 @@ export class FootballDataProvider implements LiveProvider {
     try {
       const body = await this.get<any>(path);
       const { count, countForSeason, detail } = summarise(body);
-      return { key, url: `${BASE_URL}${path}`, status: 200, ok: true, count, countForSeason, detail };
+      return {
+        key,
+        url: `${BASE_URL}${path}`,
+        status: 200,
+        ok: true,
+        count,
+        countForSeason,
+        detail,
+        rawSample: trimmedSample(body),
+      };
     } catch (err) {
       const status = err instanceof ProviderError ? err.status : null;
       return {
@@ -425,6 +435,7 @@ export class FootballDataProvider implements LiveProvider {
         count: null,
         countForSeason: null,
         detail: err instanceof Error ? err.message : String(err),
+        rawSample: null,
       };
     }
   }
