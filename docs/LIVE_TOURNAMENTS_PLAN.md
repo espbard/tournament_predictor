@@ -123,8 +123,108 @@ work with no further setup:
 
 ```bash
 cd server
-npx tsx --env-file=../.env src/scripts/live-provider-smoke.ts   # re-run the go/no-go check
+npm run live:smoke     # re-run the Phase 2 go/no-go check
+npm run live:doctor    # why does a tournament have no fixtures? (CL 2026 by default)
 ```
+
+### A second provider for fixtures (August 2026)
+
+football-data never published the Champions League 2026/27 match calendar in a useful
+timeframe, so `live_tournaments` gained `fixture_provider` and `fixture_provider_competition_id`:
+fixtures may come from another adapter while teams and standings stay put. `providers/bigBalls.ts`
+is the first such adapter (bigballsdata.com, fixtures only).
+
+Three things to know before extending it:
+
+1. **Its schema has no team ids.** Fixtures are matched to stored teams by club name, in
+   `live/teamMatching.ts` — normalise, fold a short alias table, and match on the full name
+   before the short name before the three-letter code. An unmatched club leaves the fixture
+   unlinked and raises an admin warning; it is never guessed at. New aliases go in that file.
+2. **Its schema has no stage.** A stage-less fixture is filed under the tournament's
+   `startStageKey`, which is right for a league phase and wrong for anything else.
+3. **Its schema has no matchday**, and the matchday *is* the gameweek — `live_gameweek_selections`
+   is keyed by (stage, matchday), the admin's selected-matches panel only lists fixtures that
+   have one, and the fixtures tab pages a table stage by it. `live/matchdays.ts` derives it by
+   clustering kickoff times: a new round starts at a gap of more than four days, and no round
+   spans more than six, which recovers UEFA's published round numbering from a calendar whose
+   rounds are a fortnight apart. A stage where the provider reported *any* matchday is left
+   alone, so this is a no-op for football-data.
+4. **Its score is a single pair**, with no regular/extra-time split. §6's refuse-to-guess rule
+   cannot be applied to it, so it must not be used for knockout rounds. Move fixtures back to
+   football-data before February, or verify a richer field set exists.
+
+Two more things its documentation does not describe, both found the hard way when a
+league phase arrived as 5 rounds of 10 instead of 8 of 18, and both handled in the adapter:
+its match list **pages** — and does not say so in the response. The adapter first follows
+whatever the envelope advertises (`next` / `meta.page` / `next_cursor` / `total`); when a
+page-shaped count comes back with nothing to follow, it *discovers* the convention by
+trying it: a size parameter (`limit`, `per_page`, `page_size`, `count`), then page numbers,
+then offsets, keeping whichever actually returns matches not already held. A parameter the
+API ignores returns the same page and is discarded, everything is de-duplicated by match id,
+and the walk is capped — see `discoverPaging`, and it is **keyed by date rather than
+season**, so a whole-season fetch sends an explicit June-to-July range instead of trusting
+whatever window a "live + scheduled fixtures" endpoint defaults to.
+
+**Its page size is `limit`, and it tops out at 200.** Asked for 500 it answers
+`400 {"fieldErrors":{"limit":["Number must be less than or equal to 200"]}}` — so the probe
+starts at 200 and, if a provider ever refuses while naming a size, reads that number out of the
+rejection and asks again for exactly it (`maxFromLimitError`). It also validates query
+parameters strictly, so the other paging conventions the discovery tries come back 400 and are
+discarded, which is what discovery is for.
+
+**A season is a span of dates, per competition.** `LiveTournamentPreset.seasonBounds` says
+where one sits in the calendar — the Champions League 1 September to 1 June, a domestic league
+1 August to 30 June — because they do not share a calendar and a single hardcoded span would
+silently drop a domestic August. `server/src/live/season.ts` turns those bounds and a season
+year into dates; the sync engine passes them to the adapter as `FetchFixturesOptions.seasonWindow`,
+since a date-keyed provider has no season parameter to be asked with.
+
+**Its date parameters are advisory.** `date_from`/`date_to` are accepted and ignored: asked
+for 2026/27 it returned 273 matches, every Champions League fixture it holds, last season's
+included. So `server/src/live/season.ts` defines the season as a span of dates once, the
+adapter applies it to what comes *back* rather than trusting the request, and a structure sync
+deletes stored fixtures outside it — skipping any that carry predictions, which are reported
+instead of cascaded away. A request filter you cannot verify is not a filter.
+
+**And football-data, asked the same day:** `GET /v4/competitions/CL/matches` with no filter
+comes back `{"filters":{"season":"2026"},"resultSet":{"count":0},"matches":[]}` — it applies
+2026 as the competition's *current* season and has no matches for it. So the season is real,
+its teams and table are real, and the calendar simply is not there. Not a filter problem, not a
+request problem.
+
+Which leaves the state this branch ends in: **neither provider has a complete Champions League
+2026/27 calendar.** Hence `expectedStartStageFixtures` on the preset (144 for the UCL league
+phase, 380 for a Premier League season) and the `provider_has_partial_fixtures` verdict — the
+check that was missing while 50 fixtures passed for a season, because everything here only ever
+asked whether there were *any*.
+
+**What a real response turned out to say (30 August 2026).** The envelope carries no
+pagination whatsoever — `{ data, meta: {source, cached, request_id, note}, error }` — and its
+`meta.note` reads *"Upcoming matches served from the stored table (no live adapter covers this
+sport/league; refreshed by ingest)."* So the Champions League is not a competition this provider
+covers live; it serves what an ingest job stored. On that date that was 50 matches: roughly 10
+of each round's 18, and no round at all between 10 September and 13 October. The 50 may well be
+a page cap, but the thinness within each round is not paging — it is the data. Read the
+`rounds by date` line in the diagnostic before trusting a season to this.
+
+The adapter was written from bigballsdata's published documentation, not from captured
+payloads — unlike every football-data mapping here, which is pinned to real responses under
+`__fixtures__/`. `npm run live:capture -w server` fetches and saves the real ones and reports
+which fields are actually present; run it and correct the mapping and `bigBalls.test.ts` before
+trusting it in production.
+
+In production the same check is a button: **Ask the provider** on the admin tournament page
+(`POST /api/live/tournaments/:id/diagnose`, admin-only, read-only, five requests through the
+adapter's own rate limiter). `LiveProvider.probe` is what each adapter implements for it, and
+`server/src/live/diagnostics.ts` turns the answers into a verdict — including
+`never_fully_synced`, the case where the fixtures are there and only a *window* sync has run.
+
+`live:doctor` is the local-script form of it, for when a tournament sits at zero fixtures. It asks
+`/matches?season=`, `/matches` unfiltered, `/teams` and `/standings` separately and prints a
+verdict, because the app cannot tell those apart on its own — an unpublished season, a published
+season with no calendar yet, and a `season=` filter that returns nothing all look like "0
+fixtures" in the admin UI. Point it elsewhere with `LIVE_DOCTOR_COMPETITION`, `LIVE_DOCTOR_SEASON`
+and `LIVE_DOCTOR_FORMAT`.
 
 Two things to remember. Requests are capped at **10 per minute** on the free tier, and the cap is
 per account rather than per process — so a `npm run dev` server syncing in the background eats
@@ -525,11 +625,15 @@ matters doubly here because the UCL league phase has its own tiebreak rules.
 **Unique** `(live_tournament_id, stage_key, matchday)`.
 
 Which matches of a gameweek — one matchday inside one stage — users actually predict on. A
-gameweek with **no row here has every fixture selected**: that default is what makes a tournament
-playable the moment it is created, and it means an admin only ever touches the gameweeks they
-want to narrow. A row is therefore never stored with an empty array; saving an empty selection
-deletes the row instead, because "nothing selected" and "no selection registered" would otherwise
-be indistinguishable and a gameweek nobody can predict on is never the intent.
+gameweek with **no row here has nothing selected**: a tournament is not playable until an admin
+has been through its gameweeks and picked, so no match becomes part of the game without someone
+choosing it — including one the provider adds mid-season. A row is never stored with an empty
+array; saving an empty selection deletes the row instead, which under this default means exactly
+the same thing.
+
+A fixture that sits in no gameweek at all — no stage key, or no matchday — is excluded for the
+same reason: there is no gameweek an admin could register it under, so it cannot be opted in and
+must not be included by default.
 
 No FK on the fixture ids, for the same reason as `live_table_predictions.orderedTeamIds`: a
 fixture the provider drops degrades to a stale id rather than silently widening the selection.

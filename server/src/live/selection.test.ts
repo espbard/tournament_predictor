@@ -9,8 +9,8 @@ import {
 
 // ── Selected matches ──────────────────────────────────────────────────────────
 //
-// The rule under test: every fixture in a gameweek counts until an admin registers a
-// selection for that gameweek, after which only the registered ones do.
+// The rule under test: nothing in a gameweek counts until an admin registers a selection
+// for that gameweek, after which only the registered fixtures do.
 
 function fixture(id: string, stageKey: string | null, matchday: number | null) {
   return { id, stageKey, matchday };
@@ -35,10 +35,10 @@ describe('liveGameweekKey', () => {
 });
 
 describe('isLiveFixtureSelected', () => {
-  it('selects everything when nothing has been registered', () => {
+  it('selects nothing when nothing has been registered', () => {
     const index = indexLiveSelections([]);
-    expect(isLiveFixtureSelected(fixture('a', LEAGUE, 1), index)).toBe(true);
-    expect(isLiveFixtureSelected(fixture('b', LEAGUE, 1), index)).toBe(true);
+    expect(isLiveFixtureSelected(fixture('a', LEAGUE, 1), index)).toBe(false);
+    expect(isLiveFixtureSelected(fixture('b', LEAGUE, 1), index)).toBe(false);
   });
 
   it('selects only the registered fixtures of a registered gameweek', () => {
@@ -50,27 +50,31 @@ describe('isLiveFixtureSelected', () => {
     expect(isLiveFixtureSelected(fixture('c', LEAGUE, 1), index)).toBe(true);
   });
 
+  // Registering one gameweek says nothing about any other, which stays at its default.
   it('leaves other gameweeks at their default', () => {
     const index = indexLiveSelections([
       { stageKey: LEAGUE, matchday: 1, selectedFixtureIds: ['a'] },
     ]);
-    expect(isLiveFixtureSelected(fixture('z', LEAGUE, 2), index)).toBe(true);
-    expect(isLiveFixtureSelected(fixture('z', 'round_of_16', 1), index)).toBe(true);
+    expect(isLiveFixtureSelected(fixture('z', LEAGUE, 2), index)).toBe(false);
+    expect(isLiveFixtureSelected(fixture('z', 'round_of_16', 1), index)).toBe(false);
   });
 
-  // A knockout fixture has no matchday, and an unmapped provider stage has no stage key.
-  // Neither sits in a gameweek, so neither can be deselected by one.
-  it('selects a fixture that belongs to no gameweek', () => {
+  // A fixture with no matchday, or an unmapped provider stage with no stage key, sits in
+  // no gameweek — so there is no gameweek an admin could ever select it under, and it
+  // must not slip into the game by default.
+  it('excludes a fixture that belongs to no gameweek', () => {
     const index = indexLiveSelections([
       { stageKey: LEAGUE, matchday: 1, selectedFixtureIds: ['a'] },
     ]);
-    expect(isLiveFixtureSelected(fixture('b', LEAGUE, null), index)).toBe(true);
-    expect(isLiveFixtureSelected(fixture('b', null, 1), index)).toBe(true);
+    expect(isLiveFixtureSelected(fixture('b', LEAGUE, null), index)).toBe(false);
+    expect(isLiveFixtureSelected(fixture('b', null, 1), index)).toBe(false);
   });
 });
 
 describe('filterSelectedLiveFixtures', () => {
-  it('drops the fixtures left out of their gameweek', () => {
+  // What scoring runs on: only registered fixtures, so an unregistered gameweek awards
+  // nothing rather than quietly awarding points for every match in it.
+  it('keeps only the fixtures registered for their gameweek', () => {
     const index = indexLiveSelections([
       { stageKey: LEAGUE, matchday: 1, selectedFixtureIds: ['a'] },
     ]);
@@ -78,7 +82,7 @@ describe('filterSelectedLiveFixtures', () => {
       [fixture('a', LEAGUE, 1), fixture('b', LEAGUE, 1), fixture('c', LEAGUE, 2)],
       index,
     );
-    expect(kept.map(f => f.id)).toEqual(['a', 'c']);
+    expect(kept.map(f => f.id)).toEqual(['a']);
   });
 });
 
@@ -90,7 +94,7 @@ describe('summariseLiveGameweeks', () => {
     fixture('knockout', 'round_of_16', null),
   ];
 
-  it('reports an untouched gameweek as fully selected but not customised', () => {
+  it('reports an untouched gameweek as having nothing selected', () => {
     const views = summariseLiveGameweeks(fixtures, indexLiveSelections([]));
     expect(views).toHaveLength(2);
     expect(views[0]).toMatchObject({
@@ -98,7 +102,8 @@ describe('summariseLiveGameweeks', () => {
       matchday: 1,
       isCustomised: false,
       fixtureCount: 2,
-      selectedCount: 2,
+      selectedCount: 0,
+      selectedFixtureIds: [],
     });
   });
 
@@ -114,8 +119,8 @@ describe('summariseLiveGameweeks', () => {
       selectedCount: 1,
       selectedFixtureIds: ['b'],
     });
-    // The untouched gameweek is unaffected.
-    expect(views[1]).toMatchObject({ matchday: 2, isCustomised: false, selectedCount: 1 });
+    // The untouched gameweek is unaffected, and still selects nothing.
+    expect(views[1]).toMatchObject({ matchday: 2, isCustomised: false, selectedCount: 0 });
   });
 
   // A fixture the provider has since dropped leaves a stale id behind; it must not be

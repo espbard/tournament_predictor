@@ -1,4 +1,5 @@
 import type { LiveProviderId } from '@tournament-predictor/shared';
+import { BigBallsProvider } from './bigBalls';
 import { FootballDataProvider } from './footballData';
 import type { LiveProvider } from './types';
 
@@ -10,11 +11,15 @@ import type { LiveProvider } from './types';
 // not any live tournament exists.
 
 export * from './types';
+export { BigBallsProvider } from './bigBalls';
 export { FootballDataProvider } from './footballData';
 export { RateLimiter } from './rateLimiter';
+export { trimmedSample } from './sample';
 
 const factories: Record<LiveProviderId, () => LiveProvider> = {
   football_data: () => new FootballDataProvider(),
+  // Fixtures only — see the header of bigBalls.ts for what its schema cannot express.
+  big_balls: () => new BigBallsProvider(),
 };
 
 const cache = new Map<LiveProviderId, LiveProvider>();

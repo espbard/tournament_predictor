@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { and, asc, eq, gte, inArray, lte } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { generateId } from 'lucia';
 import {
   CreateLiveBonusQuestionSchema,
@@ -22,6 +22,7 @@ import {
   liveCompetitions,
   liveFixtures,
   liveGameweekSelections,
+  livePredictions,
   liveStandings,
   liveTeams,
   liveTournaments,
@@ -31,6 +32,7 @@ import { notifyLiveCompetitions } from '../liveEvents';
 import { scoreAllLiveBonusQuestions, scoreLiveBonusQuestion } from '../bonusScoring';
 import { redactLiveBonusQuestions } from '../bonusVisibility';
 import { recalculateLiveTournament, recomputeLiveMemberTotals } from '../scoringTrigger';
+import { diagnoseTournamentFixtures } from '../diagnostics';
 import { loadSelectionIndex } from '../selections';
 import { syncLiveWindow, syncTournamentStructure } from '../sync';
 
@@ -168,6 +170,9 @@ liveTournamentsRouter.get('/tournaments/:id', requireAuth, async (req, res) => {
         providerStage: liveFixtures.providerStage,
         status: liveFixtures.status,
         normalTimeHome: liveFixtures.normalTimeHome,
+        homeTeamId: liveFixtures.homeTeamId,
+        awayTeamId: liveFixtures.awayTeamId,
+        kickoffAt: liveFixtures.kickoffAt,
       })
       .from(liveFixtures)
       .where(eq(liveFixtures.liveTournamentId, tournament.id));
@@ -192,6 +197,27 @@ liveTournamentsRouter.get('/tournaments/:id', requireAuth, async (req, res) => {
       expectedTeamCount: preset?.expectedTeamCount ?? null,
       fixtureCount: fixtures.length,
       unscorableFixtures,
+      fixtureProviderCompetitionId: tournament.fixtureProviderCompetitionId,
+      // A complete starting stage, and how much of it we hold. The check that was
+      // missing while a Champions League league phase sat at 50 of its 144 fixtures:
+      // partial data passes every other test on this page.
+      expectedStartStageFixtures: preset?.expectedStartStageFixtures ?? null,
+      startStageFixtureCount: fixtures.filter(f => f.stageKey === tournament.startStageKey).length,
+      // Fixtures that no gameweek can hold — no stage, or no matchday — among the ones
+      // that were supposed to be predictable. Since a selection is registered per
+      // gameweek, these can never be selected, and under the "nothing counts until
+      // picked" default that makes them invisible rather than merely unselected.
+      fixturesOutsideGameweek: fixtures.filter(
+        f =>
+          f.matchday === null &&
+          isStageAtOrAfter(getLiveFormat(tournament.format), f.stageKey, tournament.startStageKey),
+      ).length,
+      // A fixture with a kickoff time but no team on one side. Undrawn knockout slots
+      // legitimately look like this, so it only counts once a fixture has a date — and
+      // with a split fixture provider it is how a failed name match surfaces.
+      fixturesMissingTeams: fixtures.filter(
+        f => f.kickoffAt !== null && (f.homeTeamId === null || f.awayTeamId === null),
+      ).length,
       // Distinct provider stage strings the format does not know: the early warning for
       // a provider rename, which would otherwise silently strand fixtures.
       unmappedStages: [
@@ -212,12 +238,49 @@ liveTournamentsRouter.patch('/tournaments/:id', requireAdmin, async (req, res) =
       return res.status(400).json({ error: 'Invalid body', details: parsed.error.flatten() });
     }
 
+    const [current] = await db
+      .select()
+      .from(liveTournaments)
+      .where(eq(liveTournaments.id, req.params.id));
+    if (!current) return res.status(404).json({ error: 'Not found' });
+
     const update: Record<string, unknown> = {};
     if (parsed.data.name !== undefined) update.name = parsed.data.name.trim();
     if (parsed.data.imageUrl !== undefined) update.imageUrl = parsed.data.imageUrl;
     if (parsed.data.status !== undefined) update.status = parsed.data.status;
     if (parsed.data.syncEnabled !== undefined) update.syncEnabled = parsed.data.syncEnabled;
+    if (parsed.data.fixtureProvider !== undefined) update.fixtureProvider = parsed.data.fixtureProvider;
+    if (parsed.data.fixtureProviderCompetitionId !== undefined) {
+      update.fixtureProviderCompetitionId = parsed.data.fixtureProviderCompetitionId;
+    }
     if (Object.keys(update).length === 0) return res.status(400).json({ error: 'Nothing to update' });
+
+    // Fixtures are keyed by (tournament, provider_fixture_id) and two providers do not
+    // agree on those ids, so the rows the old provider wrote cannot be updated by the new
+    // one — they would sit alongside a second, duplicate set of the same matches. They
+    // are cleared instead. Predictions cascade from fixtures, so a tournament that has
+    // any is not something to do silently: the switch is refused and the admin is told.
+    const nextFixtureProvider =
+      parsed.data.fixtureProvider !== undefined ? parsed.data.fixtureProvider : current.fixtureProvider;
+    const providerChanged =
+      (nextFixtureProvider ?? current.provider) !== (current.fixtureProvider ?? current.provider);
+
+    if (providerChanged) {
+      const [predicted] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(livePredictions)
+        .innerJoin(liveFixtures, eq(livePredictions.liveFixtureId, liveFixtures.id))
+        .where(eq(liveFixtures.liveTournamentId, current.id));
+
+      if ((predicted?.count ?? 0) > 0) {
+        return res.status(409).json({
+          error:
+            `Cannot change the fixture provider: ${predicted!.count} prediction(s) are attached ` +
+            'to the current fixtures, and switching provider replaces them. Clear the ' +
+            'predictions first if this is really what you want.',
+        });
+      }
+    }
 
     const [row] = await db
       .update(liveTournaments)
@@ -225,6 +288,10 @@ liveTournamentsRouter.patch('/tournaments/:id', requireAdmin, async (req, res) =
       .where(eq(liveTournaments.id, req.params.id))
       .returning();
     if (!row) return res.status(404).json({ error: 'Not found' });
+
+    if (providerChanged) {
+      await db.delete(liveFixtures).where(eq(liveFixtures.liveTournamentId, row.id));
+    }
 
     // Bonus points are withheld while a tournament is still running, so the status change
     // is what awards them — and moving a tournament back out of `completed` takes them
@@ -280,6 +347,25 @@ liveTournamentsRouter.post('/tournaments/:id/sync', requireAdmin, async (req, re
     console.error(err);
     return res.status(502).json({
       error: 'Provider sync failed',
+      details: err instanceof Error ? err.message : String(err),
+    });
+  }
+});
+
+/**
+ * What does the provider actually return for this tournament?
+ *
+ * The one honest answer to "why are there no fixtures": five requests, each reported
+ * with its URL, status and count, plus what the database holds. Admin-only, read-only,
+ * and it spends half a minute's request budget — so it is a button, not a poll.
+ */
+liveTournamentsRouter.post('/tournaments/:id/diagnose', requireAdmin, async (req, res) => {
+  try {
+    return res.json(await diagnoseTournamentFixtures(req.params.id));
+  } catch (err) {
+    console.error(err);
+    return res.status(502).json({
+      error: 'Diagnostic failed',
       details: err instanceof Error ? err.message : String(err),
     });
   }
@@ -399,8 +485,8 @@ liveTournamentsRouter.get('/tournaments/:id/standings', requireAuth, async (req,
 // ── Selected matches ──────────────────────────────────────────────────────────
 //
 // The admin picks which fixtures of a gameweek users predict on. Everything not picked is
-// ignored: no inputs, no points. A gameweek nobody has touched has every fixture selected,
-// so a tournament is playable from the moment it is created.
+// ignored: no inputs, no points. A gameweek nobody has touched has nothing selected, so a
+// tournament is not playable until an admin has been through it.
 //
 // See shared/src/live/selection.ts for the rule itself.
 
@@ -433,8 +519,9 @@ liveTournamentsRouter.get('/tournaments/:id/selected-matches', requireAuth, asyn
 /**
  * Register one gameweek's selection.
  *
- * `fixtureIds: null` (or an empty list) resets the gameweek to its default of every
- * fixture selected, which is why it deletes the row rather than storing an empty one.
+ * `fixtureIds: null` (or an empty list) clears the gameweek back to its default of nothing
+ * selected, which is why it deletes the row rather than storing an empty one — under that
+ * default the two are the same thing.
  *
  * Scores are rebuilt afterwards: a fixture that has just been deselected must give back
  * the points it awarded, and one that has just been selected must award the points it
@@ -533,9 +620,8 @@ liveTournamentsRouter.put('/tournaments/:id/selected-matches', requireAdmin, asy
     return res.json({
       selection,
       isCustomised: selection !== null,
-      selectedFixtureIds: selection
-        ? selection.selectedFixtureIds
-        : gameweekFixtures.map(f => f.id),
+      // No row means nothing is selected, so there is nothing to echo back.
+      selectedFixtureIds: selection ? selection.selectedFixtureIds : [],
       fixtureCount: gameweekFixtures.length,
       scoredPredictions: recalculated.scoredPredictions,
     });

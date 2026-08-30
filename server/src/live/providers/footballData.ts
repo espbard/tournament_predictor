@@ -1,5 +1,6 @@
 import type { LiveFixtureStatus, LiveProviderId } from '@tournament-predictor/shared';
 import { RateLimiter } from './rateLimiter';
+import { trimmedSample } from './sample';
 import {
   ProviderError,
   type FetchFixturesOptions,
@@ -8,6 +9,8 @@ import {
   type ProviderFixture,
   type ProviderFixtureScore,
   type ProviderScorePair,
+  type ProviderProbe,
+  type ProviderProbeKey,
   type ProviderStandingRow,
   type ProviderTeam,
 } from './types';
@@ -58,8 +61,17 @@ interface RawTeamRef {
   crest?: string | null;
 }
 
+interface RawSeason {
+  id?: number | null;
+  /** football-data identifies a season by the year its start date falls in. */
+  startDate?: string | null;
+  endDate?: string | null;
+}
+
 interface RawMatch {
   id: number;
+  /** Present on every match in a /matches payload, whether or not it was filtered. */
+  season?: RawSeason | null;
   utcDate: string | null;
   status: string;
   matchday: number | null;
@@ -195,6 +207,19 @@ export function mapMatch(raw: RawMatch): ProviderFixture {
     minute: raw.minute ?? null,
     providerLastUpdated: emptyToNull(raw.lastUpdated),
   };
+}
+
+/**
+ * The season a match belongs to, as football-data numbers seasons: the year its
+ * `season.startDate` falls in. Null when the payload carries no season at all.
+ *
+ * Used to filter an unfiltered `/matches` response down to one season — see
+ * `fetchFixtures`, where that is the fallback for a `season=` filter that comes back
+ * empty on a season the provider has only just created.
+ */
+export function matchSeasonYear(raw: { season?: RawSeason | null }): string | null {
+  const start = emptyToNull(raw.season?.startDate ?? null);
+  return start ? start.slice(0, 4) : null;
 }
 
 export function mapTeam(raw: RawTeamRef & { id: number }): ProviderTeam {
@@ -342,14 +367,34 @@ export class FootballDataProvider implements LiveProvider {
     season: string,
     opts: FetchFixturesOptions = {},
   ): Promise<ProviderFixture[]> {
+    const path = `/competitions/${encodeURIComponent(competitionId)}/matches`;
     const params = new URLSearchParams({ season });
     if (opts.dateFrom) params.set('dateFrom', opts.dateFrom);
     if (opts.dateTo) params.set('dateTo', opts.dateTo);
 
-    const data = await this.get<{ matches?: RawMatch[] }>(
-      `/competitions/${encodeURIComponent(competitionId)}/matches?${params}`,
-    );
-    return (data.matches ?? []).map(mapMatch);
+    const data = await this.get<{ matches?: RawMatch[] }>(`${path}?${params}`);
+    const matches = data.matches ?? [];
+    if (matches.length > 0) return matches.map(mapMatch);
+
+    // An empty *windowed* request is ordinary — most 3-day windows have no games — so
+    // only a whole-season request that comes back empty is worth a second look.
+    if (opts.dateFrom || opts.dateTo) return [];
+
+    // The `season=` filter has been seen to return nothing for a season the provider has
+    // only just created, while the unfiltered endpoint — which serves the competition's
+    // current season — has the matches. Retry once without the filter and keep only the
+    // season asked for, read off each match's own `season.startDate`. A provider that
+    // genuinely has no fixtures for the season still yields nothing, which is the point:
+    // this can add fixtures, never the wrong season's.
+    const fallback = await this.get<{ matches?: RawMatch[] }>(path);
+    const forSeason = (fallback.matches ?? []).filter(m => matchSeasonYear(m) === season);
+    if (forSeason.length > 0) {
+      console.warn(
+        `[football-data] ${competitionId}: season=${season} returned no matches but the ` +
+          `unfiltered endpoint returned ${forSeason.length} for that season — using those`,
+      );
+    }
+    return forSeason.map(mapMatch);
   }
 
   async fetchStandings(competitionId: string, season: string): Promise<ProviderStandingRow[]> {
@@ -357,5 +402,126 @@ export class FootballDataProvider implements LiveProvider {
       `/competitions/${encodeURIComponent(competitionId)}/standings?season=${encodeURIComponent(season)}`,
     );
     return mapStandings(data);
+  }
+
+  // ── Diagnostics ─────────────────────────────────────────────────────────────
+
+  /** One probe: the request, its status, and what it returned. Never throws. */
+  private async probeOne(
+    key: ProviderProbeKey,
+    path: string,
+    summarise: (body: any) => { count: number | null; countForSeason: number | null; detail: string | null },
+  ): Promise<ProviderProbe> {
+    try {
+      const body = await this.get<any>(path);
+      const { count, countForSeason, detail } = summarise(body);
+      return {
+        key,
+        url: `${BASE_URL}${path}`,
+        status: 200,
+        ok: true,
+        count,
+        countForSeason,
+        detail,
+        rawSample: trimmedSample(body),
+      };
+    } catch (err) {
+      const status = err instanceof ProviderError ? err.status : null;
+      return {
+        key,
+        url: `${BASE_URL}${path}`,
+        status,
+        ok: false,
+        count: null,
+        countForSeason: null,
+        detail: err instanceof Error ? err.message : String(err),
+        rawSample: null,
+      };
+    }
+  }
+
+  async probe(competitionId: string, season: string): Promise<ProviderProbe[]> {
+    const id = encodeURIComponent(competitionId);
+    const s = encodeURIComponent(season);
+
+    const describeMatches = (matches: RawMatch[]) => {
+      const forSeason = matches.filter(m => matchSeasonYear(m) === season);
+      const stages = [...new Set(matches.map(m => m.stage).filter(Boolean))];
+      const years = [...new Set(matches.map(m => matchSeasonYear(m)).filter(Boolean))].sort();
+      const dated = matches.filter(m => !!m.utcDate).length;
+      return {
+        count: matches.length,
+        countForSeason: forSeason.length,
+        detail:
+          matches.length === 0
+            ? 'the response carried no matches at all'
+            : `seasons ${years.join('/')} · stages ${stages.join(', ') || 'none'} · ` +
+              `${dated} of ${matches.length} with a kickoff date`,
+      };
+    };
+
+    // Sequential rather than parallel: these all queue on the same 10/minute budget, and
+    // a diagnostic that trips the rate limit answers its own question wrongly.
+    const probes: ProviderProbe[] = [];
+
+    probes.push(
+      await this.probeOne('competition', `/competitions/${id}`, body => {
+        const years: string[] = (body?.seasons ?? [])
+          .map((x: any) => String(x?.startDate ?? '').slice(0, 4))
+          .filter(Boolean);
+        return {
+          count: years.length,
+          countForSeason: years.includes(season) ? 1 : 0,
+          detail:
+            `current season starts ${body?.currentSeason?.startDate ?? 'unknown'} · ` +
+            `season ${season} is ${years.includes(season) ? 'listed' : 'NOT listed'}`,
+        };
+      }),
+    );
+
+    probes.push(
+      await this.probeOne('matches_season', `/competitions/${id}/matches?season=${s}`, body =>
+        describeMatches(body?.matches ?? []),
+      ),
+    );
+
+    probes.push(
+      await this.probeOne('matches_unfiltered', `/competitions/${id}/matches`, body =>
+        describeMatches(body?.matches ?? []),
+      ),
+    );
+
+    probes.push(
+      await this.probeOne('teams', `/competitions/${id}/teams?season=${s}`, body => {
+        const teams: any[] = body?.teams ?? [];
+        return {
+          count: teams.length,
+          countForSeason: teams.length,
+          detail: teams
+            .slice(0, 6)
+            .map(t => t.tla ?? t.shortName ?? t.name)
+            .join(', ') || null,
+        };
+      }),
+    );
+
+    probes.push(
+      await this.probeOne('standings', `/competitions/${id}/standings?season=${s}`, body => {
+        const tables: any[] = body?.standings ?? [];
+        const total = tables.filter(x => String(x?.type ?? '').toUpperCase() === 'TOTAL');
+        const rows = total.reduce((sum, x) => sum + (x.table?.length ?? 0), 0);
+        const played = total.reduce(
+          (sum, x) => sum + (x.table ?? []).reduce((n: number, r: any) => n + (r.playedGames ?? 0), 0),
+          0,
+        );
+        return {
+          count: rows,
+          countForSeason: rows,
+          detail: rows === 0 ? null : `${total.length} table(s), ${played} games played`,
+        };
+      }),
+    );
+
+    return probes;
   }
 }

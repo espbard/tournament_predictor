@@ -2,14 +2,15 @@ import type { LiveFixtureStatus } from './types';
 
 // ── Selected matches ──────────────────────────────────────────────────────────
 //
-// A gameweek is one matchday inside one stage. An admin may register a *subset* of that
-// gameweek's fixtures as the ones users predict on; the rest are ignored — no inputs, no
-// points, not part of the game.
+// A gameweek is one matchday inside one stage. An admin registers which of that
+// gameweek's fixtures users predict on; the rest are ignored — no inputs, no points, not
+// part of the game.
 //
-// The default is deliberately "everything counts": a gameweek with no registered
-// selection has every one of its fixtures selected. That keeps a tournament playable the
-// moment it is created, and means an admin only ever has to touch the gameweeks they
-// actually want to narrow.
+// The default is "nothing counts": a gameweek with no registered selection has none of
+// its fixtures selected. A live competition therefore shows no fixtures at all until an
+// admin has been through the gameweeks and picked, which is the point — a match nobody
+// chose should never quietly become part of the game, least of all one that appears
+// mid-season when the provider adds it.
 //
 // This module is the single source of truth for that rule. The server enforces it when
 // saving a prediction and when scoring, the client uses it to decide what to render, so
@@ -37,8 +38,9 @@ export interface SelectableLiveFixture extends LiveGameweekRef {
 /**
  * Stable key for a gameweek, or null when the fixture is not in one.
  *
- * A fixture with no stage (an unmapped provider stage) or no matchday (most knockout
- * fixtures) belongs to no gameweek and can therefore never be deselected.
+ * A fixture with no stage (an unmapped provider stage) or no matchday belongs to no
+ * gameweek, and so can never be selected: there is no gameweek for an admin to register
+ * it under. It is excluded rather than silently included — see isLiveFixtureSelected.
  */
 export function liveGameweekKey(stageKey: string | null, matchday: number | null): string | null {
   if (!stageKey || matchday == null) return null;
@@ -61,19 +63,20 @@ export function indexLiveSelections(
 /**
  * Whether a fixture is part of the prediction game.
  *
- * True unless an admin has registered a selection for that fixture's gameweek and left
- * this fixture out of it. An empty selection is never stored — see the route — so this
- * can never report a gameweek in which nothing is playable.
+ * True only where an admin has registered a selection for that fixture's gameweek and
+ * this fixture is in it. Both ways of having no selection — no row for the gameweek, and
+ * no gameweek at all — mean the fixture does not count.
+ *
+ * An empty selection is stored as no row rather than an empty list (see the route), and
+ * the two are equivalent under this rule: neither selects anything.
  */
 export function isLiveFixtureSelected(
   fixture: SelectableLiveFixture,
   selectionsByGameweek: Map<string, Set<string>>,
 ): boolean {
   const key = liveGameweekKey(fixture.stageKey, fixture.matchday);
-  if (!key) return true;
-  const selected = selectionsByGameweek.get(key);
-  if (!selected) return true;
-  return selected.has(fixture.id);
+  if (!key) return false;
+  return selectionsByGameweek.get(key)?.has(fixture.id) ?? false;
 }
 
 /**
@@ -93,7 +96,7 @@ export function filterSelectedLiveFixtures<T extends SelectableLiveFixture>(
 export interface LiveGameweekView {
   stageKey: string;
   matchday: number;
-  /** False when no selection is registered, i.e. every fixture counts by default. */
+  /** False when no selection is registered, i.e. none of its fixtures count yet. */
   isCustomised: boolean;
   fixtureCount: number;
   selectedCount: number;
@@ -114,7 +117,8 @@ interface SummarisableFixture extends SelectableLiveFixture {
  * Fixtures outside any gameweek are skipped: there is nothing for an admin to configure
  * for a fixture that cannot belong to a gameweek in the first place. Registered ids that
  * are no longer fixtures of the gameweek are ignored, so a fixture the provider has
- * dropped cannot inflate `selectedCount`.
+ * dropped cannot inflate `selectedCount` — and a gameweek nobody has registered reports
+ * zero selected, which is what it is.
  */
 export function summariseLiveGameweeks(
   fixtures: SummarisableFixture[],
@@ -132,9 +136,7 @@ export function summariseLiveGameweeks(
   const views: LiveGameweekView[] = [];
   for (const [key, bucket] of byKey) {
     const selected = selectionsByGameweek.get(key);
-    const selectedIds = bucket
-      .filter(f => (selected ? selected.has(f.id) : true))
-      .map(f => f.id);
+    const selectedIds = selected ? bucket.filter(f => selected.has(f.id)).map(f => f.id) : [];
     views.push({
       stageKey: bucket[0].stageKey!,
       matchday: bucket[0].matchday!,
