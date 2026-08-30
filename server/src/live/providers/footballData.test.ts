@@ -1,9 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LIVE_FORMATS, resolveStageKey } from '@tournament-predictor/shared';
 import {
+  FootballDataProvider,
   isKickoffConfirmed,
+  matchSeasonYear,
   mapFixtureStatus,
   mapMatch,
   mapScore,
@@ -11,6 +13,7 @@ import {
   mapTeam,
   normalTimeFromScore,
 } from './footballData';
+import { ProviderError } from './types';
 import { RateLimiter } from './rateLimiter';
 
 // Raw→DTO mapping, checked against payloads actually returned by football-data.org on
@@ -297,6 +300,169 @@ describe('mapStandings', () => {
     expect(mapStandings({ standings: [] })).toEqual([]);
     expect(mapStandings({})).toEqual([]);
     expect(mapStandings(null)).toEqual([]);
+  });
+});
+
+describe('matchSeasonYear', () => {
+  it('reads the year off the match\'s own season start date', () => {
+    expect(matchSeasonYear(plMatches.matches[0])).toBe('2026');
+    expect(matchSeasonYear(clMatches.matches[0])).toBe('2024');
+  });
+
+  it('is null when the payload carries no season', () => {
+    expect(matchSeasonYear({})).toBeNull();
+    expect(matchSeasonYear({ season: { startDate: null } })).toBeNull();
+  });
+});
+
+// The reason this exists: on 29 August 2026 the Champions League tournament sat at zero
+// fixtures two days after the draw. `season=` returning nothing while the unfiltered
+// endpoint has the season's matches is one of the two ways that happens, and it is the
+// only one the adapter can do anything about.
+describe('FootballDataProvider.fetchFixtures', () => {
+  const originalFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  /** Stub fetch, returning a body per requested path. Records the paths asked for. */
+  function stubFetch(bodyByPath: Record<string, unknown>) {
+    const paths: string[] = [];
+    globalThis.fetch = vi.fn(async (url: any) => {
+      const path = String(url).replace('https://api.football-data.org/v4', '');
+      paths.push(path);
+      const body = bodyByPath[path];
+      if (body === undefined) {
+        return new Response('{"message":"not found"}', { status: 404 });
+      }
+      return new Response(JSON.stringify(body), { status: 200 });
+    }) as any;
+    return paths;
+  }
+
+  const provider = () => new FootballDataProvider('test-key', new RateLimiter({ limit: 50, intervalMs: 1000 }));
+
+  it('uses the season-filtered response when it has matches, and asks nothing else', async () => {
+    const paths = stubFetch({ '/competitions/PL/matches?season=2026': plMatches });
+
+    const fixtures = await provider().fetchFixtures('PL', '2026');
+
+    expect(fixtures).toHaveLength(plMatches.matches.length);
+    expect(paths).toEqual(['/competitions/PL/matches?season=2026']);
+  });
+
+  it('falls back to the unfiltered endpoint when season= comes back empty', async () => {
+    const paths = stubFetch({
+      '/competitions/CL/matches?season=2026': { matches: [] },
+      '/competitions/CL/matches': plMatches,
+    });
+
+    const fixtures = await provider().fetchFixtures('CL', '2026');
+
+    // plMatches is a 2026 payload, so both of its matches survive the season filter.
+    expect(fixtures).toHaveLength(plMatches.matches.length);
+    expect(paths).toEqual(['/competitions/CL/matches?season=2026', '/competitions/CL/matches']);
+  });
+
+  it('keeps only the requested season out of the fallback', async () => {
+    stubFetch({
+      '/competitions/CL/matches?season=2026': { matches: [] },
+      // The unfiltered endpoint serves whatever the provider calls the current season.
+      '/competitions/CL/matches': clMatches,
+    });
+
+    // clMatches is 2024, so nothing in it may be attributed to 2026.
+    expect(await provider().fetchFixtures('CL', '2026')).toEqual([]);
+  });
+
+  it('does not fall back on an empty window request', async () => {
+    const paths = stubFetch({
+      '/competitions/CL/matches?season=2026&dateFrom=2026-08-28&dateTo=2026-08-30': { matches: [] },
+    });
+
+    const fixtures = await provider().fetchFixtures('CL', '2026', {
+      dateFrom: '2026-08-28',
+      dateTo: '2026-08-30',
+    });
+
+    // An empty three-day window is ordinary, not a symptom.
+    expect(fixtures).toEqual([]);
+    expect(paths).toHaveLength(1);
+  });
+
+  it('still reports an unpublished season as a 404, without a fallback request', async () => {
+    const paths = stubFetch({});
+
+    await expect(provider().fetchFixtures('CL', '2026')).rejects.toMatchObject({
+      status: 404,
+    });
+    await expect(provider().fetchFixtures('CL', '2026')).rejects.toBeInstanceOf(ProviderError);
+    expect(paths).toEqual([
+      '/competitions/CL/matches?season=2026',
+      '/competitions/CL/matches?season=2026',
+    ]);
+  });
+});
+
+// A diagnostic that throws on the first refusal answers nothing: the point is to see
+// which endpoints refused and which did not.
+describe('FootballDataProvider.probe', () => {
+  const originalFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  function stubFetch(bodyByPath: Record<string, { status?: number; body: unknown }>) {
+    globalThis.fetch = vi.fn(async (url: any) => {
+      const path = String(url).replace('https://api.football-data.org/v4', '');
+      const hit = bodyByPath[path];
+      if (!hit) return new Response('{"message":"not found"}', { status: 404 });
+      return new Response(JSON.stringify(hit.body), { status: hit.status ?? 200 });
+    }) as any;
+  }
+
+  const provider = () =>
+    new FootballDataProvider('test-key', new RateLimiter({ limit: 50, intervalMs: 1000 }));
+
+  it('reports every endpoint, refusals included, without throwing', async () => {
+    stubFetch({
+      '/competitions/CL': { body: { currentSeason: { startDate: '2026-09-15' }, seasons: [{ startDate: '2026-09-15' }] } },
+      '/competitions/CL/matches?season=2026': { body: { matches: [] } },
+      '/competitions/CL/matches': { body: clMatches },
+      '/competitions/CL/teams?season=2026': { status: 403, body: { message: 'restricted' } },
+      '/competitions/CL/standings?season=2026': { body: clStandings },
+    });
+
+    const probes = await provider().probe('CL', '2026');
+    const by = new Map(probes.map(p => [p.key, p]));
+
+    expect(probes.map(p => p.key)).toEqual([
+      'competition',
+      'matches_season',
+      'matches_unfiltered',
+      'teams',
+      'standings',
+    ]);
+    expect(by.get('competition')!.countForSeason).toBe(1);
+    expect(by.get('matches_season')!.count).toBe(0);
+    // clMatches is a 2024 payload, so none of it counts towards 2026.
+    expect(by.get('matches_unfiltered')!.count).toBe(clMatches.matches.length);
+    expect(by.get('matches_unfiltered')!.countForSeason).toBe(0);
+    expect(by.get('teams')!.ok).toBe(false);
+    expect(by.get('teams')!.status).toBe(403);
+    expect(by.get('standings')!.count).toBeGreaterThan(0);
+  });
+
+  it('records the URL it asked for, so the request itself can be checked', async () => {
+    stubFetch({});
+    const probes = await provider().probe('CL', '2026');
+
+    expect(probes.find(p => p.key === 'matches_season')!.url).toBe(
+      'https://api.football-data.org/v4/competitions/CL/matches?season=2026',
+    );
+    expect(probes.every(p => !p.ok && p.status === 404)).toBe(true);
   });
 });
 

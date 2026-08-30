@@ -7,7 +7,14 @@
 //
 // See docs/LIVE_TOURNAMENTS_PLAN.md.
 
-export type LiveProviderId = 'football_data';
+/**
+ * Providers we can read from.
+ *
+ * `big_balls` (bigballsdata.com) serves *fixtures only* — see the adapter for what its
+ * match schema does and does not carry. A tournament names a provider for teams and
+ * standings and may name a different one for fixtures; see `fixtureProvider`.
+ */
+export type LiveProviderId = 'football_data' | 'big_balls';
 
 /** Normalised fixture status. Provider-specific values are mapped onto these. */
 export type LiveFixtureStatus =
@@ -87,6 +94,10 @@ export interface LiveTournament {
   imageUrl: string | null;
   presetKey: string | null;
   provider: LiveProviderId;
+  /** Where fixtures come from, when that is not `provider`. Null means it is. */
+  fixtureProvider: LiveProviderId | null;
+  /** That provider's identifier for the competition. Null falls back to the main one. */
+  fixtureProviderCompetitionId: string | null;
   providerCompetitionId: string;
   season: string;
   format: string;
@@ -219,7 +230,7 @@ export interface LiveTablePrediction {
  * The set of fixtures an admin has picked out of one gameweek (a matchday within a
  * stage) as the ones users predict on.
  *
- * A gameweek with no row here has every fixture selected — the default. `selectedFixtureIds`
+ * A gameweek with no row here has nothing selected — the default. `selectedFixtureIds`
  * is stored whole rather than a row per fixture because it is only ever read and written
  * complete, and because "no row" is what expresses the default.
  */

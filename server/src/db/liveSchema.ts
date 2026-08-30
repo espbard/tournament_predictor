@@ -25,7 +25,7 @@ import { users } from './schema';
 
 // ── Enums ─────────────────────────────────────────────────────────────────────
 
-export const liveProviderEnum = pgEnum('live_provider', ['football_data']);
+export const liveProviderEnum = pgEnum('live_provider', ['football_data', 'big_balls']);
 
 export const liveTournamentStatusEnum = pgEnum('live_tournament_status', [
   'upcoming',
@@ -70,6 +70,16 @@ export const liveTournaments = pgTable(
     /** Which entry of LIVE_TOURNAMENT_PRESETS this was created from. */
     presetKey: text('preset_key'),
     provider: liveProviderEnum('provider').notNull().default('football_data'),
+    /**
+     * Where fixtures come from, when that is not `provider`. Null means the same
+     * provider serves everything, which is the normal case.
+     */
+    fixtureProvider: liveProviderEnum('fixture_provider'),
+    /**
+     * The fixture provider's own identifier for the competition — providers do not agree
+     * on those either. Null falls back to `providerCompetitionId`.
+     */
+    fixtureProviderCompetitionId: text('fixture_provider_competition_id'),
     providerCompetitionId: text('provider_competition_id').notNull(),
     /** Season identifier as the provider expresses it — football-data uses the start year. */
     season: text('season').notNull(),
@@ -338,7 +348,7 @@ export const liveGameweekSelections = pgTable(
      * row per fixture because it is only ever read and written complete. No FK, so a
      * fixture the provider drops degrades to a stale id rather than silently widening the
      * selection. A row is never stored empty — see the route — because "no row" already
-     * means "every fixture selected".
+     * means "nothing selected".
      */
     selectedFixtureIds: json('selected_fixture_ids').notNull().$type<string[]>(),
     createdAt: timestamp('created_at').notNull().defaultNow(),

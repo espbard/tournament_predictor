@@ -109,6 +109,13 @@ export interface LiveTournamentDetail extends LiveTournament {
   unscorableFixtures: number;
   /** Provider stage strings the format does not know about. */
   unmappedStages: string[];
+  /** Fixtures with a kickoff time but a team missing on one side. */
+  fixturesMissingTeams: number;
+  /** Predictable fixtures that belong to no gameweek, so nobody can ever select them. */
+  fixturesOutsideGameweek: number;
+  /** What a complete starting stage looks like, and how much of it we hold. */
+  expectedStartStageFixtures: number | null;
+  startStageFixtureCount: number;
 }
 
 /** What an admin may narrow about a bonus question. See shared/src/live/bonus.ts. */
@@ -138,6 +145,49 @@ export interface SaveLiveSelectionResult {
   scoredPredictions: number;
 }
 
+/** One provider endpoint a diagnostic run asked about. Mirrors ProviderProbe. */
+export interface LiveProviderProbe {
+  key:
+    | 'competition'
+    | 'matches_season'
+    | 'matches_paged'
+    | 'matches_unfiltered'
+    | 'teams'
+    | 'standings';
+  /** Which adapter answered — a tournament may read fixtures from a second one. */
+  provider?: string;
+  url: string;
+  status: number | null;
+  ok: boolean;
+  count: number | null;
+  countForSeason: number | null;
+  detail: string | null;
+  /** The response envelope with its list trimmed to one item — the shape, not the data. */
+  rawSample?: string | null;
+}
+
+export interface LiveFixtureDiagnosis {
+  provider: string;
+  providerCompetitionId: string;
+  fixtureProvider: string | null;
+  fixtureProviderCompetitionId: string | null;
+  season: string;
+  storedFixtures: number;
+  storedTeams: number;
+  lastStructureSyncAt: string | null;
+  lastSyncError: string | null;
+  probes: LiveProviderProbe[];
+  expectedStartStageFixtures: number | null;
+  verdict:
+    | 'fixtures_available'
+    | 'provider_has_partial_fixtures'
+    | 'season_filter_hides_fixtures'
+    | 'provider_has_no_fixtures'
+    | 'season_not_published'
+    | 'provider_unreachable'
+    | 'never_fully_synced';
+}
+
 export interface LiveSyncResult {
   teams: number;
   fixtures: number;
@@ -147,6 +197,8 @@ export interface LiveSyncResult {
   unmappedStages: string[];
   /** True when the provider has not published this season yet — a state, not an error. */
   seasonUnavailable: boolean;
+  /** Fixtures removed because their kickoff falls outside the tournament's season. */
+  outOfSeasonRemoved: number;
   /** Crests copied into R2 by this sync. Zero on every sync after the first. */
   crestsMirrored: number;
 }
@@ -200,11 +252,21 @@ export const liveApi = {
     >('/live/tournaments', body),
   updateTournament: (
     id: string,
-    body: { name?: string; imageUrl?: string | null; status?: string; syncEnabled?: boolean },
+    body: {
+      name?: string;
+      imageUrl?: string | null;
+      status?: string;
+      syncEnabled?: boolean;
+      fixtureProvider?: 'football_data' | 'big_balls' | null;
+      fixtureProviderCompetitionId?: string | null;
+    },
   ) => api.patch<LiveTournament>(`/live/tournaments/${id}`, body),
   deleteTournament: (id: string) => api.delete<{ ok: true }>(`/live/tournaments/${id}`),
   syncTournament: (id: string, full: boolean) =>
     api.post<LiveSyncResult>(`/live/tournaments/${id}/sync`, { full }),
+  /** Ask the provider directly what it has for this tournament. Admin-only. */
+  diagnoseTournament: (id: string) =>
+    api.post<LiveFixtureDiagnosis>(`/live/tournaments/${id}/diagnose`, {}),
   recalculateTournament: (id: string) =>
     api.post<{ scoredPredictions: number; affectedCompetitionIds: string[] }>(
       `/live/tournaments/${id}/recalculate`,

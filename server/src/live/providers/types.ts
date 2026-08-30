@@ -117,6 +117,61 @@ export interface FetchFixturesOptions {
   /** ISO date, inclusive. Used by the live window sync to fetch only today's fixtures. */
   dateFrom?: string;
   dateTo?: string;
+  /**
+   * Where the season sits in the calendar, for an adapter whose provider has no season
+   * parameter — bigballsdata is keyed by date instead. Supplied by the sync engine,
+   * which knows the competition and therefore its calendar; ignored by an adapter that
+   * can simply ask for a season by name.
+   */
+  seasonWindow?: { dateFrom: string; dateTo: string };
+}
+
+/**
+ * One endpoint a diagnostic run asked about.
+ *
+ * The keys are the questions worth asking of any football provider, not football-data's
+ * URL shapes: does the competition list this season, does the season-filtered match list
+ * have anything, does the unfiltered one, and do teams and a table exist. An adapter maps
+ * them onto its own endpoints.
+ */
+export type ProviderProbeKey =
+  | 'competition'
+  | 'matches_season'
+  /** The same request again, asking for a bigger page — does the cap lift? */
+  | 'matches_paged'
+  | 'matches_unfiltered'
+  | 'teams'
+  | 'standings';
+
+export interface ProviderProbe {
+  key: ProviderProbeKey;
+  /**
+   * Which adapter answered. Set by the diagnostic rather than the adapter, because a
+   * tournament may read fixtures from one provider and everything else from another, and
+   * a probe list that does not say which is which cannot be read at all.
+   */
+  provider?: LiveProviderId;
+  /** The request as made, credentials excluded. Shown to an admin verbatim. */
+  url: string;
+  status: number | null;
+  ok: boolean;
+  /** Items returned — matches, teams, table rows. Null when the request failed. */
+  count: number | null;
+  /**
+   * Matches that belong to the season asked for. Differs from `count` only on
+   * `matches_unfiltered`, which serves whatever the provider calls the current season.
+   */
+  countForSeason: number | null;
+  /** Anything else worth reading: a stage breakdown, the seasons listed, an error. */
+  detail: string | null;
+  /**
+   * The response itself, trimmed: the envelope with its list cut to one item.
+   *
+   * The point is the *shape* — which keys wrap the data, what pagination is advertised,
+   * what a record actually looks like — for a provider whose documentation does not say.
+   * Never contains credentials: it is the response body, and the key travels in a header.
+   */
+  rawSample?: string | null;
 }
 
 export interface LiveProvider {
@@ -129,6 +184,19 @@ export interface LiveProvider {
     opts?: FetchFixturesOptions,
   ): Promise<ProviderFixture[]>;
   fetchStandings(competitionId: string, season: string): Promise<ProviderStandingRow[]>;
+  /**
+   * Ask every endpoint separately and report what came back, without throwing.
+   *
+   * Exists because "0 fixtures" has several causes that look identical from the outside:
+   * a season the provider has not created, a season it has created without a match
+   * calendar, a filter that returns nothing, and a competition or season we have wrong.
+   * Nothing here writes to the database.
+   */
+  probe(
+    competitionId: string,
+    season: string,
+    seasonWindow?: { dateFrom: string; dateTo: string },
+  ): Promise<ProviderProbe[]>;
 }
 
 // ── Errors ────────────────────────────────────────────────────────────────────

@@ -1,18 +1,29 @@
-import { and, eq, inArray, notInArray, sql } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNotNull, lt, notInArray, or, sql } from 'drizzle-orm';
 import { generateId } from 'lucia';
 import {
   getLiveFormat,
+  getLiveTournamentPreset,
   isStageAtOrAfter,
   resolveStageKey,
   type LiveFormatDef,
   type LiveQualificationStatus,
 } from '@tournament-predictor/shared';
 import { db } from '../db/client';
-import { liveFixtures, liveStandings, liveTeams, liveTournaments } from '../db/liveSchema';
+import {
+  liveFixtures,
+  livePredictions,
+  liveStandings,
+  liveTeams,
+  liveTournaments,
+} from '../db/liveSchema';
 import { mirrorTeamCrests } from './crests';
+import { deriveMatchdays } from './matchdays';
+import { seasonWindow } from './season';
 import { getProvider } from './providers';
+import { buildTeamNameIndex, matchTeamByName } from './teamMatching';
 import {
   ProviderError,
+  type FetchFixturesOptions,
   type ProviderFixture,
   type ProviderStandingRow,
   type ProviderTeam,
@@ -28,6 +39,17 @@ import {
 // Two entry points:
 //   syncTournamentStructure  teams + all fixtures + standings, ~3 provider requests
 //   syncLiveWindow           fixtures around today only, 1 request — carries live scores
+//
+// A tournament may read fixtures from a *different* provider than its teams and table
+// (live_tournaments.fixture_provider — the Champions League 2026/27 is why). Two things
+// change when it does, both handled here rather than in the adapters:
+//
+//   * a fixture's teams are matched by name against the rows the main provider created,
+//     because providers do not share team ids, and the embedded teams are NOT inserted;
+//   * a fixture with no stage is filed under the tournament's startStageKey, since a
+//     provider that reports no stage would otherwise leave every fixture unpredictable;
+//   * a matchday is derived from the calendar when the provider reports none, because the
+//     matchday *is* the gameweek — see matchdays.ts.
 //
 // See docs/LIVE_TOURNAMENTS_PLAN.md §7.
 
@@ -47,10 +69,17 @@ export interface SyncResult {
   changedFixtureIds: string[];
   /** Provider stage strings the format does not map, surfaced as an admin warning. */
   unmappedStages: string[];
+  /**
+   * Team names on fixtures from a second fixture provider that no stored team matched.
+   * Those fixtures are stored with no team link rather than a guessed one.
+   */
+  unresolvedTeamNames: string[];
   /** True when the provider has not published this season yet. Not an error. */
   seasonUnavailable: boolean;
   /** Team crests copied into R2 by this sync. Zero on every sync after the first. */
   crestsMirrored: number;
+  /** Fixtures removed because their kickoff falls outside the tournament's season. */
+  outOfSeasonRemoved: number;
 }
 
 function emptyResult(): SyncResult {
@@ -61,8 +90,10 @@ function emptyResult(): SyncResult {
     newlyFinishedFixtureIds: [],
     changedFixtureIds: [],
     unmappedStages: [],
+    unresolvedTeamNames: [],
     seasonUnavailable: false,
     crestsMirrored: 0,
+    outOfSeasonRemoved: 0,
   };
 }
 
@@ -284,17 +315,60 @@ interface FixtureUpsertResult {
   newlyFinishedFixtureIds: string[];
   changedFixtureIds: string[];
   unmappedStages: string[];
+  unresolvedTeamNames: string[];
+}
+
+/**
+ * How a fixture's two teams are turned into local team ids.
+ *
+ * `byProviderId` is the normal path: one provider serves both teams and fixtures, so the
+ * ids line up. `byName` is used when fixtures come from a second provider, which knows
+ * the clubs by name only. Deciding this once, here, keeps the branch out of every call
+ * site and makes the two paths testable in isolation.
+ */
+export type TeamResolver = (fixture: ProviderFixture, side: 'home' | 'away') =>
+  { teamId: string | null; unresolvedName: string | null };
+
+export function resolveByProviderId(teamIdByProviderId: Map<string, string>): TeamResolver {
+  return (fixture, side) => {
+    const providerTeamId =
+      side === 'home' ? fixture.homeProviderTeamId : fixture.awayProviderTeamId;
+    return {
+      teamId: providerTeamId ? teamIdByProviderId.get(providerTeamId) ?? null : null,
+      unresolvedName: null,
+    };
+  };
+}
+
+export function resolveByName(nameIndex: Map<string, string>): TeamResolver {
+  return (fixture, side) => {
+    const team = side === 'home' ? fixture.homeTeam : fixture.awayTeam;
+    // No team named at all is an undrawn slot, not a failure to match.
+    if (!team) return { teamId: null, unresolvedName: null };
+
+    const teamId = matchTeamByName(team, nameIndex);
+    return { teamId, unresolvedName: teamId ? null : team.name };
+  };
 }
 
 async function upsertFixtures(
   tournament: TournamentRow,
   format: LiveFormatDef,
   fixtures: ProviderFixture[],
-  teamIdByProviderId: Map<string, string>,
+  resolveTeam: TeamResolver,
+  /** Stage for a fixture the provider files under none. Null leaves it unmapped. */
+  defaultStageKey: string | null,
 ): Promise<FixtureUpsertResult> {
   const unmapped = new Set<string>();
+  const unresolvedTeamNames = new Set<string>();
   if (fixtures.length === 0) {
-    return { written: 0, newlyFinishedFixtureIds: [], changedFixtureIds: [], unmappedStages: [] };
+    return {
+      written: 0,
+      newlyFinishedFixtureIds: [],
+      changedFixtureIds: [],
+      unmappedStages: [],
+      unresolvedTeamNames: [],
+    };
   }
 
   // What we already hold for these fixtures, so transitions can be detected.
@@ -319,18 +393,44 @@ async function upsertFixtures(
     for (const r of rows) existing.set(r.providerFixtureId, r);
   });
 
+  const fixtureProviderId = tournament.fixtureProvider ?? tournament.provider;
+
   const prepared = fixtures.map(f => {
-    const stageKey = resolveStageKey(format, tournament.provider, f.providerStage);
-    if (!stageKey && f.providerStage) unmapped.add(f.providerStage);
+    const mapped = resolveStageKey(format, fixtureProviderId, f.providerStage);
+    if (!mapped && f.providerStage) unmapped.add(f.providerStage);
+    // A provider that reports no stage at all gets the tournament's default rather than
+    // a null that would make the fixture unpredictable. A stage string we simply do not
+    // recognise keeps its null: that is a mapping gap worth surfacing, not papering over.
+    const stageKey = mapped ?? (f.providerStage === null ? defaultStageKey : null);
+
+    const home = resolveTeam(f, 'home');
+    const away = resolveTeam(f, 'away');
+    if (home.unresolvedName) unresolvedTeamNames.add(home.unresolvedName);
+    if (away.unresolvedName) unresolvedTeamNames.add(away.unresolvedName);
 
     return {
       dto: f,
       stageKey,
-      homeTeamId: f.homeProviderTeamId ? teamIdByProviderId.get(f.homeProviderTeamId) ?? null : null,
-      awayTeamId: f.awayProviderTeamId ? teamIdByProviderId.get(f.awayProviderTeamId) ?? null : null,
+      homeTeamId: home.teamId,
+      awayTeamId: away.teamId,
       kickoffAt: toDate(f.kickoffAt),
     };
   });
+
+  // A provider that reports no matchday leaves every fixture outside every gameweek, so
+  // one is derived from the kickoff calendar. A no-op for football-data, which always
+  // reports one. Done before the tie metadata below, which reads the matchday as a leg
+  // number for two-legged ties.
+  const matchdayByFixtureId = deriveMatchdays(
+    prepared.map(p => ({
+      providerFixtureId: p.dto.providerFixtureId,
+      stageKey: p.stageKey,
+      matchday: p.dto.matchday,
+      kickoffAt: p.kickoffAt,
+    })),
+  );
+  const matchdayOf = (providerFixtureId: string) =>
+    matchdayByFixtureId.get(providerFixtureId) ?? null;
 
   const ties = assignTieMetadata(
     prepared.map(p => ({
@@ -338,7 +438,7 @@ async function upsertFixtures(
       stageKey: p.stageKey,
       homeTeamId: p.homeTeamId,
       awayTeamId: p.awayTeamId,
-      matchday: p.dto.matchday,
+      matchday: matchdayOf(p.dto.providerFixtureId),
       kickoffAt: p.kickoffAt,
     })),
     format,
@@ -360,7 +460,7 @@ async function upsertFixtures(
       stageKey: p.stageKey,
       providerStage: p.dto.providerStage,
       groupName: p.dto.groupName,
-      matchday: p.dto.matchday,
+      matchday: matchdayOf(p.dto.providerFixtureId),
       tieKey: tie.tieKey,
       legNumber: tie.legNumber,
       normalTimeHome: score.normalTime.home,
@@ -440,6 +540,7 @@ async function upsertFixtures(
     newlyFinishedFixtureIds,
     changedFixtureIds,
     unmappedStages: [...unmapped],
+    unresolvedTeamNames: [...unresolvedTeamNames],
   };
 }
 
@@ -589,6 +690,67 @@ async function refreshQualificationStatuses(
   }
 }
 
+/**
+ * Remove fixtures whose kickoff falls outside the tournament's season.
+ *
+ * A provider that ignores the date range it was given writes a neighbouring season's
+ * fixtures into the tournament, and upserting never takes them back out again — so a
+ * single bad sync leaves them there for good. bigballsdata did exactly this: asked for
+ * 2026/27 it answered with all 273 Champions League matches it holds.
+ *
+ * Fixtures carrying predictions are left alone and reported instead. Nobody should have
+ * predicted a fixture from another season, but deleting one would cascade to real
+ * predictions and points, and that is not a call a sync gets to make quietly.
+ */
+async function removeOutOfSeasonFixtures(tournament: TournamentRow): Promise<number> {
+  const window = seasonWindow(tournament.season, seasonBoundsFor(tournament));
+  if (!window) return 0;
+
+  const from = new Date(`${window.dateFrom}T00:00:00Z`);
+  const to = new Date(`${window.dateTo}T23:59:59Z`);
+
+  // Drizzle's own operators rather than a sql`` template: a Date interpolated into a raw
+  // fragment reaches Postgres as an untyped parameter, and comparing a timestamp against
+  // one is rejected outright. lt/gt carry the column's type with them.
+  const strays = await db
+    .select({ id: liveFixtures.id })
+    .from(liveFixtures)
+    .where(
+      and(
+        eq(liveFixtures.liveTournamentId, tournament.id),
+        isNotNull(liveFixtures.kickoffAt),
+        or(lt(liveFixtures.kickoffAt, from), gt(liveFixtures.kickoffAt, to)),
+      ),
+    );
+  if (strays.length === 0) return 0;
+
+  const strayIds = strays.map(f => f.id);
+  const predicted = await db
+    .select({ liveFixtureId: livePredictions.liveFixtureId })
+    .from(livePredictions)
+    .where(inArray(livePredictions.liveFixtureId, strayIds));
+  const keep = new Set(predicted.map(p => p.liveFixtureId));
+
+  const removable = strayIds.filter(id => !keep.has(id));
+  if (keep.size > 0) {
+    console.warn(
+      `[live-sync] ${tournament.id}: ${keep.size} out-of-season fixture(s) have predictions ` +
+        'attached and were left in place — remove them by hand if they are wrong',
+    );
+  }
+  if (removable.length === 0) return 0;
+
+  await chunked(removable, async chunk => {
+    await db.delete(liveFixtures).where(inArray(liveFixtures.id, chunk));
+  });
+
+  console.warn(
+    `[live-sync] ${tournament.id}: removed ${removable.length} fixture(s) outside season ` +
+      `${tournament.season} (${window.dateFrom} to ${window.dateTo})`,
+  );
+  return removable.length;
+}
+
 async function recordSyncOutcome(
   tournamentId: string,
   field: 'structure' | 'window',
@@ -622,6 +784,90 @@ function describeError(err: unknown): { message: string; seasonUnavailable: bool
   return { message: err instanceof Error ? err.message : String(err), seasonUnavailable: false };
 }
 
+/**
+ * The competition identifier to ask the fixture provider for.
+ *
+ * Providers do not agree on these: football-data takes "CL", bigballsdata its own league
+ * key. Null falls back to the main identifier, which is right whenever one provider
+ * serves everything.
+ */
+export function fixtureCompetitionId(tournament: TournamentRow): string {
+  return tournament.fixtureProviderCompetitionId ?? tournament.providerCompetitionId;
+}
+
+/**
+ * When this tournament's season starts and ends, from its preset.
+ *
+ * Competitions do not share a calendar, so this is not one rule for all of them: the
+ * Champions League league phase opens in September and finishes in late May, a domestic
+ * league a month either side of that. Undefined for a tournament created outside the
+ * presets, which leaves the generous default in season.ts.
+ */
+function seasonBoundsFor(tournament: TournamentRow) {
+  return getLiveTournamentPreset(tournament.presetKey ?? '')?.seasonBounds;
+}
+
+/** The season as a date range, for a provider that filters by date rather than season. */
+function seasonWindowFor(tournament: TournamentRow): FetchFixturesOptions {
+  const window = seasonWindow(tournament.season, seasonBoundsFor(tournament));
+  return window ? { seasonWindow: window } : {};
+}
+
+/**
+ * The two providers a tournament reads from, and whether they differ.
+ *
+ * Same provider for both is the normal case and the default: `fixtureProvider` is null
+ * unless an admin has deliberately split them.
+ */
+function providersFor(tournament: TournamentRow) {
+  const fixtureProviderId = tournament.fixtureProvider ?? tournament.provider;
+  return {
+    structure: getProvider(tournament.provider),
+    fixtures: getProvider(fixtureProviderId),
+    isSplit: fixtureProviderId !== tournament.provider,
+  };
+}
+
+/**
+ * Build the resolver that turns a fixture's teams into local ids.
+ *
+ * Split providers match by name against the teams already stored; a single provider
+ * matches by id, which is exact. The name index is read from the database rather than
+ * from the payload being synced, so it works on the live-window path too, where no team
+ * data is fetched at all.
+ */
+async function teamResolverFor(
+  tournament: TournamentRow,
+  isSplit: boolean,
+  teamIdByProviderId: Map<string, string>,
+): Promise<TeamResolver> {
+  if (!isSplit) return resolveByProviderId(teamIdByProviderId);
+
+  const stored = await db
+    .select({
+      id: liveTeams.id,
+      name: liveTeams.name,
+      shortName: liveTeams.shortName,
+      tla: liveTeams.tla,
+    })
+    .from(liveTeams)
+    .where(eq(liveTeams.liveTournamentId, tournament.id));
+
+  return resolveByName(buildTeamNameIndex(stored));
+}
+
+/**
+ * The stage a fixture goes to when its provider names none.
+ *
+ * Only applied for a split, and only then the tournament's own starting stage: for the
+ * Champions League that is the league phase, which is every fixture bigballsdata can
+ * describe anyway. A single-provider tournament keeps the old behaviour exactly — an
+ * absent stage stays null and shows up as an unmapped-stage warning.
+ */
+export function defaultStageFor(tournament: TournamentRow, isSplit: boolean): string | null {
+  return isSplit ? tournament.startStageKey : null;
+}
+
 // ── Entry points ──────────────────────────────────────────────────────────────
 
 /**
@@ -631,26 +877,39 @@ function describeError(err: unknown): { message: string; seasonUnavailable: bool
 export async function syncTournamentStructure(tournamentId: string): Promise<SyncResult> {
   const tournament = await loadTournament(tournamentId);
   const format = getLiveFormat(tournament.format);
-  const provider = getProvider(tournament.provider);
+  const { structure, fixtures: fixtureProvider, isSplit } = providersFor(tournament);
   const result = emptyResult();
 
   try {
     const [providerTeams, providerFixtures] = await Promise.all([
-      provider
+      structure
         .fetchTeams(tournament.providerCompetitionId, tournament.season)
         // A missing teams list is survivable — fixtures carry their teams inline.
         .catch(err => {
           if (err instanceof ProviderError && err.isSeasonUnavailable) return [] as ProviderTeam[];
           throw err;
         }),
-      provider.fetchFixtures(tournament.providerCompetitionId, tournament.season),
+      fixtureProvider.fetchFixtures(
+        // A split fixture provider has its own identifier for the competition.
+        fixtureCompetitionId(tournament),
+        tournament.season,
+        // ...and may need telling where the season sits in the calendar, for want of a
+        // season parameter of its own.
+        seasonWindowFor(tournament),
+      ),
     ]);
 
     // Teams named on fixtures but absent from /teams still need rows, or the fixture
     // would point at nothing. Listing /teams first means it wins on conflicting details.
-    const fromFixtures = providerFixtures.flatMap(f =>
-      [f.homeTeam, f.awayTeam].filter((t): t is ProviderTeam => t !== null),
-    );
+    //
+    // Not so for a split: the second provider names clubs without ids, so inserting its
+    // teams would duplicate all 36 under a made-up key. Those fixtures are matched to
+    // the rows the main provider created instead.
+    const fromFixtures = isSplit
+      ? []
+      : providerFixtures.flatMap(f =>
+          [f.homeTeam, f.awayTeam].filter((t): t is ProviderTeam => t !== null),
+        );
     const teamIdByProviderId = await upsertTeams(tournament.id, [...providerTeams, ...fromFixtures]);
     result.teams = teamIdByProviderId.size;
 
@@ -658,16 +917,25 @@ export async function syncTournamentStructure(tournamentId: string): Promise<Syn
       tournament,
       format,
       providerFixtures,
-      teamIdByProviderId,
+      await teamResolverFor(tournament, isSplit, teamIdByProviderId),
+      defaultStageFor(tournament, isSplit),
     );
     result.fixtures = fixtureOutcome.written;
     result.newlyFinishedFixtureIds = fixtureOutcome.newlyFinishedFixtureIds;
     result.changedFixtureIds = fixtureOutcome.changedFixtureIds;
     result.unmappedStages = fixtureOutcome.unmappedStages;
+    result.unresolvedTeamNames = fixtureOutcome.unresolvedTeamNames;
+    if (fixtureOutcome.unresolvedTeamNames.length > 0) {
+      console.warn(
+        `[live-sync] ${tournament.id}: ${fixtureOutcome.unresolvedTeamNames.length} team name(s) ` +
+          `from ${fixtureProvider.id} matched no stored team: ` +
+          fixtureOutcome.unresolvedTeamNames.join(', '),
+      );
+    }
 
     // Standings are optional: a season with no games played has no table yet.
     try {
-      const providerStandings = await provider.fetchStandings(
+      const providerStandings = await structure.fetchStandings(
         tournament.providerCompetitionId,
         tournament.season,
       );
@@ -680,6 +948,10 @@ export async function syncTournamentStructure(tournamentId: string): Promise<Syn
     } catch (err) {
       if (!(err instanceof ProviderError && err.isSeasonUnavailable)) throw err;
     }
+
+    // After the upsert, so a provider that ignored the season it was asked for does not
+    // leave another season's fixtures behind for good.
+    result.outOfSeasonRemoved = await removeOutOfSeasonFixtures(tournament);
 
     await refreshQualificationStatuses(tournament, format);
 
@@ -720,14 +992,14 @@ export async function syncTournamentStructure(tournamentId: string): Promise<Syn
 export async function syncLiveWindow(tournamentId: string): Promise<SyncResult> {
   const tournament = await loadTournament(tournamentId);
   const format = getLiveFormat(tournament.format);
-  const provider = getProvider(tournament.provider);
+  const { fixtures: fixtureProvider, isSplit } = providersFor(tournament);
   const result = emptyResult();
 
   try {
-    const providerFixtures = await provider.fetchFixtures(
-      tournament.providerCompetitionId,
+    const providerFixtures = await fixtureProvider.fetchFixtures(
+      fixtureCompetitionId(tournament),
       tournament.season,
-      liveWindowDates(),
+      { ...liveWindowDates(), ...seasonWindowFor(tournament) },
     );
 
     const existingTeams = await db
@@ -736,11 +1008,18 @@ export async function syncLiveWindow(tournamentId: string): Promise<SyncResult> 
       .where(eq(liveTeams.liveTournamentId, tournament.id));
     const teamIdByProviderId = new Map(existingTeams.map(t => [t.providerTeamId, t.id]));
 
-    const outcome = await upsertFixtures(tournament, format, providerFixtures, teamIdByProviderId);
+    const outcome = await upsertFixtures(
+      tournament,
+      format,
+      providerFixtures,
+      await teamResolverFor(tournament, isSplit, teamIdByProviderId),
+      defaultStageFor(tournament, isSplit),
+    );
     result.fixtures = outcome.written;
     result.newlyFinishedFixtureIds = outcome.newlyFinishedFixtureIds;
     result.changedFixtureIds = outcome.changedFixtureIds;
     result.unmappedStages = outcome.unmappedStages;
+    result.unresolvedTeamNames = outcome.unresolvedTeamNames;
 
     await recordSyncOutcome(tournament.id, 'window', null);
     return result;

@@ -1,9 +1,15 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { AlertTriangle, RefreshCw, Stethoscope } from 'lucide-react';
 import { ApiError } from '@/lib/api';
-import { liveApi, liveKeys } from '@/lib/liveApi';
+import {
+  liveApi,
+  liveKeys,
+  type LiveFixtureDiagnosis,
+  type LiveProviderProbe,
+  type LiveTournamentDetail,
+} from '@/lib/liveApi';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import LiveSelectedMatchesPanel from '@/components/live/LiveSelectedMatchesPanel';
 import AdminLiveBonusQuestionsPanel from '@/components/live/AdminLiveBonusQuestionsPanel';
@@ -59,13 +65,25 @@ export default function AdminLiveTournamentDetailPage() {
               // Only worth mentioning on the first full sync, when there is work to do.
               (result.crestsMirrored > 0
                 ? ` ${t('live.admin.crestsMirrored', { count: result.crestsMirrored })}`
+                : '') +
+              // A deletion is never left unsaid, however good the reason.
+              (result.outOfSeasonRemoved > 0
+                ? ` ${t('live.admin.outOfSeasonRemoved', { count: result.outOfSeasonRemoved })}`
                 : ''),
       );
       refresh();
     },
     onError: err => {
       setMessage('');
-      setError(err instanceof ApiError ? err.message : t('live.admin.syncFailed'));
+      // The route sends the provider's own words in `details`; showing only "Provider
+      // sync failed" throws away the one part that says what to do about it.
+      setError(
+        err instanceof ApiError
+          ? [err.message, typeof err.details === 'string' ? err.details : null]
+              .filter(Boolean)
+              .join(' — ')
+          : t('live.admin.syncFailed'),
+      );
     },
   });
 
@@ -76,6 +94,28 @@ export default function AdminLiveTournamentDetailPage() {
       setMessage(t('live.admin.recalcDone', { count: result.scoredPredictions }));
     },
     onError: err => setError(err instanceof ApiError ? err.message : t('live.admin.recalcFailed')),
+  });
+
+  const fixtureSourceMutation = useMutation({
+    mutationFn: (body: {
+      fixtureProvider: 'football_data' | 'big_balls' | null;
+      fixtureProviderCompetitionId: string | null;
+    }) => liveApi.updateTournament(id!, body),
+    onSuccess: () => {
+      setError('');
+      setMessage(t('live.admin.fixtureSourceSaved'));
+      refresh();
+    },
+    onError: err => {
+      setMessage('');
+      setError(err instanceof ApiError ? err.message : t('live.admin.fixtureSourceFailed'));
+    },
+  });
+
+  const diagnoseMutation = useMutation({
+    mutationFn: () => liveApi.diagnoseTournament(id!),
+    onError: err =>
+      setError(err instanceof ApiError ? err.message : t('live.admin.diagnoseFailed')),
   });
 
   const toggleSyncMutation = useMutation({
@@ -136,6 +176,69 @@ export default function AdminLiveTournamentDetailPage() {
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
               {t('live.admin.unmappedStagesBody', { stages: tournament.unmappedStages.join(', ') })}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Teams but no fixtures has several causes that look identical from here, so this
+          says what is missing and points at the diagnostic rather than picking one. */}
+      {tournament.teamCount > 0 && tournament.fixtureCount === 0 && (
+        <div className="mb-4 flex gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4">
+          <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-amber-700 dark:text-amber-400">
+              {t('live.admin.noFixturesTitle')}
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">{t('live.admin.noFixturesBody')}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Partial data is the dangerous state: it passes every other check on this page,
+          because "some fixtures" and "the fixtures" look identical from here. */}
+      {tournament.expectedStartStageFixtures !== null &&
+        tournament.startStageFixtureCount > 0 &&
+        tournament.startStageFixtureCount < tournament.expectedStartStageFixtures && (
+          <div className="mb-4 flex gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4">
+            <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+            <div className="min-w-0">
+              <h2 className="text-sm font-semibold text-amber-700 dark:text-amber-400">
+                {t('live.admin.partialFixturesTitle')}
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {t('live.admin.partialFixturesBody', {
+                  held: tournament.startStageFixtureCount,
+                  expected: tournament.expectedStartStageFixtures,
+                })}
+              </p>
+            </div>
+          </div>
+        )}
+
+      {tournament.fixturesOutsideGameweek > 0 && (
+        <div className="mb-4 flex gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4">
+          <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-amber-700 dark:text-amber-400">
+              {t('live.admin.outsideGameweekTitle')}
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {t('live.admin.outsideGameweekBody', { count: tournament.fixturesOutsideGameweek })}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {tournament.fixturesMissingTeams > 0 && (
+        <div className="mb-4 flex gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4">
+          <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-amber-700 dark:text-amber-400">
+              {t('live.admin.missingTeamsTitle')}
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {t('live.admin.missingTeamsBody', { count: tournament.fixturesMissingTeams })}
             </p>
           </div>
         </div>
@@ -216,7 +319,29 @@ export default function AdminLiveTournamentDetailPage() {
         </div>
 
         {message && <p className="mt-3 text-sm text-green-600 dark:text-green-400">{message}</p>}
-        {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
+        {error && <p className="mt-3 whitespace-pre-wrap break-words text-sm text-destructive">{error}</p>}
+      </div>
+
+      <FixtureSourcePanel
+        tournament={tournament}
+        onSave={body => fixtureSourceMutation.mutate(body)}
+        isSaving={fixtureSourceMutation.isPending}
+      />
+
+      <div className="mb-6 rounded-lg border p-5">
+        <h2 className="mb-1 font-semibold">{t('live.admin.diagnoseTitle')}</h2>
+        <p className="mb-3 text-sm text-muted-foreground">{t('live.admin.diagnoseIntro')}</p>
+
+        <button
+          onClick={() => diagnoseMutation.mutate()}
+          disabled={diagnoseMutation.isPending}
+          className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50"
+        >
+          <Stethoscope size={14} />
+          {diagnoseMutation.isPending ? t('live.admin.diagnoseRunning') : t('live.admin.diagnose')}
+        </button>
+
+        {diagnoseMutation.data && <DiagnosisReport diagnosis={diagnoseMutation.data} />}
       </div>
 
       <LiveSelectedMatchesPanel tournamentId={tournament.id} />
@@ -276,6 +401,203 @@ function Stat({ label, value }: { label: string; value: string }) {
     <div className="rounded-lg border p-4">
       <dt className="text-xs text-muted-foreground">{label}</dt>
       <dd className="mt-1 text-xl font-semibold tabular-nums">{value}</dd>
+    </div>
+  );
+}
+
+// ── The diagnostic report ─────────────────────────────────────────────────────
+//
+// Every probe is shown, failures included: which endpoint answered what is the whole
+// point, and hiding the ones that failed would hide the answer. The verdict is the
+// server's reading of the same rows, not extra information.
+
+const PROBE_LABEL_KEYS: Record<LiveProviderProbe['key'], string> = {
+  competition: 'live.admin.probeCompetition',
+  matches_season: 'live.admin.probeMatchesSeason',
+  matches_paged: 'live.admin.probeMatchesPaged',
+  matches_unfiltered: 'live.admin.probeMatchesUnfiltered',
+  teams: 'live.admin.probeTeams',
+  standings: 'live.admin.probeStandings',
+};
+
+const VERDICT_KEYS: Record<LiveFixtureDiagnosis['verdict'], string> = {
+  fixtures_available: 'live.admin.verdictFixturesAvailable',
+  provider_has_partial_fixtures: 'live.admin.verdictPartialFixtures',
+  never_fully_synced: 'live.admin.verdictNeverFullySynced',
+  season_filter_hides_fixtures: 'live.admin.verdictSeasonFilterHides',
+  provider_has_no_fixtures: 'live.admin.verdictProviderHasNoFixtures',
+  season_not_published: 'live.admin.verdictSeasonNotPublished',
+  provider_unreachable: 'live.admin.verdictProviderUnreachable',
+};
+
+function DiagnosisReport({ diagnosis }: { diagnosis: LiveFixtureDiagnosis }) {
+  const { t } = useT();
+  const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : '—');
+
+  return (
+    <div className="mt-4">
+      <p className="mb-3 text-sm text-muted-foreground">
+        {diagnosis.provider} · {diagnosis.providerCompetitionId} · {diagnosis.season}
+        {diagnosis.fixtureProvider && diagnosis.fixtureProvider !== diagnosis.provider && (
+          <>
+            {' · '}
+            {t('live.admin.diagnoseFixturesFrom', {
+              provider: diagnosis.fixtureProvider,
+              competition: diagnosis.fixtureProviderCompetitionId ?? diagnosis.providerCompetitionId,
+            })}
+          </>
+        )}
+        {' — '}
+        {t('live.admin.diagnoseStored', {
+          fixtures: diagnosis.storedFixtures,
+          teams: diagnosis.storedTeams,
+          lastSync: fmt(diagnosis.lastStructureSyncAt),
+        })}
+      </p>
+
+      <div className="grid gap-2">
+        {diagnosis.probes.map(probe => (
+          <div key={`${probe.provider ?? ''}:${probe.key}`} className="rounded-md border p-3 text-sm">
+            <div className="flex flex-wrap items-baseline gap-x-2">
+              <span className="font-medium">{t(PROBE_LABEL_KEYS[probe.key])}</span>
+              {probe.provider && (
+                <span className="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">
+                  {probe.provider}
+                </span>
+              )}
+              <span
+                className={`rounded px-1.5 py-0.5 text-xs font-mono ${
+                  probe.ok
+                    ? 'bg-green-500/10 text-green-700 dark:text-green-400'
+                    : 'bg-destructive/10 text-destructive'
+                }`}
+              >
+                {probe.status ?? 'no response'}
+              </span>
+              {probe.count !== null && (
+                <span className="text-xs tabular-nums text-muted-foreground">
+                  {probe.count} returned
+                  {probe.countForSeason !== null && probe.countForSeason !== probe.count
+                    ? `, ${probe.countForSeason} for ${diagnosis.season}`
+                    : ''}
+                </span>
+              )}
+            </div>
+            <p className="mt-1 break-all font-mono text-xs text-muted-foreground">{probe.url}</p>
+            {probe.detail && <p className="mt-1 text-xs text-muted-foreground">{probe.detail}</p>}
+            {probe.rawSample && (
+              // The shape of the response, with its list cut to one item. For a provider
+              // whose documentation never shows a whole response, this is the only way to
+              // see how it paginates without guessing.
+              <details className="mt-2">
+                <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
+                  {t('live.admin.probeShowResponse')}
+                </summary>
+                <pre className="mt-2 max-h-72 overflow-auto rounded bg-muted p-2 text-[11px] leading-relaxed">
+                  {probe.rawSample}
+                </pre>
+              </details>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 rounded-md border border-primary/40 bg-primary/5 p-3">
+        <h3 className="text-sm font-semibold">{t('live.admin.verdictTitle')}</h3>
+        <p className="mt-1 text-sm text-muted-foreground">{t(VERDICT_KEYS[diagnosis.verdict])}</p>
+      </div>
+    </div>
+  );
+}
+
+// ── Where fixtures come from ──────────────────────────────────────────────────
+//
+// Teams and the table always come from `provider`; only fixtures can be moved. Its own
+// draft state, so a half-typed league key does not survive a refetch of the tournament.
+
+function FixtureSourcePanel({
+  tournament,
+  onSave,
+  isSaving,
+}: {
+  tournament: LiveTournamentDetail;
+  onSave: (body: {
+    fixtureProvider: 'football_data' | 'big_balls' | null;
+    fixtureProviderCompetitionId: string | null;
+  }) => void;
+  isSaving: boolean;
+}) {
+  const { t } = useT();
+  const [provider, setProvider] = useState<string>(tournament.fixtureProvider ?? '');
+  const [leagueKey, setLeagueKey] = useState(tournament.fixtureProviderCompetitionId ?? '');
+
+  const isSplit = provider !== '' && provider !== tournament.provider;
+  const dirty =
+    (provider || null) !== (tournament.fixtureProvider ?? null) ||
+    (leagueKey.trim() || null) !== (tournament.fixtureProviderCompetitionId ?? null);
+
+  return (
+    <div className="mb-6 rounded-lg border p-5">
+      <h2 className="mb-1 font-semibold">{t('live.admin.fixtureSourceTitle')}</h2>
+      <p className="mb-4 text-sm text-muted-foreground">{t('live.admin.fixtureSourceIntro')}</p>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label htmlFor="fixtureProvider" className="mb-1 block text-xs font-medium">
+            {t('live.admin.fixtureSourceProvider')}
+          </label>
+          <select
+            id="fixtureProvider"
+            value={provider}
+            onChange={e => setProvider(e.target.value)}
+            className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            <option value="">
+              {t('live.admin.fixtureSourceSame', { provider: tournament.provider })}
+            </option>
+            <option value="football_data">football_data</option>
+            <option value="big_balls">big_balls</option>
+          </select>
+        </div>
+
+        <div>
+          <label htmlFor="fixtureLeagueKey" className="mb-1 block text-xs font-medium">
+            {t('live.admin.fixtureSourceLeagueKey')}
+          </label>
+          <input
+            id="fixtureLeagueKey"
+            type="text"
+            value={leagueKey}
+            onChange={e => setLeagueKey(e.target.value)}
+            placeholder={tournament.providerCompetitionId}
+            maxLength={64}
+            disabled={!isSplit}
+            className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            {t('live.admin.fixtureSourceLeagueKeyHint', {
+              fallback: tournament.providerCompetitionId,
+            })}
+          </p>
+        </div>
+      </div>
+
+      <p className="mt-3 text-xs text-amber-700 dark:text-amber-400">
+        {t('live.admin.fixtureSourceWarning')}
+      </p>
+
+      <button
+        onClick={() =>
+          onSave({
+            fixtureProvider: (provider || null) as 'football_data' | 'big_balls' | null,
+            fixtureProviderCompetitionId: leagueKey.trim() || null,
+          })
+        }
+        disabled={!dirty || isSaving}
+        className="mt-3 rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50"
+      >
+        {isSaving ? t('common.saving') : t('live.admin.fixtureSourceSave')}
+      </button>
     </div>
   );
 }

@@ -28,6 +28,10 @@ export const UpdateLiveTournamentSchema = z.object({
   imageUrl: z.string().nullable().optional(),
   status: z.enum(['upcoming', 'active', 'completed']).optional(),
   syncEnabled: z.boolean().optional(),
+  /** Null puts fixtures back on the tournament's main provider. */
+  fixtureProvider: z.enum(['football_data', 'big_balls']).nullable().optional(),
+  /** That provider's own identifier for the competition. Null falls back to the main one. */
+  fixtureProviderCompetitionId: z.string().min(1).max(64).nullable().optional(),
 });
 
 export const SyncLiveTournamentSchema = z.object({

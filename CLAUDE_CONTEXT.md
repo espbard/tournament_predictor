@@ -224,7 +224,34 @@ entry point. Three things to know before touching it:
 
 Mapping is pinned by `footballData.test.ts` against real payloads committed under
 `providers/__fixtures__/`; no test touches the network. To re-check the provider against live
-data, run `npx tsx --env-file=../.env src/scripts/live-provider-smoke.ts` from `server/`.
+data, run `npm run live:smoke` from `server/`. When a tournament has no fixtures, use the
+**Ask the provider** button on the admin tournament page — `POST /api/live/tournaments/:id/diagnose`,
+which probes each endpoint with the running server's key and reports URL, status and count per
+endpoint plus a verdict. `npm run live:doctor` is the same check as a local script. Both separate
+"the provider has no fixtures" from "our request hides them", which is otherwise
+indistinguishable from the outside.
+
+- **A tournament may read fixtures from a second provider.** `live_tournaments.fixture_provider`
+  (plus `fixture_provider_competition_id`) moves *fixtures only* to another adapter; teams and
+  the table always come from `provider`. Added for the Champions League 2026/27, where
+  football-data had teams and a table but no calendar. Two consequences live in `sync.ts`, not in
+  the adapters: fixtures are joined to teams **by name** (`teamMatching.ts`, which refuses to
+  guess and reports what it could not match), a fixture whose provider names no stage is
+  filed under the tournament's `startStageKey`, and a missing matchday is derived from the
+  kickoff calendar (`matchdays.ts`) because the matchday is what a gameweek is keyed by. See the header of `providers/bigBalls.ts` for
+  what that provider's schema cannot express — no team ids, no stage, and no split between
+  normal time and extra time, which makes it unfit for two-legged knockouts.
+- **A season is a span of dates, and each competition's is its own.** `seasonBounds` on the
+  preset (CL: 1 Sep – 1 Jun; PL: 1 Aug – 30 Jun) feeds `server/src/live/season.ts`, which decides
+  what belongs to a season when a provider will not. bigballsdata accepts `date_from`/`date_to`
+  and ignores them, so the window is enforced on the response as well as sent with the request,
+  and a structure sync deletes stored fixtures outside it.
+- **An empty match list is not an error either.** A season can exist at the provider — teams and
+  a table and all — days before its match calendar is ingested. Note the asymmetry this creates:
+  if `/matches` 404s the whole structure sync aborts before teams are written, so a tournament
+  that *has* teams but no fixtures proves `/matches` answered 200 with an empty list. The
+  adapter retries such a response once without the `season=` filter, keeping the matches whose
+  own `season.startDate` falls in the season asked for.
 
 ### Migrations — read this before adding a column
 
@@ -441,7 +468,8 @@ sums every source.
 **Selected matches** — an admin may narrow a gameweek (one matchday inside one stage) to a set of
 fixtures through `PUT /api/live/tournaments/:id/selected-matches`. Anything left out is not part
 of the game: predictions on it are rejected and it never awards points. A gameweek nobody has
-narrowed has every fixture selected, which is why a new tournament is playable immediately. The
+touched has **nothing** selected, so a live competition shows players no fixtures until an admin
+has been through its gameweeks. The
 rule lives in `shared/src/live/selection.ts` and is applied by the fixtures read models, the
 prediction route and the scoring trigger alike — changing a selection recalculates the tournament
 so points already awarded on a now-deselected match are given back.

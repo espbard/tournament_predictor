@@ -6,8 +6,8 @@ import { liveGameweekSelections } from '../db/liveSchema';
 // ── Selected matches ──────────────────────────────────────────────────────────
 //
 // Database access for the gameweek selections an admin registers. The rule itself — a
-// gameweek with no row has every fixture selected — lives in shared/src/live/selection.ts
-// so the client applies exactly the same one.
+// gameweek with no row has nothing selected — lives in shared/src/live/selection.ts so
+// the client applies exactly the same one.
 //
 // Every read model that exposes fixtures, and every path that scores them, goes through
 // here: a fixture left out of its gameweek's selection is not part of the game, so it

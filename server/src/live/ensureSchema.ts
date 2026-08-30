@@ -14,7 +14,9 @@ import { db } from '../db/client';
  */
 export async function ensureLiveSchema(): Promise<void> {
   // ── Enums ───────────────────────────────────────────────────────────────────
-  await db.execute(sql`DO $$ BEGIN CREATE TYPE "live_provider" AS ENUM ('football_data'); EXCEPTION WHEN duplicate_object THEN null; END $$`);
+  await db.execute(sql`DO $$ BEGIN CREATE TYPE "live_provider" AS ENUM ('football_data', 'big_balls'); EXCEPTION WHEN duplicate_object THEN null; END $$`);
+  // Added to the enum after its first release, so an existing database needs it too.
+  await db.execute(sql`ALTER TYPE "live_provider" ADD VALUE IF NOT EXISTS 'big_balls'`);
   await db.execute(sql`DO $$ BEGIN CREATE TYPE "live_tournament_status" AS ENUM ('upcoming', 'active', 'completed'); EXCEPTION WHEN duplicate_object THEN null; END $$`);
   await db.execute(sql`DO $$ BEGIN CREATE TYPE "live_fixture_status" AS ENUM ('scheduled', 'in_play', 'paused', 'finished', 'postponed', 'suspended', 'cancelled'); EXCEPTION WHEN duplicate_object THEN null; END $$`);
   await db.execute(sql`DO $$ BEGIN CREATE TYPE "live_qualification_status" AS ENUM ('qualified', 'pending', 'eliminated'); EXCEPTION WHEN duplicate_object THEN null; END $$`);
@@ -30,6 +32,8 @@ export async function ensureLiveSchema(): Promise<void> {
       "image_url" text,
       "preset_key" text,
       "provider" "live_provider" NOT NULL DEFAULT 'football_data',
+      "fixture_provider" "live_provider",
+      "fixture_provider_competition_id" text,
       "provider_competition_id" text NOT NULL,
       "season" text NOT NULL,
       "format" text NOT NULL,
@@ -216,6 +220,9 @@ export async function ensureLiveSchema(): Promise<void> {
   await db.execute(sql`ALTER TABLE "live_bonus_questions" ADD COLUMN IF NOT EXISTS "options" json`);
 
   // ── Indexes ─────────────────────────────────────────────────────────────────
+  await db.execute(sql`ALTER TABLE "live_tournaments" ADD COLUMN IF NOT EXISTS "fixture_provider" "live_provider"`);
+  await db.execute(sql`ALTER TABLE "live_tournaments" ADD COLUMN IF NOT EXISTS "fixture_provider_competition_id" text`);
+
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "live_tournaments_provider_competition_season_unique" ON "live_tournaments" ("provider", "provider_competition_id", "season")`);
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "live_teams_tournament_provider_team_unique" ON "live_teams" ("live_tournament_id", "provider_team_id")`);
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "live_fixtures_tournament_provider_fixture_unique" ON "live_fixtures" ("live_tournament_id", "provider_fixture_id")`);
