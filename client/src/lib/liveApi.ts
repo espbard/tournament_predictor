@@ -109,6 +109,8 @@ export interface LiveTournamentDetail extends LiveTournament {
   unscorableFixtures: number;
   /** Provider stage strings the format does not know about. */
   unmappedStages: string[];
+  /** Fixtures with a kickoff time but a team missing on one side. */
+  fixturesMissingTeams: number;
 }
 
 /** What an admin may narrow about a bonus question. See shared/src/live/bonus.ts. */
@@ -229,7 +231,14 @@ export const liveApi = {
     >('/live/tournaments', body),
   updateTournament: (
     id: string,
-    body: { name?: string; imageUrl?: string | null; status?: string; syncEnabled?: boolean },
+    body: {
+      name?: string;
+      imageUrl?: string | null;
+      status?: string;
+      syncEnabled?: boolean;
+      fixtureProvider?: 'football_data' | 'big_balls' | null;
+      fixtureProviderCompetitionId?: string | null;
+    },
   ) => api.patch<LiveTournament>(`/live/tournaments/${id}`, body),
   deleteTournament: (id: string) => api.delete<{ ok: true }>(`/live/tournaments/${id}`),
   syncTournament: (id: string, full: boolean) =>

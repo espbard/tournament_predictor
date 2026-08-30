@@ -231,6 +231,15 @@ endpoint plus a verdict. `npm run live:doctor` is the same check as a local scri
 "the provider has no fixtures" from "our request hides them", which is otherwise
 indistinguishable from the outside.
 
+- **A tournament may read fixtures from a second provider.** `live_tournaments.fixture_provider`
+  (plus `fixture_provider_competition_id`) moves *fixtures only* to another adapter; teams and
+  the table always come from `provider`. Added for the Champions League 2026/27, where
+  football-data had teams and a table but no calendar. Two consequences live in `sync.ts`, not in
+  the adapters: fixtures are joined to teams **by name** (`teamMatching.ts`, which refuses to
+  guess and reports what it could not match), and a fixture whose provider names no stage is
+  filed under the tournament's `startStageKey`. See the header of `providers/bigBalls.ts` for
+  what that provider's schema cannot express — no team ids, no stage, and no split between
+  normal time and extra time, which makes it unfit for two-legged knockouts.
 - **An empty match list is not an error either.** A season can exist at the provider — teams and
   a table and all — days before its match calendar is ingested. Note the asymmetry this creates:
   if `/matches` 404s the whole structure sync aborts before teams are written, so a tournament

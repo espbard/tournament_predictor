@@ -3,7 +3,13 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, RefreshCw, Stethoscope } from 'lucide-react';
 import { ApiError } from '@/lib/api';
-import { liveApi, liveKeys, type LiveFixtureDiagnosis, type LiveProviderProbe } from '@/lib/liveApi';
+import {
+  liveApi,
+  liveKeys,
+  type LiveFixtureDiagnosis,
+  type LiveProviderProbe,
+  type LiveTournamentDetail,
+} from '@/lib/liveApi';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import LiveSelectedMatchesPanel from '@/components/live/LiveSelectedMatchesPanel';
 import AdminLiveBonusQuestionsPanel from '@/components/live/AdminLiveBonusQuestionsPanel';
@@ -76,6 +82,22 @@ export default function AdminLiveTournamentDetailPage() {
       setMessage(t('live.admin.recalcDone', { count: result.scoredPredictions }));
     },
     onError: err => setError(err instanceof ApiError ? err.message : t('live.admin.recalcFailed')),
+  });
+
+  const fixtureSourceMutation = useMutation({
+    mutationFn: (body: {
+      fixtureProvider: 'football_data' | 'big_balls' | null;
+      fixtureProviderCompetitionId: string | null;
+    }) => liveApi.updateTournament(id!, body),
+    onSuccess: () => {
+      setError('');
+      setMessage(t('live.admin.fixtureSourceSaved'));
+      refresh();
+    },
+    onError: err => {
+      setMessage('');
+      setError(err instanceof ApiError ? err.message : t('live.admin.fixtureSourceFailed'));
+    },
   });
 
   const diagnoseMutation = useMutation({
@@ -161,6 +183,20 @@ export default function AdminLiveTournamentDetailPage() {
         </div>
       )}
 
+      {tournament.fixturesMissingTeams > 0 && (
+        <div className="mb-4 flex gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4">
+          <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-amber-700 dark:text-amber-400">
+              {t('live.admin.missingTeamsTitle')}
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {t('live.admin.missingTeamsBody', { count: tournament.fixturesMissingTeams })}
+            </p>
+          </div>
+        </div>
+      )}
+
       {tournament.unscorableFixtures > 0 && (
         <div className="mb-4 flex gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4">
           <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
@@ -238,6 +274,12 @@ export default function AdminLiveTournamentDetailPage() {
         {message && <p className="mt-3 text-sm text-green-600 dark:text-green-400">{message}</p>}
         {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
       </div>
+
+      <FixtureSourcePanel
+        tournament={tournament}
+        onSave={body => fixtureSourceMutation.mutate(body)}
+        isSaving={fixtureSourceMutation.isPending}
+      />
 
       <div className="mb-6 rounded-lg border p-5">
         <h2 className="mb-1 font-semibold">{t('live.admin.diagnoseTitle')}</h2>
@@ -388,6 +430,98 @@ function DiagnosisReport({ diagnosis }: { diagnosis: LiveFixtureDiagnosis }) {
         <h3 className="text-sm font-semibold">{t('live.admin.verdictTitle')}</h3>
         <p className="mt-1 text-sm text-muted-foreground">{t(VERDICT_KEYS[diagnosis.verdict])}</p>
       </div>
+    </div>
+  );
+}
+
+// ── Where fixtures come from ──────────────────────────────────────────────────
+//
+// Teams and the table always come from `provider`; only fixtures can be moved. Its own
+// draft state, so a half-typed league key does not survive a refetch of the tournament.
+
+function FixtureSourcePanel({
+  tournament,
+  onSave,
+  isSaving,
+}: {
+  tournament: LiveTournamentDetail;
+  onSave: (body: {
+    fixtureProvider: 'football_data' | 'big_balls' | null;
+    fixtureProviderCompetitionId: string | null;
+  }) => void;
+  isSaving: boolean;
+}) {
+  const { t } = useT();
+  const [provider, setProvider] = useState<string>(tournament.fixtureProvider ?? '');
+  const [leagueKey, setLeagueKey] = useState(tournament.fixtureProviderCompetitionId ?? '');
+
+  const isSplit = provider !== '' && provider !== tournament.provider;
+  const dirty =
+    (provider || null) !== (tournament.fixtureProvider ?? null) ||
+    (leagueKey.trim() || null) !== (tournament.fixtureProviderCompetitionId ?? null);
+
+  return (
+    <div className="mb-6 rounded-lg border p-5">
+      <h2 className="mb-1 font-semibold">{t('live.admin.fixtureSourceTitle')}</h2>
+      <p className="mb-4 text-sm text-muted-foreground">{t('live.admin.fixtureSourceIntro')}</p>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label htmlFor="fixtureProvider" className="mb-1 block text-xs font-medium">
+            {t('live.admin.fixtureSourceProvider')}
+          </label>
+          <select
+            id="fixtureProvider"
+            value={provider}
+            onChange={e => setProvider(e.target.value)}
+            className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            <option value="">
+              {t('live.admin.fixtureSourceSame', { provider: tournament.provider })}
+            </option>
+            <option value="football_data">football_data</option>
+            <option value="big_balls">big_balls</option>
+          </select>
+        </div>
+
+        <div>
+          <label htmlFor="fixtureLeagueKey" className="mb-1 block text-xs font-medium">
+            {t('live.admin.fixtureSourceLeagueKey')}
+          </label>
+          <input
+            id="fixtureLeagueKey"
+            type="text"
+            value={leagueKey}
+            onChange={e => setLeagueKey(e.target.value)}
+            placeholder={tournament.providerCompetitionId}
+            maxLength={64}
+            disabled={!isSplit}
+            className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            {t('live.admin.fixtureSourceLeagueKeyHint', {
+              fallback: tournament.providerCompetitionId,
+            })}
+          </p>
+        </div>
+      </div>
+
+      <p className="mt-3 text-xs text-amber-700 dark:text-amber-400">
+        {t('live.admin.fixtureSourceWarning')}
+      </p>
+
+      <button
+        onClick={() =>
+          onSave({
+            fixtureProvider: (provider || null) as 'football_data' | 'big_balls' | null,
+            fixtureProviderCompetitionId: leagueKey.trim() || null,
+          })
+        }
+        disabled={!dirty || isSaving}
+        className="mt-3 rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50"
+      >
+        {isSaving ? t('common.saving') : t('live.admin.fixtureSourceSave')}
+      </button>
     </div>
   );
 }

@@ -3,9 +3,13 @@ import { LIVE_FORMATS } from '@tournament-predictor/shared';
 import {
   assignTieMetadata,
   buildTieKey,
+  defaultStageFor,
   deriveQualificationStatuses,
+  fixtureCompetitionId,
   liveWindowDates,
   loserOf,
+  resolveByName,
+  resolveByProviderId,
   type TieAssignable,
 } from './sync';
 
@@ -198,5 +202,74 @@ describe('liveWindowDates', () => {
       dateFrom: '2026-08-31',
       dateTo: '2026-09-02',
     });
+  });
+});
+
+// ── Two providers ─────────────────────────────────────────────────────────────
+//
+// A tournament may take fixtures from a different provider than its teams and table.
+// The two decisions that makes are pinned here; the name matching itself lives in
+// teamMatching.test.ts.
+
+describe('fixtureCompetitionId', () => {
+  const tournament = (over: Record<string, unknown> = {}) =>
+    ({ providerCompetitionId: 'CL', fixtureProviderCompetitionId: null, ...over }) as any;
+
+  it('uses the main identifier when the fixture provider has none of its own', () => {
+    expect(fixtureCompetitionId(tournament())).toBe('CL');
+  });
+
+  it('uses the fixture provider’s identifier when one is set', () => {
+    expect(fixtureCompetitionId(tournament({ fixtureProviderCompetitionId: 'ucl' }))).toBe('ucl');
+  });
+});
+
+describe('defaultStageFor', () => {
+  const tournament = { startStageKey: 'league_phase' } as any;
+
+  // A provider that reports no stage would otherwise leave every fixture unpredictable.
+  it('files stage-less fixtures under the start stage when providers are split', () => {
+    expect(defaultStageFor(tournament, true)).toBe('league_phase');
+  });
+
+  // Unchanged for the single-provider case: an absent stage stays an unmapped-stage
+  // warning rather than being quietly assigned one.
+  it('assigns nothing when one provider serves everything', () => {
+    expect(defaultStageFor(tournament, false)).toBeNull();
+  });
+});
+
+describe('team resolvers', () => {
+  const fixture = (over: Record<string, unknown> = {}) =>
+    ({
+      providerFixtureId: 'f1',
+      homeProviderTeamId: null,
+      awayProviderTeamId: null,
+      homeTeam: null,
+      awayTeam: null,
+      ...over,
+    }) as any;
+
+  it('resolves by provider id when one provider serves everything', () => {
+    const resolve = resolveByProviderId(new Map([['86', 'local-rma']]));
+    const f = fixture({ homeProviderTeamId: '86', awayProviderTeamId: '99' });
+
+    expect(resolve(f, 'home')).toEqual({ teamId: 'local-rma', unresolvedName: null });
+    // An id we hold no team for is not a name-matching failure, so nothing is reported.
+    expect(resolve(f, 'away')).toEqual({ teamId: null, unresolvedName: null });
+  });
+
+  it('resolves by name when the fixture provider is a different one', () => {
+    const resolve = resolveByName(new Map([['realmadrid', 'local-rma']]));
+    const f = fixture({ homeTeam: { name: 'Real Madrid' }, awayTeam: { name: 'Slavia Praha' } });
+
+    expect(resolve(f, 'home')).toEqual({ teamId: 'local-rma', unresolvedName: null });
+    // Reported rather than guessed at — this is what reaches the admin as a warning.
+    expect(resolve(f, 'away')).toEqual({ teamId: null, unresolvedName: 'Slavia Praha' });
+  });
+
+  it('does not report an undrawn slot as an unmatched team', () => {
+    const resolve = resolveByName(new Map());
+    expect(resolve(fixture(), 'home')).toEqual({ teamId: null, unresolvedName: null });
   });
 });

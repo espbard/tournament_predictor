@@ -127,6 +127,31 @@ npm run live:smoke     # re-run the Phase 2 go/no-go check
 npm run live:doctor    # why does a tournament have no fixtures? (CL 2026 by default)
 ```
 
+### A second provider for fixtures (August 2026)
+
+football-data never published the Champions League 2026/27 match calendar in a useful
+timeframe, so `live_tournaments` gained `fixture_provider` and `fixture_provider_competition_id`:
+fixtures may come from another adapter while teams and standings stay put. `providers/bigBalls.ts`
+is the first such adapter (bigballsdata.com, fixtures only).
+
+Three things to know before extending it:
+
+1. **Its schema has no team ids.** Fixtures are matched to stored teams by club name, in
+   `live/teamMatching.ts` — normalise, fold a short alias table, and match on the full name
+   before the short name before the three-letter code. An unmatched club leaves the fixture
+   unlinked and raises an admin warning; it is never guessed at. New aliases go in that file.
+2. **Its schema has no stage.** A stage-less fixture is filed under the tournament's
+   `startStageKey`, which is right for a league phase and wrong for anything else.
+3. **Its score is a single pair**, with no regular/extra-time split. §6's refuse-to-guess rule
+   cannot be applied to it, so it must not be used for knockout rounds. Move fixtures back to
+   football-data before February, or verify a richer field set exists.
+
+The adapter was written from bigballsdata's published documentation, not from captured
+payloads — unlike every football-data mapping here, which is pinned to real responses under
+`__fixtures__/`. `npm run live:capture -w server` fetches and saves the real ones and reports
+which fields are actually present; run it and correct the mapping and `bigBalls.test.ts` before
+trusting it in production.
+
 In production the same check is a button: **Ask the provider** on the admin tournament page
 (`POST /api/live/tournaments/:id/diagnose`, admin-only, read-only, five requests through the
 adapter's own rate limiter). `LiveProvider.probe` is what each adapter implements for it, and

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { and, asc, eq, gte, inArray, lte } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { generateId } from 'lucia';
 import {
   CreateLiveBonusQuestionSchema,
@@ -22,6 +22,7 @@ import {
   liveCompetitions,
   liveFixtures,
   liveGameweekSelections,
+  livePredictions,
   liveStandings,
   liveTeams,
   liveTournaments,
@@ -169,6 +170,9 @@ liveTournamentsRouter.get('/tournaments/:id', requireAuth, async (req, res) => {
         providerStage: liveFixtures.providerStage,
         status: liveFixtures.status,
         normalTimeHome: liveFixtures.normalTimeHome,
+        homeTeamId: liveFixtures.homeTeamId,
+        awayTeamId: liveFixtures.awayTeamId,
+        kickoffAt: liveFixtures.kickoffAt,
       })
       .from(liveFixtures)
       .where(eq(liveFixtures.liveTournamentId, tournament.id));
@@ -193,6 +197,13 @@ liveTournamentsRouter.get('/tournaments/:id', requireAuth, async (req, res) => {
       expectedTeamCount: preset?.expectedTeamCount ?? null,
       fixtureCount: fixtures.length,
       unscorableFixtures,
+      fixtureProviderCompetitionId: tournament.fixtureProviderCompetitionId,
+      // A fixture with a kickoff time but no team on one side. Undrawn knockout slots
+      // legitimately look like this, so it only counts once a fixture has a date — and
+      // with a split fixture provider it is how a failed name match surfaces.
+      fixturesMissingTeams: fixtures.filter(
+        f => f.kickoffAt !== null && (f.homeTeamId === null || f.awayTeamId === null),
+      ).length,
       // Distinct provider stage strings the format does not know: the early warning for
       // a provider rename, which would otherwise silently strand fixtures.
       unmappedStages: [
@@ -213,12 +224,49 @@ liveTournamentsRouter.patch('/tournaments/:id', requireAdmin, async (req, res) =
       return res.status(400).json({ error: 'Invalid body', details: parsed.error.flatten() });
     }
 
+    const [current] = await db
+      .select()
+      .from(liveTournaments)
+      .where(eq(liveTournaments.id, req.params.id));
+    if (!current) return res.status(404).json({ error: 'Not found' });
+
     const update: Record<string, unknown> = {};
     if (parsed.data.name !== undefined) update.name = parsed.data.name.trim();
     if (parsed.data.imageUrl !== undefined) update.imageUrl = parsed.data.imageUrl;
     if (parsed.data.status !== undefined) update.status = parsed.data.status;
     if (parsed.data.syncEnabled !== undefined) update.syncEnabled = parsed.data.syncEnabled;
+    if (parsed.data.fixtureProvider !== undefined) update.fixtureProvider = parsed.data.fixtureProvider;
+    if (parsed.data.fixtureProviderCompetitionId !== undefined) {
+      update.fixtureProviderCompetitionId = parsed.data.fixtureProviderCompetitionId;
+    }
     if (Object.keys(update).length === 0) return res.status(400).json({ error: 'Nothing to update' });
+
+    // Fixtures are keyed by (tournament, provider_fixture_id) and two providers do not
+    // agree on those ids, so the rows the old provider wrote cannot be updated by the new
+    // one — they would sit alongside a second, duplicate set of the same matches. They
+    // are cleared instead. Predictions cascade from fixtures, so a tournament that has
+    // any is not something to do silently: the switch is refused and the admin is told.
+    const nextFixtureProvider =
+      parsed.data.fixtureProvider !== undefined ? parsed.data.fixtureProvider : current.fixtureProvider;
+    const providerChanged =
+      (nextFixtureProvider ?? current.provider) !== (current.fixtureProvider ?? current.provider);
+
+    if (providerChanged) {
+      const [predicted] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(livePredictions)
+        .innerJoin(liveFixtures, eq(livePredictions.liveFixtureId, liveFixtures.id))
+        .where(eq(liveFixtures.liveTournamentId, current.id));
+
+      if ((predicted?.count ?? 0) > 0) {
+        return res.status(409).json({
+          error:
+            `Cannot change the fixture provider: ${predicted!.count} prediction(s) are attached ` +
+            'to the current fixtures, and switching provider replaces them. Clear the ' +
+            'predictions first if this is really what you want.',
+        });
+      }
+    }
 
     const [row] = await db
       .update(liveTournaments)
@@ -226,6 +274,10 @@ liveTournamentsRouter.patch('/tournaments/:id', requireAdmin, async (req, res) =
       .where(eq(liveTournaments.id, req.params.id))
       .returning();
     if (!row) return res.status(404).json({ error: 'Not found' });
+
+    if (providerChanged) {
+      await db.delete(liveFixtures).where(eq(liveFixtures.liveTournamentId, row.id));
+    }
 
     // Bonus points are withheld while a tournament is still running, so the status change
     // is what awards them — and moving a tournament back out of `completed` takes them
