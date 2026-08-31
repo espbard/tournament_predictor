@@ -1040,7 +1040,10 @@ Components under `client/src/components/live/`:
 - `LiveCountdown.tsx` — ticking "locks in 2h 14m", flips to "Locked" at kickoff − 60 min.
 - `LiveStandingsTable.tsx` — read-only provider standings; single table or per-group depending on
   `format.tableScope`. Where the stage defines bands, each row carries a bar down its left in
-  the band's colour, with `LiveTableBandLegend` underneath saying what they mean.
+  the band's colour, with `LiveTableBandLegend` underneath saying what they mean. Beside each
+  team's crest sits a dimmed second one — the team the viewer predicted to finish there — and
+  the row glows green where that pick is the team actually standing in the spot, amber where it
+  is not but has landed in this section of the table.
 - `LiveTableBandLegend.tsx` — the swatches-and-ranges key, shown under both the real table and
   the predicted one. The colours themselves live in `lib/liveBands.ts` so the two agree.
 - `LiveSelectedMatchesPanel.tsx` — admin only, rendered on `AdminLiveTournamentDetailPage`. Picks
@@ -1427,7 +1430,7 @@ Recorded as they happen, so the document stays trustworthy.
 | `LiveTablePrediction` gained a `readOnly` prop rather than being handed a view with `isLocked: true` | Faking the lock would have made the card announce "closed — the first match has started" to somebody looking at their own still-open table |
 | The fixtures tab of a member's page opens on the last **played** gameweek, where the competition page opens on the next unplayed one | The predictions for a week still to come are withheld, so opening there would show a blank page. What can be looked at is what has been played |
 
-**Colour-coding the league table** *(added after the six phases, on request)*
+**Colour-coding the league table, and the predicted-team column** *(added after the six phases, on request)*
 
 | Decision | Why |
 |---|---|
@@ -1436,6 +1439,10 @@ Recorded as they happen, so the document stays trustworthy.
 | The band comes from the row's index in the table, not the `position` the provider reports | Two teams sharing a reported position would both take the higher band and push the count of coloured rows past 8. The first eight rows are the first eight rows |
 | `bandBarClasses` / `bandSwatchClasses` extracted to `client/src/lib/liveBands.ts`, and the legend to `LiveTableBandLegend` | The predicted table and the real one are read against each other, so green has to mean the same thing on both. They were already drawn by two separate copies of the same switch |
 | Under `border-collapse`, the per-row bars merge into one continuous stripe per band | This is how a real football table reads, and it is the same `border-l-4` the predicted table already used — where the rows are separate cards, so they stay separate bars there |
+| The predicted team's crest sits inside the team cell, beside the real crest, rather than in a column of its own | A column of its own lands at the far right of the flexible team column, a team name away from the crest it is meant to be compared against. Side by side, the comparison is the whole row |
+| A row's two glows are exactly the two things `calculateTablePoints` awards for the team predicted there | Green is an exact position and amber is the right band, measured the same way the scoring measures them, so a glowing row is a row currently earning points rather than a second, subtly different notion of "close" |
+| Both are read against the live standings, not a final table | The user asked for it to hold all season. Nothing about the comparison needs the stage to be over — where a team is standing today is what today's colours should reflect |
+| The column is dropped entirely for a per-group scope, and on any stage other than the one the order was predicted for | A predicted order is one list top to bottom. Against per-group tables, or against a different stage's standings, its indices line up with the wrong rows |
 
 ---
 

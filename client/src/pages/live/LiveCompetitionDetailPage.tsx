@@ -551,6 +551,11 @@ export default function LiveCompetitionDetailPage() {
           rows={standings}
           tableScope={competition.tableScope}
           stages={competition.stages}
+          teams={teams}
+          predictedOrder={
+            tableView?.available ? tableView.prediction?.orderedTeamIds ?? null : null
+          }
+          predictedStageKey={tableView?.available ? tableView.stageKey : null}
         />
       )}
 
