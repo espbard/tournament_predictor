@@ -20,10 +20,10 @@ import type { LiveStandingView } from '@/lib/liveApi';
 // colour, matching the predicted table so the two can be read against each other.
 //
 // Against that, each row also shows the team the viewer predicted would finish in that
-// spot, and glows to say how that pick is doing — green where it is the team actually
-// standing there, yellow where it is not but has landed in this section of the table
-// anyway. Those are the two things the table prediction scores (see
-// server/src/live/tableScoring.ts), so a row's glow is the points its badge is currently
+// spot, and glows to say how the viewer placed the team standing there — green where they
+// put it in exactly this position, yellow where they put it elsewhere but in this section
+// of the table. Those are the two things the table prediction scores (see
+// server/src/live/tableScoring.ts), so a row's glow is the points its team is currently
 // earning. It reads off the live standings, so it is meaningful all season rather than
 // only once the stage is played out and scored.
 
@@ -80,9 +80,11 @@ function Table({
 
   const showPicks = !!predictedOrder && predictedOrder.length > 0;
   const teamById = new Map(teams.map(team => [team.id, team]));
-  // Where each team is standing right now. The pick column is read against the live table
-  // rather than a final one, which is what makes it worth looking at mid-season.
-  const positionByTeamId = new Map(rows.map((row, index) => [row.teamId, index + 1]));
+  // Where the viewer put each team. Compared against where it is standing right now, not
+  // against a final table, which is what makes the colours worth looking at mid-season.
+  const predictedPositionByTeamId = new Map(
+    (predictedOrder ?? []).map((teamId, index) => [teamId, index + 1]),
+  );
 
   return (
     <div className="overflow-x-auto">
@@ -110,21 +112,25 @@ function Table({
             // of the higher one and push the count of coloured rows past the band.
             const band = bandDefForPosition(stage, index + 1);
 
-            // The team this viewer put in this spot, and how that is working out. Exactly
-            // the two things the table prediction scores, measured the same way.
             const position = index + 1;
+            // The team the viewer put in this spot. Shown beside the one standing here, but
+            // it is not what the row's colour is about.
             const pickedTeamId = predictedOrder?.[index] ?? null;
             const pickedTeam = pickedTeamId ? teamById.get(pickedTeamId) ?? null : null;
-            const pickedPosition = pickedTeamId ? positionByTeamId.get(pickedTeamId) ?? null : null;
-            const pickedBand = pickedPosition === null ? null : bandForPosition(stage, pickedPosition);
+
+            // How the viewer placed the team standing here — exactly the two things the
+            // table prediction scores for it, measured the same way.
+            const predictedPosition = predictedPositionByTeamId.get(row.teamId) ?? null;
+            const predictedBand =
+              predictedPosition === null ? null : bandForPosition(stage, predictedPosition);
             const pickState: PickState =
-              pickedTeamId === null
+              predictedPosition === null
                 ? 'miss'
-                : pickedTeamId === row.teamId
+                : predictedPosition === position
                   ? 'exact'
                   : // Both sides have to resolve to a band, so a format that defines none
                     // never glows yellow — the same rule the scoring applies.
-                    band !== null && pickedBand !== null && pickedBand === band.key
+                    band !== null && predictedBand !== null && predictedBand === band.key
                     ? 'band'
                     : 'miss';
             const pickTitle = pickedTeam

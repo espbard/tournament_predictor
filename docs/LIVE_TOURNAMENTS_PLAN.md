@@ -1042,8 +1042,8 @@ Components under `client/src/components/live/`:
   `format.tableScope`. Where the stage defines bands, each row carries a bar down its left in
   the band's colour, with `LiveTableBandLegend` underneath saying what they mean. Beside each
   team's crest sits a dimmed second one — the team the viewer predicted to finish there — and
-  the row glows green where that pick is the team actually standing in the spot, amber where it
-  is not but has landed in this section of the table.
+  the row glows to say how the viewer placed *that row's* team: green where they put it in
+  exactly this position, amber where they put it elsewhere but in this section of the table.
 - `LiveTableBandLegend.tsx` — the swatches-and-ranges key, shown under both the real table and
   the predicted one. The colours themselves live in `lib/liveBands.ts` so the two agree.
 - `LiveSelectedMatchesPanel.tsx` — admin only, rendered on `AdminLiveTournamentDetailPage`. Picks
@@ -1440,7 +1440,8 @@ Recorded as they happen, so the document stays trustworthy.
 | `bandBarClasses` / `bandSwatchClasses` extracted to `client/src/lib/liveBands.ts`, and the legend to `LiveTableBandLegend` | The predicted table and the real one are read against each other, so green has to mean the same thing on both. They were already drawn by two separate copies of the same switch |
 | Under `border-collapse`, the per-row bars merge into one continuous stripe per band | This is how a real football table reads, and it is the same `border-l-4` the predicted table already used — where the rows are separate cards, so they stay separate bars there |
 | The predicted team's crest sits inside the team cell, beside the real crest, rather than in a column of its own | A column of its own lands at the far right of the flexible team column, a team name away from the crest it is meant to be compared against. Side by side, the comparison is the whole row |
-| A row's two glows are exactly the two things `calculateTablePoints` awards for the team predicted there | Green is an exact position and amber is the right band, measured the same way the scoring measures them, so a glowing row is a row currently earning points rather than a second, subtly different notion of "close" |
+| A row's two glows are about the team standing in it — where the viewer placed *that* team — and not about the badge beside it | The badge answers "who did I put here", the colour answers "how did I do on this team". Colouring by the badge instead reads as a verdict on a team two rows away, and leaves every team's own row silent about it |
+| Those two glows are exactly the two things `calculateTablePoints` awards for that team | Green is an exact position and amber is the right band, measured the same way the scoring measures them, so a glowing row is a row currently earning points rather than a second, subtly different notion of "close" |
 | Both are read against the live standings, not a final table | The user asked for it to hold all season. Nothing about the comparison needs the stage to be over — where a team is standing today is what today's colours should reflect |
 | The column is dropped entirely for a per-group scope, and on any stage other than the one the order was predicted for | A predicted order is one list top to bottom. Against per-group tables, or against a different stage's standings, its indices line up with the wrong rows |
 

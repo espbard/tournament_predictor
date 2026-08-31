@@ -666,8 +666,8 @@ const translations = {
         pickExplainer: 'The dimmed badge next to each team is the one you predicted to finish there.',
         pickedToFinish: 'You predicted {{team}} to finish {{position}}',
         noPick: 'You predicted nobody to finish {{position}}',
-        glowExact: 'Your pick finished here',
-        glowBand: 'Your pick is in this section',
+        glowExact: 'Your pick is in the exact position',
+        glowBand: 'Your pick is in the correct section',
       },
       bands: {
         automatic: 'Automatic qualification',
@@ -1530,8 +1530,8 @@ const translations = {
         pickExplainer: 'Det nedtonede merket ved siden av hvert lag er laget du tippet på den plassen.',
         pickedToFinish: 'Du tippet {{team}} på {{position}}. plass',
         noPick: 'Du tippet ingen på {{position}}. plass',
-        glowExact: 'Tippet ditt ligger her',
-        glowBand: 'Tippet ditt er i denne delen',
+        glowExact: 'Du tippet dette laget i nøyaktig riktig posisjon',
+        glowBand: 'Du tippet dette laget i korrekt del av tabellen',
       },
       bands: {
         automatic: 'Direkte videre',
@@ -2393,8 +2393,8 @@ const translations = {
         pickExplainer: 'Das blasse Wappen neben jedem Team ist das, das du auf diesem Platz getippt hast.',
         pickedToFinish: 'Du hast {{team}} auf Platz {{position}} getippt',
         noPick: 'Du hast niemanden auf Platz {{position}} getippt',
-        glowExact: 'Dein Tipp steht hier',
-        glowBand: 'Dein Tipp ist in diesem Abschnitt',
+        glowExact: 'Du hast dieses Team genau richtig platziert',
+        glowBand: 'Du hast dieses Team im richtigen Abschnitt platziert',
       },
       bands: {
         automatic: 'Direkt qualifiziert',
