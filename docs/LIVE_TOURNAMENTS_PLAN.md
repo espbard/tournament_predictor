@@ -1061,8 +1061,8 @@ Components under `client/src/components/live/`:
   in its `gate` variant — same list, save control pinned to the foot of the screen, and the
   standings order on screen counts as a submission untouched. The bonus step writes its own
   controls rather than sharing the panel's: required answers are large and alone on a dark
-  screen, and a player answer may be typed rather than picked, since its suggestions come from
-  an external service a firewall can block (`PlayerSearchInput`'s `allowFreeText`).
+  screen. A player, team or country answer must be picked from its list here as everywhere
+  else — `PlayerSearchInput`'s `allowFreeText` is for the admin side only.
 - `LiveBonusQuestionsTab.tsx` / `AdminLiveBonusQuestionsPanel.tsx` — the data half of the bonus
   tab and of the admin authoring panel. Both render
   `components/bonus/BonusQuestionsPanel.tsx`, which is the manual type's bonus UI lifted out of
@@ -1446,6 +1446,17 @@ Recorded as they happen, so the document stays trustworthy.
 | Those two glows are exactly the two things `calculateTablePoints` awards for that team | Green is an exact position and amber is the right band, measured the same way the scoring measures them, so a glowing row is a row currently earning points rather than a second, subtly different notion of "close" |
 | Both are read against the live standings, not a final table | The user asked for it to hold all season. Nothing about the comparison needs the stage to be over — where a team is standing today is what today's colours should reflect |
 | The column is dropped entirely for a per-group scope, and on any stage other than the one the order was predicted for | A predicted order is one list top to bottom. Against per-group tables, or against a different stage's standings, its indices line up with the wrong rows |
+
+**Answers must be picked, never typed** *(added after the six phases, on request)*
+
+| Decision | Why |
+|---|---|
+| The gate no longer passes `allowFreeText` to `PlayerSearchInput`; it is now admin-only, for setting a correct answer or building an option list | Answers are graded by comparing text. A typed name that differs from the picked one by a typo, an accent or a first initial scores nothing and reads as bad luck rather than a mistake. Picking is what keeps every answer to one question spelled the same way |
+| Country, team, and a player question narrowed to an option list were already safe, and the server already enforced them | `checkLiveBonusAnswer` refuses anything outside `liveBonusOptions`, which resolves to the European countries, the tournament's teams, or the admin's list. Only a free-form player question has no set to check against |
+| Which means a free-form player answer is enforced in the UI alone | There is no roster on our side to check a name against, and the suggestions come from a third-party database the browser queries directly. Validating server-side would mean putting that database in the save path, where an outage would start refusing valid answers |
+| A typed-but-unpicked box now says so, and says separately when the database is unreachable | A disabled Next button is not an explanation. The two cases also differ in what to do about them — one is a spelling to fix, the other is a network to change — and they look identical on screen otherwise |
+| Opening the suggestions scrolls the field to the middle of the screen | The list renders under the input, which on a phone is often already near the keyboard. This is what likely produced the typed answers in the first place: the suggestions were there, just not visible |
+| A member behind a firewall that blocks the player database now cannot pass the gate on a free-form player question | Accepted, and requested. The way out is on the admin side, which already exists: narrowing the question to a list of allowed answers turns it into a `<select>` with no external dependency |
 
 ---
 

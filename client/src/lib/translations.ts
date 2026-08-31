@@ -286,6 +286,12 @@ const translations = {
         country: 'Country',
       },
       chooseAnswer: 'Choose an answer…',
+      picker: {
+        pickOne: 'Tap one of the suggestions — a typed name is not an answer on its own.',
+        noMatches: 'No match. Check the spelling — the answer has to be picked from the list.',
+        searchUnavailable: 'The player database cannot be reached right now. Try again in a moment, or from another network.',
+        pickTeam: 'Tap one of the teams — a typed name is not an answer on its own.',
+      },
       constraints: {
         min: 'Lowest allowed',
         max: 'Highest allowed',
@@ -1149,6 +1155,12 @@ const translations = {
         country: 'Land',
       },
       chooseAnswer: 'Velg et svar…',
+      picker: {
+        pickOne: 'Trykk på et av forslagene – et navn du skriver selv teller ikke som svar.',
+        noMatches: 'Ingen treff. Sjekk stavemåten – svaret må velges fra listen.',
+        searchUnavailable: 'Spillerdatabasen kan ikke nås akkurat nå. Prøv igjen om litt, eller fra et annet nettverk.',
+        pickTeam: 'Trykk på et av lagene – et navn du skriver selv teller ikke som svar.',
+      },
       constraints: {
         min: 'Laveste tillatte',
         max: 'Høyeste tillatte',
@@ -2011,6 +2023,12 @@ const translations = {
         country: 'Land',
       },
       chooseAnswer: 'Antwort wählen…',
+      picker: {
+        pickOne: 'Tippe auf einen der Vorschläge — ein selbst getippter Name zählt nicht als Antwort.',
+        noMatches: 'Kein Treffer. Prüfe die Schreibweise — die Antwort muss aus der Liste gewählt werden.',
+        searchUnavailable: 'Die Spielerdatenbank ist gerade nicht erreichbar. Versuche es gleich noch einmal oder aus einem anderen Netz.',
+        pickTeam: 'Tippe auf eines der Teams — ein selbst getippter Name zählt nicht als Antwort.',
+      },
       constraints: {
         min: 'Niedrigster Wert',
         max: 'Höchster Wert',

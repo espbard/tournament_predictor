@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useT } from '@/lib/useT';
 
 interface SportsDbPlayer {
   idPlayer: string;
@@ -15,12 +16,14 @@ interface Props {
   disabled?: boolean;
   placeholder?: string;
   /**
-   * Take a typed name as the answer, without waiting for a pick from the suggestions.
+   * Take a typed name as the value, without waiting for a pick from the suggestions.
    *
-   * The suggestions come from an external player database, which a corporate firewall —
-   * or an outage — can put out of reach. Anywhere an answer is *required*, that would
-   * otherwise be a dead end, so those callers opt in and the typed text stands on its own.
-   * Answers are graded as text either way.
+   * For the admin side only — setting a question's correct answer, or building its list of
+   * allowed ones, where the name wanted may be one the external database does not carry.
+   *
+   * Never for answering a question. An answer is graded by comparing text, so a typo or a
+   * different spelling of the same player silently scores nothing; picking from the list is
+   * what keeps everyone's answer to one question spelled the same way.
    */
   allowFreeText?: boolean;
 }
@@ -32,10 +35,14 @@ export default function PlayerSearchInput({
   placeholder,
   allowFreeText = false,
 }: Props) {
+  const { t } = useT();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SportsDbPlayer[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
+  // The search is a request to a third-party database. "It is down" and "there is no such
+  // player" look identical on screen otherwise, and only one of them is worth retrying.
+  const [searchFailed, setSearchFailed] = useState(false);
   // Player data for the currently selected value (only populated when selected this session)
   const [selectedMeta, setSelectedMeta] = useState<SportsDbPlayer | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -51,11 +58,20 @@ export default function PlayerSearchInput({
     return () => document.removeEventListener('mousedown', onClickOutside);
   }, []);
 
+  // Bring the field up the screen when suggestions appear. On a phone the list renders
+  // below an input that is often already near the keyboard, and a suggestion nobody can see
+  // is a suggestion nobody can pick — which now means no answer at all.
+  useEffect(() => {
+    if (!open) return;
+    containerRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, [open]);
+
   // When value is cleared externally, reset
   useEffect(() => {
     if (!value) {
       setQuery('');
       setSelectedMeta(null);
+      setSearchFailed(false);
     }
   }, [value]);
 
@@ -67,6 +83,7 @@ export default function PlayerSearchInput({
     if (allowFreeText) onChange(q);
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    setSearchFailed(false);
     if (q.trim().length < 2) {
       setResults([]);
       setOpen(false);
@@ -88,6 +105,7 @@ export default function PlayerSearchInput({
       } catch {
         setResults([]);
         setOpen(false);
+        setSearchFailed(true);
       } finally {
         setLoading(false);
       }
@@ -108,6 +126,7 @@ export default function PlayerSearchInput({
     onChange('');
     setResults([]);
     setOpen(false);
+    setSearchFailed(false);
   }
 
   const thumbUrl = selectedMeta?.strThumb && selectedMeta.strThumb !== ''
@@ -127,6 +146,10 @@ export default function PlayerSearchInput({
   // saved answer). With free text the value changes on every keystroke, so the card is
   // shown only for a real pick — otherwise it would swallow the field mid-word.
   const isSelected = allowFreeText ? !!selectedMeta : !!value;
+
+  // Where a pick is required, typed text is not an answer — say so once there is enough of
+  // it to have searched on and the search has come back.
+  const needsPick = !allowFreeText && !isSelected && query.trim().length >= 2 && !loading;
 
   return (
     <div ref={containerRef} className="relative">
@@ -172,6 +195,20 @@ export default function PlayerSearchInput({
             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">…</span>
           )}
         </div>
+      )}
+
+      {/* Typed but not picked, so there is no answer yet. Said out loud rather than left to
+          a disabled save button, since on a phone the suggestions can be under the keyboard. */}
+      {needsPick && (
+        <p
+          className={`mt-1 text-xs ${searchFailed ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}
+        >
+          {searchFailed
+            ? t('bonusQuestions.picker.searchUnavailable')
+            : results.length === 0
+              ? t('bonusQuestions.picker.noMatches')
+              : t('bonusQuestions.picker.pickOne')}
+        </p>
       )}
 
       {/* Dropdown */}

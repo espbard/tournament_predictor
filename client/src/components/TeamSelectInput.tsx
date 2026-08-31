@@ -1,5 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
+import { useT } from '@/lib/useT';
 import type { Team } from '@tournament-predictor/shared';
+
+// ── Pick a team ───────────────────────────────────────────────────────────────
+//
+// A filter box over a fixed list, not a text field: only `select` ever reports a value, so
+// what is typed narrows the list and never becomes the answer on its own. The list stays
+// closed behind the keyboard on a phone, so a typed-but-unpicked box says as much.
 
 interface Props {
   value: string;       // team name
@@ -9,6 +16,7 @@ interface Props {
 }
 
 export default function TeamSelectInput({ value, onChange, teams, disabled }: Props) {
+  const { t } = useT();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
@@ -80,6 +88,15 @@ export default function TeamSelectInput({ value, onChange, teams, disabled }: Pr
           placeholder={value || 'Select a team…'}
           className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
         />
+      )}
+
+      {/* Typed over, nothing chosen — so there is no answer yet. */}
+      {!selectedTeam && query.trim() !== '' && (
+        <p className="mt-1 text-xs text-muted-foreground">
+          {filtered.length === 0
+            ? t('bonusQuestions.picker.noMatches')
+            : t('bonusQuestions.picker.pickTeam')}
+        </p>
       )}
 
       {/* Dropdown */}
