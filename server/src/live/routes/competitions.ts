@@ -984,6 +984,116 @@ liveCompetitionsRouter.get(
   },
 );
 
+/**
+ * Every member's prediction for one fixture, with the points it earned.
+ *
+ * Feeds the "what everyone predicted" dropdown under a played match. Members who never
+ * predicted are returned too, with a null prediction — in a small league, who sat a match
+ * out is as much a part of the picture as who got it right. Read-only accounts that exist
+ * purely to appear on a leaderboard are the exception: they are refused predictions
+ * outright, so listing them as never having made one would be noise.
+ *
+ * Gated on the fixture's own lock, the same rule the per-user routes above follow: until
+ * kickoff − 60 min this would be a way to copy somebody else's prediction.
+ */
+liveCompetitionsRouter.get(
+  '/competitions/:id/fixtures/:fixtureId/predictions',
+  requireAuth,
+  async (req, res) => {
+    try {
+      const { id, fixtureId } = req.params;
+      if (!(await assertMember(id, res.locals.user))) {
+        return res.status(403).json({ error: 'Not a member of this competition' });
+      }
+
+      const [competition] = await db
+        .select()
+        .from(liveCompetitions)
+        .where(eq(liveCompetitions.id, id));
+      if (!competition) return res.status(404).json({ error: 'Not found' });
+
+      const [fixture] = await db
+        .select()
+        .from(liveFixtures)
+        .where(
+          and(
+            eq(liveFixtures.id, fixtureId),
+            eq(liveFixtures.liveTournamentId, competition.liveTournamentId),
+          ),
+        );
+      if (!fixture) return res.status(404).json({ error: 'Fixture not found' });
+
+      if (!isFixtureLocked({ kickoffAt: fixture.kickoffAt, status: fixture.status })) {
+        return res.status(403).json({ error: 'Not visible until the match has locked' });
+      }
+
+      const rows = await db
+        .select({
+          userId: liveCompetitionMembers.userId,
+          username: users.username,
+          imageUrl: users.imageUrl,
+          iconColor: users.iconColor,
+          homeScore: livePredictions.homeScore,
+          awayScore: livePredictions.awayScore,
+          points: livePredictions.points,
+          correctOutcomePoints: livePredictions.correctOutcomePoints,
+          correctGoalDifferencePoints: livePredictions.correctGoalDifferencePoints,
+          exactScorePoints: livePredictions.exactScorePoints,
+        })
+        .from(liveCompetitionMembers)
+        .innerJoin(users, eq(liveCompetitionMembers.userId, users.id))
+        .leftJoin(
+          livePredictions,
+          and(
+            eq(livePredictions.liveCompetitionId, liveCompetitionMembers.liveCompetitionId),
+            eq(livePredictions.userId, liveCompetitionMembers.userId),
+            eq(livePredictions.liveFixtureId, fixture.id),
+          ),
+        )
+        .where(
+          and(
+            eq(liveCompetitionMembers.liveCompetitionId, id),
+            eq(users.isLeaderboardUser, false),
+          ),
+        )
+        .orderBy(asc(users.username));
+
+      // Best first, then alphabetical; whoever did not predict goes to the bottom. Points
+      // are null while a locked match is still being played, which ranks everyone level
+      // and leaves the alphabetical order to decide.
+      const ordered = [...rows].sort((a, b) => {
+        const aHas = a.homeScore !== null;
+        const bHas = b.homeScore !== null;
+        if (aHas !== bHas) return aHas ? -1 : 1;
+        const byPoints = (b.points ?? 0) - (a.points ?? 0);
+        return byPoints !== 0 ? byPoints : a.username.localeCompare(b.username);
+      });
+
+      return res.json(
+        ordered.map(row => ({
+          userId: row.userId,
+          username: row.username,
+          imageUrl: row.imageUrl,
+          iconColor: row.iconColor,
+          prediction:
+            row.homeScore === null || row.awayScore === null
+              ? null
+              : {
+                  homeScore: row.homeScore,
+                  awayScore: row.awayScore,
+                  points: row.points,
+                  correctOutcomePoints: row.correctOutcomePoints ?? 0,
+                  correctGoalDifferencePoints: row.correctGoalDifferencePoints ?? 0,
+                  exactScorePoints: row.exactScorePoints ?? 0,
+                },
+        })),
+      );
+    } catch (err) {
+      return fail(res, err);
+    }
+  },
+);
+
 // ── Bonus questions ───────────────────────────────────────────────────────────
 //
 // Questions belong to the tournament (see routes/tournaments.ts); answers belong here.

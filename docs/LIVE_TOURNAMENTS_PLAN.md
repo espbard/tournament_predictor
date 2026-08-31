@@ -1025,6 +1025,7 @@ New routes in `client/src/App.tsx`:
 | Path | Component | Guard |
 |---|---|---|
 | `/live/competitions/:id` | `pages/live/LiveCompetitionDetailPage.tsx` | Private |
+| `/live/competitions/:id/predictions/:userId` | `pages/live/LiveUserPredictionsPage.tsx` | Private |
 | `/admin/live-tournaments` | `pages/live/AdminLiveTournamentsPage.tsx` | Admin |
 | `/admin/live-tournaments/:id` | `pages/live/AdminLiveTournamentDetailPage.tsx` | Admin |
 | `/admin/live-competitions` | `pages/live/AdminLiveCompetitionsPage.tsx` | Admin |
@@ -1061,6 +1062,12 @@ Components under `client/src/components/live/`:
   `components/bonus/BonusQuestionsPanel.tsx`, which is the manual type's bonus UI lifted out of
   `pages/BonusQuestionsTab.tsx` and driven by an adapter: same panel, different endpoints and a
   per-question rather than per-competition deadline.
+- `LiveFixtureList.tsx` — the stage's matches, grouped the way the stage is played: one
+  matchday for a table stage, `LiveTieCard`s for a two-legged knockout one. Shared by the
+  competition page and the read-only view of another member's predictions.
+- `LiveMatchPredictions.tsx` — the collapsed "what everyone predicted" dropdown under a
+  played match: every member, their score and what it was worth, names linking to their
+  predictions. Fetched only once opened.
 - `LiveLeaderboard.tsx`, `LiveQualifiedTeamsPanel.tsx`.
 - `client/src/lib/liveApi.ts` — typed thin wrappers over the existing `client/src/lib/api.ts`.
   Note `api` currently has no `put` — add one.
@@ -1404,6 +1411,18 @@ Recorded as they happen, so the document stays trustworthy.
 | `LiveScoreResult` (per fixture) no longer extends `LiveScoreBreakdown` | The breakdown now includes table points, which a single fixture can never produce. Sharing the type would have forced a meaningless field onto every fixture result |
 | Member totals moved to two `LEFT JOIN LATERAL` subqueries | Fixture points and table points are independent sources; summing them in one join would multiply the rows together |
 | `moveItem` / `initialOrder` extracted to `client/src/lib/liveTableOrder.ts` | Pure logic worth checking without mounting React. Extracting it surfaced a real bug: a guard clause could return early and leave the table an incomplete permutation, which the server would then reject on save |
+
+**Seeing what everyone else predicted** *(added after the six phases, on request)*
+
+| Decision | Why |
+|---|---|
+| One request per fixture, made only when the dropdown is opened, rather than folding every member's predictions into the fixtures read model | A Premier League season is 380 fixtures × ~20 members. Nobody opens more than a handful, and the fixtures query is invalidated on every SSE push, which would re-fetch the lot |
+| `GET /competitions/:id/fixtures/:fixtureId/predictions` refuses until that fixture has locked, even though the UI only offers it on a finished one | The same rule the per-user routes already follow. The UI's choice of when to show a control is not an access rule, and the endpoint is reachable directly |
+| Members who never predicted the match are returned, with a null prediction | In a twenty-person league who sat a match out is as much a part of the picture as who got it right. Filtering them out server-side would make "everyone" mean "everyone who played" |
+| `LiveUserPredictionsPage` reuses `LiveFixtureList`, `LiveTablePrediction` and `LiveBonusQuestionsTab` rather than rendering its own read-only variants | They already had the states this page needs — a locked fixture card, a `viewUserId` bonus panel — so a parallel set would have been a second thing to keep in step with scoring changes |
+| It composes the other member's answers over the competition's own view instead of new per-user read models | The three per-user endpoints from earlier phases already withhold what has not locked. The teams, bands and scoring the page renders around those answers are the competition's, not the member's |
+| `LiveTablePrediction` gained a `readOnly` prop rather than being handed a view with `isLocked: true` | Faking the lock would have made the card announce "closed — the first match has started" to somebody looking at their own still-open table |
+| The fixtures tab of a member's page opens on the last **played** gameweek, where the competition page opens on the next unplayed one | The predictions for a week still to come are withheld, so opening there would show a blank page. What can be looked at is what has been played |
 
 ---
 

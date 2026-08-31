@@ -5,8 +5,7 @@ import { ApiError } from '@/lib/api';
 import { liveApi, liveKeys, type LiveFixtureView } from '@/lib/liveApi';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { useT } from '@/lib/useT';
-import LiveFixtureCard from '@/components/live/LiveFixtureCard';
-import LiveTieCard from '@/components/live/LiveTieCard';
+import LiveFixtureList from '@/components/live/LiveFixtureList';
 import LiveGameweekProgress, {
   type LiveGameweekProgressItem,
 } from '@/components/live/LiveGameweekProgress';
@@ -131,6 +130,8 @@ export default function LiveCompetitionDetailPage() {
     });
     es.addEventListener('leaderboard-updated', () => {
       queryClient.invalidateQueries({ queryKey: liveKeys.leaderboard(id) });
+      // Scoring has run, so any open "what everyone predicted" dropdown is now behind.
+      queryClient.invalidateQueries({ queryKey: liveKeys.allFixturePredictions(id) });
     });
     return () => es.close();
   }, [id, queryClient]);
@@ -493,7 +494,7 @@ export default function LiveCompetitionDetailPage() {
                 </>
               )}
 
-              <FixtureList
+              <LiveFixtureList
                 fixtures={stageFixtures}
                 stageKind={stageDef?.kind ?? 'table'}
                 legs={stageDef?.legs ?? 1}
@@ -505,6 +506,7 @@ export default function LiveCompetitionDetailPage() {
                 savingFixtureId={savingFixtureId}
                 savedFixtures={savedFixtures}
                 errors={errors}
+                competitionId={id!}
               />
             </>
           )}
@@ -548,108 +550,7 @@ export default function LiveCompetitionDetailPage() {
         <LiveStandingsTable rows={standings} tableScope={competition.tableScope} />
       )}
 
-      {activeTab === 'leaderboard' && <LiveLeaderboard rows={leaderboard} />}
+      {activeTab === 'leaderboard' && <LiveLeaderboard rows={leaderboard} competitionId={id!} />}
     </main>
-  );
-}
-
-// ── Fixture list ──────────────────────────────────────────────────────────────
-
-interface FixtureListProps {
-  fixtures: LiveFixtureView[];
-  stageKind: 'table' | 'knockout';
-  legs: 1 | 2;
-  matchday: number | null;
-  /** Why there is nothing here, when the caller knows better than "no matches yet". */
-  emptyMessage?: string;
-  onSave: (fixtureId: string, homeScore: number, awayScore: number) => void;
-  savingFixtureId: string | null;
-  savedFixtures: Record<string, number>;
-  errors: Record<string, string>;
-}
-
-function FixtureList({
-  fixtures,
-  stageKind,
-  legs,
-  matchday,
-  emptyMessage,
-  onSave,
-  savingFixtureId,
-  savedFixtures,
-  errors,
-}: FixtureListProps) {
-  const { t } = useT();
-
-  // A two-legged knockout stage groups its legs into ties.
-  if (stageKind === 'knockout' && legs === 2) {
-    const ties = new Map<string, LiveFixtureView[]>();
-    const loose: LiveFixtureView[] = [];
-
-    for (const fixture of fixtures) {
-      if (!fixture.tieKey) {
-        // Undrawn, so it has no identifiable tie yet.
-        loose.push(fixture);
-        continue;
-      }
-      const bucket = ties.get(fixture.tieKey);
-      if (bucket) bucket.push(fixture);
-      else ties.set(fixture.tieKey, [fixture]);
-    }
-
-    return (
-      <div className="grid gap-3">
-        {[...ties.values()]
-          .sort((a, b) => (a[0].kickoffAt ?? '').localeCompare(b[0].kickoffAt ?? ''))
-          .map(tieLegs => (
-            <LiveTieCard
-              key={tieLegs[0].tieKey}
-              legs={tieLegs}
-              onSave={onSave}
-              savingFixtureId={savingFixtureId}
-              savedFixtures={savedFixtures}
-              errors={errors}
-            />
-          ))}
-        {loose.map(fixture => (
-          <LiveFixtureCard
-            key={fixture.id}
-            fixture={fixture}
-            onSave={onSave}
-            isSaving={savingFixtureId === fixture.id}
-            savedAt={savedFixtures[fixture.id] ?? null}
-            error={errors[fixture.id] ?? null}
-          />
-        ))}
-      </div>
-    );
-  }
-
-  const shown =
-    stageKind === 'table' && matchday !== null
-      ? fixtures.filter(f => f.matchday === matchday)
-      : fixtures;
-
-  if (shown.length === 0) {
-    return (
-      <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-        {emptyMessage ?? t('live.noFixtures')}
-      </p>
-    );
-  }
-
-  return (
-    <div className="grid gap-2">
-      {shown.map(fixture => (
-        <LiveFixtureCard
-          key={fixture.id}
-          fixture={fixture}
-          onSave={onSave}
-          isSaving={savingFixtureId === fixture.id}
-          savedAt={savedFixtures[fixture.id] ?? null}
-          error={errors[fixture.id] ?? null}
-        />
-      ))}
-    </div>
   );
 }

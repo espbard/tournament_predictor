@@ -64,7 +64,14 @@ export default function Navbar() {
   // Predictions / Results dropdowns as the manual type, and have no tab bar of their own.
   // Kept as a sibling branch rather than folded into the manual dropdowns: the two
   // tournament types share no sections.
+  // A member's read-only predictions hang off the live competition, and keep its tabs —
+  // picking one there goes back to the competition itself, as on the manual type.
   const isOnLiveCompetitionPage = /^\/live\/competitions\/[^/]+$/.test(location.pathname);
+  const isOnLivePredictionsPage = /^\/live\/competitions\/[^/]+\/predictions\/[^/]+$/.test(
+    location.pathname,
+  );
+  const showLiveTabs = isOnLiveCompetitionPage || isOnLivePredictionsPage;
+  const liveCompetitionId = location.pathname.match(/^\/live\/competitions\/([^/]+)/)?.[1];
   const LIVE_PREDICTION_TABS = ['fixtures', 'table', 'bonus'] as const;
   const LIVE_RESULT_TABS = ['standings', 'leaderboard'] as const;
   const liveTabParam = searchParams.get('tab') ?? '';
@@ -94,6 +101,8 @@ export default function Navbar() {
     setStandingsOpen(false);
     if (isOnPredictionsPage && competitionId) {
       navigate(`/competitions/${competitionId}?tab=${tab}`);
+    } else if (isOnLivePredictionsPage && liveCompetitionId) {
+      navigate(`/live/competitions/${liveCompetitionId}?tab=${tab}`);
     } else {
       setSearchParams(prev => {
         const n = new URLSearchParams(prev);
@@ -219,7 +228,7 @@ export default function Navbar() {
         )}
 
         {/* Live competition tabs */}
-        {isOnLiveCompetitionPage && (
+        {showLiveTabs && (
           <div className="flex items-center min-w-0">
             {/* Predictions dropdown */}
             <div ref={groupsRef} className="relative">

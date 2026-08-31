@@ -80,7 +80,8 @@ anything under a `live` prefix. A summary is in the "Live tournaments" section b
 │       ├── components/             # AppLayout, Navbar, KnockoutStageContent (2156 lines),
 │       │                           # FinalResultsView, LeaderboardLineGraph, UserStatCard,
 │       │                           # ImageUpload, UserAvatar, LoadingSpinner, FeedbackButton, …
-│       │   └── live/               # LiveFixtureCard, LiveTieCard, LiveCountdown,
+│       │   └── live/               # LiveFixtureCard, LiveTieCard, LiveFixtureList,
+│       │                           # LiveMatchPredictions, LiveCountdown,
 │       │                           # LiveStandingsTable, LiveLeaderboard,
 │       │                           # LiveQualifiedTeamsPanel, LiveTablePrediction
 │       ├── lib/                    # api.ts (fetch wrapper), translations.ts (no/en/de), useT.ts,
@@ -91,7 +92,8 @@ anything under a `live` prefix. A summary is in the "Live tournaments" section b
 │       │                           # CompetitionDetailPage (2990 lines), UserPredictionsPage,
 │       │                           # TournamentsPage, TournamentDetailPage, TournamentKnockoutPage,
 │       │                           # BonusQuestionsTab, TeamPage, Edit*Page, AdminFeedbackPage
-│       │   └── live/               # LiveCompetitionDetailPage, AdminLiveTournamentsPage,
+│       │   └── live/               # LiveCompetitionDetailPage, LiveUserPredictionsPage,
+│       │                           # AdminLiveTournamentsPage,
 │       │                           # AdminLiveTournamentDetailPage, AdminLiveCompetitionsPage
 │       └── store/                  # authStore, languageStore, themeStore (Zustand)
 ├── server
@@ -399,6 +401,7 @@ GET    /api/live/competitions/:id/events          — SSE: fixtures-updated, lea
 GET    /api/live/competitions/:id/fixtures        — MAIN READ MODEL, see below
 PUT    /api/live/competitions/:id/predictions     — upsert one; enforces kickoff − 60 min
 GET    /api/live/competitions/:id/predictions/:userId  — locked fixtures only
+GET    /api/live/competitions/:id/fixtures/:fixtureId/predictions — every member's, locked only
 GET    /api/live/competitions/:id/table-prediction     — teams, my order, deadline, result
 PUT    /api/live/competitions/:id/table-prediction     — {stageKey, orderedTeamIds}
 GET    /api/live/competitions/:id/table-prediction/:userId  — only after the deadline

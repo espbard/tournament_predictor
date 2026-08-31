@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useT } from '@/lib/useT';
 import LiveCountdown from '@/components/live/LiveCountdown';
+import LiveMatchPredictions from '@/components/live/LiveMatchPredictions';
 import type { LiveFixtureView } from '@/lib/liveApi';
 
 // ── One fixture ───────────────────────────────────────────────────────────────
@@ -8,6 +9,9 @@ import type { LiveFixtureView } from '@/lib/liveApi';
 // Crests, names, kickoff, live minute and score, score inputs or a locked read-only
 // state, points once finished, and an AET / pens annotation showing how a tie actually
 // ended alongside the normal-time score that did the scoring.
+//
+// Once the match is played it also carries the dropdown of what the whole league
+// predicted — which needs the competition, so `competitionId` is what switches it on.
 
 interface Props {
   fixture: LiveFixtureView;
@@ -16,6 +20,13 @@ interface Props {
   savedAt: number | null;
   error: string | null;
   readOnly?: boolean;
+  /**
+   * The competition this fixture is being predicted in. Set it to offer the league's
+   * predictions under a played match; omit it where there is no league context.
+   */
+  competitionId?: string;
+  /** Names in that dropdown link to a member's predictions unless this says otherwise. */
+  linkToUsers?: boolean;
 }
 
 // The team name is always rendered next to the badge, so the crest itself is decorative.
@@ -35,6 +46,8 @@ export default function LiveFixtureCard({
   savedAt,
   error,
   readOnly = false,
+  competitionId,
+  linkToUsers = true,
 }: Props) {
   const { t } = useT();
   const [home, setHome] = useState(fixture.prediction ? String(fixture.prediction.homeScore) : '');
@@ -212,6 +225,16 @@ export default function LiveFixtureCard({
         <p className="mt-1 text-center text-xs text-amber-600 dark:text-amber-400">
           {t('live.notScorable')}
         </p>
+      )}
+
+      {/* What the rest of the league predicted. Only under a played match that was part
+          of the game: there is nothing to compare on a match nobody predicted. */}
+      {competitionId && isFinished && inPredictionGame && (
+        <LiveMatchPredictions
+          competitionId={competitionId}
+          fixtureId={fixture.id}
+          linkToUsers={linkToUsers}
+        />
       )}
     </div>
   );

@@ -14,6 +14,9 @@ interface Props {
   savedFixtures: Record<string, number>;
   errors: Record<string, string>;
   readOnly?: boolean;
+  /** Passed to each leg so a played one can offer the league's predictions. */
+  competitionId?: string;
+  linkToUsers?: boolean;
 }
 
 /**
@@ -44,6 +47,8 @@ export default function LiveTieCard({
   savedFixtures,
   errors,
   readOnly = false,
+  competitionId,
+  linkToUsers = true,
 }: Props) {
   const { t } = useT();
   const ordered = [...legs].sort((a, b) => (a.legNumber ?? 0) - (b.legNumber ?? 0));
@@ -88,6 +93,8 @@ export default function LiveTieCard({
               savedAt={savedFixtures[leg.id] ?? null}
               error={errors[leg.id] ?? null}
               readOnly={readOnly}
+              competitionId={competitionId}
+              linkToUsers={linkToUsers}
             />
           </div>
         ))}

@@ -23,6 +23,7 @@ import AdminFeedbackPage from '@/pages/AdminFeedbackPage';
 import TeamPage from '@/pages/TeamPage';
 import FeedbackButton from '@/components/FeedbackButton';
 import LiveCompetitionDetailPage from '@/pages/live/LiveCompetitionDetailPage';
+import LiveUserPredictionsPage from '@/pages/live/LiveUserPredictionsPage';
 import AdminLiveTournamentsPage from '@/pages/live/AdminLiveTournamentsPage';
 import AdminLiveTournamentDetailPage from '@/pages/live/AdminLiveTournamentDetailPage';
 import AdminLiveCompetitionsPage from '@/pages/live/AdminLiveCompetitionsPage';
@@ -185,6 +186,14 @@ export default function App() {
         element={
           <PrivateRoute maintenanceMode={maintenanceMode}>
             <LiveCompetitionDetailPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/live/competitions/:id/predictions/:userId"
+        element={
+          <PrivateRoute maintenanceMode={maintenanceMode}>
+            <LiveUserPredictionsPage />
           </PrivateRoute>
         }
       />

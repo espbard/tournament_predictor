@@ -44,6 +44,11 @@ interface Props {
   onClear?: () => void;
   isClearing?: boolean;
   clearError?: string | null;
+  /**
+   * Show the order without offering to change it — another member's table, which may
+   * still be open for them even though the viewer has no business editing it.
+   */
+  readOnly?: boolean;
 }
 
 function bandClasses(bandKey: string | null): string {
@@ -69,6 +74,7 @@ export default function LiveTablePrediction({
   onClear,
   isClearing = false,
   clearError = null,
+  readOnly = false,
 }: Props) {
   const { t } = useT();
   const teamById = useMemo(() => new Map(view.teams.map(team => [team.id, team])), [view.teams]);
@@ -87,7 +93,7 @@ export default function LiveTablePrediction({
     setOrder(initialOrder(view.prediction?.orderedTeamIds ?? null, view.currentOrder, view.teams));
   }, [view.prediction, view.currentOrder, view.teams, touched]);
 
-  const editable = !view.isLocked;
+  const editable = !readOnly && !view.isLocked;
 
   // The stage definition is only needed for its bands, so a synthetic one will do.
   const stageForBands = useMemo(
@@ -128,7 +134,7 @@ export default function LiveTablePrediction({
 
   // Withdrawing is offered only while the table is still open and there is a submitted
   // table to withdraw. Once it locks it is what the season is scored against.
-  const canClear = !!onClear && !isGate && !view.isLocked && !!view.prediction;
+  const canClear = !!onClear && !isGate && !readOnly && !view.isLocked && !!view.prediction;
 
   return (
     <div>
