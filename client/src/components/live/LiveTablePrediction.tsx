@@ -11,6 +11,8 @@ import { CSS } from '@dnd-kit/utilities';
 import { ChevronDown, ChevronUp, GripVertical, Lock } from 'lucide-react';
 import { bandDefForPosition, type LiveTableBand, type LiveTeam } from '@tournament-predictor/shared';
 import { useT } from '@/lib/useT';
+import { bandBarClasses } from '@/lib/liveBands';
+import LiveTableBandLegend from '@/components/live/LiveTableBandLegend';
 import { initialOrder, moveItem } from '@/lib/liveTableOrder';
 import type { LiveTablePredictionView } from '@/lib/liveApi';
 
@@ -49,19 +51,6 @@ interface Props {
    * still be open for them even though the viewer has no business editing it.
    */
   readOnly?: boolean;
-}
-
-function bandClasses(bandKey: string | null): string {
-  switch (bandKey) {
-    case 'automatic':
-      return 'border-l-4 border-l-green-500';
-    case 'playoff':
-      return 'border-l-4 border-l-amber-500';
-    case 'eliminated':
-      return 'border-l-4 border-l-muted-foreground/40';
-    default:
-      return '';
-  }
 }
 
 export default function LiveTablePrediction({
@@ -153,25 +142,7 @@ export default function LiveTablePrediction({
             : t('live.table.explainer', { exact: view.scoringConfig.table_exact_position })}
         </p>
 
-        {view.bands.length > 0 && (
-          <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-            {view.bands.map(band => (
-              <li key={band.key} className="flex items-center gap-1.5">
-                <span
-                  className={`inline-block h-2.5 w-2.5 rounded-sm ${
-                    band.key === 'automatic'
-                      ? 'bg-green-500'
-                      : band.key === 'playoff'
-                        ? 'bg-amber-500'
-                        : 'bg-muted-foreground/40'
-                  }`}
-                />
-                {t(band.labelKey)} ({band.from}
-                {band.to === null ? '+' : `–${band.to}`})
-              </li>
-            ))}
-          </ul>
-        )}
+        <LiveTableBandLegend bands={view.bands} className="mt-3" />
 
         <div className="mt-3 flex flex-wrap items-center gap-3">
           {view.isLocked ? (
@@ -364,7 +335,7 @@ function TableRow({
   return (
     <li
       ref={setDropRef}
-      className={`flex items-center gap-2 rounded-md border bg-background px-2 py-1.5 ${bandClasses(bandKey)} ${
+      className={`flex items-center gap-2 rounded-md border bg-background px-2 py-1.5 ${bandBarClasses(bandKey)} ${
         isOver ? 'ring-2 ring-primary' : ''
       } ${isDragging ? 'opacity-40' : ''}`}
     >

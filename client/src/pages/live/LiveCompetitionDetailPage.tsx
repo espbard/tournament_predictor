@@ -547,7 +547,11 @@ export default function LiveCompetitionDetailPage() {
         ))}
 
       {activeTab === 'standings' && (
-        <LiveStandingsTable rows={standings} tableScope={competition.tableScope} />
+        <LiveStandingsTable
+          rows={standings}
+          tableScope={competition.tableScope}
+          stages={competition.stages}
+        />
       )}
 
       {activeTab === 'leaderboard' && <LiveLeaderboard rows={leaderboard} competitionId={id!} />}

@@ -83,11 +83,13 @@ anything under a `live` prefix. A summary is in the "Live tournaments" section b
 │       │   └── live/               # LiveFixtureCard, LiveTieCard, LiveFixtureList,
 │       │                           # LiveMatchPredictions, LiveCountdown,
 │       │                           # LiveStandingsTable, LiveLeaderboard,
-│       │                           # LiveQualifiedTeamsPanel, LiveTablePrediction
+│       │                           # LiveQualifiedTeamsPanel, LiveTablePrediction,
+│       │                           # LiveTableBandLegend
 │       ├── lib/                    # api.ts (fetch wrapper), translations.ts (no/en/de), useT.ts,
 │       │                           # tiebreakers.ts, pointSources.ts, teamTranslations.ts, utils.ts
 │       │   ├── liveApi.ts          # typed wrappers + query keys for /api/live/*
-│       │   └── liveTableOrder.ts    # pure ordering helpers for the table prediction
+│       │   ├── liveTableOrder.ts    # pure ordering helpers for the table prediction
+│       │   └── liveBands.ts         # table-band colours, shared by the real and predicted tables
 │       ├── pages/                  # HomePage, AdminHomePage, Login/Register, CompetitionsPage,
 │       │                           # CompetitionDetailPage (2990 lines), UserPredictionsPage,
 │       │                           # TournamentsPage, TournamentDetailPage, TournamentKnockoutPage,
