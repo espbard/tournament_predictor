@@ -779,8 +779,12 @@ liveCompetitionsRouter.delete('/competitions/:id/table-prediction', requireAuth,
 });
 
 /**
- * Another member's table prediction — only once the deadline has passed, so nobody can
- * copy an order while it still matters.
+ * Another member's table prediction.
+ *
+ * Visible to any member of the league from the moment it is submitted, deliberately: this
+ * is a season-long call people want to argue about before the season rather than after it.
+ * Copying an order is the accepted cost — unlike a per-fixture prediction, which stays
+ * closed until its own kickoff.
  */
 liveCompetitionsRouter.get(
   '/competitions/:id/table-prediction/:userId',
@@ -806,19 +810,6 @@ liveCompetitionsRouter.get(
 
       const stage = tablePredictionStage(getLiveFormat(tournament.format), tournament.startStageKey);
       if (!stage) return res.json(null);
-
-      const stageFixtures = await db
-        .select({ kickoffAt: liveFixtures.kickoffAt })
-        .from(liveFixtures)
-        .where(
-          and(
-            eq(liveFixtures.liveTournamentId, tournament.id),
-            eq(liveFixtures.stageKey, stage.key),
-          ),
-        );
-      if (!isTablePredictionLocked(stageFixtures.map(f => f.kickoffAt))) {
-        return res.status(403).json({ error: 'Not visible until the deadline has passed' });
-      }
 
       const [prediction] = await db
         .select()
@@ -1200,8 +1191,12 @@ async function isTournamentCompletedFor(competitionId: string): Promise<boolean>
 }
 
 /**
- * Another member's answers — only for questions that have already locked, so nobody can
- * copy one while it still matters. The same rule the per-fixture predictions follow.
+ * Another member's answers.
+ *
+ * Open to the league as soon as they are given, on the same reasoning as the table
+ * prediction above: these are season-long calls, and seeing them is most of the fun.
+ * Points stay redacted until the tournament is completed, which is a separate rule and
+ * applies to a member's own answers too.
  */
 liveCompetitionsRouter.get(
   '/competitions/:id/bonus-answers/:userId',
@@ -1226,24 +1221,9 @@ liveCompetitionsRouter.get(
         .where(eq(liveTournaments.id, competition.liveTournamentId));
       if (!tournament) return res.status(404).json({ error: 'Live tournament not found' });
 
-      const questions = await db
-        .select({ id: liveBonusQuestions.id, lockAt: liveBonusQuestions.lockAt })
-        .from(liveBonusQuestions)
-        .where(eq(liveBonusQuestions.liveTournamentId, tournament.id));
-
-      const kickoffs = await tablePredictionStageKickoffs(tournament);
-      const now = new Date();
-      const lockedQuestionIds = new Set(
-        questions.filter(q => isBonusQuestionLocked(q.lockAt, kickoffs, now)).map(q => q.id),
-      );
-
       const answers = await loadLiveBonusAnswers(id, userId);
       return res.json(
-        redactLiveBonusAnswerPoints(
-          answers.filter(a => viewer.isAdmin || lockedQuestionIds.has(a.questionId)),
-          viewer.isAdmin,
-          tournament.status === 'completed',
-        ),
+        redactLiveBonusAnswerPoints(answers, viewer.isAdmin, tournament.status === 'completed'),
       );
     } catch (err) {
       return fail(res, err);

@@ -26,13 +26,14 @@ import LiveBonusQuestionsTab from '@/components/live/LiveBonusQuestionsTab';
 // prediction, bonus questions — rendered from their answers instead of the viewer's, with
 // every control inert.
 //
-// Nothing is hidden client-side: each of the three endpoints behind this page withholds an
-// answer until the thing it is about has locked, so this page can never be used to copy a
-// prediction that still matters. What that means here is that a member's page legitimately
-// looks empty early in a season, which the tabs say rather than leaving blank.
+// Nothing is hidden client-side; what is visible is decided by the endpoints behind it. The
+// two season-long calls — the table and the bonus questions — are open to the league from
+// the moment they are given, because arguing about them before the season is the point.
+// Per-fixture predictions are not: those stay closed until their own kickoff, so a member's
+// fixtures tab legitimately shows nothing for a gameweek still to be played.
 //
-// The one exception is looking at yourself, where the competition's own queries already
-// hold your predictions and there is nothing to withhold.
+// Looking at yourself is the one case that reads none of that, since the competition's own
+// queries already hold your predictions.
 
 const TABS = ['fixtures', 'table', 'bonus'] as const;
 type TabId = (typeof TABS)[number];
@@ -84,16 +85,18 @@ export default function LiveUserPredictionsPage() {
     enabled: !!id,
   });
 
-  // Only asked for once the table has locked — before that the route refuses it, which is
-  // the same answer the tab gives without spending a request on it.
-  const tableIsLocked = !!tableView?.available && tableView.isLocked;
   const { data: theirTable } = useQuery({
     queryKey: liveKeys.userTablePrediction(id!, userId!),
     queryFn: () => liveApi.otherUserTablePrediction(id!, userId!),
-    enabled: !!id && !!userId && !isSelf && tableIsLocked,
+    enabled: !!id && !!userId && !isSelf,
   });
 
+  // Who is being looked at. The membership row is the whole answer where there is one — a
+  // member with no picture of their own has a null imageUrl, and falling through that to
+  // the viewer's own would put the wrong face beside their name. The auth store only
+  // stands in for an admin looking at themselves, who is in no competition's member list.
   const member = members.find(m => m.userId === userId) ?? null;
+  const subject = member ?? (isSelf && user ? user : null);
 
   // Their prediction replaces the viewer's own on every fixture. A fixture they never
   // predicted — or one that has not locked, which the server leaves out — shows as blank.
@@ -194,7 +197,7 @@ export default function LiveUserPredictionsPage() {
     );
   }
 
-  const username = member?.username ?? (isSelf ? user?.username ?? '' : '');
+  const username = subject?.username ?? '';
 
   // The table as they submitted it. Everything else about the view — the teams, the bands,
   // the scoring — is the competition's, and the list itself is rendered read-only.
@@ -211,8 +214,8 @@ export default function LiveUserPredictionsPage() {
       <div className="mb-6 flex items-center gap-3">
         <UserAvatar
           username={username}
-          imageUrl={member?.imageUrl ?? user?.imageUrl}
-          iconColor={member?.iconColor ?? user?.iconColor}
+          imageUrl={subject?.imageUrl ?? null}
+          iconColor={subject?.iconColor ?? null}
           className="h-10 w-10"
           resizeWidth={80}
         />
@@ -306,10 +309,6 @@ export default function LiveUserPredictionsPage() {
         (!theirTableView || theirTableView.teams.length === 0 ? (
           <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
             {t('live.table.unavailable')}
-          </p>
-        ) : !isSelf && !tableIsLocked ? (
-          <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-            {t('live.userPredictions.tableHidden')}
           </p>
         ) : !theirTableView.prediction ? (
           <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">

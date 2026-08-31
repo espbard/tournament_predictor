@@ -600,7 +600,6 @@ const translations = {
         unavailable: 'These predictions are not available yet.',
       },
       userPredictions: {
-        tableHidden: 'Predicted tables stay hidden until the first match kicks off.',
         noTable: '{{name}} did not predict the table.',
       },
       saveFailed: 'Could not save your prediction.',
@@ -1464,7 +1463,6 @@ const translations = {
         unavailable: 'Disse tippene er ikke tilgjengelige ennå.',
       },
       userPredictions: {
-        tableHidden: 'Tippede tabeller er skjult til den første kampen starter.',
         noTable: '{{name}} tippet ikke tabellen.',
       },
       saveFailed: 'Klarte ikke å lagre tippingen.',
@@ -2327,7 +2325,6 @@ const translations = {
         unavailable: 'Diese Tipps sind noch nicht verfügbar.',
       },
       userPredictions: {
-        tableHidden: 'Getippte Tabellen bleiben verborgen, bis das erste Spiel angepfiffen wird.',
         noTable: '{{name}} hat die Tabelle nicht getippt.',
       },
       saveFailed: 'Tipp konnte nicht gespeichert werden.',

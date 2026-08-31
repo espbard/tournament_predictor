@@ -406,11 +406,11 @@ GET    /api/live/competitions/:id/predictions/:userId  — locked fixtures only
 GET    /api/live/competitions/:id/fixtures/:fixtureId/predictions — every member's, locked only
 GET    /api/live/competitions/:id/table-prediction     — teams, my order, deadline, result
 PUT    /api/live/competitions/:id/table-prediction     — {stageKey, orderedTeamIds}
-GET    /api/live/competitions/:id/table-prediction/:userId  — only after the deadline
+GET    /api/live/competitions/:id/table-prediction/:userId  — open to members from the off
 GET    /api/live/competitions/:id/bonus-questions      — + lockedAt / isLocked per question
 GET    /api/live/competitions/:id/bonus-answers        — the caller's own
 PUT    /api/live/competitions/:id/bonus-answers        — {questionId, answer}
-GET    /api/live/competitions/:id/bonus-answers/:userId — locked questions only
+GET    /api/live/competitions/:id/bonus-answers/:userId — open to members from the off
 ```
 
 `GET /competitions/:id/fixtures` is what the client should build the fixtures tab from: it
