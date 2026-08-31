@@ -71,6 +71,10 @@ export default function Navbar() {
     location.pathname,
   );
   const showLiveTabs = isOnLiveCompetitionPage || isOnLivePredictionsPage;
+
+  // A page about one member, of either tournament type. It puts their name and face at the
+  // top, so the site name beside it is noise — the home icon is still there to get out.
+  const isOnUserPredictionsPage = isOnPredictionsPage || isOnLivePredictionsPage;
   const liveCompetitionId = location.pathname.match(/^\/live\/competitions\/([^/]+)/)?.[1];
   const LIVE_PREDICTION_TABS = ['fixtures', 'table', 'bonus'] as const;
   const LIVE_RESULT_TABS = ['standings', 'leaderboard'] as const;
@@ -137,13 +141,16 @@ export default function Navbar() {
           </Link>
         )}
 
-        {/* Site name – hidden on mobile only when tabs are shown */}
-        <Link
-          to="/"
-          className={`shrink-0 flex items-center text-base lg:text-lg font-semibold text-foreground hover:opacity-70 mr-2 py-2 sm:py-3 ${showTabs || isOnLiveCompetitionPage ? 'hidden sm:flex' : ''}`}
-        >
-          {t('nav.appName')}
-        </Link>
+        {/* Site name – dropped entirely on a member's own page, and hidden on mobile
+            elsewhere that tabs are competing for the width */}
+        {!isOnUserPredictionsPage && (
+          <Link
+            to="/"
+            className={`shrink-0 flex items-center text-base lg:text-lg font-semibold text-foreground hover:opacity-70 mr-2 py-2 sm:py-3 ${showTabs || showLiveTabs ? 'hidden sm:flex' : ''}`}
+          >
+            {t('nav.appName')}
+          </Link>
+        )}
 
         {/* Spacer – always pushes tabs and avatar to the right */}
         <div className="flex-1" />
