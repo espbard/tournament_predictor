@@ -1,5 +1,4 @@
 import { Link } from 'react-router-dom';
-import { canSeeLiveScorerRanking } from '@tournament-predictor/shared';
 import { useT } from '@/lib/useT';
 import { UserAvatar } from '@/components/UserAvatar';
 import { useAuthStore } from '@/store/authStore';
@@ -26,11 +25,8 @@ export default function LiveLeaderboard({ rows, competitionId }: Props) {
   // which is once a season. A column of zeros all year would just be noise.
   const anyTablePoints = rows.some(row => row.breakdown.tablePoints > 0);
   // Same for the top-scorer ranking and the bonus questions: both are awarded once, when
-  // the tournament is marked completed. The ranking column is also hidden from anyone the
-  // test feature is not open to — a column nobody else can play for would only puzzle
-  // them. Their totals still include whatever a test user scored there.
-  const anyScorerPoints =
-    canSeeLiveScorerRanking(user) && rows.some(row => row.breakdown.scorerPoints > 0);
+  // the tournament is marked completed.
+  const anyScorerPoints = rows.some(row => row.breakdown.scorerPoints > 0);
   const anyBonusPoints = rows.some(row => row.breakdown.bonusPoints > 0);
 
   if (rows.length === 0) {

@@ -123,6 +123,8 @@ export type LiveScorerPredictionView =
       available: true;
       /** The shortlist an admin curated. Nothing else is ranked or scored. */
       players: LivePlayer[];
+      /** The tournament's clubs, so a row can show the crest a player's team id points at. */
+      teams: LiveTeam[];
       prediction: LiveScorerPrediction | null;
       /** First kickoff of the starting stage − 60 min: the ranking closes with the table. */
       lockedAt: string | null;

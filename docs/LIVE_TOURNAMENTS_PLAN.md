@@ -368,18 +368,11 @@ matches their name unambiguously. `live_players.provider_player_id` is what tell
 provider-backed row from a hand-kept one.
 
 Each shortlisted player also carries a picture and a **glow colour** (`glow_color`, a hex
-string), both chosen by the admin. The colour is drawn as a tinted border and halo around
+string), both chosen by the admin, and their club's crest is shown beside them. The colour is drawn as a tinted border and halo around
 that player's row in the ranking every user sees; it is decoration and means nothing about
 goals or points. An exactly-right player's green scored state wins over it — two glows on
 one row fight. Points are withheld until the tournament is marked completed, exactly as bonus
 points are, so the ranking cannot be reverse-engineered from a moving total mid-season.
-
-**Currently a test feature.** `canSeeLiveScorerRanking` in `shared/src/live/features.ts` is
-the single gate: accounts with `is_test_account` see it, admins see it because they build
-the shortlist, and everyone else gets `available: false` from the read route — no tab, no
-first-run step — with the save and delete routes refusing them outright, so the API is not
-a way around the client. To ship it to everyone, make that function return true and follow
-the compiler.
 
 ### League table prediction
 

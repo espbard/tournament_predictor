@@ -887,6 +887,13 @@ const translations = {
           title: 'Bonus questions',
           explainer: 'Season-long side bets, asked in every league playing this tournament. Answers close an hour before the first match unless you set another date; points are awarded when you mark the tournament completed.',
         },
+        tabs: {
+          overview: 'Overview',
+          matches: 'Selected matches',
+          scorers: 'Top scorers',
+          bonus: 'Bonus questions',
+          settings: 'Settings',
+        },
         selection: {
           title: 'Selected matches',
           explainer: 'Pick which matches of a gameweek players predict on. Nothing counts until you pick — a gameweek you have not been through shows players no matches at all.',
@@ -913,8 +920,6 @@ const translations = {
         },
         scorers: {
           title: 'Top-scorer shortlist',
-          testBadge: 'Test feature',
-          testOnly: 'Only accounts marked as test users can see the ranking — everyone else gets no tab and no first-run step. Admins can always see it.',
           explainer: 'Search for a player, add them, then give them a picture and a colour. The colour is drawn as a glow around their row in the ranking everyone sees.',
           searchLabel: 'Find a player',
           searchPlaceholder: 'Type a name — Mbappé, Haaland…',
@@ -1849,6 +1854,13 @@ const translations = {
           title: 'Bonusspørsmål',
           explainer: 'Spørsmål for hele sesongen, like for alle konkurranser på denne turneringen. Svarene stenger en time før første kamp om du ikke setter en annen dato, og poengene deles ut når du merker turneringen som ferdig.',
         },
+        tabs: {
+          overview: 'Oversikt',
+          matches: 'Valgte kamper',
+          scorers: 'Toppscorere',
+          bonus: 'Bonusspørsmål',
+          settings: 'Innstillinger',
+        },
         selection: {
           title: 'Valgte kamper',
           explainer: 'Velg hvilke kamper i en runde spillerne skal tippe på. Ingenting teller før du velger — en runde du ikke har vært gjennom viser spillerne ingen kamper i det hele tatt.',
@@ -1875,8 +1887,6 @@ const translations = {
         },
         scorers: {
           title: 'Toppscorerliste',
-          testBadge: 'Testfunksjon',
-          testOnly: 'Bare kontoer merket som testbrukere ser lista — alle andre får verken fane eller oppstartssteg. Administratorer ser den alltid.',
           explainer: 'Søk opp en spiller, legg spilleren til, og gi vedkommende bilde og farge. Fargen tegnes som en glød rundt raden i lista alle ser.',
           searchLabel: 'Finn en spiller',
           searchPlaceholder: 'Skriv et navn — Mbappé, Haaland…',
@@ -2810,6 +2820,13 @@ const translations = {
           title: 'Bonusfragen',
           explainer: 'Fragen für die ganze Saison, gleich für alle Tippspiele zu diesem Turnier. Antworten schließen eine Stunde vor dem ersten Spiel, sofern du kein anderes Datum setzt; die Punkte gibt es, sobald du das Turnier als abgeschlossen markierst.',
         },
+        tabs: {
+          overview: 'Übersicht',
+          matches: 'Ausgewählte Spiele',
+          scorers: 'Torjäger',
+          bonus: 'Bonusfragen',
+          settings: 'Einstellungen',
+        },
         selection: {
           title: 'Ausgewählte Spiele',
           explainer: 'Wähle, auf welche Spiele eines Spieltags getippt wird. Ohne Auswahl zählt nichts — ein Spieltag, den du nicht bearbeitet hast, zeigt den Spielern gar keine Spiele.',
@@ -2836,8 +2853,6 @@ const translations = {
         },
         scorers: {
           title: 'Torjäger-Auswahl',
-          testBadge: 'Testfunktion',
-          testOnly: 'Nur als Testnutzer markierte Konten sehen die Liste — alle anderen bekommen weder Tab noch Startschritt. Admins sehen sie immer.',
           explainer: 'Suche einen Spieler, füge ihn hinzu und gib ihm ein Bild und eine Farbe. Die Farbe wird als Leuchten um seine Zeile in der Liste gezeichnet, die alle sehen.',
           searchLabel: 'Spieler finden',
           searchPlaceholder: 'Namen eingeben — Mbappé, Haaland…',

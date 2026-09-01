@@ -8,7 +8,6 @@ import {
   SaveLiveBonusAnswerSchema,
   SaveLivePredictionSchema,
   SaveLiveScorerPredictionSchema,
-  canSeeLiveScorerRanking,
   SaveLiveTablePredictionSchema,
   UpdateLiveCompetitionSchema,
   bonusQuestionLockAt,
@@ -1008,11 +1007,6 @@ liveCompetitionsRouter.get(
 liveCompetitionsRouter.get('/competitions/:id/scorer-prediction', requireAuth, async (req, res) => {
   try {
     const user = res.locals.user;
-    // A test feature for now. `available: false` is the same answer a tournament with no
-    // shortlist gives, so the client needs no separate branch — the tab and the first-run
-    // gate simply do not appear.
-    if (!canSeeLiveScorerRanking(user)) return res.json({ available: false });
-
     const [competition] = await db
       .select()
       .from(liveCompetitions)
@@ -1068,9 +1062,17 @@ liveCompetitionsRouter.get('/competitions/:id/scorer-prediction', requireAuth, a
     // seeds a new prediction and, later, shows how the real thing is going.
     const currentOrder = rankLiveScorers(players).map(p => p.id);
 
+    // The clubs, for their crests: a player row shows who they play for, and a player
+    // carries only a team id.
+    const teams = await db
+      .select()
+      .from(liveTeams)
+      .where(eq(liveTeams.liveTournamentId, tournament.id));
+
     return res.json({
       available: true,
       players,
+      teams,
       prediction: prediction ?? null,
       lockedAt: lockAt ? lockAt.toISOString() : null,
       isLocked: isTablePredictionLocked(kickoffs),
@@ -1103,12 +1105,6 @@ liveCompetitionsRouter.put('/competitions/:id/scorer-prediction', requireAuth, a
     if (user.isLeaderboardUser) {
       return res.status(403).json({ error: 'This account cannot make predictions' });
     }
-    // Enforced here as well as on the read: a gate the client honours but the API does not
-    // is not a gate.
-    if (!canSeeLiveScorerRanking(user)) {
-      return res.status(403).json({ error: 'The top-scorer ranking is not available yet' });
-    }
-
     const [competition] = await db
       .select()
       .from(liveCompetitions)
@@ -1202,10 +1198,6 @@ liveCompetitionsRouter.delete(
   async (req, res) => {
     try {
       const user = res.locals.user;
-      if (!canSeeLiveScorerRanking(user)) {
-        return res.status(403).json({ error: 'The top-scorer ranking is not available yet' });
-      }
-
       const [competition] = await db
         .select()
         .from(liveCompetitions)

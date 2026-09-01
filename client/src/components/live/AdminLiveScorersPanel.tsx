@@ -205,14 +205,8 @@ export default function AdminLiveScorersPanel({ tournamentId, season }: Props) {
 
   return (
     <div className="mb-6 rounded-lg border p-5">
-      <div className="mb-1 flex flex-wrap items-center gap-2">
-        <h2 className="font-semibold">{t('live.admin.scorers.title')}</h2>
-        <span className="rounded bg-amber-400/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
-          {t('live.admin.scorers.testBadge')}
-        </span>
-      </div>
-      <p className="text-sm text-muted-foreground">{t('live.admin.scorers.explainer')}</p>
-      <p className="mb-4 text-sm text-muted-foreground">{t('live.admin.scorers.testOnly')}</p>
+      <h2 className="mb-1 font-semibold">{t('live.admin.scorers.title')}</h2>
+      <p className="mb-4 text-sm text-muted-foreground">{t('live.admin.scorers.explainer')}</p>
 
       {/* ── Search ───────────────────────────────────────────────────────────── */}
       <div className="mb-5 rounded-md border bg-muted/30 p-3">

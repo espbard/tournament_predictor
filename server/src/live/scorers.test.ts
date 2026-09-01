@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { canSeeLiveScorerRanking } from '@tournament-predictor/shared';
 import { matchSquadPlayers, normaliseLivePlayerName } from './scorers';
 import { mapScorer, mapSquads } from './providers/footballData';
 
@@ -163,19 +162,5 @@ describe('mapSquads', () => {
   it('returns nothing for a payload with no teams at all', () => {
     expect(mapSquads({})).toEqual([]);
     expect(mapSquads(null)).toEqual([]);
-  });
-});
-
-describe('canSeeLiveScorerRanking', () => {
-  it('lets test accounts and admins in', () => {
-    expect(canSeeLiveScorerRanking({ isAdmin: false, isTestAccount: true })).toBe(true);
-    // An admin has to be able to build the shortlist and see what a player will get.
-    expect(canSeeLiveScorerRanking({ isAdmin: true, isTestAccount: false })).toBe(true);
-  });
-
-  it('keeps everyone else out, signed in or not', () => {
-    expect(canSeeLiveScorerRanking({ isAdmin: false, isTestAccount: false })).toBe(false);
-    expect(canSeeLiveScorerRanking(null)).toBe(false);
-    expect(canSeeLiveScorerRanking(undefined)).toBe(false);
   });
 });

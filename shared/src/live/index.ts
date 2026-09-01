@@ -1,5 +1,4 @@
 export * from './types';
-export * from './features';
 export * from './formats';
 export * from './presets';
 export * from './lock';

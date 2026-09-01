@@ -9,7 +9,7 @@ import {
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { ChevronDown, ChevronUp, GripVertical, Lock } from 'lucide-react';
-import type { LivePlayer } from '@tournament-predictor/shared';
+import type { LivePlayer, LiveTeam } from '@tournament-predictor/shared';
 import { useT } from '@/lib/useT';
 import { initialOrder, moveItem } from '@/lib/liveTableOrder';
 import type { LiveScorerPredictionView } from '@/lib/liveApi';
@@ -23,9 +23,10 @@ import type { LiveScorerPredictionView } from '@/lib/liveApi';
 // Reordering works three ways for the same reason the table prediction does: drag, the
 // up/down buttons, and a keyboard through those buttons.
 //
-// Goals and assists are shown on every row throughout, because assists are what break a
-// tie on goals — a ranking that reordered itself on a number the user could not see would
-// look arbitrary.
+// Goals and assists are shown on every row, because assists are what break a tie on goals —
+// a ranking that reordered itself on a number the user could not see would look arbitrary.
+// Not in the gate, though: that is the first-run screen, played before a ball is kicked,
+// where every tally is zero and showing them only invites the question of what they mean.
 //
 // A player the admin gave a colour to is drawn with it as a glow: a tinted border and a
 // soft halo, from the one hex value stored on the player. It is decoration and nothing
@@ -68,6 +69,7 @@ export default function LiveScorerPrediction({
     () => new Map(view.players.map(player => [player.id, player])),
     [view.players],
   );
+  const teamById = useMemo(() => new Map(view.teams.map(team => [team.id, team])), [view.teams]);
 
   const [order, setOrder] = useState<string[]>(() =>
     initialOrder(view.prediction?.orderedPlayerIds ?? null, view.currentOrder, view.players),
@@ -128,7 +130,10 @@ export default function LiveScorerPrediction({
         <p className={`text-sm text-muted-foreground${isGate ? '' : ' mt-1'}`}>
           {t('live.scorers.explainer', { exact: view.scoringConfig.scorer_exact_position })}
         </p>
-        <p className="mt-1 text-xs text-muted-foreground">{t('live.scorers.tieBreak')}</p>
+        {/* Only where the numbers it explains are on screen. */}
+        {!isGate && (
+          <p className="mt-1 text-xs text-muted-foreground">{t('live.scorers.tieBreak')}</p>
+        )}
 
         <div className="mt-3 flex flex-wrap items-center gap-3">
           {view.isLocked ? (
@@ -220,6 +225,9 @@ export default function LiveScorerPrediction({
               key={playerId}
               playerId={playerId}
               player={playerById.get(playerId) ?? null}
+              team={teamById.get(playerById.get(playerId)?.teamId ?? '') ?? null}
+              // The gate is played before the season starts, so there is nothing to show.
+              showTally={!isGate}
               position={index + 1}
               editable={editable}
               isFirst={index === 0}
@@ -276,6 +284,10 @@ export default function LiveScorerPrediction({
 interface RowProps {
   playerId: string;
   player: LivePlayer | null;
+  /** The player's club, resolved by the list — a player carries only a team id. */
+  team: LiveTeam | null;
+  /** False in the gate, where every tally is still zero. */
+  showTally: boolean;
   position: number;
   editable: boolean;
   isFirst: boolean;
@@ -290,6 +302,8 @@ interface RowProps {
 function ScorerRow({
   playerId,
   player,
+  team,
+  showTally,
   position,
   editable,
   isFirst,
@@ -358,12 +372,22 @@ function ScorerRow({
         <span className="h-7 w-7 shrink-0 rounded-full bg-muted" aria-hidden />
       )}
 
+      {/* The club, between the face and the name. Decorative: the name is right there, and
+          a crest is how anyone actually recognises a side at a glance. */}
+      {team?.crestUrl ? (
+        <img src={team.crestUrl} alt="" aria-hidden className="h-5 w-5 shrink-0 object-contain" />
+      ) : (
+        <span className="h-5 w-5 shrink-0" aria-hidden />
+      )}
+
       <span className="min-w-0 flex-1 truncate text-sm">{name}</span>
 
       {/* Goals first and assists after, in the order the tie-break reads them. */}
-      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-        {t('live.scorers.tally', { goals: player?.goals ?? 0, assists: player?.assists ?? 0 })}
-      </span>
+      {showTally && (
+        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+          {t('live.scorers.tally', { goals: player?.goals ?? 0, assists: player?.assists ?? 0 })}
+        </span>
+      )}
 
       {scored && (
         <span className="shrink-0 text-xs text-muted-foreground">
