@@ -1603,8 +1603,8 @@ const translations = {
       afterExtraTime: 'Avgjort etter ekstraomganger — kun stillingen etter 90 minutter teller',
       afterPenalties: 'Avgjort på straffer {{home}}–{{away}} — kun stillingen etter 90 minutter teller',
       pointsShort: '{{points}} p',
-      pointsBreakdown: 'Utfall {{outcome}} + målforskjell {{gd}} + eksakt resultat {{exact}}',
-      pointsBreakdownWithHighlight: 'Utfall {{outcome}} + målforskjell {{gd}} + eksakt resultat {{exact}} + markert kamp {{highlight}}',
+      pointsBreakdown: 'Riktig resultat {{outcome}} + målforskjell {{gd}} + eksakt resultat {{exact}}',
+      pointsBreakdownWithHighlight: 'Riktig resultat {{outcome}} + målforskjell {{gd}} + eksakt resultat {{exact}} + markert kamp {{highlight}}',
       multiplier: {
         badge: '×{{multiplier}}',
         explainer: 'Denne kampen teller ekstra — alle poeng du får her blir ganget med {{multiplier}}.',
@@ -1741,7 +1741,7 @@ const translations = {
       },
       leaderboard: {
         player: 'Spiller',
-        result: 'Poeng for riktig utfall',
+        result: 'Poeng for riktig resultat',
         resultShort: 'Resultat',
         resultMicro: 'R',
         goalDifference: 'Poeng for riktig målforskjell',
