@@ -80,18 +80,22 @@ anything under a `live` prefix. A summary is in the "Live tournaments" section b
 │       ├── components/             # AppLayout, Navbar, KnockoutStageContent (2156 lines),
 │       │                           # FinalResultsView, LeaderboardLineGraph, UserStatCard,
 │       │                           # ImageUpload, UserAvatar, LoadingSpinner, FeedbackButton, …
-│       │   └── live/               # LiveFixtureCard, LiveTieCard, LiveCountdown,
+│       │   └── live/               # LiveFixtureCard, LiveTieCard, LiveFixtureList,
+│       │                           # LiveMatchPredictions, LiveCountdown,
 │       │                           # LiveStandingsTable, LiveLeaderboard,
-│       │                           # LiveQualifiedTeamsPanel, LiveTablePrediction
+│       │                           # LiveQualifiedTeamsPanel, LiveTablePrediction,
+│       │                           # LiveTableBandLegend
 │       ├── lib/                    # api.ts (fetch wrapper), translations.ts (no/en/de), useT.ts,
 │       │                           # tiebreakers.ts, pointSources.ts, teamTranslations.ts, utils.ts
 │       │   ├── liveApi.ts          # typed wrappers + query keys for /api/live/*
-│       │   └── liveTableOrder.ts    # pure ordering helpers for the table prediction
+│       │   ├── liveTableOrder.ts    # pure ordering helpers for the table prediction
+│       │   └── liveBands.ts         # table-band colours, shared by the real and predicted tables
 │       ├── pages/                  # HomePage, AdminHomePage, Login/Register, CompetitionsPage,
 │       │                           # CompetitionDetailPage (2990 lines), UserPredictionsPage,
 │       │                           # TournamentsPage, TournamentDetailPage, TournamentKnockoutPage,
 │       │                           # BonusQuestionsTab, TeamPage, Edit*Page, AdminFeedbackPage
-│       │   └── live/               # LiveCompetitionDetailPage, AdminLiveTournamentsPage,
+│       │   └── live/               # LiveCompetitionDetailPage, LiveUserPredictionsPage,
+│       │                           # AdminLiveTournamentsPage,
 │       │                           # AdminLiveTournamentDetailPage, AdminLiveCompetitionsPage
 │       └── store/                  # authStore, languageStore, themeStore (Zustand)
 ├── server
@@ -399,13 +403,14 @@ GET    /api/live/competitions/:id/events          — SSE: fixtures-updated, lea
 GET    /api/live/competitions/:id/fixtures        — MAIN READ MODEL, see below
 PUT    /api/live/competitions/:id/predictions     — upsert one; enforces kickoff − 60 min
 GET    /api/live/competitions/:id/predictions/:userId  — locked fixtures only
+GET    /api/live/competitions/:id/fixtures/:fixtureId/predictions — every member's, locked only
 GET    /api/live/competitions/:id/table-prediction     — teams, my order, deadline, result
 PUT    /api/live/competitions/:id/table-prediction     — {stageKey, orderedTeamIds}
-GET    /api/live/competitions/:id/table-prediction/:userId  — only after the deadline
+GET    /api/live/competitions/:id/table-prediction/:userId  — open to members from the off
 GET    /api/live/competitions/:id/bonus-questions      — + lockedAt / isLocked per question
 GET    /api/live/competitions/:id/bonus-answers        — the caller's own
 PUT    /api/live/competitions/:id/bonus-answers        — {questionId, answer}
-GET    /api/live/competitions/:id/bonus-answers/:userId — locked questions only
+GET    /api/live/competitions/:id/bonus-answers/:userId — open to members from the off
 ```
 
 `GET /competitions/:id/fixtures` is what the client should build the fixtures tab from: it

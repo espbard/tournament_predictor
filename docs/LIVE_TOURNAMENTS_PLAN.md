@@ -1025,6 +1025,7 @@ New routes in `client/src/App.tsx`:
 | Path | Component | Guard |
 |---|---|---|
 | `/live/competitions/:id` | `pages/live/LiveCompetitionDetailPage.tsx` | Private |
+| `/live/competitions/:id/predictions/:userId` | `pages/live/LiveUserPredictionsPage.tsx` | Private |
 | `/admin/live-tournaments` | `pages/live/AdminLiveTournamentsPage.tsx` | Admin |
 | `/admin/live-tournaments/:id` | `pages/live/AdminLiveTournamentDetailPage.tsx` | Admin |
 | `/admin/live-competitions` | `pages/live/AdminLiveCompetitionsPage.tsx` | Admin |
@@ -1038,7 +1039,13 @@ Components under `client/src/components/live/`:
   (informational only; each leg is predicted and scored separately).
 - `LiveCountdown.tsx` — ticking "locks in 2h 14m", flips to "Locked" at kickoff − 60 min.
 - `LiveStandingsTable.tsx` — read-only provider standings; single table or per-group depending on
-  `format.tableScope`.
+  `format.tableScope`. Where the stage defines bands, each row carries a bar down its left in
+  the band's colour, with `LiveTableBandLegend` underneath saying what they mean. Beside each
+  team's crest sits a dimmed second one — the team the viewer predicted to finish there — and
+  the row glows to say how the viewer placed *that row's* team: green where they put it in
+  exactly this position, amber where they put it elsewhere but in this section of the table.
+- `LiveTableBandLegend.tsx` — the swatches-and-ranges key, shown under both the real table and
+  the predicted one. The colours themselves live in `lib/liveBands.ts` so the two agree.
 - `LiveSelectedMatchesPanel.tsx` — admin only, rendered on `AdminLiveTournamentDetailPage`. Picks
   a stage and gameweek, then ticks which of its matches count. Opens on the gameweek of the next
   match still to be played, and saving with nothing ticked resets the gameweek to "all count".
@@ -1054,13 +1061,19 @@ Components under `client/src/components/live/`:
   in its `gate` variant — same list, save control pinned to the foot of the screen, and the
   standings order on screen counts as a submission untouched. The bonus step writes its own
   controls rather than sharing the panel's: required answers are large and alone on a dark
-  screen, and a player answer may be typed rather than picked, since its suggestions come from
-  an external service a firewall can block (`PlayerSearchInput`'s `allowFreeText`).
+  screen. A player, team or country answer must be picked from its list here as everywhere
+  else — `PlayerSearchInput`'s `allowFreeText` is for the admin side only.
 - `LiveBonusQuestionsTab.tsx` / `AdminLiveBonusQuestionsPanel.tsx` — the data half of the bonus
   tab and of the admin authoring panel. Both render
   `components/bonus/BonusQuestionsPanel.tsx`, which is the manual type's bonus UI lifted out of
   `pages/BonusQuestionsTab.tsx` and driven by an adapter: same panel, different endpoints and a
   per-question rather than per-competition deadline.
+- `LiveFixtureList.tsx` — the stage's matches, grouped the way the stage is played: one
+  matchday for a table stage, `LiveTieCard`s for a two-legged knockout one. Shared by the
+  competition page and the read-only view of another member's predictions.
+- `LiveMatchPredictions.tsx` — the collapsed "what everyone predicted" dropdown under a
+  played match: every member, their score and what it was worth, names linking to their
+  predictions. Fetched only once opened.
 - `LiveLeaderboard.tsx`, `LiveQualifiedTeamsPanel.tsx`.
 - `client/src/lib/liveApi.ts` — typed thin wrappers over the existing `client/src/lib/api.ts`.
   Note `api` currently has no `put` — add one.
@@ -1404,6 +1417,46 @@ Recorded as they happen, so the document stays trustworthy.
 | `LiveScoreResult` (per fixture) no longer extends `LiveScoreBreakdown` | The breakdown now includes table points, which a single fixture can never produce. Sharing the type would have forced a meaningless field onto every fixture result |
 | Member totals moved to two `LEFT JOIN LATERAL` subqueries | Fixture points and table points are independent sources; summing them in one join would multiply the rows together |
 | `moveItem` / `initialOrder` extracted to `client/src/lib/liveTableOrder.ts` | Pure logic worth checking without mounting React. Extracting it surfaced a real bug: a guard clause could return early and leave the table an incomplete permutation, which the server would then reject on save |
+
+**Seeing what everyone else predicted** *(added after the six phases, on request)*
+
+| Decision | Why |
+|---|---|
+| One request per fixture, made only when the dropdown is opened, rather than folding every member's predictions into the fixtures read model | A Premier League season is 380 fixtures × ~20 members. Nobody opens more than a handful, and the fixtures query is invalidated on every SSE push, which would re-fetch the lot |
+| `GET /competitions/:id/fixtures/:fixtureId/predictions` refuses until that fixture has locked, even though the UI only offers it on a finished one | The same rule the per-user routes already follow. The UI's choice of when to show a control is not an access rule, and the endpoint is reachable directly |
+| Members who never predicted the match are returned, with a null prediction | In a twenty-person league who sat a match out is as much a part of the picture as who got it right. Filtering them out server-side would make "everyone" mean "everyone who played" |
+| `LiveUserPredictionsPage` reuses `LiveFixtureList`, `LiveTablePrediction` and `LiveBonusQuestionsTab` rather than rendering its own read-only variants | They already had the states this page needs — a locked fixture card, a `viewUserId` bonus panel — so a parallel set would have been a second thing to keep in step with scoring changes |
+| It composes the other member's answers over the competition's own view instead of new per-user read models | The three per-user endpoints already decide what a member may see. The teams, bands and scoring the page renders around those answers are the competition's, not the member's |
+| The two season-long calls — the table and the bonus answers — are open to the league from the moment they are submitted; only per-fixture predictions wait for their own kickoff | Requested. Both close at the first kickoff and are what the league argues about before a season starts, so withholding them until then hid them for exactly the stretch anyone cared. Copying an order or an answer is the accepted cost, and it does not extend to match predictions, where a copied score is worth points every week |
+| The header resolves the viewed member from the membership list, never falling through a null field to the auth store | A member with no picture of their own has a null `imageUrl`. `member?.imageUrl ?? user?.imageUrl` put the *viewer's* face beside someone else's name |
+| `LiveTablePrediction` gained a `readOnly` prop rather than being handed a view with `isLocked: true` | Faking the lock would have made the card announce "closed — the first match has started" to somebody looking at their own still-open table |
+| The fixtures tab of a member's page opens on the last **played** gameweek, where the competition page opens on the next unplayed one | The predictions for a week still to come are withheld, so opening there would show a blank page. What can be looked at is what has been played |
+
+**Colour-coding the league table, and the predicted-team column** *(added after the six phases, on request)*
+
+| Decision | Why |
+|---|---|
+| The standings table reuses the format's existing `bands`, rather than taking a cutoff prop | The Champions League's 1–8 / 9–24 / 25+ split was already declared on `LiveStageDef` for the table-prediction bonus. A second definition of the same three ranges would be one to keep in step |
+| Bands are resolved from the stage of the rows themselves, not from whatever stage the fixtures tab happens to be on | The standings query is keyed on the fixtures tab's stage, which is a coincidence of the page rather than a fact about the table. Rows carry their own `stageKey` |
+| The band comes from the row's index in the table, not the `position` the provider reports | Two teams sharing a reported position would both take the higher band and push the count of coloured rows past 8. The first eight rows are the first eight rows |
+| `bandBarClasses` / `bandSwatchClasses` extracted to `client/src/lib/liveBands.ts`, and the legend to `LiveTableBandLegend` | The predicted table and the real one are read against each other, so green has to mean the same thing on both. They were already drawn by two separate copies of the same switch |
+| Under `border-collapse`, the per-row bars merge into one continuous stripe per band | This is how a real football table reads, and it is the same `border-l-4` the predicted table already used — where the rows are separate cards, so they stay separate bars there |
+| The predicted team's crest sits inside the team cell, beside the real crest, rather than in a column of its own | A column of its own lands at the far right of the flexible team column, a team name away from the crest it is meant to be compared against. Side by side, the comparison is the whole row |
+| A row's two glows are about the team standing in it — where the viewer placed *that* team — and not about the badge beside it | The badge answers "who did I put here", the colour answers "how did I do on this team". Colouring by the badge instead reads as a verdict on a team two rows away, and leaves every team's own row silent about it |
+| Those two glows are exactly the two things `calculateTablePoints` awards for that team | Green is an exact position and amber is the right band, measured the same way the scoring measures them, so a glowing row is a row currently earning points rather than a second, subtly different notion of "close" |
+| Both are read against the live standings, not a final table | The user asked for it to hold all season. Nothing about the comparison needs the stage to be over — where a team is standing today is what today's colours should reflect |
+| The column is dropped entirely for a per-group scope, and on any stage other than the one the order was predicted for | A predicted order is one list top to bottom. Against per-group tables, or against a different stage's standings, its indices line up with the wrong rows |
+
+**Answers must be picked, never typed** *(added after the six phases, on request)*
+
+| Decision | Why |
+|---|---|
+| The gate no longer passes `allowFreeText` to `PlayerSearchInput`; it is now admin-only, for setting a correct answer or building an option list | Answers are graded by comparing text. A typed name that differs from the picked one by a typo, an accent or a first initial scores nothing and reads as bad luck rather than a mistake. Picking is what keeps every answer to one question spelled the same way |
+| Country, team, and a player question narrowed to an option list were already safe, and the server already enforced them | `checkLiveBonusAnswer` refuses anything outside `liveBonusOptions`, which resolves to the European countries, the tournament's teams, or the admin's list. Only a free-form player question has no set to check against |
+| Which means a free-form player answer is enforced in the UI alone | There is no roster on our side to check a name against, and the suggestions come from a third-party database the browser queries directly. Validating server-side would mean putting that database in the save path, where an outage would start refusing valid answers |
+| A typed-but-unpicked box now says so, and says separately when the database is unreachable | A disabled Next button is not an explanation. The two cases also differ in what to do about them — one is a spelling to fix, the other is a network to change — and they look identical on screen otherwise |
+| Opening the suggestions scrolls the field to the middle of the screen | The list renders under the input, which on a phone is often already near the keyboard. This is what likely produced the typed answers in the first place: the suggestions were there, just not visible |
+| A member behind a firewall that blocks the player database now cannot pass the gate on a free-form player question | Accepted, and requested. The way out is on the admin side, which already exists: narrowing the question to a list of allowed answers turns it into a `<select>` with no external dependency |
 
 ---
 

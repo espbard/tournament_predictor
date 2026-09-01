@@ -286,6 +286,12 @@ const translations = {
         country: 'Country',
       },
       chooseAnswer: 'Choose an answer…',
+      picker: {
+        pickOne: 'Tap one of the suggestions — a typed name is not an answer on its own.',
+        noMatches: 'No match. Check the spelling — the answer has to be picked from the list.',
+        searchUnavailable: 'The player database cannot be reached right now. Try again in a moment, or from another network.',
+        pickTeam: 'Tap one of the teams — a typed name is not an answer on its own.',
+      },
       constraints: {
         min: 'Lowest allowed',
         max: 'Highest allowed',
@@ -593,6 +599,15 @@ const translations = {
       noFixtures: 'No matches here yet.',
       noStandings: 'No table published yet.',
       noMembers: 'Nobody has joined yet.',
+      matchPredictions: {
+        toggle: 'What everyone predicted',
+        nobody: 'Nobody predicted this match.',
+        noPrediction: 'No prediction',
+        unavailable: 'These predictions are not available yet.',
+      },
+      userPredictions: {
+        noTable: '{{name}} did not predict the table.',
+      },
       saveFailed: 'Could not save your prediction.',
       tbd: 'TBD',
       leg: 'Leg {{n}}',
@@ -653,6 +668,11 @@ const translations = {
         goals: 'Goals',
         gdShort: 'GD',
         pointsShort: 'Pts',
+        pickExplainer: 'The dimmed badge next to each team is the one you predicted to finish there.',
+        pickedToFinish: 'You predicted {{team}} to finish {{position}}',
+        noPick: 'You predicted nobody to finish {{position}}',
+        glowExact: 'Your pick is in the exact position',
+        glowBand: 'Your pick is in the correct section',
       },
       bands: {
         automatic: 'Automatic qualification',
@@ -1135,6 +1155,12 @@ const translations = {
         country: 'Land',
       },
       chooseAnswer: 'Velg et svar…',
+      picker: {
+        pickOne: 'Trykk på et av forslagene – et navn du skriver selv teller ikke som svar.',
+        noMatches: 'Ingen treff. Sjekk stavemåten – svaret må velges fra listen.',
+        searchUnavailable: 'Spillerdatabasen kan ikke nås akkurat nå. Prøv igjen om litt, eller fra et annet nettverk.',
+        pickTeam: 'Trykk på et av lagene – et navn du skriver selv teller ikke som svar.',
+      },
       constraints: {
         min: 'Laveste tillatte',
         max: 'Høyeste tillatte',
@@ -1442,6 +1468,15 @@ const translations = {
       noFixtures: 'Ingen kamper her ennå.',
       noStandings: 'Ingen tabell publisert ennå.',
       noMembers: 'Ingen har blitt med ennå.',
+      matchPredictions: {
+        toggle: 'Hva alle tippet',
+        nobody: 'Ingen tippet denne kampen.',
+        noPrediction: 'Ikke tippet',
+        unavailable: 'Disse tippene er ikke tilgjengelige ennå.',
+      },
+      userPredictions: {
+        noTable: '{{name}} tippet ikke tabellen.',
+      },
       saveFailed: 'Klarte ikke å lagre tippingen.',
       tbd: 'Ikke klart',
       leg: '{{n}}. kamp',
@@ -1502,6 +1537,11 @@ const translations = {
         goals: 'Mål',
         gdShort: 'MF',
         pointsShort: 'P',
+        pickExplainer: 'Det nedtonede merket ved siden av hvert lag er laget du tippet på den plassen.',
+        pickedToFinish: 'Du tippet {{team}} på {{position}}. plass',
+        noPick: 'Du tippet ingen på {{position}}. plass',
+        glowExact: 'Du tippet dette laget i nøyaktig riktig posisjon',
+        glowBand: 'Du tippet dette laget i korrekt del av tabellen',
       },
       bands: {
         automatic: 'Direkte videre',
@@ -1983,6 +2023,12 @@ const translations = {
         country: 'Land',
       },
       chooseAnswer: 'Antwort wählen…',
+      picker: {
+        pickOne: 'Tippe auf einen der Vorschläge — ein selbst getippter Name zählt nicht als Antwort.',
+        noMatches: 'Kein Treffer. Prüfe die Schreibweise — die Antwort muss aus der Liste gewählt werden.',
+        searchUnavailable: 'Die Spielerdatenbank ist gerade nicht erreichbar. Versuche es gleich noch einmal oder aus einem anderen Netz.',
+        pickTeam: 'Tippe auf eines der Teams — ein selbst getippter Name zählt nicht als Antwort.',
+      },
       constraints: {
         min: 'Niedrigster Wert',
         max: 'Höchster Wert',
@@ -2290,6 +2336,15 @@ const translations = {
       noFixtures: 'Noch keine Spiele hier.',
       noStandings: 'Noch keine Tabelle veröffentlicht.',
       noMembers: 'Noch niemand dabei.',
+      matchPredictions: {
+        toggle: 'Was alle getippt haben',
+        nobody: 'Niemand hat dieses Spiel getippt.',
+        noPrediction: 'Kein Tipp',
+        unavailable: 'Diese Tipps sind noch nicht verfügbar.',
+      },
+      userPredictions: {
+        noTable: '{{name}} hat die Tabelle nicht getippt.',
+      },
       saveFailed: 'Tipp konnte nicht gespeichert werden.',
       tbd: 'Offen',
       leg: '{{n}}. Spiel',
@@ -2350,6 +2405,11 @@ const translations = {
         goals: 'Tore',
         gdShort: 'TD',
         pointsShort: 'Pkt',
+        pickExplainer: 'Das blasse Wappen neben jedem Team ist das, das du auf diesem Platz getippt hast.',
+        pickedToFinish: 'Du hast {{team}} auf Platz {{position}} getippt',
+        noPick: 'Du hast niemanden auf Platz {{position}} getippt',
+        glowExact: 'Du hast dieses Team genau richtig platziert',
+        glowBand: 'Du hast dieses Team im richtigen Abschnitt platziert',
       },
       bands: {
         automatic: 'Direkt qualifiziert',

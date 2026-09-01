@@ -73,6 +73,25 @@ export interface LiveLeaderboardRow {
 }
 
 /**
+ * One member's prediction for a single fixture, as the "what everyone predicted" dropdown
+ * under a played match reads it. `prediction` is null for a member who never predicted it.
+ */
+export interface LiveFixturePredictionRow {
+  userId: string;
+  username: string;
+  imageUrl: string | null;
+  iconColor: string | null;
+  prediction: {
+    homeScore: number;
+    awayScore: number;
+    points: number | null;
+    correctOutcomePoints: number;
+    correctGoalDifferencePoints: number;
+    exactScorePoints: number;
+  } | null;
+}
+
+/**
  * The table-prediction tab's payload. A discriminated union because a format without a
  * table stage has nothing else to send, and the UI should not have to guess.
  */
@@ -363,9 +382,24 @@ export const liveApi = {
   clearBonusAnswers: (competitionId: string) =>
     api.delete<{ deleted: number }>(`/live/competitions/${competitionId}/bonus-answers`),
 
+  /** Another member's predictions, restricted server-side to fixtures that have locked. */
   otherUserPredictions: (competitionId: string, userId: string) =>
-    api.get<Array<{ liveFixtureId: string; homeScore: number; awayScore: number; points: number | null }>>(
-      `/live/competitions/${competitionId}/predictions/${userId}`,
+    api.get<
+      Array<{
+        liveFixtureId: string;
+        homeScore: number;
+        awayScore: number;
+        points: number | null;
+        correctOutcomePoints: number;
+        correctGoalDifferencePoints: number;
+        exactScorePoints: number;
+      }>
+    >(`/live/competitions/${competitionId}/predictions/${userId}`),
+
+  /** Every member's prediction for one fixture. Refused until that fixture has locked. */
+  fixturePredictions: (competitionId: string, fixtureId: string) =>
+    api.get<LiveFixturePredictionRow[]>(
+      `/live/competitions/${competitionId}/fixtures/${fixtureId}/predictions`,
     ),
 };
 
@@ -379,6 +413,15 @@ export const liveKeys = {
   competition: (id: string) => ['live', 'competition', id] as const,
   fixtures: (competitionId: string, stageKey?: string, matchday?: number) =>
     ['live', 'fixtures', competitionId, stageKey ?? null, matchday ?? null] as const,
+  fixturePredictions: (competitionId: string, fixtureId: string) =>
+    ['live', 'fixture-predictions', competitionId, fixtureId] as const,
+  /** Prefix of every fixture's dropdown in one competition — scoring changes all of them. */
+  allFixturePredictions: (competitionId: string) =>
+    ['live', 'fixture-predictions', competitionId] as const,
+  userPredictions: (competitionId: string, userId: string) =>
+    ['live', 'user-predictions', competitionId, userId] as const,
+  userTablePrediction: (competitionId: string, userId: string) =>
+    ['live', 'user-table-prediction', competitionId, userId] as const,
   leaderboard: (competitionId: string) => ['live', 'leaderboard', competitionId] as const,
   tablePrediction: (competitionId: string) => ['live', 'table-prediction', competitionId] as const,
   members: (competitionId: string) => ['live', 'members', competitionId] as const,

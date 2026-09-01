@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { useT } from '@/lib/useT';
 import { UserAvatar } from '@/components/UserAvatar';
 import { useAuthStore } from '@/store/authStore';
@@ -7,12 +8,16 @@ import type { LiveLeaderboardRow } from '@/lib/liveApi';
 //
 // A straight read of the denormalised columns on live_competition_members — a handful of
 // point sources rather than the manual type's nine, so no client-side aggregation.
+//
+// Each name opens that member's predictions, read-only, the same way the manual
+// leaderboard does.
 
 interface Props {
   rows: LiveLeaderboardRow[];
+  competitionId: string;
 }
 
-export default function LiveLeaderboard({ rows }: Props) {
+export default function LiveLeaderboard({ rows, competitionId }: Props) {
   const { t } = useT();
   const { user } = useAuthStore();
 
@@ -69,7 +74,10 @@ export default function LiveLeaderboard({ rows }: Props) {
               >
                 <td className="py-2 pl-2 tabular-nums">{row.rank}</td>
                 <td className="py-2">
-                  <span className="flex items-center gap-2">
+                  <Link
+                    to={`/live/competitions/${competitionId}/predictions/${row.userId}`}
+                    className="flex min-w-0 items-center gap-2 transition-opacity hover:opacity-80"
+                  >
                     <UserAvatar
                       username={row.username}
                       imageUrl={row.imageUrl}
@@ -78,7 +86,7 @@ export default function LiveLeaderboard({ rows }: Props) {
                       resizeWidth={56}
                     />
                     <span className="truncate">{row.username}</span>
-                  </span>
+                  </Link>
                 </td>
                 <td className="py-2 text-center tabular-nums text-muted-foreground">
                   {row.breakdown.correctOutcomePoints}

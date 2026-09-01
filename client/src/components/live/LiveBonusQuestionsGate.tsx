@@ -168,14 +168,13 @@ export default function LiveBonusQuestionsGate({
               ))}
             </select>
           ) : question.answerType === 'player' ? (
+            // No free text: the answer has to be one of the suggestions. A typed name is
+            // graded as text, so a typo or a second spelling of the same player scores
+            // nothing and looks like bad luck rather than a mistake.
             <PlayerSearchInput
               value={answer}
               onChange={setAnswer}
               placeholder={t('bonusQuestions.searchPlayerUser')}
-              // An answer is required to get past this screen, so a typed name has to be
-              // enough on its own — the suggestions come from an external service that a
-              // firewall or an outage can put out of reach.
-              allowFreeText
             />
           ) : question.answerType === 'team' ? (
             <TeamSelectInput value={answer} onChange={setAnswer} teams={teamOptions} />

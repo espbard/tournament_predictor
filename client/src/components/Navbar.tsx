@@ -64,7 +64,18 @@ export default function Navbar() {
   // Predictions / Results dropdowns as the manual type, and have no tab bar of their own.
   // Kept as a sibling branch rather than folded into the manual dropdowns: the two
   // tournament types share no sections.
+  // A member's read-only predictions hang off the live competition, and keep its tabs —
+  // picking one there goes back to the competition itself, as on the manual type.
   const isOnLiveCompetitionPage = /^\/live\/competitions\/[^/]+$/.test(location.pathname);
+  const isOnLivePredictionsPage = /^\/live\/competitions\/[^/]+\/predictions\/[^/]+$/.test(
+    location.pathname,
+  );
+  const showLiveTabs = isOnLiveCompetitionPage || isOnLivePredictionsPage;
+
+  // A page about one member, of either tournament type. It puts their name and face at the
+  // top, so the site name beside it is noise — the home icon is still there to get out.
+  const isOnUserPredictionsPage = isOnPredictionsPage || isOnLivePredictionsPage;
+  const liveCompetitionId = location.pathname.match(/^\/live\/competitions\/([^/]+)/)?.[1];
   const LIVE_PREDICTION_TABS = ['fixtures', 'table', 'bonus'] as const;
   const LIVE_RESULT_TABS = ['standings', 'leaderboard'] as const;
   const liveTabParam = searchParams.get('tab') ?? '';
@@ -94,6 +105,8 @@ export default function Navbar() {
     setStandingsOpen(false);
     if (isOnPredictionsPage && competitionId) {
       navigate(`/competitions/${competitionId}?tab=${tab}`);
+    } else if (isOnLivePredictionsPage && liveCompetitionId) {
+      navigate(`/live/competitions/${liveCompetitionId}?tab=${tab}`);
     } else {
       setSearchParams(prev => {
         const n = new URLSearchParams(prev);
@@ -128,13 +141,16 @@ export default function Navbar() {
           </Link>
         )}
 
-        {/* Site name – hidden on mobile only when tabs are shown */}
-        <Link
-          to="/"
-          className={`shrink-0 flex items-center text-base lg:text-lg font-semibold text-foreground hover:opacity-70 mr-2 py-2 sm:py-3 ${showTabs || isOnLiveCompetitionPage ? 'hidden sm:flex' : ''}`}
-        >
-          {t('nav.appName')}
-        </Link>
+        {/* Site name – dropped entirely on a member's own page, and hidden on mobile
+            elsewhere that tabs are competing for the width */}
+        {!isOnUserPredictionsPage && (
+          <Link
+            to="/"
+            className={`shrink-0 flex items-center text-base lg:text-lg font-semibold text-foreground hover:opacity-70 mr-2 py-2 sm:py-3 ${showTabs || showLiveTabs ? 'hidden sm:flex' : ''}`}
+          >
+            {t('nav.appName')}
+          </Link>
+        )}
 
         {/* Spacer – always pushes tabs and avatar to the right */}
         <div className="flex-1" />
@@ -219,7 +235,7 @@ export default function Navbar() {
         )}
 
         {/* Live competition tabs */}
-        {isOnLiveCompetitionPage && (
+        {showLiveTabs && (
           <div className="flex items-center min-w-0">
             {/* Predictions dropdown */}
             <div ref={groupsRef} className="relative">
