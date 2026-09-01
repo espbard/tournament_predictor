@@ -301,6 +301,12 @@ export const liveApi = {
     id: string,
     body: { stageKey: string; matchday: number; fixtureIds: string[] | null },
   ) => api.put<SaveLiveSelectionResult>(`/live/tournaments/${id}/selected-matches`, body),
+  /** Make one match worth more. 1 is the default and leaves scoring untouched. */
+  saveFixtureMultiplier: (id: string, fixtureId: string, multiplier: number) =>
+    api.patch<{
+      fixture: { id: string; multiplier: number };
+      scoredPredictions: number;
+    }>(`/live/tournaments/${id}/fixtures/${fixtureId}/multiplier`, { multiplier }),
   // ── Bonus questions ───────────────────────────────────────────────────────
   // Questions belong to the tournament; answers to a competition.
   tournamentBonusQuestions: (id: string) =>

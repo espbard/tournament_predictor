@@ -154,6 +154,11 @@ export const liveFixtures = pgTable(
     /** Groups the two legs of a two-legged tie. Null for single-leg fixtures. */
     tieKey: text('tie_key'),
     legNumber: integer('leg_number'),
+    /**
+     * Whole-number multiplier on every point this fixture awards. Set by an admin, never
+     * by the provider — the sync upsert deliberately leaves it alone.
+     */
+    multiplier: integer('multiplier').notNull().default(1),
 
     // Score at the end of normal time (90 minutes plus stoppage). The ONLY score that
     // awards points — extra time and penalties are stored for display but never scored.

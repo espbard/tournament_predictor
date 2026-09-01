@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { liveFixtureMultiplier } from '@tournament-predictor/shared';
 import { useT } from '@/lib/useT';
 import LiveCountdown from '@/components/live/LiveCountdown';
 import LiveMatchPredictions from '@/components/live/LiveMatchPredictions';
@@ -12,6 +13,10 @@ import type { LiveFixtureView } from '@/lib/liveApi';
 //
 // Once the match is played it also carries the dropdown of what the whole league
 // predicted — which needs the competition, so `competitionId` is what switches it on.
+//
+// A match an admin has given a multiplier is rendered gold — border, tint and a ×N badge —
+// and says so in a line at the foot of the card, because a match worth several times the
+// rest is worth noticing before the deadline rather than after it.
 
 interface Props {
   fixture: LiveFixtureView;
@@ -71,6 +76,10 @@ export default function LiveFixtureCard({
   // A match the admin left out of its gameweek's selection is not part of the game, so it
   // is shown as a result only — exactly like a fixture below the starting stage.
   const inPredictionGame = fixture.isPredictable && fixture.isSelected;
+  // Only meaningful on a match that is actually part of the game: a multiplier on a
+  // fixture nobody predicts multiplies nothing.
+  const multiplier = liveFixtureMultiplier(fixture.multiplier);
+  const isMultiplied = inPredictionGame && multiplier > 1;
   const editable = !readOnly && !fixture.isLocked && inPredictionGame && fixture.homeTeamId !== null;
   const dirty =
     home !== '' &&
@@ -97,20 +106,33 @@ export default function LiveFixtureCard({
   return (
     <div
       className={`rounded-lg border p-3 transition-colors ${
-        isLive ? 'border-green-500/60 bg-green-500/5' : ''
+        isMultiplied
+          ? // Gold outranks the live tint: a live match already says so with its pulsing
+            // minute, while the multiplier has nothing else to announce it.
+            'border-amber-400/70 bg-gradient-to-b from-amber-400/10 to-amber-400/[0.02] shadow-[0_0_0_1px_rgba(251,191,36,0.15)] dark:border-amber-300/50'
+          : isLive
+            ? 'border-green-500/60 bg-green-500/5'
+            : ''
       }`}
     >
       <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="text-xs text-muted-foreground">
-          {kickoff
-            ? kickoff.toLocaleString(undefined, {
-                weekday: 'short',
-                day: 'numeric',
-                month: 'short',
-                hour: '2-digit',
-                minute: '2-digit',
-              })
-            : t('live.kickoffTbd')}
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="truncate text-xs text-muted-foreground">
+            {kickoff
+              ? kickoff.toLocaleString(undefined, {
+                  weekday: 'short',
+                  day: 'numeric',
+                  month: 'short',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })
+              : t('live.kickoffTbd')}
+          </span>
+          {isMultiplied && (
+            <span className="shrink-0 rounded-full border border-amber-400/70 bg-amber-400/15 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-amber-700 dark:text-amber-300">
+              {t('live.multiplier.badge', { multiplier })}
+            </span>
+          )}
         </span>
 
         {isLive ? (
@@ -224,6 +246,16 @@ export default function LiveFixtureCard({
       {isFinished && inPredictionGame && fixture.normalTimeHome === null && (
         <p className="mt-1 text-center text-xs text-amber-600 dark:text-amber-400">
           {t('live.notScorable')}
+        </p>
+      )}
+
+      {/* Why the card is gold. Past tense once the points have actually been written,
+          future while the match is still to be scored. */}
+      {isMultiplied && (
+        <p className="mt-2 text-center text-xs font-medium text-amber-700 dark:text-amber-300">
+          {fixture.prediction?.points != null
+            ? t('live.multiplier.explainerApplied', { multiplier })
+            : t('live.multiplier.explainer', { multiplier })}
         </p>
       )}
 

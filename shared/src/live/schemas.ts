@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { LIVE_FORMAT_KEYS } from './formats';
+import { LIVE_MAX_MULTIPLIER, LIVE_MIN_MULTIPLIER } from './types';
 
 // Scores are entered by hand, so bound them the same way the manual type does
 // (SaveBracketPredictionsSchema caps at 30).
@@ -87,6 +88,16 @@ export const SaveLiveGameweekSelectionSchema = z.object({
   fixtureIds: z.array(z.string().min(1)).max(200).nullable(),
 });
 
+/**
+ * A fixture's point multiplier.
+ *
+ * Whole numbers only, and never below 1 — see LIVE_MIN_MULTIPLIER. The upper bound is a
+ * sanity limit rather than a rule of the game: a x10 match already dwarfs a gameweek.
+ */
+export const SaveLiveFixtureMultiplierSchema = z.object({
+  multiplier: z.number().int().min(LIVE_MIN_MULTIPLIER).max(LIVE_MAX_MULTIPLIER),
+});
+
 // ── Bonus questions ───────────────────────────────────────────────────────────
 
 const bonusAnswerType = z.enum(['number', 'player', 'team', 'yes_no', 'country']);
@@ -157,6 +168,7 @@ export type SaveLivePredictionInput = z.infer<typeof SaveLivePredictionSchema>;
 export type SaveLiveTablePredictionInput = z.infer<typeof SaveLiveTablePredictionSchema>;
 export type ListLiveFixturesQuery = z.infer<typeof ListLiveFixturesQuerySchema>;
 export type SaveLiveGameweekSelectionInput = z.infer<typeof SaveLiveGameweekSelectionSchema>;
+export type SaveLiveFixtureMultiplierInput = z.infer<typeof SaveLiveFixtureMultiplierSchema>;
 export type CreateLiveBonusQuestionInput = z.infer<typeof CreateLiveBonusQuestionSchema>;
 export type UpdateLiveBonusQuestionInput = z.infer<typeof UpdateLiveBonusQuestionSchema>;
 export type SaveLiveBonusAnswerInput = z.infer<typeof SaveLiveBonusAnswerSchema>;

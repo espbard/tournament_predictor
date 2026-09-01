@@ -219,6 +219,8 @@ export async function ensureLiveSchema(): Promise<void> {
   await db.execute(sql`ALTER TABLE "live_bonus_questions" ADD COLUMN IF NOT EXISTS "max_value" integer`);
   await db.execute(sql`ALTER TABLE "live_bonus_questions" ADD COLUMN IF NOT EXISTS "leeway" integer`);
   await db.execute(sql`ALTER TABLE "live_bonus_questions" ADD COLUMN IF NOT EXISTS "options" json`);
+  // Per-fixture point multiplier. Admin-set; 1 means scoring is untouched.
+  await db.execute(sql`ALTER TABLE "live_fixtures" ADD COLUMN IF NOT EXISTS "multiplier" integer NOT NULL DEFAULT 1`);
   // Share-link token. Nullable: minted the first time somebody presses Invite.
   await db.execute(sql`ALTER TABLE "live_competitions" ADD COLUMN IF NOT EXISTS "invite_token" text`);
 

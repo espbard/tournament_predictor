@@ -328,6 +328,18 @@ Three **stacking** tiers, evaluated per fixture:
 The tiers are nested — an exact scoreline necessarily also has the right goal difference and
 outcome — so points simply add.
 
+### Fixture multipliers
+
+An admin can make one match worth more than the rest by giving it a whole-number multiplier
+(`live_fixtures.multiplier`, default 1, capped at `LIVE_MAX_MULTIPLIER`). Everything the fixture
+awards is multiplied by it, so a ×3 match maxes out at 12 rather than 4.
+
+The multiplier is applied **per tier** rather than to the total, because the leaderboard sums the
+three stored tier columns — applying it only to `points` would leave a member's breakdown
+disagreeing with their score. It is set from the selected-matches panel, and changing it
+recalculates the tournament there and then, exactly as deselecting a match does. The provider
+never owns this column, so a sync leaves it alone.
+
 ### League table prediction
 
 Alongside the per-fixture predictions, users order **every team in the table stage** from top to
@@ -586,6 +598,7 @@ export const liveQualificationEnum = pgEnum('live_qualification_status', [
 `live_teams` nullable (knockout fixtures exist before teams are known) · `kickoffAt` nullable ·
 `kickoffConfirmed` bool · `status` enum · `stageKey` text nullable · `providerStage` text ·
 `groupName` · `matchday` int · `tieKey` text nullable · `legNumber` int nullable ·
+`multiplier` int not null default 1 (admin-set point multiplier; never written by a sync) ·
 
 **Scores:** `normalTimeHome` / `normalTimeAway` (← the values that score) · `halfTimeHome` /
 `halfTimeAway` · `extraTimeHome` / `extraTimeAway` · `penaltiesHome` / `penaltiesAway` ·
@@ -989,6 +1002,7 @@ Mounted as `app.use('/api/live', liveRouter)` in `server/src/index.ts`.
 | POST / PATCH / DELETE | `/tournaments/:id/bonus-questions[/:questionId]` | admin | recording a correct answer scores it, but only once the tournament is completed |
 | GET | `/tournaments/:id/selected-matches` | auth | every gameweek with `isCustomised` and its selected fixture ids |
 | PUT | `/tournaments/:id/selected-matches` | admin | `{stageKey, matchday, fixtureIds}`; `fixtureIds: null` (or empty) resets the gameweek to "all selected". Recalculates the tournament, since a deselected match must give its points back |
+| PATCH | `/tournaments/:id/fixtures/:fixtureId/multiplier` | admin | `{multiplier}`, a whole number from 1 to `LIVE_MAX_MULTIPLIER`. Recalculates the tournament, since an already-scored match has to be rescored |
 
 ### `server/src/live/routes/competitions.ts`
 

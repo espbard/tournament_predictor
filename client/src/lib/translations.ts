@@ -624,6 +624,11 @@ const translations = {
       afterPenalties: 'Decided on penalties {{home}}–{{away}} — only the 90-minute score counts',
       pointsShort: '{{points}} pts',
       pointsBreakdown: 'Outcome {{outcome}} + goal difference {{gd}} + exact score {{exact}}',
+      multiplier: {
+        badge: '×{{multiplier}}',
+        explainer: 'This match is worth more — every point you score here will be multiplied by {{multiplier}}.',
+        explainerApplied: 'This match was worth more — the points you scored here were multiplied by {{multiplier}}.',
+      },
       predictedHomeScore: 'Predicted goals for {{team}}',
       predictedAwayScore: 'Predicted goals for {{team}}',
       status: {
@@ -865,6 +870,12 @@ const translations = {
           saved: 'Saved — {{selected}} of {{total}} matches count this gameweek.',
           resetDone: 'Cleared — no matches in this gameweek count.',
           saveFailed: 'Could not save the selection.',
+        },
+        multiplier: {
+          explainer: 'The × next to a match multiplies every point it awards. Leave it at 1 for a normal match; anything higher is saved on its own and rescores the tournament straight away.',
+          field: 'Point multiplier for {{match}}',
+          saved: 'Saved — that match now counts ×{{multiplier}}.',
+          saveFailed: 'Could not save the multiplier.',
         },
       },
     },
@@ -1493,6 +1504,11 @@ const translations = {
       afterPenalties: 'Avgjort på straffer {{home}}–{{away}} — kun stillingen etter 90 minutter teller',
       pointsShort: '{{points}} p',
       pointsBreakdown: 'Utfall {{outcome}} + målforskjell {{gd}} + eksakt resultat {{exact}}',
+      multiplier: {
+        badge: '×{{multiplier}}',
+        explainer: 'Denne kampen teller ekstra — alle poeng du får her blir ganget med {{multiplier}}.',
+        explainerApplied: 'Denne kampen telte ekstra — poengene du fikk her ble ganget med {{multiplier}}.',
+      },
       predictedHomeScore: 'Tippede mål for {{team}}',
       predictedAwayScore: 'Tippede mål for {{team}}',
       status: {
@@ -1734,6 +1750,12 @@ const translations = {
           saved: 'Lagret — {{selected}} av {{total}} kamper teller denne runden.',
           resetDone: 'Tømt — ingen kamper i denne runden teller.',
           saveFailed: 'Kunne ikke lagre utvalget.',
+        },
+        multiplier: {
+          explainer: 'Tallet etter × ganger opp alle poeng kampen gir. La det stå på 1 for en vanlig kamp; alt over lagres for seg og regner om turneringen med én gang.',
+          field: 'Poengmultiplikator for {{match}}',
+          saved: 'Lagret — kampen teller nå ×{{multiplier}}.',
+          saveFailed: 'Kunne ikke lagre multiplikatoren.',
         },
       },
     },
@@ -2361,6 +2383,11 @@ const translations = {
       afterPenalties: 'Im Elfmeterschießen entschieden {{home}}–{{away}} — es zählt nur das Ergebnis nach 90 Minuten',
       pointsShort: '{{points}} Pkt',
       pointsBreakdown: 'Ausgang {{outcome}} + Tordifferenz {{gd}} + exaktes Ergebnis {{exact}}',
+      multiplier: {
+        badge: '×{{multiplier}}',
+        explainer: 'Dieses Spiel zählt mehr — alle Punkte hier werden mit {{multiplier}} multipliziert.',
+        explainerApplied: 'Dieses Spiel zählte mehr — die Punkte hier wurden mit {{multiplier}} multipliziert.',
+      },
       predictedHomeScore: 'Getippte Tore für {{team}}',
       predictedAwayScore: 'Getippte Tore für {{team}}',
       status: {
@@ -2602,6 +2629,12 @@ const translations = {
           saved: 'Gespeichert — {{selected}} von {{total}} Spielen zählen an diesem Spieltag.',
           resetDone: 'Geleert — an diesem Spieltag zählt kein Spiel.',
           saveFailed: 'Auswahl konnte nicht gespeichert werden.',
+        },
+        multiplier: {
+          explainer: 'Das × neben einem Spiel vervielfacht alle Punkte, die es bringt. Für ein normales Spiel bleibt es bei 1; alles darüber wird einzeln gespeichert und wertet das Turnier sofort neu aus.',
+          field: 'Punktemultiplikator für {{match}}',
+          saved: 'Gespeichert — dieses Spiel zählt jetzt ×{{multiplier}}.',
+          saveFailed: 'Multiplikator konnte nicht gespeichert werden.',
         },
       },
     },

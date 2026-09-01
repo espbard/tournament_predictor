@@ -76,6 +76,29 @@ export function withLiveScoringDefaults(
   return { ...DEFAULT_LIVE_SCORING_CONFIG, ...(config ?? {}) };
 }
 
+// ── Fixture point multipliers ─────────────────────────────────────────────────
+
+/**
+ * Bounds on a fixture's multiplier. Whole numbers only, and never below 1: a multiplier
+ * is there to make a match matter more, not to take points away from one.
+ */
+export const LIVE_MIN_MULTIPLIER = 1;
+export const LIVE_MAX_MULTIPLIER = 10;
+
+/**
+ * A fixture's multiplier as scoring should read it.
+ *
+ * A fixture stored before the column existed reads as null, and a value outside the
+ * bounds should never reach scoring at all — both fall back to 1 rather than wiping out
+ * or inflating everyone's points on a fixture that has already been predicted.
+ */
+export function liveFixtureMultiplier(value: number | null | undefined): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 1;
+  const whole = Math.trunc(value);
+  if (whole < LIVE_MIN_MULTIPLIER) return 1;
+  return Math.min(whole, LIVE_MAX_MULTIPLIER);
+}
+
 export interface LiveScoreBreakdown {
   correctOutcomePoints: number;
   correctGoalDifferencePoints: number;
@@ -141,6 +164,11 @@ export interface LiveFixture {
   /** Groups the two legs of a two-legged tie. Null for single-leg fixtures. */
   tieKey: string | null;
   legNumber: number | null;
+  /**
+   * Whole-number multiplier applied to every point this fixture awards, set by an admin.
+   * 1 — the default — leaves scoring exactly as the tiers describe it.
+   */
+  multiplier: number;
 
   /** End of normal time — the only score that awards points. */
   normalTimeHome: number | null;

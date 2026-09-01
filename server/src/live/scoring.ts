@@ -1,4 +1,8 @@
-import type { LiveFixtureStatus, LiveScoringConfig } from '@tournament-predictor/shared';
+import {
+  liveFixtureMultiplier,
+  type LiveFixtureStatus,
+  type LiveScoringConfig,
+} from '@tournament-predictor/shared';
 
 // ── Live tournament scoring ───────────────────────────────────────────────────
 //
@@ -9,6 +13,11 @@ import type { LiveFixtureStatus, LiveScoringConfig } from '@tournament-predictor
 //   outcome (home win / draw / away win)   +1
 //   goal difference                        +1
 //   exact scoreline                        +2
+//
+// The whole thing is then multiplied by the fixture's multiplier, which an admin sets to
+// make one match matter more than the rest. It is applied per tier rather than to the
+// total so the stored breakdown still adds up to the points awarded — the leaderboard
+// sums the tier columns, not the total.
 //
 // Pure, no database access, mirroring the shape of calculateMatchPoints in
 // server/src/lib/scoring.ts but with no stage or progressing-team dimension: this
@@ -26,6 +35,11 @@ export interface LiveFixtureScoreInput {
   normalTimeHome: number | null;
   normalTimeAway: number | null;
   status: LiveFixtureStatus;
+  /**
+   * The fixture's point multiplier. Optional so a caller that predates the column — or a
+   * fixture row stored before it — still scores at face value; see liveFixtureMultiplier.
+   */
+  multiplier?: number | null;
 }
 
 /**
@@ -80,9 +94,14 @@ export function calculateLivePoints(
     actualHome - actualAway === prediction.homeScore - prediction.awayScore;
   const exactScore = actualHome === prediction.homeScore && actualAway === prediction.awayScore;
 
-  const correctOutcomePoints = correctOutcome ? config.correct_outcome : 0;
-  const correctGoalDifferencePoints = correctGoalDifference ? config.correct_goal_difference : 0;
-  const exactScorePoints = exactScore ? config.exact_score : 0;
+  // Applied per tier, so the three stored components still sum to `points`.
+  const multiplier = liveFixtureMultiplier(fixture.multiplier);
+
+  const correctOutcomePoints = correctOutcome ? config.correct_outcome * multiplier : 0;
+  const correctGoalDifferencePoints = correctGoalDifference
+    ? config.correct_goal_difference * multiplier
+    : 0;
+  const exactScorePoints = exactScore ? config.exact_score * multiplier : 0;
 
   return {
     points: correctOutcomePoints + correctGoalDifferencePoints + exactScorePoints,

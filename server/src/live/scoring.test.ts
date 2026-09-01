@@ -111,6 +111,55 @@ describe('calculateLivePoints', () => {
   });
 });
 
+describe('calculateLivePoints — fixture multipliers', () => {
+  const multiplied = (
+    actual: [number, number],
+    predicted: [number, number],
+    multiplier: number | null | undefined,
+  ) =>
+    calculateLivePoints(
+      { homeScore: predicted[0], awayScore: predicted[1] },
+      { ...finished(actual[0], actual[1]), multiplier },
+      CONFIG,
+    );
+
+  it('multiplies every tier, so the breakdown still sums to the total', () => {
+    expect(multiplied([2, 1], [2, 1], 3)).toEqual({
+      points: 12,
+      correctOutcomePoints: 3,
+      correctGoalDifferencePoints: 3,
+      exactScorePoints: 6,
+    });
+  });
+
+  it('multiplies a partial score too', () => {
+    expect(multiplied([2, 1], [3, 2], 2).points).toBe(4);
+    expect(multiplied([2, 1], [3, 1], 2).points).toBe(2);
+  });
+
+  it('leaves a wrong prediction at nothing however big the multiplier', () => {
+    expect(multiplied([2, 1], [1, 1], 10).points).toBe(0);
+  });
+
+  it('scores at face value for the default multiplier, and for a fixture without one', () => {
+    expect(multiplied([2, 1], [2, 1], 1).points).toBe(4);
+    // A fixture row stored before the column existed, and a caller that omits it.
+    expect(multiplied([2, 1], [2, 1], null).points).toBe(4);
+    expect(multiplied([2, 1], [2, 1], undefined).points).toBe(4);
+  });
+
+  it('refuses a multiplier that would take points away', () => {
+    // Below the minimum falls back to 1 rather than zeroing or negating a prediction
+    // somebody has already made.
+    expect(multiplied([2, 1], [2, 1], 0).points).toBe(4);
+    expect(multiplied([2, 1], [2, 1], -3).points).toBe(4);
+  });
+
+  it('caps a multiplier above the maximum rather than honouring it', () => {
+    expect(multiplied([2, 1], [2, 1], 99).points).toBe(4 * 10);
+  });
+});
+
 describe('calculateLivePoints — unscorable fixtures', () => {
   const perfect = { homeScore: 2, awayScore: 1 };
 

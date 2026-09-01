@@ -7,6 +7,7 @@ import {
   LIVE_FORMATS,
   LIVE_TOURNAMENT_PRESETS,
   ListLiveFixturesQuerySchema,
+  SaveLiveFixtureMultiplierSchema,
   SaveLiveGameweekSelectionSchema,
   SyncLiveTournamentSchema,
   UpdateLiveBonusQuestionSchema,
@@ -629,6 +630,71 @@ liveTournamentsRouter.put('/tournaments/:id/selected-matches', requireAdmin, asy
     return fail(res, err);
   }
 });
+
+// ── Fixture multipliers ───────────────────────────────────────────────────────
+
+/**
+ * Set one fixture's point multiplier.
+ *
+ * Everything the fixture awards is multiplied by it, so a match already scored has to be
+ * rescored — the same reasoning as the selected-matches route above, and the same remedy:
+ * rebuild the tournament rather than wait for the next sync to make the leaderboard right.
+ *
+ * The provider never touches this column, so a sync will not undo it (see sync.ts).
+ */
+liveTournamentsRouter.patch(
+  '/tournaments/:id/fixtures/:fixtureId/multiplier',
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const parsed = SaveLiveFixtureMultiplierSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: 'Invalid body', details: parsed.error.flatten() });
+      }
+
+      // Matched on the tournament as well as the id, so a fixture id from another
+      // tournament cannot be edited through this tournament's URL.
+      const [fixture] = await db
+        .select({ id: liveFixtures.id, multiplier: liveFixtures.multiplier })
+        .from(liveFixtures)
+        .where(
+          and(
+            eq(liveFixtures.id, req.params.fixtureId),
+            eq(liveFixtures.liveTournamentId, req.params.id),
+          ),
+        );
+      if (!fixture) return res.status(404).json({ error: 'Not found' });
+
+      // Nothing changed: skip the rebuild rather than churn every prediction in the
+      // tournament because a form re-submitted the value it already had.
+      if (fixture.multiplier === parsed.data.multiplier) {
+        return res.json({ fixture, scoredPredictions: 0 });
+      }
+
+      const [row] = await db
+        .update(liveFixtures)
+        .set({ multiplier: parsed.data.multiplier, updatedAt: new Date() })
+        .where(eq(liveFixtures.id, fixture.id))
+        .returning({ id: liveFixtures.id, multiplier: liveFixtures.multiplier });
+
+      const recalculated = await recalculateLiveTournament(req.params.id);
+
+      const competitions = await db
+        .select({ id: liveCompetitions.id })
+        .from(liveCompetitions)
+        .where(eq(liveCompetitions.liveTournamentId, req.params.id));
+      if (competitions.length > 0) {
+        const ids = competitions.map(c => c.id);
+        notifyLiveCompetitions(ids, 'fixtures-updated');
+        notifyLiveCompetitions(ids, 'leaderboard-updated');
+      }
+
+      return res.json({ fixture: row, scoredPredictions: recalculated.scoredPredictions });
+    } catch (err) {
+      return fail(res, err);
+    }
+  },
+);
 
 // ── Bonus questions ───────────────────────────────────────────────────────────
 //

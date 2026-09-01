@@ -123,6 +123,7 @@ export async function scoreFixtures(fixtureIds: string[]): Promise<ScoreFixtures
       status: liveFixtures.status,
       normalTimeHome: liveFixtures.normalTimeHome,
       normalTimeAway: liveFixtures.normalTimeAway,
+      multiplier: liveFixtures.multiplier,
     })
     .from(liveFixtures)
     .where(inArray(liveFixtures.id, fixtureIds));
@@ -333,6 +334,7 @@ export async function recalculateLiveCompetition(competitionId: string): Promise
       status: liveFixtures.status,
       normalTimeHome: liveFixtures.normalTimeHome,
       normalTimeAway: liveFixtures.normalTimeAway,
+      multiplier: liveFixtures.multiplier,
     })
     .from(livePredictions)
     .innerJoin(liveFixtures, eq(livePredictions.liveFixtureId, liveFixtures.id))
