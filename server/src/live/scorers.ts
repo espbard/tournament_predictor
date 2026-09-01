@@ -3,11 +3,17 @@ import { generateId } from 'lucia';
 import { db } from '../db/client';
 import { livePlayers, liveTeams, liveTournaments } from '../db/liveSchema';
 import { getProvider } from './providers';
-import { ProviderError } from './providers/types';
+import { ProviderError, type ProviderSquadPlayer } from './providers/types';
 
 // ── The player list ───────────────────────────────────────────────────────────
 //
 // Where the players an admin can shortlist come from, and where their goals come from.
+//
+// The shortlist is built by searching: an admin types a name, the provider's squads are
+// searched for it, and the player they pick becomes one row. Nothing else is stored — the
+// competition's other ~880 players are never written down, because nobody is going to rank
+// them and a table full of them is only in the way.
+//
 // Two different provider endpoints, because one of them alone is not enough:
 //
 //   * the **squads** on `/competitions/{id}/teams` are the roster — every player at every
@@ -82,91 +88,206 @@ function indexByName(players: Array<{ id: string; name: string }>): Map<string, 
   return index;
 }
 
-export interface LiveScorerSyncResult {
-  /** False when the tournament's provider serves neither squads nor a scorer list. */
+// ── Searching the squads ──────────────────────────────────────────────────────
+//
+// A search must answer while somebody is typing, and the provider allows ten requests a
+// minute, so the squads are fetched once and kept for a few minutes. One admin filling in
+// a shortlist is then one provider request, not one per keystroke.
+//
+// Deliberately in memory rather than in a table: this is a lookup list, not data we own,
+// and a restart losing it costs exactly one request.
+
+const SQUAD_CACHE_TTL_MS = 10 * 60_000;
+
+interface CachedSquad {
+  players: ProviderSquadPlayer[];
+  fetchedAt: number;
+}
+
+const squadCache = new Map<string, CachedSquad>();
+
+/** Test seam, and the escape hatch for an admin who has just corrected a season. */
+export function clearLiveSquadCache(): void {
+  squadCache.clear();
+}
+
+async function loadSquads(
+  tournamentId: string,
+  season: string,
+  fetcher: () => Promise<ProviderSquadPlayer[]>,
+): Promise<ProviderSquadPlayer[]> {
+  const key = `${tournamentId}#${season}`;
+  const cached = squadCache.get(key);
+  if (cached && Date.now() - cached.fetchedAt < SQUAD_CACHE_TTL_MS) return cached.players;
+
+  const players = await fetcher();
+  // An empty answer is cached too. A season the provider has not published yet would
+  // otherwise be re-requested on every keystroke, which is precisely when the rate limit
+  // is least affordable.
+  squadCache.set(key, { players, fetchedAt: Date.now() });
+  return players;
+}
+
+export interface LivePlayerSearchHit extends ProviderSquadPlayer {
+  /** The club as this tournament stores it, when the team is one we know. */
+  teamId: string | null;
+  teamName: string | null;
+  /** True when this player is already in the tournament's list. */
+  alreadyAdded: boolean;
+}
+
+/** How many hits a search returns. Enough to disambiguate a surname, few enough to scan. */
+const SEARCH_LIMIT = 25;
+
+export interface LivePlayerSearchResult {
+  /** False when the tournament's provider publishes no squads to search. */
   supported: boolean;
-  /** Players the squads carried — the roster to pick a shortlist from. */
-  squadFetched: number;
+  /** The provider has not published this season yet — try the previous one. */
+  seasonUnavailable: boolean;
+  hits: LivePlayerSearchHit[];
+}
+
+/**
+ * Find players in the competition's squads whose name matches `query`.
+ *
+ * Matching is on the folded name (accents dropped, case ignored), so "mbappe" finds
+ * "Kylian Mbappé". A hit whose name *starts* with the query sorts above one that merely
+ * contains it, which is what makes typing a surname feel like it works.
+ */
+export async function searchLivePlayers(
+  tournamentId: string,
+  query: string,
+  season?: string,
+): Promise<LivePlayerSearchResult> {
+  const empty: LivePlayerSearchResult = { supported: false, seasonUnavailable: false, hits: [] };
+
+  const [tournament] = await db
+    .select()
+    .from(liveTournaments)
+    .where(eq(liveTournaments.id, tournamentId));
+  if (!tournament) return empty;
+
+  const provider = getProvider(tournament.provider);
+  if (!provider.fetchSquads) return empty;
+
+  const wantedSeason = season ?? tournament.season;
+  let squads: ProviderSquadPlayer[];
+  try {
+    squads = await loadSquads(tournament.id, wantedSeason, () =>
+      provider.fetchSquads!(tournament.providerCompetitionId, wantedSeason),
+    );
+  } catch (err) {
+    if (err instanceof ProviderError && err.isSeasonUnavailable) {
+      return { supported: true, seasonUnavailable: true, hits: [] };
+    }
+    throw err;
+  }
+
+  const needle = normaliseLivePlayerName(query);
+  if (needle === '') return { supported: true, seasonUnavailable: false, hits: [] };
+
+  const matched = matchSquadPlayers(squads, needle);
+
+  const [teams, stored] = await Promise.all([
+    db
+      .select({ id: liveTeams.id, providerTeamId: liveTeams.providerTeamId, name: liveTeams.name })
+      .from(liveTeams)
+      .where(eq(liveTeams.liveTournamentId, tournament.id)),
+    db
+      .select({ providerPlayerId: livePlayers.providerPlayerId })
+      .from(livePlayers)
+      .where(eq(livePlayers.liveTournamentId, tournament.id)),
+  ]);
+  const teamByProviderId = new Map(teams.map(t => [t.providerTeamId, t]));
+  const addedIds = new Set(stored.map(p => p.providerPlayerId).filter(Boolean));
+
+  return {
+    supported: true,
+    seasonUnavailable: false,
+    hits: matched.map(player => {
+      const team = player.providerTeamId ? teamByProviderId.get(player.providerTeamId) : undefined;
+      return {
+        ...player,
+        teamId: team?.id ?? null,
+        teamName: team?.name ?? null,
+        alreadyAdded: addedIds.has(player.providerPlayerId),
+      };
+    }),
+  };
+}
+
+/**
+ * The matching itself, pure so it can be tested without a provider or a database.
+ *
+ * `needle` must already be folded — see normaliseLivePlayerName.
+ */
+export function matchSquadPlayers(
+  squads: ProviderSquadPlayer[],
+  needle: string,
+  limit = SEARCH_LIMIT,
+): ProviderSquadPlayer[] {
+  if (needle === '') return [];
+  return squads
+    .map(player => ({ player, folded: normaliseLivePlayerName(player.name) }))
+    .filter(({ folded }) => folded.includes(needle))
+    .sort((a, b) => {
+      const aStarts = a.folded.startsWith(needle);
+      const bStarts = b.folded.startsWith(needle);
+      if (aStarts !== bStarts) return aStarts ? -1 : 1;
+      return a.player.name.localeCompare(b.player.name);
+    })
+    .slice(0, limit)
+    .map(({ player }) => player);
+}
+
+export interface LiveScorerSyncResult {
+  /** False when the tournament's provider serves no scorer list at all. */
+  supported: boolean;
   /** Players the scorers list carried. Zero before anybody has scored, which is normal. */
   scorersFetched: number;
-  /** Rows created across both passes. */
-  created: number;
-  /** Existing rows whose details or numbers were refreshed. */
+  /** Shortlisted players whose goals moved. */
   updated: number;
   /** Hand-added rows matched to a provider player by name and adopted. */
   adopted: number;
   /**
-   * Hand-added players the provider did not mention, by name. Their goals stay whatever
-   * the admin set — worth surfacing so nobody assumes a sync updated everyone.
+   * Shortlisted players the scorer list did not mention, by name. Either they have not
+   * scored, or nothing matched them — worth surfacing so nobody assumes a refresh reached
+   * everyone.
    */
   unmatchedNames: string[];
   /** True when the scorers list came back at exactly `limit`, i.e. it was cut short. */
   truncated: boolean;
-  /**
-   * The season is not published by the provider yet. Not an error, and the reason an
-   * admin should seed the list from the previous season instead.
-   */
+  /** The provider has not published this season yet. Not an error. */
   seasonUnavailable: boolean;
 }
 
 export interface SyncLiveScorersOptions {
-  /**
-   * Whether to pull the squads as well as the scorers.
-   *
-   * True for an admin import, which is when a roster is wanted. False for the background
-   * sync: goals move constantly and squads do not, so re-reading ~900 players every cold
-   * tick would be work nobody asked for. A transfer therefore shows up on the next import
-   * rather than by itself, which is the right trade for a list that is fixed before the
-   * season starts anyway.
-   */
-  includeSquads?: boolean;
-  /**
-   * The season to read. Defaults to the tournament's own.
-   *
-   * Passing last season's is how a shortlist gets seeded before the new one has a goal in
-   * it: football-data player ids are stable across seasons, so rows imported from 2025
-   * begin matching by themselves once 2026/27 data appears.
-   */
+  /** The season to read. Defaults to the tournament's own. */
   season?: string;
   limit?: number;
 }
 
 const DEFAULT_LIMIT = 100;
 
-/** Rows per insert statement. Postgres is happy with far more; this is about payload size. */
-const INSERT_CHUNK = 200;
-
-/** One row as either pass wants to write it. The two differ only in what they know. */
-interface IncomingPlayer {
-  providerPlayerId: string;
-  name: string;
-  providerTeamId: string | null;
-  position?: string | null;
-  goals?: number;
-  assists?: number;
-}
-
 /**
- * Import the tournament's players from the provider, and refresh what is known about them.
+ * Refresh the goals and assists of the players already in the tournament's list.
  *
- * Runs the two passes described at the top of this file. Neither is required: a season the
- * provider has not published yet yields no squads, and a competition that has not started
- * yields no scorers — both are ordinary states, reported rather than thrown, so an admin
- * can see which half answered.
+ * Deliberately never creates. The list is the admin's shortlist plus whatever they have
+ * typed in by hand, and a scorer list containing a hundred players nobody picked has no
+ * business adding any of them — that was the old bulk-import model, and it made the admin
+ * page a haystack. Players get in one way now: an admin searches for them and picks them.
  *
- * Never deletes. A player dropped from a squad — or out of the top N — keeps the goals last
- * seen rather than reverting to zero, and a player in somebody's saved ranking must never
- * vanish from under it.
+ * A player who has not scored is simply not in the payload, which is why nothing here
+ * writes a zero: their stored tally, hand-entered or not, stands until the provider has
+ * something to say about them.
  */
-export async function syncLivePlayers(
+export async function refreshLivePlayerGoals(
   tournamentId: string,
   opts: SyncLiveScorersOptions = {},
 ): Promise<LiveScorerSyncResult> {
   const result: LiveScorerSyncResult = {
     supported: false,
-    squadFetched: 0,
     scorersFetched: 0,
-    created: 0,
     updated: 0,
     adopted: 0,
     unmatchedNames: [],
@@ -180,91 +301,37 @@ export async function syncLivePlayers(
     .where(eq(liveTournaments.id, tournamentId));
   if (!tournament) return result;
 
-  // Players are structure data, like teams and standings, so they come from the
-  // tournament's main provider even when fixtures are read from a different one.
+  // Goals are structure data, like teams and standings, so they come from the tournament's
+  // main provider even when fixtures are read from a different one.
   const provider = getProvider(tournament.provider);
-  if (!provider.fetchSquads && !provider.fetchScorers) return result;
+  if (!provider.fetchScorers) return result;
   result.supported = true;
 
-  const season = opts.season ?? tournament.season;
   const limit = opts.limit ?? DEFAULT_LIMIT;
-
-  // ── Pass one: the roster ────────────────────────────────────────────────────
-  let squad: IncomingPlayer[] = [];
-  if (provider.fetchSquads && opts.includeSquads !== false) {
-    try {
-      const players = await provider.fetchSquads(tournament.providerCompetitionId, season);
-      squad = players.map(p => ({
-        providerPlayerId: p.providerPlayerId,
-        name: p.name,
-        providerTeamId: p.providerTeamId,
-        position: p.position,
-      }));
-      result.squadFetched = squad.length;
-    } catch (err) {
-      // A season the provider has not created yet is the normal pre-draw state, and the
-      // answer to it is to import the previous season — not to fail the whole import.
-      if (err instanceof ProviderError && err.isSeasonUnavailable) result.seasonUnavailable = true;
-      else throw err;
-    }
-  }
-
-  // ── Pass two: the goals ─────────────────────────────────────────────────────
-  let scorers: IncomingPlayer[] = [];
-  if (provider.fetchScorers) {
-    try {
-      const rows = await provider.fetchScorers(tournament.providerCompetitionId, season, limit);
-      scorers = rows.map(r => ({
-        providerPlayerId: r.providerPlayerId,
-        name: r.name,
-        providerTeamId: r.providerTeamId,
-        goals: r.goals,
-        assists: r.assists,
-      }));
-      result.scorersFetched = rows.length;
-      result.truncated = rows.length >= limit;
-    } catch (err) {
-      if (err instanceof ProviderError && err.isSeasonUnavailable) result.seasonUnavailable = true;
-      else throw err;
-    }
-  }
-
-  // ── Merge, then write once ──────────────────────────────────────────────────
-  //
-  // The two passes overlap: a player who has scored is in both, and each source knows
-  // something the other does not — the squads have the position, the scorers list has the
-  // goals. Merging them in memory first means every player is written exactly once, with
-  // everything known about them. Writing pass by pass instead would have the second pass
-  // trying to update rows the first had not inserted yet.
-  const merged = new Map<string, IncomingPlayer>();
-  for (const player of [...squad, ...scorers]) {
-    const existing = merged.get(player.providerPlayerId);
-    merged.set(
-      player.providerPlayerId,
-      existing
-        ? {
-            ...existing,
-            ...player,
-            // Neither source is allowed to blank what the other supplied.
-            providerTeamId: player.providerTeamId ?? existing.providerTeamId,
-            position: player.position ?? existing.position,
-            goals: player.goals ?? existing.goals,
-            assists: player.assists ?? existing.assists,
-          }
-        : player,
+  let scorers;
+  try {
+    scorers = await provider.fetchScorers(
+      tournament.providerCompetitionId,
+      opts.season ?? tournament.season,
+      limit,
     );
+  } catch (err) {
+    if (err instanceof ProviderError && err.isSeasonUnavailable) {
+      result.seasonUnavailable = true;
+      return result;
+    }
+    throw err;
   }
-  if (merged.size === 0) return result;
 
-  const [stored, teams] = await Promise.all([
-    db.select().from(livePlayers).where(eq(livePlayers.liveTournamentId, tournament.id)),
-    db
-      .select({ id: liveTeams.id, providerTeamId: liveTeams.providerTeamId })
-      .from(liveTeams)
-      .where(eq(liveTeams.liveTournamentId, tournament.id)),
-  ]);
+  result.scorersFetched = scorers.length;
+  result.truncated = scorers.length >= limit;
 
-  const teamIdByProviderId = new Map(teams.map(t => [t.providerTeamId, t.id]));
+  const stored = await db
+    .select()
+    .from(livePlayers)
+    .where(eq(livePlayers.liveTournamentId, tournament.id));
+  if (stored.length === 0) return result;
+
   const byProviderId = new Map(
     stored.filter(p => p.providerPlayerId !== null).map(p => [p.providerPlayerId!, p]),
   );
@@ -272,116 +339,54 @@ export async function syncLivePlayers(
   const storedById = new Map(stored.map(p => [p.id, p]));
 
   const now = new Date();
-  const adopted = new Set<string>();
-  const pending: Array<typeof livePlayers.$inferInsert> = [];
+  const seen = new Set<string>();
 
-  for (const player of merged.values()) {
-    const teamId = player.providerTeamId
-      ? (teamIdByProviderId.get(player.providerTeamId) ?? null)
-      : null;
-
-    const existing = byProviderId.get(player.providerPlayerId);
+  for (const scorer of scorers) {
+    const existing = byProviderId.get(scorer.providerPlayerId);
     if (existing) {
-      const next = {
-        // The provider's spelling is canonical for a row it owns.
-        name: player.name,
-        teamId: teamId ?? existing.teamId,
-        position: player.position ?? existing.position,
-        // Only the scorers list knows these. Before it has anything to say, whatever is
-        // stored stands — which is how a hand-entered tally survives a squad import.
-        goals: player.goals ?? existing.goals,
-        assists: player.assists ?? existing.assists,
-      };
+      seen.add(existing.id);
+      // A tally that has not moved is not a write. The refresh runs on every cold sync,
+      // and rewriting every row each time would churn updated_at for nothing.
+      if (existing.goals === scorer.goals && existing.assists === scorer.assists) continue;
 
-      // A squad of 900 that has not changed since the last import is 900 writes for
-      // nothing, and it would report every player as "updated". Only real changes count.
-      const changed =
-        existing.name !== next.name ||
-        existing.teamId !== next.teamId ||
-        existing.position !== next.position ||
-        existing.goals !== next.goals ||
-        existing.assists !== next.assists;
-
-      if (changed) {
-        await db
-          .update(livePlayers)
-          .set({ ...next, providerLastUpdated: now, updatedAt: now })
-          .where(eq(livePlayers.id, existing.id));
-        result.updated++;
-      }
-      continue;
-    }
-
-    const handAddedId = handAddedByName.get(normaliseLivePlayerName(player.name));
-    if (handAddedId && !adopted.has(handAddedId)) {
-      const row = storedById.get(handAddedId)!;
       await db
         .update(livePlayers)
         .set({
-          providerPlayerId: player.providerPlayerId,
-          // The provider's spelling wins from here on — "kylian mbappe" typed in a hurry
-          // becomes "Kylian Mbappé". Taking it now rather than leaving it for the next
-          // import is what keeps this path and the one above agreeing.
-          name: player.name,
-          // The picture and the shortlist tick are untouched — those are the admin's
-          // choices, not the provider's data.
-          teamId: teamId ?? row.teamId,
-          position: player.position ?? row.position,
-          goals: player.goals ?? row.goals,
-          assists: player.assists ?? row.assists,
+          goals: scorer.goals,
+          assists: scorer.assists,
+          providerLastUpdated: now,
+          updatedAt: now,
+        })
+        .where(eq(livePlayers.id, existing.id));
+      result.updated++;
+      continue;
+    }
+
+    // A player the admin typed in rather than picked from the search: adopt them on an
+    // unambiguous name match, and they are kept current from then on.
+    const handAddedId = handAddedByName.get(normaliseLivePlayerName(scorer.name));
+    if (handAddedId && !seen.has(handAddedId)) {
+      const row = storedById.get(handAddedId)!;
+      seen.add(row.id);
+      await db
+        .update(livePlayers)
+        .set({
+          providerPlayerId: scorer.providerPlayerId,
+          goals: scorer.goals,
+          assists: scorer.assists,
           providerLastUpdated: now,
           updatedAt: now,
         })
         .where(eq(livePlayers.id, row.id));
-      adopted.add(handAddedId);
       result.adopted++;
-      continue;
     }
-
-    pending.push({
-      id: generateId(15),
-      liveTournamentId: tournament.id,
-      providerPlayerId: player.providerPlayerId,
-      name: player.name,
-      teamId,
-      position: player.position ?? null,
-      imageUrl: null,
-      goals: player.goals ?? 0,
-      assists: player.assists ?? 0,
-      // An imported player is not in the shortlist until an admin puts them there.
-      isSelected: false,
-      providerLastUpdated: now,
-      createdAt: now,
-      updatedAt: now,
-    });
-    result.created++;
   }
 
-  // A first Champions League import is ~900 players. One statement each would be ~900
-  // round trips and a request slow enough to look broken, so they go in as a handful of
-  // multi-row inserts. Updates stay one at a time: after the first import there are very
-  // few of them, and each sets different values.
-  for (let i = 0; i < pending.length; i += INSERT_CHUNK) {
-    await db.insert(livePlayers).values(pending.slice(i, i + INSERT_CHUNK));
-  }
-
+  // Only the shortlist is worth reporting on: a candidate nobody selected is not something
+  // an admin is waiting on a goal count for.
   result.unmatchedNames = stored
-    .filter(p => p.providerPlayerId === null && !adopted.has(p.id))
+    .filter(p => p.isSelected && !seen.has(p.id))
     .map(p => p.name);
 
   return result;
-}
-
-/** The players in a tournament's shortlist — what the ranking is over. */
-export async function loadSelectedLivePlayers(tournamentId: string) {
-  return db
-    .select()
-    .from(livePlayers)
-    .where(and(eq(livePlayers.liveTournamentId, tournamentId), eq(livePlayers.isSelected, true)));
-}
-
-/** Whether every id belongs to this tournament's shortlist. Used when saving a ranking. */
-export async function selectedPlayerIds(tournamentId: string): Promise<string[]> {
-  const rows = await loadSelectedLivePlayers(tournamentId);
-  return rows.map(r => r.id);
 }

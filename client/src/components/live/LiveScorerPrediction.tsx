@@ -26,6 +26,10 @@ import type { LiveScorerPredictionView } from '@/lib/liveApi';
 // Goals and assists are shown on every row throughout, because assists are what break a
 // tie on goals — a ranking that reordered itself on a number the user could not see would
 // look arbitrary.
+//
+// A player the admin gave a colour to is drawn with it as a glow: a tinted border and a
+// soft halo, from the one hex value stored on the player. It is decoration and nothing
+// else — it says nothing about goals, positions or points.
 
 interface Props {
   view: Extract<LiveScorerPredictionView, { available: true }>;
@@ -230,7 +234,17 @@ export default function LiveScorerPrediction({
 
         <DragOverlay>
           {dragging ? (
-            <div className="rounded-md border bg-background px-3 py-2 text-sm font-medium shadow-lg">
+            <div
+              className="rounded-md border bg-background px-3 py-2 text-sm font-medium shadow-lg"
+              style={
+                playerById.get(dragging)?.glowColor
+                  ? {
+                      borderColor: `${playerById.get(dragging)!.glowColor}99`,
+                      boxShadow: `0 0 14px -2px ${playerById.get(dragging)!.glowColor}80`,
+                    }
+                  : undefined
+              }
+            >
               {playerById.get(dragging)?.name ?? ''}
             </div>
           ) : null}
@@ -295,12 +309,26 @@ function ScorerRow({
   const name = player?.name ?? playerId;
   const exact = scored && actualPosition === position;
 
+  // An exactly-right player is already green, and two glows on one row would fight. The
+  // scored state wins there — it is the one thing a user is reading the list for.
+  const glow = !exact ? (player?.glowColor ?? null) : null;
+
   return (
     <li
       ref={setDropRef}
-      className={`flex items-center gap-2 rounded-md border bg-background px-2 py-1.5 ${
+      className={`flex items-center gap-2 rounded-md border bg-background px-2 py-1.5 transition-shadow ${
         isOver ? 'ring-2 ring-primary' : ''
       } ${isDragging ? 'opacity-40' : ''} ${exact ? 'border-green-500/60 bg-green-500/5' : ''}`}
+      // Inline because the colour is per player and arbitrary. The alpha suffixes keep it
+      // a glow rather than a paint job: a tinted edge, a halo outside, a wash inside.
+      style={
+        glow
+          ? {
+              borderColor: `${glow}99`,
+              boxShadow: `0 0 12px -2px ${glow}66, inset 0 0 24px -14px ${glow}`,
+            }
+          : undefined
+      }
     >
       <span className="w-6 shrink-0 text-right text-sm tabular-nums text-muted-foreground">
         {position}

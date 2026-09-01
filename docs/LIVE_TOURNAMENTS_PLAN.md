@@ -352,17 +352,26 @@ on both with the player's name (case-folded, and compared without `localeCompare
 order cannot differ between machines). Shared ranks were the alternative and were rejected:
 with three players level on 9 goals, nobody could ever score positions 2 and 3.
 
-The player list comes from **two** provider endpoints, because neither is enough alone. The
-`squad` array on `/competitions/{id}/teams` is the roster — every player at every club,
-whether or not they have kicked a ball — and it is what a shortlist is picked from; the
-scorers endpoint contains only players who have *already scored*, so before a competition
-starts it is empty and useless for building a list. An import reads both and merges them on
-the provider's player id before writing, so each player is stored once with their position
-(from the squad) and their goals (from the scorers list). The background structure sync
-refreshes goals only: squads are ~900 rows and do not change hourly.
+The shortlist is built **by searching**, not by importing. An admin types a name, the
+competition's squads are searched for it, and the player they pick becomes one row —
+nothing else is stored. The squads come from the `squad` array on
+`/competitions/{id}/teams` (the scorers endpoint lists only players who have *already
+scored*, so it is empty before a competition starts and useless for building a list), and
+they are cached in memory for ten minutes, so a burst of typing is one provider request
+rather than one per keystroke.
 
-Where the provider has nothing, the admin does — `live_players.provider_player_id` is what
-tells the two apart. Points are withheld until the tournament is marked completed, exactly as bonus
+Goals and assists then come from the scorers endpoint, on every cold sync and on demand.
+That refresh **never creates a row**: a hundred scorers nobody picked have no business in
+the list. A player the provider does not list at all can still be added by name, and is
+adopted — given the provider's id, and kept current from then on — the first time a refresh
+matches their name unambiguously. `live_players.provider_player_id` is what tells a
+provider-backed row from a hand-kept one.
+
+Each shortlisted player also carries a picture and a **glow colour** (`glow_color`, a hex
+string), both chosen by the admin. The colour is drawn as a tinted border and halo around
+that player's row in the ranking every user sees; it is decoration and means nothing about
+goals or points. An exactly-right player's green scored state wins over it — two glows on
+one row fight. Points are withheld until the tournament is marked completed, exactly as bonus
 points are, so the ranking cannot be reverse-engineered from a moving total mid-season.
 
 **Currently a test feature.** `canSeeLiveScorerRanking` in `shared/src/live/features.ts` is
@@ -644,8 +653,9 @@ bug diagnosable after the fact) · `providerLastUpdated` · `updatedAt`.
 ### `live_players`
 `id` pk · `liveTournamentId` → cascade · `providerPlayerId` text nullable (null = added by
 hand, and never overwritten by a sync) · `name` · `teamId` → `live_teams` set null ·
-`position` text nullable (the provider's own wording, for filtering a squad-sized list) ·
-`imageUrl` text nullable (admin-uploaded, R2 folder `live-players`) · `goals` int ·
+`position` text nullable (the provider's own wording) ·
+`imageUrl` text nullable (admin-uploaded, R2 folder `live-players`) ·
+`glowColor` text nullable (hex; the glow on this player's row in the ranking) · `goals` int ·
 `assists` int (only ever used to break a tie on goals) · `isSelected` bool (the shortlist
 users rank) · `providerLastUpdated` · `createdAt` · `updatedAt`.
 
@@ -1056,7 +1066,8 @@ Mounted as `app.use('/api/live', liveRouter)` in `server/src/index.ts`.
 | PATCH | `/tournaments/:id/fixtures/:fixtureId/multiplier` | admin | `{multiplier}`, a whole number from 1 to `LIVE_MAX_MULTIPLIER`. Recalculates the tournament, since an already-scored match has to be rescored |
 | GET | `/tournaments/:id/players` | auth | the top-scorer list, shortlist first |
 | POST / PATCH / DELETE | `/tournaments/:id/players[/:playerId]` | admin | `{name, teamId?, imageUrl?, goals?, assists?, isSelected?}`; anything touching goals, assists or the shortlist recalculates the tournament |
-| POST | `/tournaments/:id/players/import` | admin | `{season?, limit?}` — pull the squads and the scorer list in and merge them. Pass last season when the provider has not published the new one yet; football-data player ids carry over |
+| GET | `/tournaments/:id/players/search` | admin | `?q=&season=` — search the competition's squads by name, folded for accents. Answers from a ten-minute cache of the squads |
+| POST | `/tournaments/:id/players/refresh` | admin | `{season?, limit?}` — refresh the list's goals from the scorer endpoint. Adds nobody |
 
 ### `server/src/live/routes/competitions.ts`
 

@@ -84,10 +84,23 @@ export const SaveLiveTablePredictionSchema = z.object({
  * without a second request; both default to zero. `imageUrl` is a URL the upload endpoint
  * returned, or null for no picture.
  */
+/**
+ * A CSS hex colour, the only form the glow accepts.
+ *
+ * Restricted to hex rather than any CSS colour because the value is interpolated into an
+ * inline style and into rgba() shadows client-side; a free-form string there is both a
+ * rendering hazard and impossible to derive a translucent variant from.
+ */
+const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Must be a hex colour like #22c55e');
+
 export const CreateLivePlayerSchema = z.object({
   name: z.string().min(1).max(120),
   teamId: z.string().min(1).nullable().optional(),
+  /** Set when the player came from a provider search, so goal syncs can find them again. */
+  providerPlayerId: z.string().min(1).max(64).nullable().optional(),
+  position: z.string().min(1).max(60).nullable().optional(),
   imageUrl: z.string().max(500).nullable().optional(),
+  glowColor: hexColor.nullable().optional(),
   goals: z.number().int().min(0).max(200).optional(),
   assists: z.number().int().min(0).max(200).optional(),
   isSelected: z.boolean().optional(),
@@ -96,21 +109,27 @@ export const CreateLivePlayerSchema = z.object({
 export const UpdateLivePlayerSchema = z.object({
   name: z.string().min(1).max(120).optional(),
   teamId: z.string().min(1).nullable().optional(),
+  position: z.string().min(1).max(60).nullable().optional(),
   imageUrl: z.string().max(500).nullable().optional(),
+  glowColor: hexColor.nullable().optional(),
   goals: z.number().int().min(0).max(200).optional(),
   assists: z.number().int().min(0).max(200).optional(),
   isSelected: z.boolean().optional(),
 });
 
+/** Look a player up in the provider's squads by name. */
+export const SearchLivePlayersQuerySchema = z.object({
+  q: z.string().min(2).max(60),
+  season: z.string().min(4).max(9).optional(),
+});
+
 /**
- * Pull the provider's scorers into the player list.
+ * Refresh the shortlist's goals from the provider's scorer list.
  *
- * `season` defaults to the tournament's own. Passing last season's instead is how a
- * shortlist gets seeded before the new season has a single goal in it — football-data
- * player ids are stable across seasons, so those rows start matching by themselves once
- * the real thing kicks off.
+ * `season` defaults to the tournament's own; passing another is how an admin reads goals
+ * from a season the tournament is not itself keyed to.
  */
-export const ImportLiveScorersSchema = z.object({
+export const RefreshLivePlayerGoalsSchema = z.object({
   season: z.string().min(4).max(9).optional(),
   limit: z.number().int().min(1).max(100).optional(),
 });
@@ -223,7 +242,8 @@ export type SaveLiveGameweekSelectionInput = z.infer<typeof SaveLiveGameweekSele
 export type SaveLiveFixtureMultiplierInput = z.infer<typeof SaveLiveFixtureMultiplierSchema>;
 export type CreateLivePlayerInput = z.infer<typeof CreateLivePlayerSchema>;
 export type UpdateLivePlayerInput = z.infer<typeof UpdateLivePlayerSchema>;
-export type ImportLiveScorersInput = z.infer<typeof ImportLiveScorersSchema>;
+export type RefreshLivePlayerGoalsInput = z.infer<typeof RefreshLivePlayerGoalsSchema>;
+export type SearchLivePlayersQuery = z.infer<typeof SearchLivePlayersQuerySchema>;
 export type SaveLiveScorerPredictionInput = z.infer<typeof SaveLiveScorerPredictionSchema>;
 export type CreateLiveBonusQuestionInput = z.infer<typeof CreateLiveBonusQuestionSchema>;
 export type UpdateLiveBonusQuestionInput = z.infer<typeof UpdateLiveBonusQuestionSchema>;

@@ -361,6 +361,8 @@ export const livePlayers = pgTable(
     /** The provider's own wording — "Centre-Forward". Only used to filter the admin list. */
     position: text('position'),
     imageUrl: text('image_url'),
+    /** Hex colour drawn as a glow on this player's row in the ranking. Null = no glow. */
+    glowColor: text('glow_color'),
     goals: integer('goals').notNull().default(0),
     /** Breaks a tie on goals. See rankLiveScorers in server/src/live/scorerScoring.ts. */
     assists: integer('assists').notNull().default(0),

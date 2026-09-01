@@ -5,7 +5,8 @@ import {
   CreateLiveBonusQuestionSchema,
   CreateLivePlayerSchema,
   CreateLiveTournamentSchema,
-  ImportLiveScorersSchema,
+  RefreshLivePlayerGoalsSchema,
+  SearchLivePlayersQuerySchema,
   LIVE_FORMATS,
   LIVE_TOURNAMENT_PRESETS,
   ListLiveFixturesQuerySchema,
@@ -43,7 +44,7 @@ import {
 } from '../scoringTrigger';
 import { diagnoseTournamentFixtures } from '../diagnostics';
 import { loadSelectionIndex } from '../selections';
-import { syncLivePlayers } from '../scorers';
+import { refreshLivePlayerGoals, searchLivePlayers } from '../scorers';
 import { syncLiveWindow, syncTournamentStructure } from '../sync';
 
 // ── Live tournament API ───────────────────────────────────────────────────────
@@ -738,7 +739,34 @@ liveTournamentsRouter.get('/tournaments/:id/players', requireAuth, async (req, r
   }
 });
 
-/** Add a player by hand — the fallback for anyone the provider does not list. */
+/**
+ * Search the competition's squads for a player to add.
+ *
+ * The whole reason the shortlist is not built by importing everybody: an admin types a
+ * name, picks the right person, and only that row is ever stored. Answers are served from
+ * a short-lived cache of the squads, so a burst of typing is one provider request.
+ */
+liveTournamentsRouter.get('/tournaments/:id/players/search', requireAdmin, async (req, res) => {
+  try {
+    const parsed = SearchLivePlayersQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid query', details: parsed.error.flatten() });
+    }
+
+    const result = await searchLivePlayers(req.params.id, parsed.data.q, parsed.data.season);
+    return res.json(result);
+  } catch (err) {
+    return fail(res, err);
+  }
+});
+
+/**
+ * Add one player to the tournament's list.
+ *
+ * Called with a search hit's `providerPlayerId` when the player came from the provider,
+ * which is what lets a later goal refresh find them; called without one for somebody the
+ * provider does not list at all, whose goals then stay the admin's to maintain.
+ */
 liveTournamentsRouter.post('/tournaments/:id/players', requireAdmin, async (req, res) => {
   try {
     const parsed = CreateLivePlayerSchema.safeParse(req.body);
@@ -758,18 +786,41 @@ liveTournamentsRouter.post('/tournaments/:id/players', requireAdmin, async (req,
       .values({
         id: generateId(15),
         liveTournamentId: tournament.id,
-        // No provider id: this player is the admin's until a sync recognises the name.
-        providerPlayerId: null,
+        // Null for a player typed in by hand: theirs stay the admin's numbers until a
+        // refresh recognises the name.
+        providerPlayerId: parsed.data.providerPlayerId ?? null,
         name: parsed.data.name.trim(),
         teamId: parsed.data.teamId ?? null,
+        position: parsed.data.position ?? null,
         imageUrl: parsed.data.imageUrl ?? null,
+        glowColor: parsed.data.glowColor ?? null,
         goals: parsed.data.goals ?? 0,
         assists: parsed.data.assists ?? 0,
-        isSelected: parsed.data.isSelected ?? false,
+        // Added means ranked: a player an admin went looking for is in the shortlist
+        // unless they say otherwise.
+        isSelected: parsed.data.isSelected ?? true,
         createdAt: now,
         updatedAt: now,
       })
+      .onConflictDoNothing({
+        target: [livePlayers.liveTournamentId, livePlayers.providerPlayerId],
+      })
       .returning();
+
+    // The same provider player twice is the double-click case, not an error worth an
+    // alarm: the row that is already there is the right answer.
+    if (!row) {
+      const [existing] = await db
+        .select()
+        .from(livePlayers)
+        .where(
+          and(
+            eq(livePlayers.liveTournamentId, tournament.id),
+            eq(livePlayers.providerPlayerId, parsed.data.providerPlayerId!),
+          ),
+        );
+      return res.status(200).json(existing);
+    }
 
     return res.status(201).json(row);
   } catch (err) {
@@ -803,7 +854,9 @@ liveTournamentsRouter.patch(
       const update: Record<string, unknown> = { updatedAt: new Date() };
       if (parsed.data.name !== undefined) update.name = parsed.data.name.trim();
       if (parsed.data.teamId !== undefined) update.teamId = parsed.data.teamId;
+      if (parsed.data.position !== undefined) update.position = parsed.data.position;
       if (parsed.data.imageUrl !== undefined) update.imageUrl = parsed.data.imageUrl;
+      if (parsed.data.glowColor !== undefined) update.glowColor = parsed.data.glowColor;
       if (parsed.data.goals !== undefined) update.goals = parsed.data.goals;
       if (parsed.data.assists !== undefined) update.assists = parsed.data.assists;
       if (parsed.data.isSelected !== undefined) update.isSelected = parsed.data.isSelected;
@@ -856,15 +909,15 @@ liveTournamentsRouter.delete(
 );
 
 /**
- * Pull the provider's scorer list into the player list.
+ * Refresh the goals and assists of the players already in the list.
  *
- * `season` is how a shortlist gets seeded before the new season has any goals in it: ask
- * for last season's scorers, and those rows start updating themselves once the real
- * season begins, because the provider's player ids are stable across seasons.
+ * Adds nobody: players get in by an admin searching for them. This runs on every cold sync
+ * too — see refreshLivePlayerGoals — and exists as a button for when somebody wants the
+ * numbers now rather than at the next tick.
  */
-liveTournamentsRouter.post('/tournaments/:id/players/import', requireAdmin, async (req, res) => {
+liveTournamentsRouter.post('/tournaments/:id/players/refresh', requireAdmin, async (req, res) => {
   try {
-    const parsed = ImportLiveScorersSchema.safeParse(req.body ?? {});
+    const parsed = RefreshLivePlayerGoalsSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       return res.status(400).json({ error: 'Invalid body', details: parsed.error.flatten() });
     }
@@ -875,10 +928,10 @@ liveTournamentsRouter.post('/tournaments/:id/players/import', requireAdmin, asyn
       .where(eq(liveTournaments.id, req.params.id));
     if (!tournament) return res.status(404).json({ error: 'Not found' });
 
-    const result = await syncLivePlayers(tournament.id, parsed.data);
-    // Imported goal counts can change the final ranking for a tournament already marked
+    const result = await refreshLivePlayerGoals(tournament.id, parsed.data);
+    // Refreshed goal counts can change the final ranking for a tournament already marked
     // completed, so rebuild rather than leave stored points stale.
-    if (result.created + result.updated + result.adopted > 0) {
+    if (result.updated + result.adopted > 0) {
       await rebuildAndNotify(tournament.id);
     }
     return res.json(result);

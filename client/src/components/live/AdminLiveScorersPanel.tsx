@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Search } from 'lucide-react';
 import { ApiError } from '@/lib/api';
-import { liveApi, liveKeys } from '@/lib/liveApi';
+import { liveApi, liveKeys, type LivePlayerSearchHit } from '@/lib/liveApi';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import ImageUpload from '@/components/ImageUpload';
 import { useT } from '@/lib/useT';
@@ -9,27 +10,27 @@ import type { LivePlayer } from '@tournament-predictor/shared';
 
 // ── Admin: top-scorer shortlist ───────────────────────────────────────────────
 //
-// The players users rank, and the goals the ranking is settled on. Two ways in:
+// The shortlist is built one player at a time: type a name, pick the right person out of
+// the competition's squads, and that player becomes a row. Nothing else is stored — the
+// other ~880 players in the competition are never written down, because nobody is going to
+// rank them and a page full of them is only in the way.
 //
-//   * import from the provider, which pulls every club's squad — not just the players who
-//     have scored, since before a season starts that is nobody — and their goals with it;
-//   * add a player by hand, for anyone the provider does not list.
+// Each row is then dressed: a picture, and a colour that becomes a glow around that
+// player's row in the ranking every user sees. Goals and assists are editable whatever the
+// source, since the provider is the source of truth where it answers and the admin is
+// where it does not.
 //
-// A Champions League import is ~900 players, so the list is searchable and filterable and
-// renders a bounded slice of it. Picking ten names out of a squad list is the job here.
-//
-// Ticking a player puts them in the shortlist. Everything else in the list is a candidate
-// and is neither ranked nor scored, which is why an import can be generous.
-//
-// Goals and assists are editable whatever the source: the provider is the source of truth
-// where it answers, and the admin is the source of truth where it does not.
+// A player the provider does not list at all can still be added by name, and picks up goals
+// automatically if a later refresh recognises them.
 
-/** Rendering the whole squad list would be thousands of controls for no benefit. */
-const ROW_LIMIT = 60;
+/** Colours offered as one click, chosen to read on both the light and dark ranking rows. */
+const GLOW_PRESETS = ['#f59e0b', '#22c55e', '#3b82f6', '#ec4899', '#a855f7', '#ef4444'];
+
+const SEARCH_DEBOUNCE_MS = 300;
 
 interface Props {
   tournamentId: string;
-  /** The tournament's season, shown as the hint for what an import will ask for. */
+  /** The tournament's season, shown as the hint for which squads are being searched. */
   season?: string;
 }
 
@@ -37,20 +38,33 @@ export default function AdminLiveScorersPanel({ tournamentId, season }: Props) {
   const { t } = useT();
   const queryClient = useQueryClient();
 
-  const [importSeason, setImportSeason] = useState('');
   const [search, setSearch] = useState('');
-  const [shortlistOnly, setShortlistOnly] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [newImageUrl, setNewImageUrl] = useState<string | null>(null);
+  const [debounced, setDebounced] = useState('');
+  const [searchSeason, setSearchSeason] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+
+  // Typing is not a query. Waiting for a pause keeps a burst of keystrokes to one request,
+  // which matters on a provider that allows ten a minute.
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(search.trim()), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(id);
+  }, [search]);
 
   const { data: players = [], isLoading } = useQuery({
     queryKey: liveKeys.tournamentPlayers(tournamentId),
     queryFn: () => liveApi.tournamentPlayers(tournamentId),
   });
 
-  // Club names, so a row says who a player plays for and a search can match on it.
+  const { data: results, isFetching: searching } = useQuery({
+    queryKey: liveKeys.playerSearch(tournamentId, debounced, searchSeason),
+    queryFn: () => liveApi.searchPlayers(tournamentId, debounced, searchSeason || undefined),
+    // Two characters is the shortest search the server accepts, and a one-letter query
+    // would match most of a competition anyway.
+    enabled: debounced.length >= 2,
+    staleTime: 60_000,
+  });
+
   const { data: teams = [] } = useQuery({
     queryKey: liveKeys.tournamentTeams(tournamentId),
     queryFn: () => liveApi.tournamentTeams(tournamentId),
@@ -60,32 +74,10 @@ export default function AdminLiveScorersPanel({ tournamentId, season }: Props) {
     [teams],
   );
 
-  /**
-   * What to render: the shortlist always, then whatever the search matches.
-   *
-   * Selected players stay visible whatever is typed — losing sight of your own shortlist
-   * while searching for the next name would be the one thing this list must not do — and
-   * the rest is capped, because 900 rows of file inputs is a slow page and nobody scrolls
-   * it anyway.
-   */
-  const { shown, matchCount } = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    const matches = players.filter(player => {
-      if (player.isSelected) return true;
-      if (shortlistOnly) return false;
-      if (needle === '') return true;
-      const team = teamNameById.get(player.teamId ?? '') ?? '';
-      return (
-        player.name.toLowerCase().includes(needle) ||
-        team.toLowerCase().includes(needle) ||
-        (player.position ?? '').toLowerCase().includes(needle)
-      );
-    });
-    return { shown: matches.slice(0, ROW_LIMIT), matchCount: matches.length };
-  }, [players, search, shortlistOnly, teamNameById]);
-
   function refresh() {
     queryClient.invalidateQueries({ queryKey: liveKeys.tournamentPlayers(tournamentId) });
+    // A player just added is "already added" in the next search, so the results are stale.
+    queryClient.invalidateQueries({ queryKey: liveKeys.playerSearchAll(tournamentId) });
   }
 
   function reportError(err: unknown, fallback: string) {
@@ -93,57 +85,66 @@ export default function AdminLiveScorersPanel({ tournamentId, season }: Props) {
     setError(err instanceof ApiError ? err.message : fallback);
   }
 
-  const importMutation = useMutation({
-    mutationFn: () =>
-      liveApi.importScorers(tournamentId, importSeason ? { season: importSeason } : {}),
-    onSuccess: result => {
-      setError('');
-      refresh();
-      if (!result.supported) {
-        setMessage(t('live.admin.scorers.importUnsupported'));
-        return;
-      }
-      if (result.seasonUnavailable && result.squadFetched === 0) {
-        // The usual pre-draw state: the provider has not created this season yet, and the
-        // way through it is last season's squads.
-        setMessage(t('live.admin.scorers.importSeasonUnavailable'));
-        return;
-      }
-      setMessage(
-        t('live.admin.scorers.imported', {
-          squad: result.squadFetched,
-          scorers: result.scorersFetched,
-          created: result.created,
-          updated: result.updated + result.adopted,
-        }) + (result.truncated ? ` ${t('live.admin.scorers.importTruncated')}` : ''),
-      );
-    },
-    onError: err => reportError(err, t('live.admin.scorers.importFailed')),
-  });
-
-  const createMutation = useMutation({
-    mutationFn: () =>
+  const addMutation = useMutation({
+    mutationFn: (hit: LivePlayerSearchHit) =>
       liveApi.createPlayer(tournamentId, {
-        name: newName.trim(),
-        imageUrl: newImageUrl,
-        // A player added by hand is almost always one the admin wants ranked, so they go
-        // straight into the shortlist rather than needing a second click.
-        isSelected: true,
+        name: hit.name,
+        providerPlayerId: hit.providerPlayerId,
+        teamId: hit.teamId,
+        position: hit.position,
       }),
-    onSuccess: () => {
+    onSuccess: player => {
       setError('');
-      setMessage(t('live.admin.scorers.added', { name: newName.trim() }));
-      setNewName('');
-      setNewImageUrl(null);
+      setMessage(t('live.admin.scorers.added', { name: player.name }));
       refresh();
     },
     onError: err => reportError(err, t('live.admin.scorers.addFailed')),
   });
 
+  const addByNameMutation = useMutation({
+    mutationFn: (name: string) => liveApi.createPlayer(tournamentId, { name }),
+    onSuccess: player => {
+      setError('');
+      setMessage(t('live.admin.scorers.added', { name: player.name }));
+      setSearch('');
+      refresh();
+    },
+    onError: err => reportError(err, t('live.admin.scorers.addFailed')),
+  });
+
+  const refreshGoalsMutation = useMutation({
+    mutationFn: () => liveApi.refreshPlayerGoals(tournamentId),
+    onSuccess: result => {
+      setError('');
+      refresh();
+      if (!result.supported) {
+        setMessage(t('live.admin.scorers.refreshUnsupported'));
+        return;
+      }
+      if (result.seasonUnavailable) {
+        setMessage(t('live.admin.scorers.refreshSeasonUnavailable'));
+        return;
+      }
+      setMessage(
+        t('live.admin.scorers.refreshed', {
+          scorers: result.scorersFetched,
+          updated: result.updated + result.adopted,
+        }),
+      );
+    },
+    onError: err => reportError(err, t('live.admin.scorers.refreshFailed')),
+  });
+
   const updateMutation = useMutation({
     mutationFn: (vars: {
       playerId: string;
-      body: { goals?: number; assists?: number; isSelected?: boolean; imageUrl?: string | null };
+      body: {
+        goals?: number;
+        assists?: number;
+        isSelected?: boolean;
+        imageUrl?: string | null;
+        glowColor?: string | null;
+      };
     }) => liveApi.updatePlayer(tournamentId, vars.playerId, vars.body),
     onSuccess: () => {
       setError('');
@@ -162,6 +163,7 @@ export default function AdminLiveScorersPanel({ tournamentId, season }: Props) {
   });
 
   const selectedCount = players.filter(p => p.isSelected).length;
+  const busy = updateMutation.isPending || deleteMutation.isPending;
 
   if (isLoading) {
     return (
@@ -182,103 +184,123 @@ export default function AdminLiveScorersPanel({ tournamentId, season }: Props) {
       <p className="text-sm text-muted-foreground">{t('live.admin.scorers.explainer')}</p>
       <p className="mb-4 text-sm text-muted-foreground">{t('live.admin.scorers.testOnly')}</p>
 
-      {/* Import */}
+      {/* ── Search ───────────────────────────────────────────────────────────── */}
       <div className="mb-5 rounded-md border bg-muted/30 p-3">
-        <p className="mb-2 text-xs text-muted-foreground">
-          {t('live.admin.scorers.importExplainer')}
-        </p>
         <div className="flex flex-wrap items-end gap-2">
+          <label className="min-w-0 flex-1 text-sm">
+            <span className="mb-1 block text-xs text-muted-foreground">
+              {t('live.admin.scorers.searchLabel')}
+            </span>
+            <div className="relative">
+              <Search
+                size={14}
+                className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground"
+              />
+              <input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder={t('live.admin.scorers.searchPlaceholder')}
+                className="h-9 w-full min-w-[14rem] rounded-md border bg-background pl-7 pr-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+          </label>
           <label className="text-sm">
             <span className="mb-1 block text-xs text-muted-foreground">
               {t('live.admin.scorers.season')}
             </span>
             <input
-              value={importSeason}
-              onChange={e => setImportSeason(e.target.value)}
+              value={searchSeason}
+              onChange={e => setSearchSeason(e.target.value)}
               placeholder={season ?? ''}
-              className="h-9 w-28 rounded-md border bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              className="h-9 w-24 rounded-md border bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </label>
           <button
-            onClick={() => importMutation.mutate()}
-            disabled={importMutation.isPending}
+            onClick={() => refreshGoalsMutation.mutate()}
+            disabled={refreshGoalsMutation.isPending}
             className="h-9 rounded-md border px-3 text-sm font-medium hover:bg-muted disabled:opacity-50"
           >
-            {importMutation.isPending
-              ? t('live.admin.scorers.importing')
-              : t('live.admin.scorers.import')}
+            {refreshGoalsMutation.isPending
+              ? t('live.admin.scorers.refreshing')
+              : t('live.admin.scorers.refreshGoals')}
           </button>
         </div>
+
+        {debounced.length >= 2 && (
+          <div className="mt-3">
+            {searching && !results ? (
+              <p className="text-xs text-muted-foreground">{t('live.admin.scorers.searching')}</p>
+            ) : results && !results.supported ? (
+              <p className="text-xs text-muted-foreground">
+                {t('live.admin.scorers.searchUnsupported')}
+              </p>
+            ) : results?.seasonUnavailable ? (
+              <p className="text-xs text-muted-foreground">
+                {t('live.admin.scorers.searchSeasonUnavailable')}
+              </p>
+            ) : results && results.hits.length === 0 ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-xs text-muted-foreground">
+                  {t('live.admin.scorers.noHits', { query: debounced })}
+                </p>
+                {/* Not every player is in a published squad — a late signing, a youth-team
+                    call-up. Adding the typed name by hand is the way through that. */}
+                <button
+                  onClick={() => addByNameMutation.mutate(debounced)}
+                  disabled={addByNameMutation.isPending}
+                  className="rounded-md border px-2 py-1 text-xs font-medium hover:bg-muted disabled:opacity-50"
+                >
+                  {t('live.admin.scorers.addByName', { name: debounced })}
+                </button>
+              </div>
+            ) : (
+              <ul className="grid gap-1">
+                {results?.hits.map(hit => (
+                  <li
+                    key={hit.providerPlayerId}
+                    className="flex items-center gap-3 rounded-md border bg-background px-3 py-1.5 text-sm"
+                  >
+                    <span className="min-w-0 flex-1 truncate">
+                      {hit.name}
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        {[hit.teamName, hit.position].filter(Boolean).join(' · ')}
+                      </span>
+                    </span>
+                    {hit.alreadyAdded ? (
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {t('live.admin.scorers.alreadyAdded')}
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => addMutation.mutate(hit)}
+                        disabled={addMutation.isPending}
+                        className="shrink-0 rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                      >
+                        {t('live.admin.scorers.add')}
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Add by hand */}
-      <div className="mb-5 rounded-md border p-3">
-        <p className="mb-2 text-xs text-muted-foreground">{t('live.admin.scorers.addExplainer')}</p>
-        <div className="flex flex-wrap items-end gap-3">
-          <ImageUpload
-            type="live-players"
-            currentUrl={newImageUrl}
-            onUploaded={setNewImageUrl}
-            shape="circle"
-            size="sm"
-            label={t('live.admin.scorers.choosePicture')}
-          />
-          <label className="text-sm">
-            <span className="mb-1 block text-xs text-muted-foreground">
-              {t('live.admin.scorers.playerName')}
-            </span>
-            <input
-              value={newName}
-              onChange={e => setNewName(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === 'Enter' && newName.trim()) createMutation.mutate();
-              }}
-              className="h-9 w-56 rounded-md border bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            />
-          </label>
-          <button
-            onClick={() => createMutation.mutate()}
-            disabled={!newName.trim() || createMutation.isPending}
-            className="h-9 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-          >
-            {createMutation.isPending ? t('common.saving') : t('live.admin.scorers.add')}
-          </button>
-        </div>
-      </div>
-
-      <div className="mb-2 flex flex-wrap items-center gap-3">
-        <input
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder={t('live.admin.scorers.searchPlaceholder')}
-          aria-label={t('live.admin.scorers.searchPlaceholder')}
-          className="h-9 w-64 rounded-md border bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-        />
-        <label className="flex items-center gap-2 text-xs text-muted-foreground">
-          <input
-            type="checkbox"
-            checked={shortlistOnly}
-            onChange={e => setShortlistOnly(e.target.checked)}
-            className="h-4 w-4"
-          />
-          {t('live.admin.scorers.shortlistOnly')}
-        </label>
-        <span className="text-xs text-muted-foreground">
-          {t('live.admin.scorers.state', { selected: selectedCount, total: players.length })}
-        </span>
-      </div>
+      {/* ── The shortlist ────────────────────────────────────────────────────── */}
+      <p className="mb-2 text-xs text-muted-foreground">
+        {t('live.admin.scorers.state', { selected: selectedCount, total: players.length })}
+      </p>
 
       {players.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t('live.admin.scorers.empty')}</p>
-      ) : shown.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t('live.admin.scorers.noMatches')}</p>
       ) : (
         <ul className="grid gap-1">
-          {shown.map(player => (
+          {players.map(player => (
             <PlayerRow
               key={player.id}
-              teamName={teamNameById.get(player.teamId ?? '') ?? null}
               player={player}
+              teamName={teamNameById.get(player.teamId ?? '') ?? null}
               onToggle={isSelected =>
                 updateMutation.mutate({ playerId: player.id, body: { isSelected } })
               }
@@ -288,19 +310,14 @@ export default function AdminLiveScorersPanel({ tournamentId, season }: Props) {
               onImage={imageUrl =>
                 updateMutation.mutate({ playerId: player.id, body: { imageUrl } })
               }
+              onGlow={glowColor =>
+                updateMutation.mutate({ playerId: player.id, body: { glowColor } })
+              }
               onDelete={() => deleteMutation.mutate(player.id)}
-              busy={updateMutation.isPending || deleteMutation.isPending}
+              busy={busy}
             />
           ))}
         </ul>
-      )}
-
-      {/* Says plainly that the list is cut, so a missing name reads as "search for it"
-          rather than "the import missed him". */}
-      {matchCount > shown.length && (
-        <p className="mt-2 text-xs text-muted-foreground">
-          {t('live.admin.scorers.showing', { shown: shown.length, total: matchCount })}
-        </p>
       )}
 
       {message && <p className="mt-3 text-sm text-green-600 dark:text-green-400">{message}</p>}
@@ -318,11 +335,21 @@ interface RowProps {
   onToggle: (isSelected: boolean) => void;
   onNumbers: (goals: number, assists: number) => void;
   onImage: (imageUrl: string) => void;
+  onGlow: (glowColor: string | null) => void;
   onDelete: () => void;
   busy: boolean;
 }
 
-function PlayerRow({ player, teamName, onToggle, onNumbers, onImage, onDelete, busy }: RowProps) {
+function PlayerRow({
+  player,
+  teamName,
+  onToggle,
+  onNumbers,
+  onImage,
+  onGlow,
+  onDelete,
+  busy,
+}: RowProps) {
   const { t } = useT();
   const [goals, setGoals] = useState<string | null>(null);
   const [assists, setAssists] = useState<string | null>(null);
@@ -354,7 +381,16 @@ function PlayerRow({ player, teamName, onToggle, onNumbers, onImage, onDelete, b
   }
 
   return (
-    <li className="flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-sm">
+    <li
+      className="flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-sm"
+      // The row previews its own glow, so the colour is chosen against the thing it
+      // affects rather than against a swatch.
+      style={
+        player.glowColor
+          ? { borderColor: `${player.glowColor}80`, boxShadow: `inset 0 0 24px -12px ${player.glowColor}` }
+          : undefined
+      }
+    >
       {/* Outside any label, so a click on it never lands on the shortlist checkbox. */}
       <input
         type="checkbox"
@@ -371,26 +407,36 @@ function PlayerRow({ player, teamName, onToggle, onNumbers, onImage, onDelete, b
         onUploaded={onImage}
         shape="circle"
         size="sm"
-        label={player.imageUrl ? t('live.admin.scorers.changePicture') : t('live.admin.scorers.choosePicture')}
+        label={
+          player.imageUrl
+            ? t('live.admin.scorers.changePicture')
+            : t('live.admin.scorers.choosePicture')
+        }
       />
 
       <span className="min-w-0 flex-1 truncate">
         {player.name}
-        {/* Club and position, which is how a shortlist actually gets picked out of a
-            squad list of several hundred. */}
         {(teamName || player.position) && (
           <span className="ml-2 text-xs text-muted-foreground">
             {[teamName, player.position].filter(Boolean).join(' · ')}
           </span>
         )}
-        {/* Says where this row's numbers come from: a provider id means a sync keeps them
-            current, and its absence means they are whatever was typed here. */}
+        {/* Says where this row's numbers come from: a provider id means a refresh keeps
+            them current, and its absence means they are whatever was typed here. */}
         {player.providerPlayerId === null && (
           <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
             {t('live.admin.scorers.manual')}
           </span>
         )}
       </span>
+
+      <GlowPicker
+        value={player.glowColor}
+        onChange={onGlow}
+        disabled={busy}
+        label={t('live.admin.scorers.glowFor', { name: player.name })}
+        clearLabel={t('live.admin.scorers.clearGlow')}
+      />
 
       <label className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
         {t('live.admin.scorers.goalsShort')}
@@ -432,5 +478,60 @@ function PlayerRow({ player, teamName, onToggle, onNumbers, onImage, onDelete, b
         {t('common.delete')}
       </button>
     </li>
+  );
+}
+
+// ── The colour ────────────────────────────────────────────────────────────────
+
+interface GlowPickerProps {
+  value: string | null;
+  onChange: (color: string | null) => void;
+  disabled: boolean;
+  label: string;
+  clearLabel: string;
+}
+
+/**
+ * Six presets and a full colour input.
+ *
+ * The presets are there because picking a colour out of a wheel for ten players is
+ * tedious and lands on muddy ones; the input is there because it is the admin's league and
+ * their club colours are not on my list.
+ */
+function GlowPicker({ value, onChange, disabled, label, clearLabel }: GlowPickerProps) {
+  return (
+    <span className="flex shrink-0 items-center gap-1">
+      {GLOW_PRESETS.map(color => (
+        <button
+          key={color}
+          type="button"
+          onClick={() => onChange(color)}
+          disabled={disabled}
+          aria-label={color}
+          className={`h-4 w-4 rounded-full border transition-transform hover:scale-110 disabled:opacity-50 ${
+            value?.toLowerCase() === color ? 'ring-2 ring-offset-1 ring-foreground' : ''
+          }`}
+          style={{ backgroundColor: color }}
+        />
+      ))}
+      <input
+        type="color"
+        value={value ?? '#888888'}
+        onChange={e => onChange(e.target.value)}
+        disabled={disabled}
+        aria-label={label}
+        className="h-6 w-6 cursor-pointer rounded border bg-background disabled:opacity-50"
+      />
+      {value && (
+        <button
+          type="button"
+          onClick={() => onChange(null)}
+          disabled={disabled}
+          className="rounded px-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+        >
+          {clearLabel}
+        </button>
+      )}
+    </span>
   );
 }

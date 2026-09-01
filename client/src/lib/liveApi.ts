@@ -134,22 +134,41 @@ export type LiveScorerPredictionView =
       scoringConfig: LiveScoringConfig;
     };
 
-/** What POST /live/tournaments/:id/players/import reports back. */
+/** What POST /live/tournaments/:id/players/refresh reports back. */
 export interface LiveScorerSyncResult {
-  /** False when the tournament's provider serves neither squads nor a scorer list. */
+  /** False when the tournament's provider serves no scorer list. */
   supported: boolean;
-  /** Players the club squads carried — the roster a shortlist is picked from. */
-  squadFetched: number;
   /** Players the scorers list carried. Zero before anybody has scored, which is normal. */
   scorersFetched: number;
-  created: number;
+  /** Shortlisted players whose goals moved. */
   updated: number;
   adopted: number;
-  /** Hand-added players the provider did not mention — their goals are still manual. */
+  /** Shortlisted players the scorer list did not mention — they may simply not have scored. */
   unmatchedNames: string[];
   truncated: boolean;
-  /** The provider has not published this season yet — import the previous one instead. */
+  /** The provider has not published this season yet — try the previous one. */
   seasonUnavailable: boolean;
+}
+
+/** One squad player a search turned up, as the admin's picker renders it. */
+export interface LivePlayerSearchHit {
+  providerPlayerId: string;
+  name: string;
+  providerTeamId: string;
+  position: string | null;
+  /** The club as this tournament stores it, when it is one we know. */
+  teamId: string | null;
+  teamName: string | null;
+  /** True when this player is already in the tournament's list. */
+  alreadyAdded: boolean;
+}
+
+export interface LivePlayerSearchResult {
+  /** False when the tournament's provider publishes no squads to search. */
+  supported: boolean;
+  /** The provider has not published this season yet — search the previous one. */
+  seasonUnavailable: boolean;
+  hits: LivePlayerSearchHit[];
 }
 
 export interface LiveCompetitionDetail extends LiveCompetition {
@@ -350,12 +369,21 @@ export const liveApi = {
   // ── Top-scorer ranking ────────────────────────────────────────────────────
   // Players belong to the tournament, the ranking to a competition.
   tournamentPlayers: (id: string) => api.get<LivePlayer[]>(`/live/tournaments/${id}/players`),
+  /** Look a player up in the provider's squads. Admin-only; answers from a short cache. */
+  searchPlayers: (id: string, q: string, season?: string) =>
+    api.get<LivePlayerSearchResult>(
+      `/live/tournaments/${id}/players/search${query({ q, season })}`,
+    ),
   createPlayer: (
     id: string,
     body: {
       name: string;
+      /** From a search hit. Omitted for a player the provider does not list at all. */
+      providerPlayerId?: string | null;
       teamId?: string | null;
+      position?: string | null;
       imageUrl?: string | null;
+      glowColor?: string | null;
       goals?: number;
       assists?: number;
       isSelected?: boolean;
@@ -367,7 +395,9 @@ export const liveApi = {
     body: {
       name?: string;
       teamId?: string | null;
+      position?: string | null;
       imageUrl?: string | null;
+      glowColor?: string | null;
       goals?: number;
       assists?: number;
       isSelected?: boolean;
@@ -375,12 +405,9 @@ export const liveApi = {
   ) => api.patch<LivePlayer>(`/live/tournaments/${id}/players/${playerId}`, body),
   deletePlayer: (id: string, playerId: string) =>
     api.delete<{ ok: boolean }>(`/live/tournaments/${id}/players/${playerId}`),
-  /**
-   * Pull the provider's scorers in. Pass last season to seed a shortlist before the new
-   * one has any goals in it — the provider's player ids carry over.
-   */
-  importScorers: (id: string, body: { season?: string; limit?: number } = {}) =>
-    api.post<LiveScorerSyncResult>(`/live/tournaments/${id}/players/import`, body),
+  /** Refresh the shortlist's goals and assists from the provider. Never adds anybody. */
+  refreshPlayerGoals: (id: string, body: { season?: string; limit?: number } = {}) =>
+    api.post<LiveScorerSyncResult>(`/live/tournaments/${id}/players/refresh`, body),
 
   // ── Bonus questions ───────────────────────────────────────────────────────
   // Questions belong to the tournament; answers to a competition.
@@ -526,6 +553,10 @@ export const liveKeys = {
   tournamentFixtures: (id: string) => ['live', 'tournament', id, 'fixtures'] as const,
   selectedMatches: (id: string) => ['live', 'tournament', id, 'selected-matches'] as const,
   tournamentPlayers: (id: string) => ['live', 'tournament', id, 'players'] as const,
+  playerSearch: (id: string, q: string, season: string) =>
+    ['live', 'tournament', id, 'player-search', q, season] as const,
+  /** Prefix of every search in one tournament — adding a player invalidates all of them. */
+  playerSearchAll: (id: string) => ['live', 'tournament', id, 'player-search'] as const,
   tournamentBonusQuestions: (id: string) => ['live', 'tournament', id, 'bonus-questions'] as const,
   bonusQuestions: (competitionId: string) => ['live', 'bonus-questions', competitionId] as const,
   bonusAnswers: (competitionId: string, userId?: string) =>

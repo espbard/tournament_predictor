@@ -18,7 +18,7 @@ import {
 } from '../db/liveSchema';
 import { mirrorTeamCrests } from './crests';
 import { deriveMatchdays } from './matchdays';
-import { syncLivePlayers } from './scorers';
+import { refreshLivePlayerGoals } from './scorers';
 import { seasonWindow } from './season';
 import { getProvider } from './providers';
 import { buildTeamNameIndex, matchTeamByName } from './teamMatching';
@@ -82,9 +82,9 @@ export interface SyncResult {
   /** Fixtures removed because their kickoff falls outside the tournament's season. */
   outOfSeasonRemoved: number;
   /**
-   * Players whose goals were refreshed from the provider's scorer list, created or
-   * updated. Zero for a provider that serves none — the top-scorer ranking then runs on
-   * the counts an admin maintains by hand.
+   * Shortlisted players whose goals were refreshed from the provider's scorer list. Zero
+   * for a provider that serves none — the top-scorer ranking then runs on the counts an
+   * admin maintains by hand.
    */
   scorersSynced: number;
 }
@@ -986,11 +986,11 @@ export async function syncTournamentStructure(tournamentId: string): Promise<Syn
     // serve at all, and the top-scorer ranking falls back to hand-entered goals when it
     // does not. Losing the fixtures and standings over it would be absurd.
     //
-    // Goals only: squads are pulled by an admin import, not on every cold tick. See
-    // SyncLiveScorersOptions.includeSquads.
+    // Refresh only. The shortlist is built by an admin searching for players, so a sync
+    // has no business adding anybody to it.
     try {
-      const players = await syncLivePlayers(tournament.id, { includeSquads: false });
-      result.scorersSynced = players.created + players.updated + players.adopted;
+      const players = await refreshLivePlayerGoals(tournament.id);
+      result.scorersSynced = players.updated + players.adopted;
     } catch (err) {
       console.warn(
         `[live-sync] ${tournament.id}: scorer list skipped:`,

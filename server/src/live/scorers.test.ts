@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { canSeeLiveScorerRanking } from '@tournament-predictor/shared';
-import { normaliseLivePlayerName } from './scorers';
+import { matchSquadPlayers, normaliseLivePlayerName } from './scorers';
 import { mapScorer, mapSquads } from './providers/footballData';
 
 describe('normaliseLivePlayerName', () => {
@@ -60,6 +60,59 @@ describe('mapScorer', () => {
   it('never returns a negative or fractional tally', () => {
     const mapped = mapScorer({ player: { id: 1, name: 'A' }, goals: -3, assists: 2.7 });
     expect(mapped).toMatchObject({ goals: 0, assists: 2 });
+  });
+});
+
+describe('matchSquadPlayers', () => {
+  const squad = (name: string, id = name) => ({
+    providerPlayerId: id,
+    name,
+    providerTeamId: '1',
+    position: null,
+  });
+
+  const squads = [
+    squad('Kylian Mbappé'),
+    squad('Erling Haaland'),
+    squad('Jude Bellingham'),
+    squad('Bellingham Jobe', 'jobe'),
+    squad('Federico Valverde'),
+  ];
+
+  it('finds a player through accents and case', () => {
+    // The whole point of folding: nobody types the accent.
+    expect(matchSquadPlayers(squads, normaliseLivePlayerName('mbappe')).map(p => p.name)).toEqual([
+      'Kylian Mbappé',
+    ]);
+    expect(matchSquadPlayers(squads, normaliseLivePlayerName('MBAPPÉ')).map(p => p.name)).toEqual([
+      'Kylian Mbappé',
+    ]);
+  });
+
+  it('matches a surname in the middle of a name', () => {
+    expect(
+      matchSquadPlayers(squads, normaliseLivePlayerName('haaland')).map(p => p.name),
+    ).toEqual(['Erling Haaland']);
+  });
+
+  it('puts a name that starts with the query above one that merely contains it', () => {
+    // Typing a surname should surface the player it starts with first.
+    expect(
+      matchSquadPlayers(squads, normaliseLivePlayerName('bellingham')).map(p => p.name),
+    ).toEqual(['Bellingham Jobe', 'Jude Bellingham']);
+  });
+
+  it('returns nothing for an empty needle rather than the whole competition', () => {
+    expect(matchSquadPlayers(squads, '')).toEqual([]);
+  });
+
+  it('caps the number of hits', () => {
+    const many = Array.from({ length: 40 }, (_, i) => squad(`Player ${i}`, String(i)));
+    expect(matchSquadPlayers(many, 'player', 25)).toHaveLength(25);
+  });
+
+  it('finds nobody when nobody matches', () => {
+    expect(matchSquadPlayers(squads, normaliseLivePlayerName('zzz'))).toEqual([]);
   });
 });
 
