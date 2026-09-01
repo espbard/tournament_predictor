@@ -136,15 +136,20 @@ export type LiveScorerPredictionView =
 
 /** What POST /live/tournaments/:id/players/import reports back. */
 export interface LiveScorerSyncResult {
-  /** False when the tournament's provider serves no scorer list at all. */
+  /** False when the tournament's provider serves neither squads nor a scorer list. */
   supported: boolean;
-  fetched: number;
+  /** Players the club squads carried — the roster a shortlist is picked from. */
+  squadFetched: number;
+  /** Players the scorers list carried. Zero before anybody has scored, which is normal. */
+  scorersFetched: number;
   created: number;
   updated: number;
   adopted: number;
   /** Hand-added players the provider did not mention — their goals are still manual. */
   unmatchedNames: string[];
   truncated: boolean;
+  /** The provider has not published this season yet — import the previous one instead. */
+  seasonUnavailable: boolean;
 }
 
 export interface LiveCompetitionDetail extends LiveCompetition {

@@ -18,7 +18,7 @@ import {
 } from '../db/liveSchema';
 import { mirrorTeamCrests } from './crests';
 import { deriveMatchdays } from './matchdays';
-import { syncLiveScorers } from './scorers';
+import { syncLivePlayers } from './scorers';
 import { seasonWindow } from './season';
 import { getProvider } from './providers';
 import { buildTeamNameIndex, matchTeamByName } from './teamMatching';
@@ -982,12 +982,15 @@ export async function syncTournamentStructure(tournamentId: string): Promise<Syn
       );
     }
 
-    // Also best-effort: the scorers endpoint is a separate resource that a provider may
-    // not serve at all, and the top-scorer ranking falls back to hand-entered goals when
-    // it does not. Losing the fixtures and standings over it would be absurd.
+    // Also best-effort: the scorer list is a separate resource that a provider may not
+    // serve at all, and the top-scorer ranking falls back to hand-entered goals when it
+    // does not. Losing the fixtures and standings over it would be absurd.
+    //
+    // Goals only: squads are pulled by an admin import, not on every cold tick. See
+    // SyncLiveScorersOptions.includeSquads.
     try {
-      const scorers = await syncLiveScorers(tournament.id);
-      result.scorersSynced = scorers.created + scorers.updated + scorers.adopted;
+      const players = await syncLivePlayers(tournament.id, { includeSquads: false });
+      result.scorersSynced = players.created + players.updated + players.adopted;
     } catch (err) {
       console.warn(
         `[live-sync] ${tournament.id}: scorer list skipped:`,

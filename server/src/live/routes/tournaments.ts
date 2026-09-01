@@ -43,7 +43,7 @@ import {
 } from '../scoringTrigger';
 import { diagnoseTournamentFixtures } from '../diagnostics';
 import { loadSelectionIndex } from '../selections';
-import { syncLiveScorers } from '../scorers';
+import { syncLivePlayers } from '../scorers';
 import { syncLiveWindow, syncTournamentStructure } from '../sync';
 
 // ── Live tournament API ───────────────────────────────────────────────────────
@@ -875,7 +875,7 @@ liveTournamentsRouter.post('/tournaments/:id/players/import', requireAdmin, asyn
       .where(eq(liveTournaments.id, req.params.id));
     if (!tournament) return res.status(404).json({ error: 'Not found' });
 
-    const result = await syncLiveScorers(tournament.id, parsed.data);
+    const result = await syncLivePlayers(tournament.id, parsed.data);
     // Imported goal counts can change the final ranking for a tournament already marked
     // completed, so rebuild rather than leave stored points stale.
     if (result.created + result.updated + result.adopted > 0) {

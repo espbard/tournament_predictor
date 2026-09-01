@@ -129,6 +129,21 @@ export interface ProviderScorer {
   assists: number;
 }
 
+/**
+ * One player in a club's squad.
+ *
+ * The roster, not the scoring: this is how a shortlist can be built before a ball has been
+ * kicked, when the scorer list is empty by definition. Goals arrive separately, through
+ * fetchScorers, and the two are matched on `providerPlayerId`.
+ */
+export interface ProviderSquadPlayer {
+  providerPlayerId: string;
+  name: string;
+  providerTeamId: string;
+  /** "Goalkeeper", "Centre-Back", "Centre-Forward"… Free text; the provider's own wording. */
+  position: string | null;
+}
+
 export interface FetchFixturesOptions {
   /** ISO date, inclusive. Used by the live window sync to fetch only today's fixtures. */
   dateFrom?: string;
@@ -202,6 +217,14 @@ export interface LiveProvider {
     opts?: FetchFixturesOptions,
   ): Promise<ProviderFixture[]>;
   fetchStandings(competitionId: string, season: string): Promise<ProviderStandingRow[]>;
+  /**
+   * Every club's squad, flattened.
+   *
+   * Optional, like fetchScorers. This is the list an admin picks a top-scorer shortlist
+   * from, so it has to include players who have not scored — which is all of them before
+   * the competition starts.
+   */
+  fetchSquads?(competitionId: string, season: string): Promise<ProviderSquadPlayer[]>;
   /**
    * The competition's scorers, most goals first.
    *

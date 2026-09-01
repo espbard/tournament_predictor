@@ -352,9 +352,17 @@ on both with the player's name (case-folded, and compared without `localeCompare
 order cannot differ between machines). Shared ranks were the alternative and were rejected:
 with three players level on 9 goals, nobody could ever score positions 2 and 3.
 
-Goals and assists come from the provider's scorers endpoint where it serves one, and from
-the admin where it does not — `live_players.provider_player_id` is what tells the two
-apart. Points are withheld until the tournament is marked completed, exactly as bonus
+The player list comes from **two** provider endpoints, because neither is enough alone. The
+`squad` array on `/competitions/{id}/teams` is the roster — every player at every club,
+whether or not they have kicked a ball — and it is what a shortlist is picked from; the
+scorers endpoint contains only players who have *already scored*, so before a competition
+starts it is empty and useless for building a list. An import reads both and merges them on
+the provider's player id before writing, so each player is stored once with their position
+(from the squad) and their goals (from the scorers list). The background structure sync
+refreshes goals only: squads are ~900 rows and do not change hourly.
+
+Where the provider has nothing, the admin does — `live_players.provider_player_id` is what
+tells the two apart. Points are withheld until the tournament is marked completed, exactly as bonus
 points are, so the ranking cannot be reverse-engineered from a moving total mid-season.
 
 **Currently a test feature.** `canSeeLiveScorerRanking` in `shared/src/live/features.ts` is
@@ -636,6 +644,7 @@ bug diagnosable after the fact) · `providerLastUpdated` · `updatedAt`.
 ### `live_players`
 `id` pk · `liveTournamentId` → cascade · `providerPlayerId` text nullable (null = added by
 hand, and never overwritten by a sync) · `name` · `teamId` → `live_teams` set null ·
+`position` text nullable (the provider's own wording, for filtering a squad-sized list) ·
 `imageUrl` text nullable (admin-uploaded, R2 folder `live-players`) · `goals` int ·
 `assists` int (only ever used to break a tie on goals) · `isSelected` bool (the shortlist
 users rank) · `providerLastUpdated` · `createdAt` · `updatedAt`.
@@ -1047,7 +1056,7 @@ Mounted as `app.use('/api/live', liveRouter)` in `server/src/index.ts`.
 | PATCH | `/tournaments/:id/fixtures/:fixtureId/multiplier` | admin | `{multiplier}`, a whole number from 1 to `LIVE_MAX_MULTIPLIER`. Recalculates the tournament, since an already-scored match has to be rescored |
 | GET | `/tournaments/:id/players` | auth | the top-scorer list, shortlist first |
 | POST / PATCH / DELETE | `/tournaments/:id/players[/:playerId]` | admin | `{name, teamId?, imageUrl?, goals?, assists?, isSelected?}`; anything touching goals, assists or the shortlist recalculates the tournament |
-| POST | `/tournaments/:id/players/import` | admin | `{season?, limit?}` — pull the provider's scorers in. Pass last season to seed a shortlist before the new one has any goals; football-data player ids carry over |
+| POST | `/tournaments/:id/players/import` | admin | `{season?, limit?}` — pull the squads and the scorer list in and merge them. Pass last season when the provider has not published the new one yet; football-data player ids carry over |
 
 ### `server/src/live/routes/competitions.ts`
 

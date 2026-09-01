@@ -219,6 +219,7 @@ export async function ensureLiveSchema(): Promise<void> {
       "provider_player_id" text,
       "name" text NOT NULL,
       "team_id" text REFERENCES "live_teams"("id") ON DELETE SET NULL,
+      "position" text,
       "image_url" text,
       "goals" integer NOT NULL DEFAULT 0,
       "assists" integer NOT NULL DEFAULT 0,
@@ -249,6 +250,8 @@ export async function ensureLiveSchema(): Promise<void> {
   await db.execute(sql`ALTER TABLE "live_bonus_questions" ADD COLUMN IF NOT EXISTS "max_value" integer`);
   await db.execute(sql`ALTER TABLE "live_bonus_questions" ADD COLUMN IF NOT EXISTS "leeway" integer`);
   await db.execute(sql`ALTER TABLE "live_bonus_questions" ADD COLUMN IF NOT EXISTS "options" json`);
+  // Added to live_players after its first release, for filtering a squad-sized list.
+  await db.execute(sql`ALTER TABLE "live_players" ADD COLUMN IF NOT EXISTS "position" text`);
   // Top-scorer ranking points, alongside the other point sources on the member row.
   await db.execute(sql`ALTER TABLE "live_competition_members" ADD COLUMN IF NOT EXISTS "scorer_points" integer NOT NULL DEFAULT 0`);
   // Per-fixture point multiplier. Admin-set; 1 means scoring is untouched.

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '@/lib/api';
 import { liveApi, liveKeys } from '@/lib/liveApi';
@@ -11,15 +11,21 @@ import type { LivePlayer } from '@tournament-predictor/shared';
 //
 // The players users rank, and the goals the ranking is settled on. Two ways in:
 //
-//   * import the provider's scorer list, which is also how goals stay current;
-//   * add a player by hand, for anyone the provider does not list — including, before a
-//     season has started, everyone.
+//   * import from the provider, which pulls every club's squad — not just the players who
+//     have scored, since before a season starts that is nobody — and their goals with it;
+//   * add a player by hand, for anyone the provider does not list.
+//
+// A Champions League import is ~900 players, so the list is searchable and filterable and
+// renders a bounded slice of it. Picking ten names out of a squad list is the job here.
 //
 // Ticking a player puts them in the shortlist. Everything else in the list is a candidate
 // and is neither ranked nor scored, which is why an import can be generous.
 //
 // Goals and assists are editable whatever the source: the provider is the source of truth
 // where it answers, and the admin is the source of truth where it does not.
+
+/** Rendering the whole squad list would be thousands of controls for no benefit. */
+const ROW_LIMIT = 60;
 
 interface Props {
   tournamentId: string;
@@ -32,6 +38,8 @@ export default function AdminLiveScorersPanel({ tournamentId, season }: Props) {
   const queryClient = useQueryClient();
 
   const [importSeason, setImportSeason] = useState('');
+  const [search, setSearch] = useState('');
+  const [shortlistOnly, setShortlistOnly] = useState(false);
   const [newName, setNewName] = useState('');
   const [newImageUrl, setNewImageUrl] = useState<string | null>(null);
   const [message, setMessage] = useState('');
@@ -41,6 +49,40 @@ export default function AdminLiveScorersPanel({ tournamentId, season }: Props) {
     queryKey: liveKeys.tournamentPlayers(tournamentId),
     queryFn: () => liveApi.tournamentPlayers(tournamentId),
   });
+
+  // Club names, so a row says who a player plays for and a search can match on it.
+  const { data: teams = [] } = useQuery({
+    queryKey: liveKeys.tournamentTeams(tournamentId),
+    queryFn: () => liveApi.tournamentTeams(tournamentId),
+  });
+  const teamNameById = useMemo(
+    () => new Map(teams.map(team => [team.id, team.shortName ?? team.name])),
+    [teams],
+  );
+
+  /**
+   * What to render: the shortlist always, then whatever the search matches.
+   *
+   * Selected players stay visible whatever is typed — losing sight of your own shortlist
+   * while searching for the next name would be the one thing this list must not do — and
+   * the rest is capped, because 900 rows of file inputs is a slow page and nobody scrolls
+   * it anyway.
+   */
+  const { shown, matchCount } = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    const matches = players.filter(player => {
+      if (player.isSelected) return true;
+      if (shortlistOnly) return false;
+      if (needle === '') return true;
+      const team = teamNameById.get(player.teamId ?? '') ?? '';
+      return (
+        player.name.toLowerCase().includes(needle) ||
+        team.toLowerCase().includes(needle) ||
+        (player.position ?? '').toLowerCase().includes(needle)
+      );
+    });
+    return { shown: matches.slice(0, ROW_LIMIT), matchCount: matches.length };
+  }, [players, search, shortlistOnly, teamNameById]);
 
   function refresh() {
     queryClient.invalidateQueries({ queryKey: liveKeys.tournamentPlayers(tournamentId) });
@@ -61,9 +103,16 @@ export default function AdminLiveScorersPanel({ tournamentId, season }: Props) {
         setMessage(t('live.admin.scorers.importUnsupported'));
         return;
       }
+      if (result.seasonUnavailable && result.squadFetched === 0) {
+        // The usual pre-draw state: the provider has not created this season yet, and the
+        // way through it is last season's squads.
+        setMessage(t('live.admin.scorers.importSeasonUnavailable'));
+        return;
+      }
       setMessage(
         t('live.admin.scorers.imported', {
-          fetched: result.fetched,
+          squad: result.squadFetched,
+          scorers: result.scorersFetched,
           created: result.created,
           updated: result.updated + result.adopted,
         }) + (result.truncated ? ` ${t('live.admin.scorers.importTruncated')}` : ''),
@@ -197,17 +246,38 @@ export default function AdminLiveScorersPanel({ tournamentId, season }: Props) {
         </div>
       </div>
 
-      <p className="mb-2 text-xs text-muted-foreground">
-        {t('live.admin.scorers.state', { selected: selectedCount, total: players.length })}
-      </p>
+      <div className="mb-2 flex flex-wrap items-center gap-3">
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder={t('live.admin.scorers.searchPlaceholder')}
+          aria-label={t('live.admin.scorers.searchPlaceholder')}
+          className="h-9 w-64 rounded-md border bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+        />
+        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={shortlistOnly}
+            onChange={e => setShortlistOnly(e.target.checked)}
+            className="h-4 w-4"
+          />
+          {t('live.admin.scorers.shortlistOnly')}
+        </label>
+        <span className="text-xs text-muted-foreground">
+          {t('live.admin.scorers.state', { selected: selectedCount, total: players.length })}
+        </span>
+      </div>
 
       {players.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t('live.admin.scorers.empty')}</p>
+      ) : shown.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{t('live.admin.scorers.noMatches')}</p>
       ) : (
         <ul className="grid gap-1">
-          {players.map(player => (
+          {shown.map(player => (
             <PlayerRow
               key={player.id}
+              teamName={teamNameById.get(player.teamId ?? '') ?? null}
               player={player}
               onToggle={isSelected =>
                 updateMutation.mutate({ playerId: player.id, body: { isSelected } })
@@ -225,6 +295,14 @@ export default function AdminLiveScorersPanel({ tournamentId, season }: Props) {
         </ul>
       )}
 
+      {/* Says plainly that the list is cut, so a missing name reads as "search for it"
+          rather than "the import missed him". */}
+      {matchCount > shown.length && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          {t('live.admin.scorers.showing', { shown: shown.length, total: matchCount })}
+        </p>
+      )}
+
       {message && <p className="mt-3 text-sm text-green-600 dark:text-green-400">{message}</p>}
       {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
     </div>
@@ -235,6 +313,8 @@ export default function AdminLiveScorersPanel({ tournamentId, season }: Props) {
 
 interface RowProps {
   player: LivePlayer;
+  /** The club, resolved by the panel — the row has only a team id. */
+  teamName: string | null;
   onToggle: (isSelected: boolean) => void;
   onNumbers: (goals: number, assists: number) => void;
   onImage: (imageUrl: string) => void;
@@ -242,7 +322,7 @@ interface RowProps {
   busy: boolean;
 }
 
-function PlayerRow({ player, onToggle, onNumbers, onImage, onDelete, busy }: RowProps) {
+function PlayerRow({ player, teamName, onToggle, onNumbers, onImage, onDelete, busy }: RowProps) {
   const { t } = useT();
   const [goals, setGoals] = useState<string | null>(null);
   const [assists, setAssists] = useState<string | null>(null);
@@ -296,6 +376,13 @@ function PlayerRow({ player, onToggle, onNumbers, onImage, onDelete, busy }: Row
 
       <span className="min-w-0 flex-1 truncate">
         {player.name}
+        {/* Club and position, which is how a shortlist actually gets picked out of a
+            squad list of several hundred. */}
+        {(teamName || player.position) && (
+          <span className="ml-2 text-xs text-muted-foreground">
+            {[teamName, player.position].filter(Boolean).join(' · ')}
+          </span>
+        )}
         {/* Says where this row's numbers come from: a provider id means a sync keeps them
             current, and its absence means they are whatever was typed here. */}
         {player.providerPlayerId === null && (

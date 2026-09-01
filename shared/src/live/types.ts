@@ -281,6 +281,8 @@ export interface LivePlayer {
   name: string;
   /** The club they are listed under. Null when nothing matched, or for a hand-added player. */
   teamId: string | null;
+  /** The provider's own wording — "Centre-Forward". Only used to filter the admin list. */
+  position: string | null;
   imageUrl: string | null;
   goals: number;
   /** Only used to break a tie on goals — see rankLiveScorers in the server's scorerScoring. */

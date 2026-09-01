@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { canSeeLiveScorerRanking } from '@tournament-predictor/shared';
 import { normaliseLivePlayerName } from './scorers';
-import { mapScorer } from './providers/footballData';
+import { mapScorer, mapSquads } from './providers/footballData';
 
 describe('normaliseLivePlayerName', () => {
   it('folds case, accents and punctuation', () => {
@@ -60,6 +60,56 @@ describe('mapScorer', () => {
   it('never returns a negative or fractional tally', () => {
     const mapped = mapScorer({ player: { id: 1, name: 'A' }, goals: -3, assists: 2.7 });
     expect(mapped).toMatchObject({ goals: 0, assists: 2 });
+  });
+});
+
+describe('mapSquads', () => {
+  it('flattens every club\u2019s squad, tagging each player with their club', () => {
+    expect(
+      mapSquads({
+        teams: [
+          {
+            id: 86,
+            name: 'Real Madrid CF',
+            squad: [
+              { id: 44, name: 'Kylian Mbappé', position: 'Centre-Forward' },
+              { id: 45, name: 'Thibaut Courtois', position: 'Goalkeeper' },
+            ],
+          },
+          { id: 81, name: 'FC Barcelona', squad: [{ id: 7, name: 'Lamine Yamal', position: 'Right Winger' }] },
+        ],
+      }),
+    ).toEqual([
+      { providerPlayerId: '44', name: 'Kylian Mbappé', providerTeamId: '86', position: 'Centre-Forward' },
+      { providerPlayerId: '45', name: 'Thibaut Courtois', providerTeamId: '86', position: 'Goalkeeper' },
+      { providerPlayerId: '7', name: 'Lamine Yamal', providerTeamId: '81', position: 'Right Winger' },
+    ]);
+  });
+
+  it('is the source that works before anybody has scored', () => {
+    // The point of reading squads at all: every player is here from day one, where the
+    // scorers list is empty until a goal goes in.
+    const squads = mapSquads({ teams: [{ id: 1, squad: [{ id: 9, name: 'Striker' }] }] });
+    expect(squads).toHaveLength(1);
+    expect(squads[0]).toMatchObject({ providerPlayerId: '9', position: null });
+  });
+
+  it('skips a club with no squad, and entries with no id or name', () => {
+    expect(
+      mapSquads({
+        teams: [
+          { id: 1 },
+          { id: 2, squad: [] },
+          { id: 3, squad: [{ name: 'No id' }, { id: 5 }, { id: 6, name: '  ' }] },
+          { squad: [{ id: 7, name: 'No club' }] },
+        ],
+      }),
+    ).toEqual([]);
+  });
+
+  it('returns nothing for a payload with no teams at all', () => {
+    expect(mapSquads({})).toEqual([]);
+    expect(mapSquads(null)).toEqual([]);
   });
 });
 

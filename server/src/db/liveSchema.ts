@@ -358,6 +358,8 @@ export const livePlayers = pgTable(
     providerPlayerId: text('provider_player_id'),
     name: text('name').notNull(),
     teamId: text('team_id').references(() => liveTeams.id, { onDelete: 'set null' }),
+    /** The provider's own wording — "Centre-Forward". Only used to filter the admin list. */
+    position: text('position'),
     imageUrl: text('image_url'),
     goals: integer('goals').notNull().default(0),
     /** Breaks a tie on goals. See rankLiveScorers in server/src/live/scorerScoring.ts. */

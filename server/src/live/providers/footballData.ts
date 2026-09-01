@@ -10,6 +10,7 @@ import {
   type ProviderFixtureScore,
   type ProviderScorePair,
   type ProviderScorer,
+  type ProviderSquadPlayer,
   type ProviderProbe,
   type ProviderProbeKey,
   type ProviderStandingRow,
@@ -83,6 +84,12 @@ interface RawMatch {
   homeTeam?: RawTeamRef | null;
   awayTeam?: RawTeamRef | null;
   score?: RawScore;
+}
+
+interface RawSquadPlayer {
+  id?: number | null;
+  name?: string | null;
+  position?: string | null;
 }
 
 interface RawScorer {
@@ -241,6 +248,41 @@ export function mapTeam(raw: RawTeamRef & { id: number }): ProviderTeam {
     // backfills this from fixtures for formats that actually have groups.
     groupName: null,
   };
+}
+
+/**
+ * Flatten the squads out of a `/competitions/{id}/teams` payload.
+ *
+ * The teams endpoint carries a `squad` array per club, which is the only place the
+ * provider lists players who have not scored — and before a competition starts, that is
+ * every player. An entry with no id or no name is dropped: without an id there is nothing
+ * stable to match a goal tally against later, and without a name there is nothing to show.
+ *
+ * A team whose squad is absent or empty simply contributes nothing. Squads are published
+ * per season and can be missing for one the provider has only just created, which is a
+ * reason to report "no players" rather than to fail.
+ */
+export function mapSquads(payload: unknown): ProviderSquadPlayer[] {
+  const teams = (payload as { teams?: unknown[] } | null)?.teams ?? [];
+  const players: ProviderSquadPlayer[] = [];
+
+  for (const team of teams as Array<Record<string, any>>) {
+    const providerTeamId = team?.id != null ? String(team.id) : null;
+    if (!providerTeamId) continue;
+
+    for (const raw of (team.squad ?? []) as RawSquadPlayer[]) {
+      const name = emptyToNull(raw?.name);
+      if (raw?.id == null || !name) continue;
+      players.push({
+        providerPlayerId: String(raw.id),
+        name,
+        providerTeamId,
+        position: emptyToNull(raw.position),
+      });
+    }
+  }
+
+  return players;
 }
 
 /**
@@ -439,6 +481,19 @@ export class FootballDataProvider implements LiveProvider {
   }
 
   /**
+   * Every club's squad in the competition, from the same endpoint fetchTeams uses.
+   *
+   * One request for the whole competition — the payload already carries `squad` per club,
+   * so there is no reason to ask for 36 teams individually and spend the rate limit.
+   */
+  async fetchSquads(competitionId: string, season: string): Promise<ProviderSquadPlayer[]> {
+    const data = await this.get<unknown>(
+      `/competitions/${encodeURIComponent(competitionId)}/teams?season=${encodeURIComponent(season)}`,
+    );
+    return mapSquads(data);
+  }
+
+  /**
    * The competition's scorers, most goals first.
    *
    * `limit` matters: the endpoint defaults to the top 10, which is fewer than a shortlist
@@ -549,14 +604,23 @@ export class FootballDataProvider implements LiveProvider {
 
     probes.push(
       await this.probeOne('teams', `/competitions/${id}/teams?season=${s}`, body => {
+        const squadPlayers = mapSquads(body).length;
         const teams: any[] = body?.teams ?? [];
         return {
           count: teams.length,
           countForSeason: teams.length,
-          detail: teams
-            .slice(0, 6)
-            .map(t => t.tla ?? t.shortName ?? t.name)
-            .join(', ') || null,
+          // The squad count matters as much as the team count: it is what a top-scorer
+          // shortlist is built from, and it can be empty while the teams are not.
+          detail:
+            [
+              teams
+                .slice(0, 6)
+                .map(t => t.tla ?? t.shortName ?? t.name)
+                .join(', '),
+              `${squadPlayers} squad player(s)`,
+            ]
+              .filter(Boolean)
+              .join(' · ') || null,
         };
       }),
     );
