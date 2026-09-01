@@ -18,6 +18,7 @@ import {
 } from '../db/liveSchema';
 import { mirrorTeamCrests } from './crests';
 import { deriveMatchdays } from './matchdays';
+import { syncLiveScorers } from './scorers';
 import { seasonWindow } from './season';
 import { getProvider } from './providers';
 import { buildTeamNameIndex, matchTeamByName } from './teamMatching';
@@ -80,6 +81,12 @@ export interface SyncResult {
   crestsMirrored: number;
   /** Fixtures removed because their kickoff falls outside the tournament's season. */
   outOfSeasonRemoved: number;
+  /**
+   * Players whose goals were refreshed from the provider's scorer list, created or
+   * updated. Zero for a provider that serves none — the top-scorer ranking then runs on
+   * the counts an admin maintains by hand.
+   */
+  scorersSynced: number;
 }
 
 function emptyResult(): SyncResult {
@@ -94,6 +101,7 @@ function emptyResult(): SyncResult {
     seasonUnavailable: false,
     crestsMirrored: 0,
     outOfSeasonRemoved: 0,
+    scorersSynced: 0,
   };
 }
 
@@ -970,6 +978,19 @@ export async function syncTournamentStructure(tournamentId: string): Promise<Syn
     } catch (err) {
       console.warn(
         `[live-sync] ${tournament.id}: crest mirroring skipped:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+
+    // Also best-effort: the scorers endpoint is a separate resource that a provider may
+    // not serve at all, and the top-scorer ranking falls back to hand-entered goals when
+    // it does not. Losing the fixtures and standings over it would be absurd.
+    try {
+      const scorers = await syncLiveScorers(tournament.id);
+      result.scorersSynced = scorers.created + scorers.updated + scorers.adopted;
+    } catch (err) {
+      console.warn(
+        `[live-sync] ${tournament.id}: scorer list skipped:`,
         err instanceof Error ? err.message : err,
       );
     }

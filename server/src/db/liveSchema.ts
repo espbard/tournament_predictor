@@ -262,6 +262,8 @@ export const liveCompetitionMembers = pgTable(
     tablePoints: integer('table_points').notNull().default(0),
     /** Bonus question points. Stays zero until the tournament is marked completed. */
     bonusPoints: integer('bonus_points').notNull().default(0),
+    /** Top-scorer ranking points. Also withheld until the tournament is completed. */
+    scorerPoints: integer('scorer_points').notNull().default(0),
     totalPoints: integer('total_points').notNull().default(0),
   },
   t => ({
@@ -336,6 +338,73 @@ export const liveTablePredictions = pgTable(
       t.liveCompetitionId,
       t.userId,
       t.stageKey,
+    ),
+  }),
+);
+
+export const livePlayers = pgTable(
+  'live_players',
+  {
+    id: text('id').primaryKey(),
+    liveTournamentId: text('live_tournament_id')
+      .notNull()
+      .references(() => liveTournaments.id, { onDelete: 'cascade' }),
+    /**
+     * The provider's own player id, when the row came from the scorers feed.
+     *
+     * Null for a player an admin typed in, which is also what protects that player's
+     * hand-entered goals: the sync only writes rows it can identify.
+     */
+    providerPlayerId: text('provider_player_id'),
+    name: text('name').notNull(),
+    teamId: text('team_id').references(() => liveTeams.id, { onDelete: 'set null' }),
+    imageUrl: text('image_url'),
+    goals: integer('goals').notNull().default(0),
+    /** Breaks a tie on goals. See rankLiveScorers in server/src/live/scorerScoring.ts. */
+    assists: integer('assists').notNull().default(0),
+    /** Whether the player is in the shortlist users rank. Admin-chosen, false by default. */
+    isSelected: boolean('is_selected').notNull().default(false),
+    providerLastUpdated: timestamp('provider_last_updated'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  t => ({
+    // Postgres treats NULLs as distinct, so every hand-added player is unique here
+    // however many of them there are — which is exactly what this needs.
+    providerPlayerUnique: uniqueIndex('live_players_tournament_provider_player_unique').on(
+      t.liveTournamentId,
+      t.providerPlayerId,
+    ),
+    tournamentIdx: index('live_players_tournament_idx').on(t.liveTournamentId),
+  }),
+);
+
+export const liveScorerPredictions = pgTable(
+  'live_scorer_predictions',
+  {
+    id: text('id').primaryKey(),
+    liveCompetitionId: text('live_competition_id')
+      .notNull()
+      .references(() => liveCompetitions.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /**
+     * live_players ids, top scorer first. Stored whole for the same reason the table
+     * prediction is, and with no FK for the same reason: a player dropped from the
+     * shortlist should leave a stale id, not destroy the ranking around it.
+     */
+    orderedPlayerIds: json('ordered_player_ids').notNull().$type<string[]>(),
+    /** Null until the tournament is marked completed and scoring runs. */
+    points: integer('points'),
+    exactPositionPoints: integer('exact_position_points').notNull().default(0),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  t => ({
+    scorerPredictionUnique: uniqueIndex('live_scorer_predictions_competition_user_unique').on(
+      t.liveCompetitionId,
+      t.userId,
     ),
   }),
 );

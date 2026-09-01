@@ -212,6 +212,36 @@ export async function ensureLiveSchema(): Promise<void> {
     )
   `);
 
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "live_players" (
+      "id" text PRIMARY KEY,
+      "live_tournament_id" text NOT NULL REFERENCES "live_tournaments"("id") ON DELETE CASCADE,
+      "provider_player_id" text,
+      "name" text NOT NULL,
+      "team_id" text REFERENCES "live_teams"("id") ON DELETE SET NULL,
+      "image_url" text,
+      "goals" integer NOT NULL DEFAULT 0,
+      "assists" integer NOT NULL DEFAULT 0,
+      "is_selected" boolean NOT NULL DEFAULT false,
+      "provider_last_updated" timestamp,
+      "created_at" timestamp NOT NULL DEFAULT now(),
+      "updated_at" timestamp NOT NULL DEFAULT now()
+    )
+  `);
+
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "live_scorer_predictions" (
+      "id" text PRIMARY KEY,
+      "live_competition_id" text NOT NULL REFERENCES "live_competitions"("id") ON DELETE CASCADE,
+      "user_id" text NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+      "ordered_player_ids" json NOT NULL,
+      "points" integer,
+      "exact_position_points" integer NOT NULL DEFAULT 0,
+      "created_at" timestamp NOT NULL DEFAULT now(),
+      "updated_at" timestamp NOT NULL DEFAULT now()
+    )
+  `);
+
   // ── Columns added after a table's first release ──────────────────────────────
   await db.execute(sql`ALTER TABLE "live_competition_members" ADD COLUMN IF NOT EXISTS "table_points" integer NOT NULL DEFAULT 0`);
   await db.execute(sql`ALTER TABLE "live_competition_members" ADD COLUMN IF NOT EXISTS "bonus_points" integer NOT NULL DEFAULT 0`);
@@ -219,6 +249,8 @@ export async function ensureLiveSchema(): Promise<void> {
   await db.execute(sql`ALTER TABLE "live_bonus_questions" ADD COLUMN IF NOT EXISTS "max_value" integer`);
   await db.execute(sql`ALTER TABLE "live_bonus_questions" ADD COLUMN IF NOT EXISTS "leeway" integer`);
   await db.execute(sql`ALTER TABLE "live_bonus_questions" ADD COLUMN IF NOT EXISTS "options" json`);
+  // Top-scorer ranking points, alongside the other point sources on the member row.
+  await db.execute(sql`ALTER TABLE "live_competition_members" ADD COLUMN IF NOT EXISTS "scorer_points" integer NOT NULL DEFAULT 0`);
   // Per-fixture point multiplier. Admin-set; 1 means scoring is untouched.
   await db.execute(sql`ALTER TABLE "live_fixtures" ADD COLUMN IF NOT EXISTS "multiplier" integer NOT NULL DEFAULT 1`);
   // Share-link token. Nullable: minted the first time somebody presses Invite.
@@ -243,4 +275,7 @@ export async function ensureLiveSchema(): Promise<void> {
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "live_gameweek_selections_tournament_stage_matchday_unique" ON "live_gameweek_selections" ("live_tournament_id", "stage_key", "matchday")`);
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "live_bonus_answers_question_competition_user_unique" ON "live_bonus_answers" ("question_id", "live_competition_id", "user_id")`);
   await db.execute(sql`CREATE INDEX IF NOT EXISTS "live_bonus_answers_competition_idx" ON "live_bonus_answers" ("live_competition_id")`);
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "live_players_tournament_provider_player_unique" ON "live_players" ("live_tournament_id", "provider_player_id")`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS "live_players_tournament_idx" ON "live_players" ("live_tournament_id")`);
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "live_scorer_predictions_competition_user_unique" ON "live_scorer_predictions" ("live_competition_id", "user_id")`);
 }

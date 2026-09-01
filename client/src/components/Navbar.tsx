@@ -8,6 +8,7 @@ import { useLanguageStore } from '@/store/languageStore';
 import { useThemeStore } from '@/store/themeStore';
 import { useT } from '@/lib/useT';
 import { UserAvatar } from '@/components/UserAvatar';
+import { canSeeLiveScorerRanking } from '@tournament-predictor/shared';
 import type { Competition, Tournament } from '@tournament-predictor/shared';
 
 const LANGUAGES = [
@@ -76,7 +77,14 @@ export default function Navbar() {
   // top, so the site name beside it is noise — the home icon is still there to get out.
   const isOnUserPredictionsPage = isOnPredictionsPage || isOnLivePredictionsPage;
   const liveCompetitionId = location.pathname.match(/^\/live\/competitions\/([^/]+)/)?.[1];
-  const LIVE_PREDICTION_TABS = ['fixtures', 'table', 'bonus'] as const;
+  // The top-scorer ranking is a test feature: only accounts marked as test users — and
+  // admins, who have to build the shortlist — get the tab. The server answers
+  // `available: false` for everyone else, so hiding it here only saves a dead tab.
+  const LIVE_PREDICTION_TABS = (
+    canSeeLiveScorerRanking(user)
+      ? ['fixtures', 'table', 'scorers', 'bonus']
+      : ['fixtures', 'table', 'bonus']
+  ) as readonly string[];
   const LIVE_RESULT_TABS = ['standings', 'leaderboard'] as const;
   const liveTabParam = searchParams.get('tab') ?? '';
   const liveActiveTab = [...LIVE_PREDICTION_TABS, ...LIVE_RESULT_TABS].some(tab => tab === liveTabParam)

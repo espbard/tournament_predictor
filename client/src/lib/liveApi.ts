@@ -8,6 +8,8 @@ import type {
   LiveFixture,
   LiveFormatDef,
   LiveFormatKey,
+  LivePlayer,
+  LiveScorerPrediction,
   LiveScoringConfig,
   LiveStageDef,
   LiveStanding,
@@ -67,6 +69,8 @@ export interface LiveLeaderboardRow {
     correctGoalDifferencePoints: number;
     exactScorePoints: number;
     tablePoints: number;
+    /** Zero until the tournament is marked completed, like the bonus points below. */
+    scorerPoints: number;
     /** Zero until the tournament is marked completed — bonus points are withheld until then. */
     bonusPoints: number;
   };
@@ -111,6 +115,37 @@ export type LiveTablePredictionView =
       currentOrder: string[];
       scoringConfig: LiveScoringConfig;
     };
+
+/** The top-scorer ranking as GET /live/competitions/:id/scorer-prediction returns it. */
+export type LiveScorerPredictionView =
+  | { available: false }
+  | {
+      available: true;
+      /** The shortlist an admin curated. Nothing else is ranked or scored. */
+      players: LivePlayer[];
+      prediction: LiveScorerPrediction | null;
+      /** First kickoff of the starting stage − 60 min: the ranking closes with the table. */
+      lockedAt: string | null;
+      isLocked: boolean;
+      /** The ranking as it stands today, settled the same way the final one will be. */
+      currentOrder: string[];
+      /** Points are only awarded once the tournament is marked completed. */
+      isTournamentCompleted: boolean;
+      scoringConfig: LiveScoringConfig;
+    };
+
+/** What POST /live/tournaments/:id/players/import reports back. */
+export interface LiveScorerSyncResult {
+  /** False when the tournament's provider serves no scorer list at all. */
+  supported: boolean;
+  fetched: number;
+  created: number;
+  updated: number;
+  adopted: number;
+  /** Hand-added players the provider did not mention — their goals are still manual. */
+  unmatchedNames: string[];
+  truncated: boolean;
+}
 
 export interface LiveCompetitionDetail extends LiveCompetition {
   tournament: LiveTournament | null;
@@ -307,6 +342,41 @@ export const liveApi = {
       fixture: { id: string; multiplier: number };
       scoredPredictions: number;
     }>(`/live/tournaments/${id}/fixtures/${fixtureId}/multiplier`, { multiplier }),
+  // ── Top-scorer ranking ────────────────────────────────────────────────────
+  // Players belong to the tournament, the ranking to a competition.
+  tournamentPlayers: (id: string) => api.get<LivePlayer[]>(`/live/tournaments/${id}/players`),
+  createPlayer: (
+    id: string,
+    body: {
+      name: string;
+      teamId?: string | null;
+      imageUrl?: string | null;
+      goals?: number;
+      assists?: number;
+      isSelected?: boolean;
+    },
+  ) => api.post<LivePlayer>(`/live/tournaments/${id}/players`, body),
+  updatePlayer: (
+    id: string,
+    playerId: string,
+    body: {
+      name?: string;
+      teamId?: string | null;
+      imageUrl?: string | null;
+      goals?: number;
+      assists?: number;
+      isSelected?: boolean;
+    },
+  ) => api.patch<LivePlayer>(`/live/tournaments/${id}/players/${playerId}`, body),
+  deletePlayer: (id: string, playerId: string) =>
+    api.delete<{ ok: boolean }>(`/live/tournaments/${id}/players/${playerId}`),
+  /**
+   * Pull the provider's scorers in. Pass last season to seed a shortlist before the new
+   * one has any goals in it — the provider's player ids carry over.
+   */
+  importScorers: (id: string, body: { season?: string; limit?: number } = {}) =>
+    api.post<LiveScorerSyncResult>(`/live/tournaments/${id}/players/import`, body),
+
   // ── Bonus questions ───────────────────────────────────────────────────────
   // Questions belong to the tournament; answers to a competition.
   tournamentBonusQuestions: (id: string) =>
@@ -376,6 +446,16 @@ export const liveApi = {
       `/live/competitions/${competitionId}/table-prediction/${userId}`,
     ),
 
+  scorerPrediction: (competitionId: string) =>
+    api.get<LiveScorerPredictionView>(`/live/competitions/${competitionId}/scorer-prediction`),
+  saveScorerPrediction: (competitionId: string, orderedPlayerIds: string[]) =>
+    api.put<LiveScorerPrediction>(`/live/competitions/${competitionId}/scorer-prediction`, {
+      orderedPlayerIds,
+    }),
+  /** Drops the caller's ranking. Refused once it has locked. */
+  clearScorerPrediction: (competitionId: string) =>
+    api.delete<{ ok: boolean }>(`/live/competitions/${competitionId}/scorer-prediction`),
+
   bonusQuestions: (competitionId: string) =>
     api.get<LiveBonusQuestionView[]>(`/live/competitions/${competitionId}/bonus-questions`),
   bonusAnswers: (competitionId: string) =>
@@ -430,6 +510,8 @@ export const liveKeys = {
     ['live', 'user-table-prediction', competitionId, userId] as const,
   leaderboard: (competitionId: string) => ['live', 'leaderboard', competitionId] as const,
   tablePrediction: (competitionId: string) => ['live', 'table-prediction', competitionId] as const,
+  scorerPrediction: (competitionId: string) =>
+    ['live', 'scorer-prediction', competitionId] as const,
   members: (competitionId: string) => ['live', 'members', competitionId] as const,
   standings: (tournamentId: string, stageKey?: string) =>
     ['live', 'standings', tournamentId, stageKey ?? null] as const,
@@ -438,6 +520,7 @@ export const liveKeys = {
   tournamentTeams: (id: string) => ['live', 'tournament', id, 'teams'] as const,
   tournamentFixtures: (id: string) => ['live', 'tournament', id, 'fixtures'] as const,
   selectedMatches: (id: string) => ['live', 'tournament', id, 'selected-matches'] as const,
+  tournamentPlayers: (id: string) => ['live', 'tournament', id, 'players'] as const,
   tournamentBonusQuestions: (id: string) => ['live', 'tournament', id, 'bonus-questions'] as const,
   bonusQuestions: (competitionId: string) => ['live', 'bonus-questions', competitionId] as const,
   bonusAnswers: (competitionId: string, userId?: string) =>

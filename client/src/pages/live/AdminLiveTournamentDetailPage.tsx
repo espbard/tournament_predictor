@@ -13,6 +13,7 @@ import {
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import LiveSelectedMatchesPanel from '@/components/live/LiveSelectedMatchesPanel';
 import AdminLiveBonusQuestionsPanel from '@/components/live/AdminLiveBonusQuestionsPanel';
+import AdminLiveScorersPanel from '@/components/live/AdminLiveScorersPanel';
 import { useT } from '@/lib/useT';
 
 // ── Admin: one live tournament ────────────────────────────────────────────────
@@ -345,6 +346,8 @@ export default function AdminLiveTournamentDetailPage() {
       </div>
 
       <LiveSelectedMatchesPanel tournamentId={tournament.id} />
+
+      <AdminLiveScorersPanel tournamentId={tournament.id} season={tournament.season} />
 
       <AdminLiveBonusQuestionsPanel tournamentId={tournament.id} />
 

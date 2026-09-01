@@ -433,6 +433,14 @@ describe('FootballDataProvider.probe', () => {
       '/competitions/CL/matches': { body: clMatches },
       '/competitions/CL/teams?season=2026': { status: 403, body: { message: 'restricted' } },
       '/competitions/CL/standings?season=2026': { body: clStandings },
+      '/competitions/CL/scorers?season=2026&limit=100': {
+        body: {
+          scorers: [
+            { player: { id: 44, name: 'Kylian Mbappé' }, team: { id: 86 }, goals: 11, assists: 3 },
+            { player: { id: 7, name: 'Lamine Yamal' }, team: { id: 81 }, goals: 6, assists: 5 },
+          ],
+        },
+      },
     });
 
     const probes = await provider().probe('CL', '2026');
@@ -444,6 +452,7 @@ describe('FootballDataProvider.probe', () => {
       'matches_unfiltered',
       'teams',
       'standings',
+      'scorers',
     ]);
     expect(by.get('competition')!.countForSeason).toBe(1);
     expect(by.get('matches_season')!.count).toBe(0);
@@ -453,6 +462,10 @@ describe('FootballDataProvider.probe', () => {
     expect(by.get('teams')!.ok).toBe(false);
     expect(by.get('teams')!.status).toBe(403);
     expect(by.get('standings')!.count).toBeGreaterThan(0);
+    // The probe that answers "can this competition's goal counts come from the provider
+    // at all?" — the go/no-go for syncing the top-scorer list rather than typing it.
+    expect(by.get('scorers')!.count).toBe(2);
+    expect(by.get('scorers')!.detail).toContain('Kylian Mbappé');
   });
 
   it('records the URL it asked for, so the request itself can be checked', async () => {

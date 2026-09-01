@@ -340,6 +340,30 @@ disagreeing with their score. It is set from the selected-matches panel, and cha
 recalculates the tournament there and then, exactly as deselecting a match does. The provider
 never owns this column, so a sync leaves it alone.
 
+### Top-scorer ranking
+
+An admin curates a shortlist of players out of `live_players`; users order it by how many
+goals each will finish the tournament on. Every player placed in exactly the right position
+is worth `scorer_exact_position` (2 by default). No bands — a top-scorer list has no
+meaningful sections, so close is worth nothing.
+
+The final ranking is made **strict 1..N** by breaking a tie on goals with assists, and a tie
+on both with the player's name (case-folded, and compared without `localeCompare` so the
+order cannot differ between machines). Shared ranks were the alternative and were rejected:
+with three players level on 9 goals, nobody could ever score positions 2 and 3.
+
+Goals and assists come from the provider's scorers endpoint where it serves one, and from
+the admin where it does not — `live_players.provider_player_id` is what tells the two
+apart. Points are withheld until the tournament is marked completed, exactly as bonus
+points are, so the ranking cannot be reverse-engineered from a moving total mid-season.
+
+**Currently a test feature.** `canSeeLiveScorerRanking` in `shared/src/live/features.ts` is
+the single gate: accounts with `is_test_account` see it, admins see it because they build
+the shortlist, and everyone else gets `available: false` from the read route — no tab, no
+first-run step — with the save and delete routes refusing them outright, so the API is not
+a way around the client. To ship it to everyone, make that function return true and follow
+the compiler.
+
 ### League table prediction
 
 Alongside the per-fixture predictions, users order **every team in the table stage** from top to
@@ -608,6 +632,24 @@ bug diagnosable after the fact) · `providerLastUpdated` · `updatedAt`.
 
 **Unique** `(live_tournament_id, provider_fixture_id)`.
 **Index** `(live_tournament_id, kickoff_at)`, `(live_tournament_id, stage_key)`, `(status)`.
+
+### `live_players`
+`id` pk · `liveTournamentId` → cascade · `providerPlayerId` text nullable (null = added by
+hand, and never overwritten by a sync) · `name` · `teamId` → `live_teams` set null ·
+`imageUrl` text nullable (admin-uploaded, R2 folder `live-players`) · `goals` int ·
+`assists` int (only ever used to break a tie on goals) · `isSelected` bool (the shortlist
+users rank) · `providerLastUpdated` · `createdAt` · `updatedAt`.
+
+**Unique** `(live_tournament_id, provider_player_id)` — NULLs are distinct in Postgres, so
+every hand-added row is unique however many there are. **Index** `(live_tournament_id)`.
+
+### `live_scorer_predictions`
+`id` pk · `liveCompetitionId` → cascade · `userId` → cascade · `orderedPlayerIds` json
+(whole ranking, index 0 = top scorer; no FK, so a player dropped from the shortlist leaves
+a stale id rather than destroying the ranking) · `points` int nullable (null until the
+tournament completes) · `exactPositionPoints` · `createdAt` · `updatedAt`.
+
+**Unique** `(live_competition_id, user_id)`.
 
 ### `live_standings`
 `id` pk · `liveTournamentId` → cascade · `stageKey` · `groupName` nullable · `teamId` →
@@ -1003,6 +1045,9 @@ Mounted as `app.use('/api/live', liveRouter)` in `server/src/index.ts`.
 | GET | `/tournaments/:id/selected-matches` | auth | every gameweek with `isCustomised` and its selected fixture ids |
 | PUT | `/tournaments/:id/selected-matches` | admin | `{stageKey, matchday, fixtureIds}`; `fixtureIds: null` (or empty) resets the gameweek to "all selected". Recalculates the tournament, since a deselected match must give its points back |
 | PATCH | `/tournaments/:id/fixtures/:fixtureId/multiplier` | admin | `{multiplier}`, a whole number from 1 to `LIVE_MAX_MULTIPLIER`. Recalculates the tournament, since an already-scored match has to be rescored |
+| GET | `/tournaments/:id/players` | auth | the top-scorer list, shortlist first |
+| POST / PATCH / DELETE | `/tournaments/:id/players[/:playerId]` | admin | `{name, teamId?, imageUrl?, goals?, assists?, isSelected?}`; anything touching goals, assists or the shortlist recalculates the tournament |
+| POST | `/tournaments/:id/players/import` | admin | `{season?, limit?}` — pull the provider's scorers in. Pass last season to seed a shortlist before the new one has any goals; football-data player ids carry over |
 
 ### `server/src/live/routes/competitions.ts`
 

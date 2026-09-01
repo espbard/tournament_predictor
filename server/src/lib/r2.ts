@@ -15,7 +15,13 @@ const s3 = new S3Client({
 const BUCKET = process.env.R2_BUCKET_NAME ?? 'tournament-predictor-assets';
 
 /** Folders the image proxy will serve. Keep in sync with VALID_FOLDERS in routes/images.ts. */
-export type R2Folder = 'users' | 'tournaments' | 'teams' | 'competitions' | 'live-teams';
+export type R2Folder =
+  | 'users'
+  | 'tournaments'
+  | 'teams'
+  | 'competitions'
+  | 'live-teams'
+  | 'live-players';
 
 /** Whether R2 credentials are configured at all. Lets callers skip optional uploads. */
 export function isR2Configured(): boolean {

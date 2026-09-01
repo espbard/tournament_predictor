@@ -1,15 +1,17 @@
 import { useRef, useState } from 'react';
-import { uploadFile } from '@/lib/api';
+import { uploadFile, type UploadType } from '@/lib/api';
 
 interface Props {
-  type: 'users' | 'tournaments' | 'teams' | 'competitions';
+  type: UploadType;
   currentUrl?: string | null;
   onUploaded: (url: string) => void;
   shape?: 'circle' | 'square';
   label?: string;
+  /** 'sm' for a picker sitting in a list row, where a 20-unit preview would dominate. */
+  size?: 'sm' | 'lg';
 }
 
-export default function ImageUpload({ type, currentUrl, onUploaded, shape = 'square', label = 'Upload image' }: Props) {
+export default function ImageUpload({ type, currentUrl, onUploaded, shape = 'square', label = 'Upload image', size = 'lg' }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -17,6 +19,7 @@ export default function ImageUpload({ type, currentUrl, onUploaded, shape = 'squ
 
   const displayUrl = preview ?? currentUrl ?? null;
   const shapeClass = shape === 'circle' ? 'rounded-full' : 'rounded-lg';
+  const sizeClass = size === 'sm' ? 'h-10 w-10' : 'h-20 w-20';
 
   async function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -42,11 +45,11 @@ export default function ImageUpload({ type, currentUrl, onUploaded, shape = 'squ
         <img
           src={displayUrl}
           alt="Preview"
-          className={`h-20 w-20 object-cover border ${shapeClass}`}
+          className={`${sizeClass} object-cover border ${shapeClass}`}
         />
       ) : (
         <div
-          className={`flex h-20 w-20 items-center justify-center border-2 border-dashed border-border bg-muted text-muted-foreground text-xs ${shapeClass}`}
+          className={`flex ${sizeClass} items-center justify-center border-2 border-dashed border-border bg-muted text-center text-[10px] text-muted-foreground ${shapeClass}`}
         >
           No image
         </div>

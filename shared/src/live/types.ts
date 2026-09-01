@@ -53,6 +53,11 @@ export interface LiveScoringConfig {
    * place is worth both — 3 points by default. Formats without bands never award this.
    */
   table_correct_band: number;
+  /**
+   * Per player placed in exactly the right position of the final top-scorer ranking.
+   * That ranking has no bands — a player is in the right place or is not.
+   */
+  scorer_exact_position: number;
 }
 
 export const DEFAULT_LIVE_SCORING_CONFIG: LiveScoringConfig = {
@@ -61,6 +66,7 @@ export const DEFAULT_LIVE_SCORING_CONFIG: LiveScoringConfig = {
   exact_score: 2,
   table_exact_position: 2,
   table_correct_band: 1,
+  scorer_exact_position: 2,
 };
 
 /**
@@ -105,6 +111,8 @@ export interface LiveScoreBreakdown {
   exactScorePoints: number;
   /** Combined exact-position and band points from the table prediction. */
   tablePoints: number;
+  /** Exact-position points from the top-scorer ranking. Awarded at completion. */
+  scorerPoints: number;
   /** Awarded only once the tournament is marked completed. */
   bonusPoints: number;
 }
@@ -252,6 +260,65 @@ export interface LiveTablePrediction {
   bandPoints: number;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * A player in the tournament's top-scorer ranking.
+ *
+ * Tournament-scoped like a team, not competition-scoped: every league playing the
+ * tournament ranks the same shortlist, exactly as they all answer the same bonus
+ * questions.
+ *
+ * Goals and assists come from the provider where it serves them and from the admin where
+ * it does not — `providerPlayerId` is what tells the two apart. A hand-added player has
+ * none and is never overwritten by a sync.
+ */
+export interface LivePlayer {
+  id: string;
+  liveTournamentId: string;
+  /** The provider's own player id. Null for a player an admin added by hand. */
+  providerPlayerId: string | null;
+  name: string;
+  /** The club they are listed under. Null when nothing matched, or for a hand-added player. */
+  teamId: string | null;
+  imageUrl: string | null;
+  goals: number;
+  /** Only used to break a tie on goals — see rankLiveScorers in the server's scorerScoring. */
+  assists: number;
+  /** Whether the player is in the shortlist users rank. Admin-chosen. */
+  isSelected: boolean;
+  providerLastUpdated: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * A user's predicted order for the tournament's top scorers.
+ *
+ * `orderedPlayerIds` is the whole shortlist, index 0 being the player they think finishes
+ * top. Stored as an array for the same reason the table prediction is: it is only ever
+ * read and written whole, and the ordering *is* the prediction.
+ */
+export interface LiveScorerPrediction {
+  id: string;
+  liveCompetitionId: string;
+  userId: string;
+  orderedPlayerIds: string[];
+  /** Null until the tournament is completed and the ranking is scored. */
+  points: number | null;
+  exactPositionPoints: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Per-player scoring detail, for showing a user how their ranking did. */
+export interface LiveScorerPredictionPlayerResult {
+  playerId: string;
+  predictedPosition: number;
+  /** Where the player actually finished. Null if they left the shortlist. */
+  actualPosition: number | null;
+  exactPosition: boolean;
+  points: number;
 }
 
 /**

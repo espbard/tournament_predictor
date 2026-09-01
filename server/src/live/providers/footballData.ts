@@ -9,6 +9,7 @@ import {
   type ProviderFixture,
   type ProviderFixtureScore,
   type ProviderScorePair,
+  type ProviderScorer,
   type ProviderProbe,
   type ProviderProbeKey,
   type ProviderStandingRow,
@@ -82,6 +83,13 @@ interface RawMatch {
   homeTeam?: RawTeamRef | null;
   awayTeam?: RawTeamRef | null;
   score?: RawScore;
+}
+
+interface RawScorer {
+  player?: { id?: number | null; name?: string | null } | null;
+  team?: RawTeamRef | null;
+  goals?: number | null;
+  assists?: number | null;
 }
 
 // ── Status mapping ────────────────────────────────────────────────────────────
@@ -232,6 +240,32 @@ export function mapTeam(raw: RawTeamRef & { id: number }): ProviderTeam {
     // football-data expresses groups on the fixture, not the team. The sync engine
     // backfills this from fixtures for formats that actually have groups.
     groupName: null,
+  };
+}
+
+/**
+ * Map one scorer entry.
+ *
+ * `assists` is null for plenty of real entries — the provider reports it only where its
+ * source has it — and null is taken as zero rather than as "unknown". The field is only
+ * ever used to break a tie on goals, so a missing value falling through to the name
+ * tie-break is the right answer, and a nullable number would spread through the ranking
+ * code for no gain.
+ */
+export function mapScorer(raw: RawScorer): ProviderScorer | null {
+  const id = raw.player?.id;
+  const name = emptyToNull(raw.player?.name);
+  // Without an id there is nothing stable to match on across syncs, and without a name
+  // there is nothing to show. Either missing means the entry is dropped rather than
+  // stored as a nameless row an admin cannot act on.
+  if (id == null || !name) return null;
+
+  return {
+    providerPlayerId: String(id),
+    name,
+    providerTeamId: raw.team?.id != null ? String(raw.team.id) : null,
+    goals: Math.max(0, Math.trunc(raw.goals ?? 0)),
+    assists: Math.max(0, Math.trunc(raw.assists ?? 0)),
   };
 }
 
@@ -404,6 +438,28 @@ export class FootballDataProvider implements LiveProvider {
     return mapStandings(data);
   }
 
+  /**
+   * The competition's scorers, most goals first.
+   *
+   * `limit` matters: the endpoint defaults to the top 10, which is fewer than a shortlist
+   * usually needs. The response's own `count` is not returned here — the caller sees how
+   * many players it got, and a list exactly `limit` long is the signal that it was cut
+   * short.
+   */
+  async fetchScorers(
+    competitionId: string,
+    season: string,
+    limit = 100,
+  ): Promise<ProviderScorer[]> {
+    const data = await this.get<{ scorers?: RawScorer[] }>(
+      `/competitions/${encodeURIComponent(competitionId)}/scorers` +
+        `?season=${encodeURIComponent(season)}&limit=${encodeURIComponent(String(limit))}`,
+    );
+    return (data.scorers ?? [])
+      .map(mapScorer)
+      .filter((s): s is ProviderScorer => s !== null);
+  }
+
   // ── Diagnostics ─────────────────────────────────────────────────────────────
 
   /** One probe: the request, its status, and what it returned. Never throws. */
@@ -518,6 +574,23 @@ export class FootballDataProvider implements LiveProvider {
           count: rows,
           countForSeason: rows,
           detail: rows === 0 ? null : `${total.length} table(s), ${played} games played`,
+        };
+      }),
+    );
+
+    probes.push(
+      await this.probeOne('scorers', `/competitions/${id}/scorers?season=${s}&limit=100`, body => {
+        const scorers: RawScorer[] = body?.scorers ?? [];
+        const withGoals = scorers.filter(x => (x.goals ?? 0) > 0).length;
+        const top = scorers[0];
+        return {
+          count: scorers.length,
+          countForSeason: scorers.length,
+          detail:
+            scorers.length === 0
+              ? 'the response carried no scorers at all'
+              : `${withGoals} with a goal · top: ${top?.player?.name ?? '?'} ` +
+                `(${top?.goals ?? 0}g ${top?.assists ?? 0}a)`,
         };
       }),
     );

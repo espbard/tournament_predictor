@@ -16,6 +16,7 @@ export const LiveScoringConfigSchema = z.object({
   // update; withLiveScoringDefaults fills them in on read.
   table_exact_position: points.optional(),
   table_correct_band: points.optional(),
+  scorer_exact_position: points.optional(),
 });
 
 export const CreateLiveTournamentSchema = z.object({
@@ -72,6 +73,57 @@ export const SaveLivePredictionSchema = z.object({
 export const SaveLiveTablePredictionSchema = z.object({
   stageKey: z.string().min(1),
   orderedTeamIds: z.array(z.string().min(1)).min(2).max(64),
+});
+
+// ── Top-scorer ranking ────────────────────────────────────────────────────────
+
+/**
+ * A player in the ranking shortlist.
+ *
+ * Goals and assists are accepted on create so an admin can enter a player mid-season
+ * without a second request; both default to zero. `imageUrl` is a URL the upload endpoint
+ * returned, or null for no picture.
+ */
+export const CreateLivePlayerSchema = z.object({
+  name: z.string().min(1).max(120),
+  teamId: z.string().min(1).nullable().optional(),
+  imageUrl: z.string().max(500).nullable().optional(),
+  goals: z.number().int().min(0).max(200).optional(),
+  assists: z.number().int().min(0).max(200).optional(),
+  isSelected: z.boolean().optional(),
+});
+
+export const UpdateLivePlayerSchema = z.object({
+  name: z.string().min(1).max(120).optional(),
+  teamId: z.string().min(1).nullable().optional(),
+  imageUrl: z.string().max(500).nullable().optional(),
+  goals: z.number().int().min(0).max(200).optional(),
+  assists: z.number().int().min(0).max(200).optional(),
+  isSelected: z.boolean().optional(),
+});
+
+/**
+ * Pull the provider's scorers into the player list.
+ *
+ * `season` defaults to the tournament's own. Passing last season's instead is how a
+ * shortlist gets seeded before the new season has a single goal in it — football-data
+ * player ids are stable across seasons, so those rows start matching by themselves once
+ * the real thing kicks off.
+ */
+export const ImportLiveScorersSchema = z.object({
+  season: z.string().min(4).max(9).optional(),
+  limit: z.number().int().min(1).max(100).optional(),
+});
+
+/**
+ * A full predicted top-scorer ranking, top to bottom.
+ *
+ * The server checks the ids against the tournament's selected players; this only enforces
+ * shape and a sane upper bound. The lower bound of 2 matches the table prediction: a
+ * ranking of one is not a ranking.
+ */
+export const SaveLiveScorerPredictionSchema = z.object({
+  orderedPlayerIds: z.array(z.string().min(1)).min(2).max(40),
 });
 
 /**
@@ -169,6 +221,10 @@ export type SaveLiveTablePredictionInput = z.infer<typeof SaveLiveTablePredictio
 export type ListLiveFixturesQuery = z.infer<typeof ListLiveFixturesQuerySchema>;
 export type SaveLiveGameweekSelectionInput = z.infer<typeof SaveLiveGameweekSelectionSchema>;
 export type SaveLiveFixtureMultiplierInput = z.infer<typeof SaveLiveFixtureMultiplierSchema>;
+export type CreateLivePlayerInput = z.infer<typeof CreateLivePlayerSchema>;
+export type UpdateLivePlayerInput = z.infer<typeof UpdateLivePlayerSchema>;
+export type ImportLiveScorersInput = z.infer<typeof ImportLiveScorersSchema>;
+export type SaveLiveScorerPredictionInput = z.infer<typeof SaveLiveScorerPredictionSchema>;
 export type CreateLiveBonusQuestionInput = z.infer<typeof CreateLiveBonusQuestionSchema>;
 export type UpdateLiveBonusQuestionInput = z.infer<typeof UpdateLiveBonusQuestionSchema>;
 export type SaveLiveBonusAnswerInput = z.infer<typeof SaveLiveBonusAnswerSchema>;

@@ -14,6 +14,8 @@ import LiveLeaderboard from '@/components/live/LiveLeaderboard';
 import LiveQualifiedTeamsPanel from '@/components/live/LiveQualifiedTeamsPanel';
 import LiveTablePrediction from '@/components/live/LiveTablePrediction';
 import LiveBonusQuestionsTab from '@/components/live/LiveBonusQuestionsTab';
+import LiveScorerPrediction from '@/components/live/LiveScorerPrediction';
+import LiveScorerPredictionGate from '@/components/live/LiveScorerPredictionGate';
 import LiveTablePredictionGate from '@/components/live/LiveTablePredictionGate';
 import LiveBonusQuestionsGate from '@/components/live/LiveBonusQuestionsGate';
 import InviteButton from '@/components/InviteButton';
@@ -35,7 +37,7 @@ import type { Team } from '@tournament-predictor/shared';
 //
 // See docs/LIVE_TOURNAMENTS_PLAN.md §11.
 
-const TABS = ['fixtures', 'table', 'bonus', 'standings', 'leaderboard'] as const;
+const TABS = ['fixtures', 'table', 'scorers', 'bonus', 'standings', 'leaderboard'] as const;
 type TabId = (typeof TABS)[number];
 
 const LIVE_STATUSES = new Set(['in_play', 'paused']);
@@ -107,7 +109,16 @@ export default function LiveCompetitionDetailPage() {
     enabled: !!id,
   });
 
-  // Also fetched on every tab: the bonus questions are the second step of the first-run
+  // Fetched on every tab for the same reason as the table: the ranking is a step of the
+  // first-run flow, so whether one exists decides whether the rest of the page is
+  // reachable. `available: false` when the admin has picked no shortlist, which skips it.
+  const { data: scorerView, isLoading: loadingScorers } = useQuery({
+    queryKey: liveKeys.scorerPrediction(id!),
+    queryFn: () => liveApi.scorerPrediction(id!),
+    enabled: !!id,
+  });
+
+  // Also fetched on every tab: the bonus questions are the third step of the first-run
   // flow, so whether any are unanswered decides whether the competition is reachable.
   const { data: bonusQuestions = [], isLoading: loadingBonusQuestions } = useQuery({
     queryKey: liveKeys.bonusQuestions(id!),
@@ -288,6 +299,36 @@ export default function LiveCompetitionDetailPage() {
       setClearTableError(err instanceof ApiError ? err.message : t('live.table.clearFailed')),
   });
 
+  const [scorerSavedAt, setScorerSavedAt] = useState<number | null>(null);
+  const [scorerError, setScorerError] = useState<string | null>(null);
+  const [clearScorerError, setClearScorerError] = useState<string | null>(null);
+
+  const saveScorerMutation = useMutation({
+    mutationFn: (orderedPlayerIds: string[]) =>
+      liveApi.saveScorerPrediction(id!, orderedPlayerIds),
+    onMutate: () => setScorerError(null),
+    onSuccess: () => {
+      setScorerSavedAt(Date.now());
+      queryClient.invalidateQueries({ queryKey: liveKeys.scorerPrediction(id!) });
+      setTimeout(() => setScorerSavedAt(null), 2500);
+    },
+    onError: err => {
+      setScorerError(err instanceof ApiError ? err.message : t('live.saveFailed'));
+      // Usually the deadline passing mid-edit; refetch so the UI locks itself.
+      queryClient.invalidateQueries({ queryKey: liveKeys.scorerPrediction(id!) });
+    },
+  });
+
+  const clearScorerMutation = useMutation({
+    mutationFn: () => liveApi.clearScorerPrediction(id!),
+    onMutate: () => setClearScorerError(null),
+    // As with the table: with the ranking gone the first-run gate takes the screen again,
+    // and reloading leaves no half-edited order behind it.
+    onSuccess: () => window.location.reload(),
+    onError: err =>
+      setClearScorerError(err instanceof ApiError ? err.message : t('live.scorers.clearFailed')),
+  });
+
   // ── The table-prediction gate ───────────────────────────────────────────────
   //
   // A member who has not submitted a table prediction sees only that, full screen, until
@@ -320,15 +361,32 @@ export default function LiveCompetitionDetailPage() {
     !tableView.prediction &&
     tableView.teams.length > 0;
 
-  // Step two: the bonus questions that are still open and still unanswered. A closed one
+  // Step two: the top-scorer ranking, which closes at the same instant the table does and
+  // so can never be made later either. Skipped entirely where the tournament has no
+  // shortlist — an admin who has not picked players has not opened this part of the game.
+  const mustRankScorers =
+    canBeGated &&
+    !mustPredictTable &&
+    !!scorerView?.available &&
+    !scorerView.isLocked &&
+    !scorerView.prediction;
+
+  // Step three: the bonus questions that are still open and still unanswered. A closed one
   // can never be answered, so requiring it would trap the member out of the competition.
   const answeredQuestionIds = new Set(bonusAnswers.map(a => a.questionId));
   const unansweredBonusQuestions = bonusQuestions.filter(
     q => !q.isLocked && !answeredQuestionIds.has(q.id),
   );
-  const mustAnswerBonus = canBeGated && !mustPredictTable && unansweredBonusQuestions.length > 0;
+  const mustAnswerBonus =
+    canBeGated && !mustPredictTable && !mustRankScorers && unansweredBonusQuestions.length > 0;
 
-  if (loadingCompetition || loadingTable || loadingBonusQuestions || loadingBonusAnswers) {
+  if (
+    loadingCompetition ||
+    loadingTable ||
+    loadingScorers ||
+    loadingBonusQuestions ||
+    loadingBonusAnswers
+  ) {
     return <LoadingSpinner />;
   }
   if (!competition) {
@@ -339,8 +397,8 @@ export default function LiveCompetitionDetailPage() {
     );
   }
 
-  // The first-run flow, in order: the table, then the bonus questions, then the
-  // competition itself.
+  // The first-run flow, in order: the table, the top-scorer ranking, the bonus questions,
+  // then the competition itself.
   if (mustPredictTable && tableView?.available) {
     return (
       <LiveTablePredictionGate
@@ -349,6 +407,18 @@ export default function LiveCompetitionDetailPage() {
         onSave={orderedTeamIds => saveTableMutation.mutate(orderedTeamIds)}
         isSaving={saveTableMutation.isPending}
         error={tableError}
+      />
+    );
+  }
+
+  if (mustRankScorers && scorerView?.available) {
+    return (
+      <LiveScorerPredictionGate
+        competitionName={competition.name}
+        view={scorerView}
+        onSave={orderedPlayerIds => saveScorerMutation.mutate(orderedPlayerIds)}
+        isSaving={saveScorerMutation.isPending}
+        error={scorerError}
       />
     );
   }
@@ -531,6 +601,24 @@ export default function LiveCompetitionDetailPage() {
             onClear={() => clearTableMutation.mutate()}
             isClearing={clearTableMutation.isPending}
             clearError={clearTableError}
+          />
+        ))}
+
+      {activeTab === 'scorers' &&
+        (!scorerView?.available ? (
+          <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+            {t('live.scorers.unavailable')}
+          </p>
+        ) : (
+          <LiveScorerPrediction
+            view={scorerView}
+            onSave={orderedPlayerIds => saveScorerMutation.mutate(orderedPlayerIds)}
+            isSaving={saveScorerMutation.isPending}
+            savedAt={scorerSavedAt}
+            error={scorerError}
+            onClear={() => clearScorerMutation.mutate()}
+            isClearing={clearScorerMutation.isPending}
+            clearError={clearScorerError}
           />
         ))}
 
