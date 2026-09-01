@@ -44,6 +44,19 @@ function TeamBadge({ crestUrl }: { crestUrl: string | null }) {
 
 const LIVE_STATUSES = new Set(['in_play', 'paused']);
 
+/**
+ * Which wording explains a multiplied match.
+ *
+ * Doubling and tripling have their own words; anything else falls back to the number.
+ * `applied` switches to the past tense, for a match whose points have been awarded.
+ */
+function multiplierExplainerKey(multiplier: number, applied: boolean): string {
+  const base = applied ? 'live.multiplier.explainerApplied' : 'live.multiplier.explainer';
+  if (multiplier === 2) return `${base}Double`;
+  if (multiplier === 3) return `${base}Triple`;
+  return base;
+}
+
 export default function LiveFixtureCard({
   fixture,
   onSave,
@@ -262,12 +275,12 @@ export default function LiveFixtureCard({
       )}
 
       {/* Why the card is gold. Past tense once the points have actually been written,
-          future while the match is still to be scored. */}
+          future while the match is still to be scored — and a word rather than a sum for
+          the two multipliers a language has one for: "counts double" reads better than
+          "multiplied by 2", in every language this app speaks. */}
       {isMultiplied && (
         <p className="mt-2 text-center text-xs font-medium text-amber-700 dark:text-amber-300">
-          {fixture.prediction?.points != null
-            ? t('live.multiplier.explainerApplied', { multiplier })
-            : t('live.multiplier.explainer', { multiplier })}
+          {t(multiplierExplainerKey(multiplier, fixture.prediction?.points != null), { multiplier })}
         </p>
       )}
 
