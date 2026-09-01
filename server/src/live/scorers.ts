@@ -245,6 +245,14 @@ export interface LiveScorerSyncResult {
   supported: boolean;
   /** Players the scorers list carried. Zero before anybody has scored, which is normal. */
   scorersFetched: number;
+  /**
+   * How many players are in the shortlist at all.
+   *
+   * Reported because "nothing was updated" has three quite different causes — nobody has
+   * scored yet, there is nobody to update, or the goals simply have not moved — and a bare
+   * count of zero cannot tell them apart.
+   */
+  shortlistSize: number;
   /** Shortlisted players whose goals moved. */
   updated: number;
   /** Hand-added rows matched to a provider player by name and adopted. */
@@ -288,6 +296,7 @@ export async function refreshLivePlayerGoals(
   const result: LiveScorerSyncResult = {
     supported: false,
     scorersFetched: 0,
+    shortlistSize: 0,
     updated: 0,
     adopted: 0,
     unmatchedNames: [],
@@ -330,6 +339,7 @@ export async function refreshLivePlayerGoals(
     .select()
     .from(livePlayers)
     .where(eq(livePlayers.liveTournamentId, tournament.id));
+  result.shortlistSize = stored.filter(p => p.isSelected).length;
   if (stored.length === 0) return result;
 
   const byProviderId = new Map(

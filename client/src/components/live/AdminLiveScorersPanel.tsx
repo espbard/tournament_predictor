@@ -126,11 +126,24 @@ export default function AdminLiveScorersPanel({ tournamentId, season }: Props) {
         setMessage(t('live.admin.scorers.refreshSeasonUnavailable'));
         return;
       }
+      // "Nothing happened" has three quite different causes, and one sentence for all of
+      // them reads like a failure when two of them are perfectly normal.
+      if (result.shortlistSize === 0) {
+        setMessage(t('live.admin.scorers.refreshNoPlayers'));
+        return;
+      }
+      if (result.scorersFetched === 0) {
+        setMessage(t('live.admin.scorers.refreshNoGoalsYet'));
+        return;
+      }
+      const changed = result.updated + result.adopted;
       setMessage(
-        t('live.admin.scorers.refreshed', {
-          scorers: result.scorersFetched,
-          updated: result.updated + result.adopted,
-        }),
+        changed === 0
+          ? t('live.admin.scorers.refreshUnchanged', { players: result.shortlistSize })
+          : t('live.admin.scorers.refreshed', {
+              updated: changed,
+              waiting: result.unmatchedNames.length,
+            }),
       );
     },
     onError: err => reportError(err, t('live.admin.scorers.refreshFailed')),

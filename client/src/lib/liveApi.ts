@@ -140,6 +140,8 @@ export interface LiveScorerSyncResult {
   supported: boolean;
   /** Players the scorers list carried. Zero before anybody has scored, which is normal. */
   scorersFetched: number;
+  /** How many players are in the shortlist at all — tells "nothing to do" apart from "no goals yet". */
+  shortlistSize: number;
   /** Shortlisted players whose goals moved. */
   updated: number;
   adopted: number;
