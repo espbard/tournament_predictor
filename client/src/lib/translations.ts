@@ -1742,8 +1742,8 @@ const translations = {
       leaderboard: {
         player: 'Spiller',
         result: 'Poeng for riktig utfall',
-        resultShort: 'Utfall',
-        resultMicro: 'U',
+        resultShort: 'Resultat',
+        resultMicro: 'R',
         goalDifference: 'Poeng for riktig målforskjell',
         goalDifferenceShort: 'MF',
         goalDifferenceMicro: 'MF',
