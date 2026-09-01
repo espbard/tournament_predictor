@@ -882,6 +882,45 @@ liveTournamentsRouter.patch(
   },
 );
 
+/**
+ * Delete every player who is not in the shortlist.
+ *
+ * The clean-up for the shortlist's first design, which imported the whole competition —
+ * ~900 players — so an admin could tick ten of them. Players now get in by being searched
+ * for and picked, so anything left unticked is leftover haystack.
+ *
+ * Nothing is rescored afterwards: only shortlisted players are ever ranked or scored (see
+ * scoreLiveScorerPredictions), so by definition none of these ever contributed a point.
+ * Nothing can be in a saved ranking either — the save route validates every id against the
+ * shortlist.
+ *
+ * Deliberately narrow: a player an admin has ticked is never touched by this, however they
+ * arrived. Removing one of those is the per-player delete below.
+ */
+liveTournamentsRouter.delete('/tournaments/:id/players/unselected', requireAdmin, async (req, res) => {
+  try {
+    const [tournament] = await db
+      .select({ id: liveTournaments.id })
+      .from(liveTournaments)
+      .where(eq(liveTournaments.id, req.params.id));
+    if (!tournament) return res.status(404).json({ error: 'Not found' });
+
+    const removed = await db
+      .delete(livePlayers)
+      .where(
+        and(
+          eq(livePlayers.liveTournamentId, tournament.id),
+          eq(livePlayers.isSelected, false),
+        ),
+      )
+      .returning({ id: livePlayers.id });
+
+    return res.json({ deleted: removed.length });
+  } catch (err) {
+    return fail(res, err);
+  }
+});
+
 liveTournamentsRouter.delete(
   '/tournaments/:id/players/:playerId',
   requireAdmin,

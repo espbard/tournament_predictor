@@ -405,6 +405,9 @@ export const liveApi = {
   ) => api.patch<LivePlayer>(`/live/tournaments/${id}/players/${playerId}`, body),
   deletePlayer: (id: string, playerId: string) =>
     api.delete<{ ok: boolean }>(`/live/tournaments/${id}/players/${playerId}`),
+  /** Drop every player who is not in the shortlist — the clean-up for old bulk imports. */
+  deleteUnselectedPlayers: (id: string) =>
+    api.delete<{ deleted: number }>(`/live/tournaments/${id}/players/unselected`),
   /** Refresh the shortlist's goals and assists from the provider. Never adds anybody. */
   refreshPlayerGoals: (id: string, body: { season?: string; limit?: number } = {}) =>
     api.post<LiveScorerSyncResult>(`/live/tournaments/${id}/players/refresh`, body),

@@ -43,6 +43,7 @@ export default function AdminLiveScorersPanel({ tournamentId, season }: Props) {
   const [searchSeason, setSearchSeason] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [showPurgeConfirm, setShowPurgeConfirm] = useState(false);
 
   // Typing is not a query. Waiting for a pause keeps a burst of keystrokes to one request,
   // which matters on a provider that allows ten a minute.
@@ -153,6 +154,20 @@ export default function AdminLiveScorersPanel({ tournamentId, season }: Props) {
     onError: err => reportError(err, t('live.admin.scorers.saveFailed')),
   });
 
+  const purgeMutation = useMutation({
+    mutationFn: () => liveApi.deleteUnselectedPlayers(tournamentId),
+    onSuccess: result => {
+      setError('');
+      setShowPurgeConfirm(false);
+      setMessage(t('live.admin.scorers.purged', { count: result.deleted }));
+      refresh();
+    },
+    onError: err => {
+      setShowPurgeConfirm(false);
+      reportError(err, t('live.admin.scorers.purgeFailed'));
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: (playerId: string) => liveApi.deletePlayer(tournamentId, playerId),
     onSuccess: () => {
@@ -163,6 +178,8 @@ export default function AdminLiveScorersPanel({ tournamentId, season }: Props) {
   });
 
   const selectedCount = players.filter(p => p.isSelected).length;
+  // Everything left over from the old bulk-import model: in the table, in nobody's ranking.
+  const candidateCount = players.length - selectedCount;
   const busy = updateMutation.isPending || deleteMutation.isPending;
 
   if (isLoading) {
@@ -288,9 +305,53 @@ export default function AdminLiveScorersPanel({ tournamentId, season }: Props) {
       </div>
 
       {/* ── The shortlist ────────────────────────────────────────────────────── */}
-      <p className="mb-2 text-xs text-muted-foreground">
-        {t('live.admin.scorers.state', { selected: selectedCount, total: players.length })}
-      </p>
+      <div className="mb-2 flex flex-wrap items-center gap-3">
+        <p className="text-xs text-muted-foreground">
+          {t('live.admin.scorers.state', { selected: selectedCount, total: players.length })}
+        </p>
+        {/* Only offered while there is leftover haystack to clear. Once it is gone — and
+            nothing adds to it any more — the control goes with it. */}
+        {candidateCount > 0 && (
+          <button
+            onClick={() => setShowPurgeConfirm(true)}
+            disabled={purgeMutation.isPending}
+            className="rounded border border-destructive/30 px-2 py-1 text-xs text-destructive hover:bg-destructive/5 disabled:opacity-50"
+          >
+            {t('live.admin.scorers.purge', { count: candidateCount })}
+          </button>
+        )}
+      </div>
+
+      {showPurgeConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-lg border bg-background p-6 shadow-xl">
+            <p className="mb-1 font-semibold">
+              {t('live.admin.scorers.purgeConfirm.title', { count: candidateCount })}
+            </p>
+            <p className="mb-6 text-sm text-muted-foreground">
+              {t('live.admin.scorers.purgeConfirm.body')}
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowPurgeConfirm(false)}
+                disabled={purgeMutation.isPending}
+                className="rounded-md border px-4 py-2 text-sm hover:bg-muted disabled:opacity-50"
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                onClick={() => purgeMutation.mutate()}
+                disabled={purgeMutation.isPending}
+                className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
+              >
+                {purgeMutation.isPending
+                  ? t('live.admin.scorers.purgeConfirm.removing')
+                  : t('live.admin.scorers.purgeConfirm.remove')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {players.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t('live.admin.scorers.empty')}</p>

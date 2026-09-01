@@ -1068,6 +1068,7 @@ Mounted as `app.use('/api/live', liveRouter)` in `server/src/index.ts`.
 | POST / PATCH / DELETE | `/tournaments/:id/players[/:playerId]` | admin | `{name, teamId?, imageUrl?, goals?, assists?, isSelected?}`; anything touching goals, assists or the shortlist recalculates the tournament |
 | GET | `/tournaments/:id/players/search` | admin | `?q=&season=` — search the competition's squads by name, folded for accents. Answers from a ten-minute cache of the squads |
 | POST | `/tournaments/:id/players/refresh` | admin | `{season?, limit?}` — refresh the list's goals from the scorer endpoint. Adds nobody |
+| DELETE | `/tournaments/:id/players/unselected` | admin | drop every player not in the shortlist — the clean-up for tournaments that were populated by the old whole-squad import. Registered before the `:playerId` route, or "unselected" would be read as an id |
 
 ### `server/src/live/routes/competitions.ts`
 
