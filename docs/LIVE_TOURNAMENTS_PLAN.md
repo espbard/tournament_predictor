@@ -334,11 +334,15 @@ An admin can make one match worth more than the rest by giving it a whole-number
 (`live_fixtures.multiplier`, default 1, capped at `LIVE_MAX_MULTIPLIER`). Everything the fixture
 awards is multiplied by it, so a ×3 match maxes out at 12 rather than 4.
 
-The multiplier is applied **per tier** rather than to the total, because the leaderboard sums the
-three stored tier columns — applying it only to `points` would leave a member's breakdown
-disagreeing with their score. It is set from the selected-matches panel, and changing it
-recalculates the tournament there and then, exactly as deselecting a match does. The provider
-never owns this column, so a sync leaves it alone.
+The extra is stored **separately** from the tiers, in `multiplier_bonus_points`: a perfect
+prediction on a ×3 match is 1 + 1 + 2 with a bonus of 8, not 3 + 3 + 6. The leaderboard shows a
+column per source, and inflating the tiers would make somebody look like a better predictor of
+goal difference than they are purely because an admin highlighted a match they got right. The
+four parts always sum to `points`.
+
+The multiplier is set from the selected-matches panel, and changing it recalculates the
+tournament there and then, exactly as deselecting a match does. The provider never owns this
+column, so a sync leaves it alone.
 
 ### Top-scorer ranking
 
@@ -1028,7 +1032,10 @@ via both equal — each awarding its configured value, summed.
   scoring inline inside `PATCH /api/matches/:id`.
 
 **Leaderboard** is a straight read of the denormalised columns on `live_competition_members`,
-sorted by `totalPoints` desc — three point sources instead of the manual type's nine.
+sorted by `totalPoints` desc: one column per point source, in the order a season earns them —
+Result, GD, Exact, Highlight (what multiplied matches added), Table, Scorers, Bonus, Total.
+All of them are always shown, zeros dimmed rather than hidden, because a table that changes
+shape mid-season answers nobody's "what else can I score for?".
 
 ---
 
