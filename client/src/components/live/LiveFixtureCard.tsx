@@ -222,11 +222,23 @@ export default function LiveFixtureCard({
                   ? 'bg-green-500/15 text-green-700 dark:text-green-400'
                   : 'bg-muted text-muted-foreground'
               }`}
-              title={t('live.pointsBreakdown', {
-                outcome: fixture.prediction.correctOutcomePoints,
-                gd: fixture.prediction.correctGoalDifferencePoints,
-                exact: fixture.prediction.exactScorePoints,
-              })}
+              // The three tiers hold what the prediction earned at face value, so on a
+              // highlighted match they no longer add up to the badge without saying what
+              // the multiplier put on top.
+              title={
+                fixture.prediction.multiplierBonusPoints > 0
+                  ? t('live.pointsBreakdownWithHighlight', {
+                      outcome: fixture.prediction.correctOutcomePoints,
+                      gd: fixture.prediction.correctGoalDifferencePoints,
+                      exact: fixture.prediction.exactScorePoints,
+                      highlight: fixture.prediction.multiplierBonusPoints,
+                    })
+                  : t('live.pointsBreakdown', {
+                      outcome: fixture.prediction.correctOutcomePoints,
+                      gd: fixture.prediction.correctGoalDifferencePoints,
+                      exact: fixture.prediction.exactScorePoints,
+                    })
+              }
             >
               {t('live.pointsShort', { points: fixture.prediction.points })}
             </span>

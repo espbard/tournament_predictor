@@ -115,6 +115,7 @@ export default function LiveUserPredictionsPage() {
               correctOutcomePoints: prediction.correctOutcomePoints,
               correctGoalDifferencePoints: prediction.correctGoalDifferencePoints,
               exactScorePoints: prediction.exactScorePoints,
+              multiplierBonusPoints: prediction.multiplierBonusPoints,
             }
           : null,
       };

@@ -260,6 +260,8 @@ export const liveCompetitionMembers = pgTable(
     exactScorePoints: integer('exact_score_points').notNull().default(0),
     /** Exact-position plus band points from the table prediction. */
     tablePoints: integer('table_points').notNull().default(0),
+    /** What highlighted (multiplied) matches added on top of the three tiers. */
+    multiplierBonusPoints: integer('multiplier_bonus_points').notNull().default(0),
     /** Bonus question points. Stays zero until the tournament is marked completed. */
     bonusPoints: integer('bonus_points').notNull().default(0),
     /** Top-scorer ranking points. Also withheld until the tournament is completed. */
@@ -294,6 +296,8 @@ export const livePredictions = pgTable(
     correctOutcomePoints: integer('correct_outcome_points').notNull().default(0),
     correctGoalDifferencePoints: integer('correct_goal_difference_points').notNull().default(0),
     exactScorePoints: integer('exact_score_points').notNull().default(0),
+    /** What the fixture's multiplier added on top of the tiers. Zero on a normal match. */
+    multiplierBonusPoints: integer('multiplier_bonus_points').notNull().default(0),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
   },

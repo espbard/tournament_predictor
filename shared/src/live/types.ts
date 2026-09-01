@@ -109,6 +109,8 @@ export interface LiveScoreBreakdown {
   correctOutcomePoints: number;
   correctGoalDifferencePoints: number;
   exactScorePoints: number;
+  /** Everything highlighted matches added on top of those three. */
+  multiplierBonusPoints: number;
   /** Combined exact-position and band points from the table prediction. */
   tablePoints: number;
   /** Exact-position points from the top-scorer ranking. Awarded at completion. */
@@ -237,6 +239,8 @@ export interface LivePrediction {
   correctOutcomePoints: number;
   correctGoalDifferencePoints: number;
   exactScorePoints: number;
+  /** What a highlighted (multiplied) fixture added on top of the tiers. */
+  multiplierBonusPoints: number;
   createdAt: string;
   updatedAt: string;
 }

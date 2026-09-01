@@ -40,6 +40,7 @@ export interface LiveFixtureView extends LiveFixture {
     correctOutcomePoints: number;
     correctGoalDifferencePoints: number;
     exactScorePoints: number;
+    multiplierBonusPoints: number;
   } | null;
   /** kickoff − 60 min, or null when the kickoff time is still unknown. */
   lockedAt: string | null;
@@ -68,6 +69,8 @@ export interface LiveLeaderboardRow {
     correctOutcomePoints: number;
     correctGoalDifferencePoints: number;
     exactScorePoints: number;
+    /** What highlighted (multiplied) matches added on top of the three tiers. */
+    multiplierBonusPoints: number;
     tablePoints: number;
     /** Zero until the tournament is marked completed, like the bonus points below. */
     scorerPoints: number;
@@ -518,6 +521,7 @@ export const liveApi = {
         correctOutcomePoints: number;
         correctGoalDifferencePoints: number;
         exactScorePoints: number;
+        multiplierBonusPoints: number;
       }>
     >(`/live/competitions/${competitionId}/predictions/${userId}`),
 

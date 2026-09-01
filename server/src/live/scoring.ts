@@ -14,10 +14,15 @@ import {
 //   goal difference                        +1
 //   exact scoreline                        +2
 //
-// The whole thing is then multiplied by the fixture's multiplier, which an admin sets to
-// make one match matter more than the rest. It is applied per tier rather than to the
-// total so the stored breakdown still adds up to the points awarded — the leaderboard
-// sums the tier columns, not the total.
+// A fixture with a multiplier — an admin marking one match as worth more — awards the
+// extra separately rather than by inflating the tiers. A perfect prediction on a x3 match
+// is 1 + 1 + 2 with a multiplier bonus of 8, not 3 + 3 + 6.
+//
+// That split is the whole reason the bonus is its own number: the leaderboard shows a
+// column per source, and a highlighted match must not quietly make somebody look like a
+// better predictor of goal difference than they are. The tiers stay comparable between
+// members whatever the admin has highlighted, and the bonus says what the highlight was
+// worth on its own.
 //
 // Pure, no database access, mirroring the shape of calculateMatchPoints in
 // server/src/lib/scoring.ts but with no stage or progressing-team dimension: this
@@ -48,10 +53,16 @@ export interface LiveFixtureScoreInput {
  * a single fixture can never produce those.
  */
 export interface LiveScoreResult {
+  /** Everything awarded, tiers and multiplier bonus together. */
   points: number;
   correctOutcomePoints: number;
   correctGoalDifferencePoints: number;
   exactScorePoints: number;
+  /**
+   * What the fixture's multiplier added on top of the tiers, and nothing else: the tiers
+   * once more for a x2 match, twice more for a x3. Zero on an ordinary fixture.
+   */
+  multiplierBonusPoints: number;
 }
 
 const ZERO: LiveScoreResult = {
@@ -59,6 +70,7 @@ const ZERO: LiveScoreResult = {
   correctOutcomePoints: 0,
   correctGoalDifferencePoints: 0,
   exactScorePoints: 0,
+  multiplierBonusPoints: 0,
 };
 
 /**
@@ -94,19 +106,22 @@ export function calculateLivePoints(
     actualHome - actualAway === prediction.homeScore - prediction.awayScore;
   const exactScore = actualHome === prediction.homeScore && actualAway === prediction.awayScore;
 
-  // Applied per tier, so the three stored components still sum to `points`.
-  const multiplier = liveFixtureMultiplier(fixture.multiplier);
+  // The tiers are what the prediction itself earned, at face value.
+  const correctOutcomePoints = correctOutcome ? config.correct_outcome : 0;
+  const correctGoalDifferencePoints = correctGoalDifference ? config.correct_goal_difference : 0;
+  const exactScorePoints = exactScore ? config.exact_score : 0;
+  const base = correctOutcomePoints + correctGoalDifferencePoints + exactScorePoints;
 
-  const correctOutcomePoints = correctOutcome ? config.correct_outcome * multiplier : 0;
-  const correctGoalDifferencePoints = correctGoalDifference
-    ? config.correct_goal_difference * multiplier
-    : 0;
-  const exactScorePoints = exactScore ? config.exact_score * multiplier : 0;
+  // ...and the highlight is what the multiplier added to them. A x1 fixture adds nothing,
+  // and a prediction that earned nothing is multiplied to nothing however big the number.
+  const multiplier = liveFixtureMultiplier(fixture.multiplier);
+  const multiplierBonusPoints = base * (multiplier - 1);
 
   return {
-    points: correctOutcomePoints + correctGoalDifferencePoints + exactScorePoints,
+    points: base + multiplierBonusPoints,
     correctOutcomePoints,
     correctGoalDifferencePoints,
     exactScorePoints,
+    multiplierBonusPoints,
   };
 }

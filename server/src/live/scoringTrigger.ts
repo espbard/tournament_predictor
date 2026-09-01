@@ -72,6 +72,7 @@ export async function recomputeLiveMemberTotals(competitionIds: string[]): Promi
       SET correct_outcome_points = COALESCE(f.outcome, 0),
           correct_goal_difference_points = COALESCE(f.gd, 0),
           exact_score_points = COALESCE(f.exact, 0),
+          multiplier_bonus_points = COALESCE(f.multiplier_bonus, 0),
           table_points = COALESCE(tp.table_points, 0),
           scorer_points = COALESCE(sp.scorer_points, 0),
           bonus_points = COALESCE(bq.bonus_points, 0),
@@ -84,6 +85,8 @@ export async function recomputeLiveMemberTotals(competitionIds: string[]): Promi
         SELECT SUM(p.correct_outcome_points)         AS outcome,
                SUM(p.correct_goal_difference_points) AS gd,
                SUM(p.exact_score_points)             AS exact,
+               SUM(p.multiplier_bonus_points)        AS multiplier_bonus,
+               -- Already includes the bonus, so the total needs no separate term for it.
                SUM(p.points)                         AS total
         FROM live_predictions p
         WHERE p.live_competition_id = m2.live_competition_id
@@ -207,6 +210,7 @@ export async function scoreFixtures(fixtureIds: string[]): Promise<ScoreFixtures
           correctOutcomePoints: points.correctOutcomePoints,
           correctGoalDifferencePoints: points.correctGoalDifferencePoints,
           exactScorePoints: points.exactScorePoints,
+          multiplierBonusPoints: points.multiplierBonusPoints,
           updatedAt: new Date(),
         })
         .where(eq(livePredictions.id, prediction.id));
@@ -447,7 +451,13 @@ export async function recalculateLiveCompetition(competitionId: string): Promise
     const selected = isLiveFixtureSelected(row, selections);
     const points = selected
       ? calculateLivePoints({ homeScore: row.homeScore, awayScore: row.awayScore }, row, config)
-      : { points: 0, correctOutcomePoints: 0, correctGoalDifferencePoints: 0, exactScorePoints: 0 };
+      : {
+          points: 0,
+          correctOutcomePoints: 0,
+          correctGoalDifferencePoints: 0,
+          exactScorePoints: 0,
+          multiplierBonusPoints: 0,
+        };
     // An unscorable fixture goes back to null rather than a stored zero, so the UI can
     // tell "not scored yet" apart from "scored, nothing earned". A deselected one is
     // treated the same way: it never scores, so it never shows a total.
@@ -460,6 +470,7 @@ export async function recalculateLiveCompetition(competitionId: string): Promise
         correctOutcomePoints: points.correctOutcomePoints,
         correctGoalDifferencePoints: points.correctGoalDifferencePoints,
         exactScorePoints: points.exactScorePoints,
+        multiplierBonusPoints: points.multiplierBonusPoints,
         updatedAt: new Date(),
       })
       .where(eq(livePredictions.id, row.predictionId));

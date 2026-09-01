@@ -349,6 +349,7 @@ liveCompetitionsRouter.get('/competitions/:id/leaderboard', requireAuth, async (
         correctOutcomePoints: liveCompetitionMembers.correctOutcomePoints,
         correctGoalDifferencePoints: liveCompetitionMembers.correctGoalDifferencePoints,
         exactScorePoints: liveCompetitionMembers.exactScorePoints,
+        multiplierBonusPoints: liveCompetitionMembers.multiplierBonusPoints,
         tablePoints: liveCompetitionMembers.tablePoints,
         scorerPoints: liveCompetitionMembers.scorerPoints,
         bonusPoints: liveCompetitionMembers.bonusPoints,
@@ -377,6 +378,7 @@ liveCompetitionsRouter.get('/competitions/:id/leaderboard', requireAuth, async (
             correctOutcomePoints: row.correctOutcomePoints,
             correctGoalDifferencePoints: row.correctGoalDifferencePoints,
             exactScorePoints: row.exactScorePoints,
+            multiplierBonusPoints: row.multiplierBonusPoints,
             tablePoints: row.tablePoints,
             scorerPoints: row.scorerPoints,
             bonusPoints: row.bonusPoints,
@@ -500,6 +502,7 @@ liveCompetitionsRouter.get('/competitions/:id/fixtures', requireAuth, async (req
                 correctOutcomePoints: prediction.correctOutcomePoints,
                 correctGoalDifferencePoints: prediction.correctGoalDifferencePoints,
                 exactScorePoints: prediction.exactScorePoints,
+                multiplierBonusPoints: prediction.multiplierBonusPoints,
               }
             : null,
           lockedAt: lockAt ? lockAt.toISOString() : null,
@@ -1290,6 +1293,7 @@ liveCompetitionsRouter.get(
           correctOutcomePoints: livePredictions.correctOutcomePoints,
           correctGoalDifferencePoints: livePredictions.correctGoalDifferencePoints,
           exactScorePoints: livePredictions.exactScorePoints,
+          multiplierBonusPoints: livePredictions.multiplierBonusPoints,
         })
         .from(liveCompetitionMembers)
         .innerJoin(users, eq(liveCompetitionMembers.userId, users.id))
