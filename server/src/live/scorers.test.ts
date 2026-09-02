@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { matchSquadPlayers, normaliseLivePlayerName } from './scorers';
+import { foldScorersByNationality, matchSquadPlayers, normaliseLivePlayerName } from './scorers';
 import { mapScorer, mapSquads } from './providers/footballData';
 
 describe('normaliseLivePlayerName', () => {
@@ -31,7 +31,7 @@ describe('mapScorer', () => {
   it('maps a full entry', () => {
     expect(
       mapScorer({
-        player: { id: 44, name: 'Kylian Mbappé' },
+        player: { id: 44, name: 'Kylian Mbappé', nationality: 'France' },
         team: { id: 86, name: 'Real Madrid CF' },
         goals: 11,
         assists: 3,
@@ -40,6 +40,7 @@ describe('mapScorer', () => {
       providerPlayerId: '44',
       name: 'Kylian Mbappé',
       providerTeamId: '86',
+      nationality: 'France',
       goals: 11,
       assists: 3,
     });
@@ -48,6 +49,20 @@ describe('mapScorer', () => {
   it('treats a missing assist count as none, so the tie-break falls through to the name', () => {
     const mapped = mapScorer({ player: { id: 7, name: 'Lamine Yamal' }, goals: 4 });
     expect(mapped).toMatchObject({ goals: 4, assists: 0, providerTeamId: null });
+  });
+
+  it('carries the nationality through, and null when the payload omits it', () => {
+    // The nationality stat card counts on this field, and a provider that does not report
+    // it must leave a null rather than have something invent a country.
+    expect(
+      mapScorer({ player: { id: 8, name: 'Erling Haaland', nationality: 'Norway' }, goals: 6 }),
+    ).toMatchObject({ nationality: 'Norway' });
+    expect(mapScorer({ player: { id: 9, name: 'Someone' }, goals: 1 })).toMatchObject({
+      nationality: null,
+    });
+    expect(
+      mapScorer({ player: { id: 10, name: 'Someone', nationality: '  ' }, goals: 1 }),
+    ).toMatchObject({ nationality: null });
   });
 
   it('drops an entry with no id or no name — neither can be matched or shown', () => {
@@ -162,5 +177,53 @@ describe('mapSquads', () => {
   it('returns nothing for a payload with no teams at all', () => {
     expect(mapSquads({})).toEqual([]);
     expect(mapSquads(null)).toEqual([]);
+  });
+});
+
+describe('foldScorersByNationality', () => {
+  const scorer = (name: string, nationality: string | null, goals: number) => ({
+    providerPlayerId: name,
+    name,
+    providerTeamId: null,
+    nationality,
+    goals,
+    assists: 0,
+  });
+
+  it('sums goals and counts players per country', () => {
+    expect(
+      foldScorersByNationality([
+        scorer('Haaland', 'Norway', 9),
+        scorer('Sørloth', 'Norway', 3),
+        scorer('Yamal', 'Spain', 4),
+      ]),
+    ).toEqual({
+      Norway: { goals: 12, players: 2 },
+      Spain: { goals: 4, players: 1 },
+    });
+  });
+
+  it('leaves out a player the provider gave no country for', () => {
+    // There is nothing to attribute them to, and guessing from a name or a club would be
+    // worse than a total that is slightly low and says so.
+    expect(
+      foldScorersByNationality([scorer('Haaland', 'Norway', 9), scorer('Mystery', null, 5)]),
+    ).toEqual({ Norway: { goals: 9, players: 1 } });
+    expect(foldScorersByNationality([scorer('Blank', '   ', 5)])).toEqual({});
+  });
+
+  it('counts a goalless player towards their country, but adds no goals', () => {
+    expect(foldScorersByNationality([scorer('Bench', 'Norway', 0)])).toEqual({
+      Norway: { goals: 0, players: 1 },
+    });
+  });
+
+  it('keeps the provider spelling verbatim rather than folding it', () => {
+    const folded = foldScorersByNationality([scorer('A', 'Bosnia and Herzegovina', 1)]);
+    expect(Object.keys(folded)).toEqual(['Bosnia and Herzegovina']);
+  });
+
+  it('is empty for an empty feed', () => {
+    expect(foldScorersByNationality([])).toEqual({});
   });
 });

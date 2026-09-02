@@ -2,8 +2,14 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { generateId } from 'lucia';
 import { db } from '../db/client';
 import { livePlayers, liveTeams, liveTournaments } from '../db/liveSchema';
+import type { LiveScorerNationalities } from '@tournament-predictor/shared';
 import { getProvider } from './providers';
-import { ProviderError, type ProviderSquadPlayer } from './providers/types';
+import {
+  ProviderError,
+  SCORER_FEED_LIMIT,
+  type ProviderScorer,
+  type ProviderSquadPlayer,
+} from './providers/types';
 
 // ── The player list ───────────────────────────────────────────────────────────
 //
@@ -265,6 +271,12 @@ export interface LiveScorerSyncResult {
   unmatchedNames: string[];
   /** True when the scorers list came back at exactly `limit`, i.e. it was cut short. */
   truncated: boolean;
+  /**
+   * How many nationalities the feed's goals were folded into. Zero either because nobody
+   * has scored or because the provider sent no nationalities at all — worth telling apart,
+   * since the second one silently empties the nationality stat card.
+   */
+  nationalitiesCounted: number;
   /** The provider has not published this season yet. Not an error. */
   seasonUnavailable: boolean;
 }
@@ -275,7 +287,39 @@ export interface SyncLiveScorersOptions {
   limit?: number;
 }
 
-const DEFAULT_LIMIT = 100;
+/**
+ * Kept in providers/types.ts so the diagnostic probe asks for the same number.
+ *
+ * It used to be 100, which is plenty for refreshing a ten-player shortlist — those players
+ * are all near the top of a ranked list. It is not plenty for counting: a UCL league phase
+ * has a few hundred distinct scorers, and a top-100 list omits exactly the one-goal tail a
+ * nationality total is made of.
+ */
+const DEFAULT_LIMIT = SCORER_FEED_LIMIT;
+
+/**
+ * Fold a scorer feed into goals per nationality.
+ *
+ * Exported for its own test. Rows the provider gave no nationality for are simply left
+ * out — there is no country to attribute them to, and guessing one from a name or a club
+ * would be worse than a slightly low total that says so.
+ */
+export function foldScorersByNationality(
+  scorers: ProviderScorer[],
+): LiveScorerNationalities['byNationality'] {
+  const byNationality: LiveScorerNationalities['byNationality'] = {};
+  for (const scorer of scorers) {
+    const nationality = scorer.nationality?.trim();
+    if (!nationality) continue;
+    // A player counts towards their country's player tally whether or not they have
+    // scored: they are in the feed, so the provider has something to say about them. The
+    // goals are what they are.
+    const entry = (byNationality[nationality] ??= { goals: 0, players: 0 });
+    entry.goals += Math.max(0, scorer.goals);
+    entry.players += 1;
+  }
+  return byNationality;
+}
 
 /**
  * Refresh the goals and assists of the players already in the tournament's list.
@@ -301,6 +345,7 @@ export async function refreshLivePlayerGoals(
     adopted: 0,
     unmatchedNames: [],
     truncated: false,
+    nationalitiesCounted: 0,
     seasonUnavailable: false,
   };
 
@@ -334,6 +379,21 @@ export async function refreshLivePlayerGoals(
 
   result.scorersFetched = scorers.length;
   result.truncated = scorers.length >= limit;
+
+  // Written before the shortlist work below, which gives up early when there is nothing to
+  // refresh. The nationality snapshot does not depend on the shortlist — it is the whole
+  // feed — so a tournament whose admin has picked nobody still gets its goal counts.
+  const snapshot: LiveScorerNationalities = {
+    fetchedAt: new Date().toISOString(),
+    count: scorers.length,
+    truncated: result.truncated,
+    byNationality: foldScorersByNationality(scorers),
+  };
+  await db
+    .update(liveTournaments)
+    .set({ scorerNationalities: snapshot })
+    .where(eq(liveTournaments.id, tournament.id));
+  result.nationalitiesCounted = Object.keys(snapshot.byNationality).length;
 
   const stored = await db
     .select()

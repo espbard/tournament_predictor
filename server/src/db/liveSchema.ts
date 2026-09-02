@@ -6,11 +6,16 @@ import {
   boolean,
   integer,
   json,
+  jsonb,
   index,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import type { LiveBonusAnswerType, LiveScoringConfig } from '@tournament-predictor/shared';
+import type {
+  LiveBonusAnswerType,
+  LiveScorerNationalities,
+  LiveScoringConfig,
+} from '@tournament-predictor/shared';
 import { users } from './schema';
 
 // ── Live (API-linked) tournaments ─────────────────────────────────────────────
@@ -89,6 +94,16 @@ export const liveTournaments = pgTable(
     startStageKey: text('start_stage_key').notNull(),
     status: liveTournamentStatusEnum('status').notNull().default('upcoming'),
     syncEnabled: boolean('sync_enabled').notNull().default(true),
+    /**
+     * The scorer feed folded into goals per nationality, refreshed whenever the shortlist's
+     * goals are. Read whole by the "Norwegian goals" stat card and written whole by
+     * refreshLivePlayerGoals; null until that has run once.
+     *
+     * `truncated` says the feed came back at the request limit, so the list is the top N
+     * scorers rather than all of them and every total below it is a floor. The card says
+     * "at least" when it is set rather than printing a number that reads as exact.
+     */
+    scorerNationalities: jsonb('scorer_nationalities').$type<LiveScorerNationalities>(),
     lastStructureSyncAt: timestamp('last_structure_sync_at'),
     lastFixtureSyncAt: timestamp('last_fixture_sync_at'),
     lastSyncError: text('last_sync_error'),

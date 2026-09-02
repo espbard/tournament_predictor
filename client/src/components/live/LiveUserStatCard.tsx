@@ -85,11 +85,19 @@ export default function LiveUserStatCard({ data }: Props) {
 
   return (
     <article className="relative flex flex-col overflow-hidden rounded-2xl border border-border bg-gradient-to-b from-white via-slate-100 via-42% to-slate-950">
+      {/* Painted before the pictures, not over them. A crest is mostly transparent so it
+          never mattered, but a flag is a solid rectangle and a scrim across it reads as a
+          rendering fault — the words need the dark ground, the picture does not. */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black via-black/75 via-28% to-transparent"
+      />
+
       {/* Each cell takes its width from the row and its height from that width, so the
-          crest stays square however many share the row and however narrow the tile is —
+          picture stays square however many share the row and however narrow the tile is —
           setting a height instead leaves ovals once max-width starts clamping. The size
           therefore depends on the tie, not on whether the sentence runs to three lines. */}
-      <div aria-hidden className="flex items-center justify-center gap-3 px-6 pt-5">
+      <div aria-hidden className="relative flex items-center justify-center gap-3 px-6 pt-5">
         {subjects.map(subject => (
           <span key={subject.id} className="aspect-square min-w-0 max-w-[9rem] flex-1">
             <img
@@ -100,12 +108,6 @@ export default function LiveUserStatCard({ data }: Props) {
           </span>
         ))}
       </div>
-
-      {/* Dark under the words, clear over the crests. */}
-      <span
-        aria-hidden
-        className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black via-black/75 via-28% to-transparent"
-      />
 
       <Caption data={data} />
     </article>

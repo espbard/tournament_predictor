@@ -114,6 +114,17 @@ export interface ProviderStandingRow {
 }
 
 /**
+ * How many rows the scorer feed is asked for.
+ *
+ * Shared by the sync and the diagnostic probe so they cannot drift, and deliberately far
+ * above the size of any shortlist: the feed is ranked, so a small limit returns the top
+ * scorers and silently omits the long tail of one-goal players. That is harmless when the
+ * only job is refreshing a ten-player shortlist and wrong the moment anything counts a
+ * total — see the nationality snapshot in server/src/live/scorers.ts.
+ */
+export const SCORER_FEED_LIMIT = 500;
+
+/**
  * One player in a competition's scorer list.
  *
  * `assists` is carried because the top-scorer ranking breaks a tie on goals with it —
@@ -125,6 +136,12 @@ export interface ProviderScorer {
   name: string;
   /** The club the provider lists them under. Null when the payload omits it. */
   providerTeamId: string | null;
+  /**
+   * The provider's own country name for the player — football-data spells them in English
+   * ("Norway", "Bosnia and Herzegovina"). Null when the payload omits it, which a provider
+   * that does not report nationality must send rather than guessing one.
+   */
+  nationality: string | null;
   goals: number;
   assists: number;
 }

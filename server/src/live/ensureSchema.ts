@@ -268,6 +268,7 @@ export async function ensureLiveSchema(): Promise<void> {
   // ── Indexes ─────────────────────────────────────────────────────────────────
   await db.execute(sql`ALTER TABLE "live_tournaments" ADD COLUMN IF NOT EXISTS "fixture_provider" "live_provider"`);
   await db.execute(sql`ALTER TABLE "live_tournaments" ADD COLUMN IF NOT EXISTS "fixture_provider_competition_id" text`);
+  await db.execute(sql`ALTER TABLE "live_tournaments" ADD COLUMN IF NOT EXISTS "scorer_nationalities" jsonb`);
 
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "live_tournaments_provider_competition_season_unique" ON "live_tournaments" ("provider", "provider_competition_id", "season")`);
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "live_teams_tournament_provider_team_unique" ON "live_teams" ("live_tournament_id", "provider_team_id")`);

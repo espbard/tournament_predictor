@@ -543,7 +543,17 @@ liveCompetitionsRouter.get('/competitions/:id/user-stats', requireAuth, async (r
     ]);
 
     return res.json(
-      buildLiveUserStats({ tablePredictions, teams, scorerPredictions, players }, lang),
+      buildLiveUserStats(
+        {
+          tablePredictions,
+          teams,
+          scorerPredictions,
+          players,
+          // Already on the row this route loaded, so the nationality card costs no query.
+          scorerNationalities: tournament.scorerNationalities ?? null,
+        },
+        lang,
+      ),
     );
   } catch (err) {
     return fail(res, err);

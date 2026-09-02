@@ -41,6 +41,28 @@ export type LiveQualificationStatus = 'qualified' | 'pending' | 'eliminated';
  * The tiers are nested — an exact scoreline necessarily also has the right goal
  * difference and outcome — so the awarded values simply add. Max 4 points by default.
  */
+/**
+ * The provider's scorer feed folded into goals per nationality, stored on the tournament.
+ *
+ * A snapshot rather than a live query: it is rebuilt whole every time the shortlist's
+ * goals are refreshed, from the same payload, so it costs no extra provider request.
+ *
+ * `truncated` is the honest part. The feed is a *ranked* list capped at a limit, so a
+ * competition with more scorers than that limit returns its top N and omits the tail of
+ * one-goal players. When it is set, every total here is a floor rather than a total, and
+ * anything reading them has to say so.
+ */
+export interface LiveScorerNationalities {
+  /** ISO 8601, when the feed this was folded from was fetched. */
+  fetchedAt: string;
+  /** How many rows the feed returned. */
+  count: number;
+  /** The feed came back at the request limit, so the totals below are floors. */
+  truncated: boolean;
+  /** Keyed by the provider's own English country name, kept verbatim. */
+  byNationality: Record<string, { goals: number; players: number }>;
+}
+
 export interface LiveScoringConfig {
   correct_outcome: number;
   correct_goal_difference: number;

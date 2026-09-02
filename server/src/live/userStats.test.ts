@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildLiveUserStats,
+  nationalityGoalsCard,
   goalDroughtCard,
   goldenBootCard,
   peoplesFavouriteCard,
@@ -22,6 +23,11 @@ const players = [
 ];
 
 const rank = (userId: string, ...orderedPlayerIds: string[]) => ({ userId, orderedPlayerIds });
+
+const snapshot = (
+  byNationality: Record<string, { goals: number; players: number }>,
+  truncated = false,
+) => ({ fetchedAt: '2026-09-02T10:00:00.000Z', count: 400, truncated, byNationality });
 
 describe('peoplesFavouriteCard', () => {
   it('counts only the team in first place', () => {
@@ -228,11 +234,12 @@ describe('buildLiveUserStats', () => {
     teams,
     scorerPredictions: [rank('u1', 'p1', 'p3')],
     players,
+    scorerNationalities: null,
   };
 
   it('drops cards that have nothing to say', () => {
     expect(
-      buildLiveUserStats({ tablePredictions: [], teams, scorerPredictions: [], players }, 'en'),
+      buildLiveUserStats({ tablePredictions: [], teams, scorerPredictions: [], players, scorerNationalities: null }, 'en'),
     ).toEqual([]);
   });
 
@@ -262,5 +269,103 @@ describe('buildLiveUserStats', () => {
       expect(c.iconImageUrl).toBeUndefined();
       expect(c.linkType).toBeNull();
     }
+  });
+});
+
+describe('nationalityGoalsCard', () => {
+  it('counts the goals and the players behind them', () => {
+    const card = nationalityGoalsCard(
+      snapshot({ Norway: { goals: 23, players: 7 }, Spain: { goals: 40, players: 12 } }),
+      'en',
+    );
+    expect(card?.title).toBe('Norwegian goals');
+    expect(card?.statistic).toBe(
+      '**23** goals in this tournament have been scored by Norwegians — **7** different players.',
+    );
+    expect(card?.subjects).toEqual([
+      { type: 'team', id: 'Norway', name: 'Norway', imageUrl: '/stat-flag-no.webp' },
+    ]);
+  });
+
+  it('matches the country key whatever case the provider sends', () => {
+    expect(nationalityGoalsCard(snapshot({ NORWAY: { goals: 5, players: 2 } }), 'en')).not.toBeNull();
+    expect(nationalityGoalsCard(snapshot({ norway: { goals: 5, players: 2 } }), 'en')).not.toBeNull();
+  });
+
+  it('says "at least" when the feed was truncated, because the total is a floor', () => {
+    const rows = { Norway: { goals: 23, players: 7 } };
+    expect(nationalityGoalsCard(snapshot(rows, true), 'en')?.statistic).toBe(
+      'Norwegians have scored **at least 23** goals in this tournament — **7** different players.',
+    );
+    expect(nationalityGoalsCard(snapshot(rows, true), 'no')?.statistic).toBe(
+      'Nordmenn har scoret **minst 23** mål i turneringen, fordelt på **7** spillere.',
+    );
+    expect(nationalityGoalsCard(snapshot(rows, true), 'de')?.statistic).toContain('**mindestens 23**');
+  });
+
+  it('uses the singular for one player', () => {
+    const one = snapshot({ Norway: { goals: 9, players: 1 } });
+    expect(nationalityGoalsCard(one, 'en')?.statistic).toBe(
+      '**9** goals in this tournament have been scored by Norwegians — **1** player.',
+    );
+    expect(nationalityGoalsCard(one, 'no')?.statistic).toBe(
+      '**9** mål i turneringen er scoret av nordmenn, av **1** spiller.',
+    );
+  });
+
+  it('translates the title and the statistic', () => {
+    const rows = snapshot({ Norway: { goals: 23, players: 7 } });
+    expect(nationalityGoalsCard(rows, 'no')).toMatchObject({
+      title: 'Norske mål',
+      statistic: '**23** mål i turneringen er scoret av nordmenn, fordelt på **7** spillere.',
+    });
+    expect(nationalityGoalsCard(rows, 'de')).toMatchObject({
+      title: 'Norwegische Tore',
+      statistic:
+        '**23** Tore in diesem Wettbewerb gehen auf das Konto von Norwegern — **7** verschiedene Spieler.',
+    });
+  });
+
+  it('is null without a snapshot, without Norway, or on nothing scored', () => {
+    expect(nationalityGoalsCard(null, 'en')).toBeNull();
+    expect(nationalityGoalsCard(snapshot({}), 'en')).toBeNull();
+    expect(nationalityGoalsCard(snapshot({ Spain: { goals: 40, players: 12 } }), 'en')).toBeNull();
+    expect(nationalityGoalsCard(snapshot({ Norway: { goals: 0, players: 3 } }), 'en')).toBeNull();
+  });
+
+  it('joins the deck last, and only when it has something to say', () => {
+    const base = {
+      tablePredictions: [pick('u1', 't1', 't3')],
+      teams,
+      scorerPredictions: [rank('u1', 'p1', 'p3')],
+      players,
+    };
+    expect(buildLiveUserStats({ ...base, scorerNationalities: null }, 'en').map(c => c.id)).toEqual([
+      'peoplesFavourite',
+      'woodenSpoon',
+      'goldenBoot',
+      'goalDrought',
+    ]);
+    expect(
+      buildLiveUserStats(
+        { ...base, scorerNationalities: snapshot({ Norway: { goals: 3, players: 2 } }) },
+        'en',
+      ).map(c => c.id),
+    ).toEqual(['peoplesFavourite', 'woodenSpoon', 'goldenBoot', 'goalDrought', 'norwegianGoals']);
+  });
+
+  it('shows on its own when nobody has predicted anything yet', () => {
+    expect(
+      buildLiveUserStats(
+        {
+          tablePredictions: [],
+          teams,
+          scorerPredictions: [],
+          players,
+          scorerNationalities: snapshot({ Norway: { goals: 3, players: 2 } }),
+        },
+        'en',
+      ).map(c => c.id),
+    ).toEqual(['norwegianGoals']);
   });
 });

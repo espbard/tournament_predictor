@@ -3,6 +3,7 @@ import { RateLimiter } from './rateLimiter';
 import { trimmedSample } from './sample';
 import {
   ProviderError,
+  SCORER_FEED_LIMIT,
   type FetchFixturesOptions,
   type LiveProvider,
   type ProviderCompetitionSummary,
@@ -93,7 +94,7 @@ interface RawSquadPlayer {
 }
 
 interface RawScorer {
-  player?: { id?: number | null; name?: string | null } | null;
+  player?: { id?: number | null; name?: string | null; nationality?: string | null } | null;
   team?: RawTeamRef | null;
   goals?: number | null;
   assists?: number | null;
@@ -306,6 +307,9 @@ export function mapScorer(raw: RawScorer): ProviderScorer | null {
     providerPlayerId: String(id),
     name,
     providerTeamId: raw.team?.id != null ? String(raw.team.id) : null,
+    // Kept whatever the provider calls it. Nothing downstream parses country names, and
+    // folding them would only invent a second spelling to disagree with.
+    nationality: emptyToNull(raw.player?.nationality),
     goals: Math.max(0, Math.trunc(raw.goals ?? 0)),
     assists: Math.max(0, Math.trunc(raw.assists ?? 0)),
   };
@@ -504,7 +508,7 @@ export class FootballDataProvider implements LiveProvider {
   async fetchScorers(
     competitionId: string,
     season: string,
-    limit = 100,
+    limit = SCORER_FEED_LIMIT,
   ): Promise<ProviderScorer[]> {
     const data = await this.get<{ scorers?: RawScorer[] }>(
       `/competitions/${encodeURIComponent(competitionId)}/scorers` +
@@ -642,21 +646,36 @@ export class FootballDataProvider implements LiveProvider {
       }),
     );
 
+    // Asked at the limit the sync actually uses. Two things beyond "does it answer" are
+    // worth knowing here and are otherwise expensive to find out: whether the payload
+    // carries nationality, which the Norwegian-goals card counts on, and whether the
+    // endpoint honours a large limit or quietly clamps it — a clamped list would make
+    // every total a floor while looking exactly like a complete one.
     probes.push(
-      await this.probeOne('scorers', `/competitions/${id}/scorers?season=${s}&limit=100`, body => {
-        const scorers: RawScorer[] = body?.scorers ?? [];
-        const withGoals = scorers.filter(x => (x.goals ?? 0) > 0).length;
-        const top = scorers[0];
-        return {
-          count: scorers.length,
-          countForSeason: scorers.length,
-          detail:
-            scorers.length === 0
-              ? 'the response carried no scorers at all'
-              : `${withGoals} with a goal · top: ${top?.player?.name ?? '?'} ` +
-                `(${top?.goals ?? 0}g ${top?.assists ?? 0}a)`,
-        };
-      }),
+      await this.probeOne(
+        'scorers',
+        `/competitions/${id}/scorers?season=${s}&limit=${SCORER_FEED_LIMIT}`,
+        body => {
+          const scorers: RawScorer[] = body?.scorers ?? [];
+          const withGoals = scorers.filter(x => (x.goals ?? 0) > 0).length;
+          const withNationality = scorers.filter(x => !!x.player?.nationality).length;
+          const top = scorers[0];
+          return {
+            count: scorers.length,
+            countForSeason: scorers.length,
+            detail:
+              scorers.length === 0
+                ? 'the response carried no scorers at all'
+                : `${withGoals} with a goal · ${withNationality}/${scorers.length} with a ` +
+                  `nationality · asked for ${SCORER_FEED_LIMIT}, got ${scorers.length}` +
+                  (scorers.length >= SCORER_FEED_LIMIT
+                    ? ' (at the limit — the list may be cut short)'
+                    : '') +
+                  ` · top: ${top?.player?.name ?? '?'} (${top?.goals ?? 0}g ` +
+                  `${top?.assists ?? 0}a, ${top?.player?.nationality ?? 'no nationality'})`,
+          };
+        },
+      ),
     );
 
     return probes;

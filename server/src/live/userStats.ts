@@ -1,4 +1,4 @@
-import type { UserStatCardData } from '@tournament-predictor/shared';
+import type { LiveScorerNationalities, UserStatCardData } from '@tournament-predictor/shared';
 
 // ── User statistics for live competitions ─────────────────────────────────────
 //
@@ -7,10 +7,14 @@ import type { UserStatCardData } from '@tournament-predictor/shared';
 // pile of already-loaded query results; this one keeps the composing pure and takes the
 // rows as arguments, so each card can be pinned by a unit test without a database.
 //
-// Two matched pairs so far, one per ranking the game asks for: who the league thinks will
-// finish top and bottom of the league table, and who it thinks will finish top and bottom
-// of the top-scorer list. All four are the same count — which entrant sits at one end of
-// the most rankings — so they share countEnd and differ only in their wording.
+// Two matched pairs, one per ranking the game asks for: who the league thinks will finish
+// top and bottom of the league table, and who it thinks will finish top and bottom of the
+// top-scorer list. All four are the same count — which entrant sits at one end of the most
+// rankings — so they share countEnd and differ only in their wording.
+//
+// Plus one card that is not about predictions at all: how many goals Norwegians have
+// actually scored. It reads the snapshot the scorer sync leaves on the tournament, so it
+// costs no provider request of its own.
 
 export type LiveStatsLang = 'en' | 'no' | 'de';
 
@@ -253,6 +257,69 @@ export function goalDroughtCard(
   return card('goalDrought', title, statistic, winners, 'player');
 }
 
+
+// ── Goals by nationality ──────────────────────────────────────────────────────
+
+/** The country counted, and the flag shown for it. One line to change to count another. */
+const NATIONALITY = 'Norway';
+const NATIONALITY_FLAG = '/stat-flag-no.webp';
+
+/**
+ * How many goals players of one country have scored in the tournament.
+ *
+ * Not a prediction card: this is what happened. It reads the snapshot
+ * refreshLivePlayerGoals folds out of the provider's scorer feed, so it is as fresh as the
+ * last structure sync and costs nothing to show.
+ *
+ * Null when there is no snapshot yet or the country has not scored — a card that would
+ * read "0 goals" is not a statistic, it is a tournament that has not started.
+ *
+ * When the feed came back truncated the totals are floors rather than totals, so the
+ * sentence says "at least" instead of printing a number that reads as exact.
+ */
+export function nationalityGoalsCard(
+  snapshot: LiveScorerNationalities | null,
+  lang: LiveStatsLang,
+): UserStatCardData | null {
+  if (!snapshot) return null;
+
+  // The provider spells its own country names and could reasonably change the casing, so
+  // the key is matched case-insensitively rather than looked up directly.
+  const entry = Object.entries(snapshot.byNationality).find(
+    ([name]) => name.toLowerCase() === NATIONALITY.toLowerCase(),
+  )?.[1];
+  if (!entry || entry.goals === 0) return null;
+
+  const { goals, players } = entry;
+  const floor = snapshot.truncated;
+
+  const title =
+    lang === 'no' ? 'Norske mål' : lang === 'de' ? 'Norwegische Tore' : 'Norwegian goals';
+
+  const statistic =
+    lang === 'no'
+      ? (floor
+          ? `Nordmenn har scoret **minst ${goals}** mål i turneringen`
+          : `**${goals}** mål i turneringen er scoret av nordmenn`) +
+        (players === 1 ? ', av **1** spiller.' : `, fordelt på **${players}** spillere.`)
+      : lang === 'de'
+        ? (floor
+            ? `Norweger haben in diesem Wettbewerb **mindestens ${goals}** Tore erzielt`
+            : `**${goals}** Tore in diesem Wettbewerb gehen auf das Konto von Norwegern`) +
+          (players === 1 ? ' — **1** Spieler.' : ` — **${players}** verschiedene Spieler.`)
+        : (floor
+            ? `Norwegians have scored **at least ${goals}** goals in this tournament`
+            : `**${goals}** goals in this tournament have been scored by Norwegians`) +
+          (players === 1 ? ' — **1** player.' : ` — **${players}** different players.`);
+
+  // A flag is a picture of the subject, not a photograph of one, so it is shown whole on
+  // the light ground — the same treatment a crest gets. See UserStatSubject: `type` says
+  // how to picture the subject, not what kind of thing it is.
+  return card('norwegianGoals', title, statistic, [
+    { id: NATIONALITY, name: NATIONALITY, imageUrl: NATIONALITY_FLAG },
+  ], 'team');
+}
+
 /** Every card that has something to say, in the order they should be shown. */
 export function buildLiveUserStats(
   input: {
@@ -260,14 +327,16 @@ export function buildLiveUserStats(
     teams: LiveStatsTeam[];
     scorerPredictions: LiveStatsScorerPrediction[];
     players: LiveStatsPlayer[];
+    scorerNationalities: LiveScorerNationalities | null;
   },
   lang: LiveStatsLang,
 ): UserStatCardData[] {
-  const { tablePredictions, teams, scorerPredictions, players } = input;
+  const { tablePredictions, teams, scorerPredictions, players, scorerNationalities } = input;
   return [
     peoplesFavouriteCard(tablePredictions, teams, lang),
     woodenSpoonCard(tablePredictions, teams, lang),
     goldenBootCard(scorerPredictions, players, lang),
     goalDroughtCard(scorerPredictions, players, lang),
+    nationalityGoalsCard(scorerNationalities, lang),
   ].filter((c): c is UserStatCardData => c !== null);
 }

@@ -623,8 +623,18 @@ export const liveQualificationEnum = pgEnum('live_qualification_status', [
 ### `live_tournaments`
 `id` pk · `name` · `imageUrl` · `presetKey` · `provider` · `providerCompetitionId` · `season` ·
 `format` text · `startStageKey` text · `status` · `syncEnabled` bool default true ·
-`lastStructureSyncAt` · `lastFixtureSyncAt` · `lastSyncError` text · `createdAt`.
+`scorerNationalities` jsonb nullable · `lastStructureSyncAt` · `lastFixtureSyncAt` ·
+`lastSyncError` text · `createdAt`.
 **Unique** `(provider, provider_competition_id, season)`.
+
+`scorerNationalities` is the scorer feed folded into goals per country —
+`{ fetchedAt, count, truncated, byNationality: { "Norway": { goals, players } } }` — written
+whole by `refreshLivePlayerGoals` from the payload it already fetches, and read whole by the
+"Norwegian goals" stat card. One jsonb column rather than a table for the same reason
+`ordered_team_ids` is one column: it is only ever read and written entire. Deliberately not
+on `live_players`, which is the admin's curated shortlist and is meant to stay small.
+`truncated` says the feed came back at the request limit, so every total in it is a floor;
+anything printing those numbers has to say "at least".
 
 ### `live_teams`
 `id` pk · `liveTournamentId` → cascade · `providerTeamId` · `name` · `shortName` · `tla` ·
@@ -1538,6 +1548,15 @@ Recorded as they happen, so the document stays trustworthy.
 | A typed-but-unpicked box now says so, and says separately when the database is unreachable | A disabled Next button is not an explanation. The two cases also differ in what to do about them — one is a spelling to fix, the other is a network to change — and they look identical on screen otherwise |
 | Opening the suggestions scrolls the field to the middle of the screen | The list renders under the input, which on a phone is often already near the keyboard. This is what likely produced the typed answers in the first place: the suggestions were there, just not visible |
 | A member behind a firewall that blocks the player database now cannot pass the gate on a free-form player question | Accepted, and requested. The way out is on the admin side, which already exists: narrowing the question to a list of allowed answers turns it into a `<select>` with no external dependency |
+
+**Phase 7 — statistics**
+
+| Change | Why |
+|---|---|
+| The scorer feed limit rose from 100 to 500, shared by the sync and the doctor probe as `SCORER_FEED_LIMIT` | The feed is *ranked*. 100 is ample for refreshing a ten-player shortlist — they are all near the top — but a UCL league phase has a few hundred distinct scorers, so a top-100 list omits exactly the one-goal tail that a nationality total is made of. It is one request either way |
+| Live competitions render stat cards through their own `LiveUserStatCard`, not the manual type's `UserStatCard` | The live cards are tiles with the picture as the background and no emoji. Sharing the payload type (`UserStatCardData`) was worth it; sharing the layout was not |
+| `UserStatSubject.type` gained `'player'` | It says how to picture a subject rather than what kind of thing it is: a crest is shown whole, a photograph is cropped to fill. A flag uses `'team'` for that reason |
+| Whether `/scorers` carries `player.nationality`, and what its maximum `limit` is, are unverified | `api.football-data.org` is unreachable from a cloud session. The `scorers` probe reports both, so `npm run live:doctor` answers them locally in one run — and the "at least" wording means a clamped limit produces an honest card rather than a wrong one |
 
 ---
 
