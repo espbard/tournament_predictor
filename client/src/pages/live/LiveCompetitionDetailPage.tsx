@@ -16,6 +16,10 @@ import LiveTablePrediction from '@/components/live/LiveTablePrediction';
 import LiveBonusQuestionsTab from '@/components/live/LiveBonusQuestionsTab';
 import LiveScorerPrediction from '@/components/live/LiveScorerPrediction';
 import LiveScorerPredictionGate from '@/components/live/LiveScorerPredictionGate';
+import LiveUpcomingChecklist, {
+  type ChecklistItem,
+  type ChecklistKey,
+} from '@/components/live/LiveUpcomingChecklist';
 import LiveTablePredictionGate from '@/components/live/LiveTablePredictionGate';
 import LiveBonusQuestionsGate from '@/components/live/LiveBonusQuestionsGate';
 import InviteButton from '@/components/InviteButton';
@@ -371,6 +375,17 @@ export default function LiveCompetitionDetailPage() {
     !scorerView.isLocked &&
     !scorerView.prediction;
 
+  // The same three predictions the gate asks for, as a reminder at the top of the fixtures
+  // tab for as long as they are still open. Anything already closed is left out: there is
+  // nothing to be done about it, so putting it on a to-do list would only annoy.
+  const checklist: ChecklistItem[] = [];
+  if (tableView?.available && !tableView.isLocked && tableView.teams.length > 0) {
+    checklist.push({ key: 'table', done: !!tableView.prediction });
+  }
+  if (scorerView?.available && !scorerView.isLocked) {
+    checklist.push({ key: 'scorers', done: !!scorerView.prediction });
+  }
+
   // Step three: the bonus questions that are still open and still unanswered. A closed one
   // can never be answered, so requiring it would trap the member out of the competition.
   const answeredQuestionIds = new Set(bonusAnswers.map(a => a.questionId));
@@ -379,6 +394,26 @@ export default function LiveCompetitionDetailPage() {
   );
   const mustAnswerBonus =
     canBeGated && !mustPredictTable && !mustRankScorers && unansweredBonusQuestions.length > 0;
+
+  const openBonusQuestions = bonusQuestions.filter(q => !q.isLocked);
+  if (openBonusQuestions.length > 0) {
+    const answered = openBonusQuestions.length - unansweredBonusQuestions.length;
+    checklist.push({
+      key: 'bonus',
+      done: unansweredBonusQuestions.length === 0,
+      detail: t('live.checklist.bonusProgress', {
+        answered,
+        total: openBonusQuestions.length,
+      }),
+    });
+  }
+
+  // They all close together — an hour before the first match — so any of them can say when.
+  const checklistDeadline =
+    (tableView?.available ? tableView.lockedAt : null) ??
+    (scorerView?.available ? scorerView.lockedAt : null);
+
+  const openTab = (key: ChecklistKey) => navigate(`/live/competitions/${id}?tab=${key}`);
 
   if (
     loadingCompetition ||
@@ -508,6 +543,12 @@ export default function LiveCompetitionDetailPage() {
 
       {activeTab === 'fixtures' && (
         <>
+          <LiveUpcomingChecklist
+            items={checklist}
+            deadline={checklistDeadline}
+            onOpen={openTab}
+          />
+
           {loadingFixtures ? (
             <LoadingSpinner />
           ) : fixtures.length === 0 ? (
