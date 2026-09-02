@@ -1053,7 +1053,7 @@ const translations = {
       myCompetitions: 'Mine konkurranser',
       tags: {
         live: 'Live',
-        upcoming: 'Kommer',
+        upcoming: 'Starter snart',
         active: 'I gang',
         finished: 'Ferdig',
       },
