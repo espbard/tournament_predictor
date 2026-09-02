@@ -1642,7 +1642,7 @@ const translations = {
         todo: 'Ikke gjort ennå',
         bonusProgress: '{{answered}} av {{total}} besvart',
         items: {
-          table: 'Sluttabellen',
+          table: 'Tabelltips',
           scorers: 'Toppscorere',
           bonus: 'Bonusspørsmål',
         },

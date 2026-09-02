@@ -1,4 +1,4 @@
-import { CheckCircle2, ChevronRight, ClipboardList, Clock, HelpCircle, ListOrdered, Trophy } from 'lucide-react';
+import { Check, CheckCircle2, ClipboardList, Clock } from 'lucide-react';
 import { useT } from '@/lib/useT';
 
 // ── Before the first kickoff ──────────────────────────────────────────────────
@@ -9,8 +9,9 @@ import { useT } from '@/lib/useT';
 // the points before the season has started.
 //
 // So they are put at the top of the fixtures tab — the page everybody lands on — for as
-// long as they are still open, as tiles that say what is done and what is not and take one
-// press to reach.
+// long as they are still open, as a row of picture tiles that say what is done and what is
+// not and take one press to reach. The row keeps its three columns on a phone: the whole
+// point is that the three of them are seen together, as one short list with an end to it.
 //
 // It stays up once everything is ticked rather than vanishing: until the deadline these are
 // still editable, and "you can change these until Tuesday" is worth as much as the nudge
@@ -32,14 +33,16 @@ interface Props {
   onOpen: (key: ChecklistKey) => void;
 }
 
-const ICONS: Record<ChecklistKey, typeof ListOrdered> = {
-  table: ListOrdered,
-  scorers: Trophy,
-  bonus: HelpCircle,
+// The artwork is the same in both themes, so every tile carries its own dark scrim and
+// white type rather than borrowing the page's colours.
+const IMAGES: Record<ChecklistKey, string> = {
+  table: '/checklist-table.webp',
+  scorers: '/checklist-scorers.webp',
+  bonus: '/checklist-bonus.webp',
 };
 
 export default function LiveUpcomingChecklist({ items, deadline, onOpen }: Props) {
-  const { t } = useT();
+  const { t, language } = useT();
   if (items.length === 0) return null;
 
   const outstanding = items.filter(item => !item.done).length;
@@ -83,49 +86,56 @@ export default function LiveUpcomingChecklist({ items, deadline, onOpen }: Props
         {allDone ? t('live.checklist.subtitleDone') : t('live.checklist.subtitle', { count: outstanding })}
       </p>
 
-      <div className="grid gap-2 px-4 pb-4 sm:grid-cols-3">
-        {items.map(item => {
-          const Icon = ICONS[item.key];
-          return (
-            <button
-              key={item.key}
-              type="button"
-              onClick={() => onOpen(item.key)}
-              className={`group flex items-center gap-3 rounded-lg border p-3 text-left transition-all hover:shadow-sm ${
-                item.done
-                  ? 'border-border bg-background hover:border-foreground/20'
-                  : // Outstanding tiles carry the colour: this is the one thing on the page
-                    // that is about to become impossible.
-                    'border-amber-400/60 bg-background hover:border-amber-500 hover:bg-amber-400/5'
+      <div className="grid grid-cols-3 gap-2 px-4 pb-4">
+        {items.map(item => (
+          <button
+            key={item.key}
+            type="button"
+            onClick={() => onOpen(item.key)}
+            className={`group relative flex min-h-[7.5rem] flex-col justify-end overflow-hidden rounded-lg border text-left transition-shadow hover:shadow-md sm:min-h-[8.5rem] ${
+              item.done
+                ? 'border-border'
+                : // Outstanding tiles carry the colour: this is the one thing on the page
+                  // that is about to become impossible.
+                  'border-amber-400/70'
+            }`}
+          >
+            <span
+              aria-hidden
+              className="absolute inset-0 bg-cover bg-center transition-transform duration-300 group-hover:scale-105"
+              style={{ backgroundImage: `url(${IMAGES[item.key]})` }}
+            />
+            {/* Dark at the foot where the label sits, lighter at the head where the picture
+                is worth seeing. Done tiles sit further back so the outstanding ones lead. */}
+            <span
+              aria-hidden
+              className={`absolute inset-0 bg-gradient-to-t from-black via-black/70 via-45% to-black/25 ${
+                item.done ? 'opacity-100' : 'opacity-90'
+              }`}
+            />
+
+            <span
+              aria-hidden
+              className={`absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full ring-2 ring-black/30 ${
+                item.done ? 'bg-green-500 text-white' : 'bg-amber-400'
               }`}
             >
+              {item.done ? <Check size={12} strokeWidth={3} /> : <span className="h-1.5 w-1.5 rounded-full bg-black/60" />}
+            </span>
+
+            <span className="relative px-1.5 pb-1.5 sm:px-2 sm:pb-2">
               <span
-                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-                  item.done
-                    ? 'bg-green-500/15 text-green-600 dark:text-green-400'
-                    : 'bg-amber-400/20 text-amber-700 dark:text-amber-300'
-                }`}
+                lang={language}
+                className="block hyphens-auto break-words text-[0.7rem] font-semibold leading-tight text-white drop-shadow sm:text-[0.8rem]"
               >
-                {item.done ? <CheckCircle2 size={18} /> : <Icon size={18} />}
+                {t(`live.checklist.items.${item.key}`)}
               </span>
-
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-medium leading-tight">
-                  {t(`live.checklist.items.${item.key}`)}
-                </span>
-                <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-                  {item.detail ?? (item.done ? t('live.checklist.done') : t('live.checklist.todo'))}
-                </span>
+              <span className="mt-0.5 block break-words text-[0.65rem] leading-tight text-white/80 sm:text-[0.7rem]">
+                {item.detail ?? (item.done ? t('live.checklist.done') : t('live.checklist.todo'))}
               </span>
-
-              <ChevronRight
-                size={16}
-                aria-hidden
-                className="shrink-0 text-muted-foreground/40 transition-transform group-hover:translate-x-0.5 group-hover:text-muted-foreground"
-              />
-            </button>
-          );
-        })}
+            </span>
+          </button>
+        ))}
       </div>
     </section>
   );
