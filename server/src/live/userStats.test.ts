@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { buildLiveUserStats, peoplesFavouriteCard, woodenSpoonCard } from './userStats';
+import {
+  buildLiveUserStats,
+  goalDroughtCard,
+  goldenBootCard,
+  peoplesFavouriteCard,
+  woodenSpoonCard,
+} from './userStats';
 
 const teams = [
   { id: 't1', name: 'Bayern', crestUrl: '/api/images/bayern.png' },
@@ -8,6 +14,14 @@ const teams = [
 ];
 
 const pick = (userId: string, ...orderedTeamIds: string[]) => ({ userId, orderedTeamIds });
+
+const players = [
+  { id: 'p1', name: 'Haaland', imageUrl: '/api/images/haaland.png' },
+  { id: 'p2', name: 'Kane', imageUrl: null },
+  { id: 'p3', name: 'Mbappé', imageUrl: '/api/images/mbappe.png' },
+];
+
+const rank = (userId: string, ...orderedPlayerIds: string[]) => ({ userId, orderedPlayerIds });
 
 describe('peoplesFavouriteCard', () => {
   it('counts only the team in first place', () => {
@@ -122,20 +136,129 @@ describe('woodenSpoonCard', () => {
   });
 });
 
-describe('buildLiveUserStats', () => {
-  it('drops cards that have nothing to say', () => {
-    expect(buildLiveUserStats([], teams, 'en')).toEqual([]);
-  });
-
-  it('returns the pair, favourite first', () => {
-    expect(buildLiveUserStats([pick('u1', 't1', 't3')], teams, 'en').map(c => c.id)).toEqual([
-      'peoplesFavourite',
-      'woodenSpoon',
+describe('goldenBootCard', () => {
+  it('counts only the player in first place', () => {
+    const card = goldenBootCard(
+      [rank('u1', 'p1', 'p2'), rank('u2', 'p2', 'p1'), rank('u3', 'p1', 'p3')],
+      players,
+      'en',
+    );
+    expect(card?.statistic).toBe('**Haaland** tops the scorer list in **2** of **3** rankings.');
+    expect(card?.subjects).toEqual([
+      { type: 'player', id: 'p1', name: 'Haaland', imageUrl: '/api/images/haaland.png' },
     ]);
   });
 
+  it('carries a null image through rather than inventing one', () => {
+    const card = goldenBootCard([rank('u1', 'p2', 'p1')], players, 'en');
+    expect(card?.subjects[0]).toMatchObject({ id: 'p2', imageUrl: null });
+  });
+
+  it('shows every player of a tie, by name', () => {
+    const card = goldenBootCard([rank('u1', 'p1'), rank('u2', 'p3')], players, 'en');
+    expect(card?.statistic).toBe(
+      '**Haaland and Mbappé** each top the scorer list in **1** of **2** rankings.',
+    );
+  });
+
+  it('translates the title and the statistic', () => {
+    const rows = [rank('u1', 'p1', 'p2'), rank('u2', 'p1', 'p3')];
+    expect(goldenBootCard(rows, players, 'no')).toMatchObject({
+      title: 'Gullstøvelen',
+      statistic: '**Haaland** er tippet øverst på toppscorerlisten i **2** av **2** lister.',
+    });
+    expect(goldenBootCard(rows, players, 'de')).toMatchObject({
+      title: 'Der Goldene Schuh',
+      statistic: '**Haaland** steht in **2** von **2** Torjägerlisten ganz oben.',
+    });
+    expect(goldenBootCard(rows, players, 'en')?.title).toBe('The golden boot');
+  });
+
+  it('is null with no rankings or only dropped players', () => {
+    expect(goldenBootCard([], players, 'en')).toBeNull();
+    expect(goldenBootCard([rank('u1')], players, 'en')).toBeNull();
+    expect(goldenBootCard([rank('u1', 'gone')], players, 'en')).toBeNull();
+  });
+});
+
+describe('goalDroughtCard', () => {
+  it('counts only the player in last place', () => {
+    const card = goalDroughtCard(
+      [rank('u1', 'p1', 'p2', 'p3'), rank('u2', 'p2', 'p1', 'p3'), rank('u3', 'p1', 'p3', 'p2')],
+      players,
+      'en',
+    );
+    expect(card?.statistic).toBe(
+      '**Mbappé** finishes last on the scorer list in **2** of **3** rankings.',
+    );
+  });
+
+  it('leaves a ranking ending on a dropped player out of both halves of the count', () => {
+    const card = goalDroughtCard(
+      [rank('u1', 'p1', 'p3'), rank('u2', 'p1', 'gone'), rank('u3', 'p2', 'p3')],
+      players,
+      'en',
+    );
+    expect(card?.statistic).toBe(
+      '**Mbappé** finishes last on the scorer list in **2** of **2** rankings.',
+    );
+  });
+
+  it('translates the title and the statistic', () => {
+    const rows = [rank('u1', 'p1', 'p3'), rank('u2', 'p2', 'p3')];
+    expect(goalDroughtCard(rows, players, 'no')).toMatchObject({
+      title: 'Måltørken',
+      statistic: '**Mbappé** er tippet sist på toppscorerlisten i **2** av **2** lister.',
+    });
+    expect(goalDroughtCard(rows, players, 'de')).toMatchObject({
+      title: 'Die Torflaute',
+      statistic: '**Mbappé** steht in **2** von **2** Torjägerlisten ganz unten.',
+    });
+    expect(goalDroughtCard(rows, players, 'en')?.title).toBe('The goal drought');
+  });
+
+  it('is null with no rankings', () => {
+    expect(goalDroughtCard([], players, 'en')).toBeNull();
+  });
+});
+
+describe('buildLiveUserStats', () => {
+  const all = {
+    tablePredictions: [pick('u1', 't1', 't3')],
+    teams,
+    scorerPredictions: [rank('u1', 'p1', 'p3')],
+    players,
+  };
+
+  it('drops cards that have nothing to say', () => {
+    expect(
+      buildLiveUserStats({ tablePredictions: [], teams, scorerPredictions: [], players }, 'en'),
+    ).toEqual([]);
+  });
+
+  it('returns the two pairs, table first, top before bottom in each', () => {
+    expect(buildLiveUserStats(all, 'en').map(c => c.id)).toEqual([
+      'peoplesFavourite',
+      'woodenSpoon',
+      'goldenBoot',
+      'goalDrought',
+    ]);
+  });
+
+  it('shows the scorer pair on its own when nobody has predicted a table', () => {
+    expect(
+      buildLiveUserStats({ ...all, tablePredictions: [] }, 'en').map(c => c.id),
+    ).toEqual(['goldenBoot', 'goalDrought']);
+  });
+
+  it('shows the table pair on its own when nobody has ranked the scorers', () => {
+    expect(
+      buildLiveUserStats({ ...all, scorerPredictions: [] }, 'en').map(c => c.id),
+    ).toEqual(['peoplesFavourite', 'woodenSpoon']);
+  });
+
   it('carries no emoji or icon field for the live card to key off', () => {
-    for (const c of buildLiveUserStats([pick('u1', 't1', 't3')], teams, 'en')) {
+    for (const c of buildLiveUserStats(all, 'en')) {
       expect(c.iconImageUrl).toBeUndefined();
       expect(c.linkType).toBeNull();
     }

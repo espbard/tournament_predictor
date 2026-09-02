@@ -163,7 +163,11 @@ export interface BonusQuestion {
 }
 
 export interface UserStatSubject {
-  type: 'user' | 'team';
+  /**
+   * How the card should picture this subject. 'team' is a crest — a logo on empty space,
+   * shown whole; 'user' and 'player' are photographs, cropped to a circle.
+   */
+  type: 'user' | 'team' | 'player';
   id: string;
   name: string;
   imageUrl?: string | null;

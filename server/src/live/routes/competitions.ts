@@ -457,11 +457,7 @@ liveCompetitionsRouter.get('/competitions/:id/leaderboard', requireAuth, async (
  * User statistics — the same card deck the manual competition type has, built from live
  * data.
  *
- * Test accounts and admins only while the deck is one card deep.
- *
- * The predictions are read through the membership table rather than straight off
- * live_table_predictions: leaving a competition removes the membership row and leaves the
- * prediction behind, and someone who has left should not still get a vote.
+ * Test accounts and admins only while the deck is shallow.
  */
 liveCompetitionsRouter.get('/competitions/:id/user-stats', requireAuth, async (req, res) => {
   try {
@@ -487,36 +483,68 @@ liveCompetitionsRouter.get('/competitions/:id/user-stats', requireAuth, async (r
       .where(eq(liveTournaments.id, competition.liveTournamentId));
     if (!tournament) return res.status(404).json({ error: 'Live tournament not found' });
 
+    // A format with no table stage can still have a top-scorer ranking, so this narrows
+    // the table half rather than ending the whole request.
     const stage = tablePredictionStage(getLiveFormat(tournament.format), tournament.startStageKey);
-    if (!stage) return res.json([]);
 
-    const [predictions, teams] = await Promise.all([
-      db
-        .select({
-          userId: liveTablePredictions.userId,
-          orderedTeamIds: liveTablePredictions.orderedTeamIds,
-        })
-        .from(liveTablePredictions)
-        .innerJoin(
-          liveCompetitionMembers,
-          and(
-            eq(liveCompetitionMembers.liveCompetitionId, liveTablePredictions.liveCompetitionId),
-            eq(liveCompetitionMembers.userId, liveTablePredictions.userId),
-          ),
-        )
-        .where(
-          and(
-            eq(liveTablePredictions.liveCompetitionId, competition.id),
-            eq(liveTablePredictions.stageKey, stage.key),
-          ),
-        ),
+    const [tablePredictions, teams, scorerPredictions, players] = await Promise.all([
+      stage
+        ? db
+            .select({
+              userId: liveTablePredictions.userId,
+              orderedTeamIds: liveTablePredictions.orderedTeamIds,
+            })
+            .from(liveTablePredictions)
+            // Read through the membership table rather than straight off the prediction
+            // table: leaving a competition removes the membership row and leaves the
+            // prediction behind, and someone who has left should not still get a vote.
+            .innerJoin(
+              liveCompetitionMembers,
+              and(
+                eq(
+                  liveCompetitionMembers.liveCompetitionId,
+                  liveTablePredictions.liveCompetitionId,
+                ),
+                eq(liveCompetitionMembers.userId, liveTablePredictions.userId),
+              ),
+            )
+            .where(
+              and(
+                eq(liveTablePredictions.liveCompetitionId, competition.id),
+                eq(liveTablePredictions.stageKey, stage.key),
+              ),
+            )
+        : [],
       db
         .select({ id: liveTeams.id, name: liveTeams.name, crestUrl: liveTeams.crestUrl })
         .from(liveTeams)
         .where(eq(liveTeams.liveTournamentId, tournament.id)),
+      db
+        .select({
+          userId: liveScorerPredictions.userId,
+          orderedPlayerIds: liveScorerPredictions.orderedPlayerIds,
+        })
+        .from(liveScorerPredictions)
+        // Same membership join, for the same reason.
+        .innerJoin(
+          liveCompetitionMembers,
+          and(
+            eq(liveCompetitionMembers.liveCompetitionId, liveScorerPredictions.liveCompetitionId),
+            eq(liveCompetitionMembers.userId, liveScorerPredictions.userId),
+          ),
+        )
+        .where(eq(liveScorerPredictions.liveCompetitionId, competition.id)),
+      // Every player, not just the shortlist: a ranking saved before the admin deselected
+      // someone still holds that id, and the card should be able to name them.
+      db
+        .select({ id: livePlayers.id, name: livePlayers.name, imageUrl: livePlayers.imageUrl })
+        .from(livePlayers)
+        .where(eq(livePlayers.liveTournamentId, tournament.id)),
     ]);
 
-    return res.json(buildLiveUserStats(predictions, teams, lang));
+    return res.json(
+      buildLiveUserStats({ tablePredictions, teams, scorerPredictions, players }, lang),
+    );
   } catch (err) {
     return fail(res, err);
   }

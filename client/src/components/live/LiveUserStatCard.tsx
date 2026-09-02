@@ -38,16 +38,33 @@ export default function LiveUserStatCard({ data }: Props) {
 
   return (
     <article className="relative flex flex-col overflow-hidden rounded-2xl border border-border bg-gradient-to-b from-white via-slate-100 via-42% to-slate-950">
-      {/* A fixed height rather than the space left over, so the crests are the same size
-          on a card whose sentence runs to three lines as on one that fits in two. */}
-      <div aria-hidden className="flex h-36 items-center justify-center gap-3 px-6 pt-5">
+      {/* Every cell takes its width from the row and its height from that width, so the
+          picture is square however many share the row and however narrow the tile is —
+          setting a height instead leaves ovals once max-width starts clamping. The size
+          therefore depends on the tie, not on whether the sentence runs to three lines. */}
+      <div aria-hidden className="flex items-center justify-center gap-3 px-6 pt-5">
         {subjects.map(subject => (
-          <img
+          <span
             key={subject.id}
-            src={subject.imageUrl ?? '/default-avatar.png'}
-            alt=""
-            className="h-full min-w-0 flex-1 object-contain drop-shadow-[0_2px_6px_rgba(0,0,0,0.35)]"
-          />
+            className={`aspect-square min-w-0 max-w-[9rem] flex-1 ${
+              // A crest is a logo on empty space, so it is shown whole. A player is a
+              // photograph, cropped to a circle — the treatment they get in the ranking
+              // they came from.
+              subject.type === 'team'
+                ? ''
+                : 'overflow-hidden rounded-full shadow-[0_2px_10px_rgba(0,0,0,0.35)] ring-2 ring-white/70'
+            }`}
+          >
+            <img
+              src={subject.imageUrl ?? '/default-avatar.png'}
+              alt=""
+              className={`h-full w-full ${
+                subject.type === 'team'
+                  ? 'object-contain drop-shadow-[0_2px_6px_rgba(0,0,0,0.35)]'
+                  : 'object-cover'
+              }`}
+            />
+          </span>
         ))}
       </div>
 
