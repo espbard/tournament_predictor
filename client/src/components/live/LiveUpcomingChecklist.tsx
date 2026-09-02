@@ -1,23 +1,25 @@
-import { Check, CheckCircle2, ClipboardList, Clock } from 'lucide-react';
+import { Check, CheckCircle2, ChevronRight, ClipboardList, Clock } from 'lucide-react';
 import { useT } from '@/lib/useT';
 
-// ── Before the first kickoff ──────────────────────────────────────────────────
+// ── Before the first kickoff, and every round after ───────────────────────────
 //
-// The three predictions that close at the first whistle and never reopen: the final table,
-// the top-scorer ranking and the bonus questions. Everything else in a live competition can
-// be done match by match all season; these cannot, and a member who misses them has lost
-// the points before the season has started.
+// Four things a member can be behind on. Three of them — the final table, the top-scorer
+// ranking and the bonus questions — close at the first whistle and never reopen, so a
+// member who misses them has lost the points before the season has started. The fourth,
+// the next round of fixtures, comes back round every gameweek.
 //
-// So they are put at the top of the fixtures tab — the page everybody lands on — for as
-// long as they are still open, as a row of picture tiles that say what is done and what is
-// not and take one press to reach. The row keeps its three columns on a phone: the whole
-// point is that the three of them are seen together, as one short list with an end to it.
+// That split is what decides how this renders, and it needs no prop to say so: while the
+// season-long three are still open the panel is a row of picture tiles at the top of the
+// fixtures tab, because there is a deadline coming that makes all of it urgent at once.
+// Once they have locked only the round is left, and the same nudge every week would cost
+// more vertical space than it is worth — so it collapses to a single line above the
+// matches.
 //
-// It stays up once everything is ticked rather than vanishing: until the deadline these are
-// still editable, and "you can change these until Tuesday" is worth as much as the nudge
-// was. The panel only leaves when the deadline does.
+// The tiles stay up once everything is ticked rather than vanishing: until the deadline
+// these are still editable, and "you can change these until Tuesday" is worth as much as
+// the nudge was. The panel only leaves when there is nothing left open at all.
 
-export type ChecklistKey = 'table' | 'scorers' | 'bonus';
+export type ChecklistKey = 'table' | 'scorers' | 'bonus' | 'round';
 
 export interface ChecklistItem {
   key: ChecklistKey;
@@ -28,7 +30,7 @@ export interface ChecklistItem {
 
 interface Props {
   items: ChecklistItem[];
-  /** When these close, or null when no fixture has a date yet. */
+  /** When the season-long three close, or null when no fixture has a date yet. */
   deadline: string | null;
   onOpen: (key: ChecklistKey) => void;
 }
@@ -39,11 +41,48 @@ const IMAGES: Record<ChecklistKey, string> = {
   table: '/checklist-table.webp',
   scorers: '/checklist-scorers.webp',
   bonus: '/checklist-bonus.webp',
+  round: '/checklist-round.webp',
+};
+
+// Two across on a phone: four tiles in one row leaves about 70px of label, which not one
+// of the three locales fits.
+const COLUMNS: Record<number, string> = {
+  1: 'grid-cols-1',
+  2: 'grid-cols-2',
+  3: 'grid-cols-3',
+  4: 'grid-cols-2 sm:grid-cols-4',
 };
 
 export default function LiveUpcomingChecklist({ items, deadline, onOpen }: Props) {
   const { t, language } = useT();
   if (items.length === 0) return null;
+
+  // The season-long three have locked and only the recurring round is left, so the whole
+  // panel becomes one line.
+  if (items.length === 1 && items[0].key === 'round') {
+    const item = items[0];
+    return (
+      <button
+        type="button"
+        onClick={() => onOpen('round')}
+        className={`mb-3 flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors ${
+          item.done
+            ? 'border-border bg-muted/30 hover:bg-muted/50'
+            : 'border-amber-400/60 bg-amber-400/[0.07] hover:bg-amber-400/[0.12]'
+        }`}
+      >
+        <span
+          aria-hidden
+          className={`h-2 w-2 shrink-0 rounded-full ${item.done ? 'bg-green-500' : 'bg-amber-400'}`}
+        />
+        <span className="truncate text-sm font-medium">{t('live.checklist.items.round')}</span>
+        <span className="ml-auto truncate text-xs text-muted-foreground">
+          {item.detail ?? (item.done ? t('live.checklist.done') : t('live.checklist.todo'))}
+        </span>
+        <ChevronRight size={15} aria-hidden className="shrink-0 text-muted-foreground/50" />
+      </button>
+    );
+  }
 
   const outstanding = items.filter(item => !item.done).length;
   const allDone = outstanding === 0;
@@ -86,7 +125,7 @@ export default function LiveUpcomingChecklist({ items, deadline, onOpen }: Props
         {allDone ? t('live.checklist.subtitleDone') : t('live.checklist.subtitle', { count: outstanding })}
       </p>
 
-      <div className="grid grid-cols-3 gap-2 px-4 pb-4">
+      <div className={`grid gap-2 px-4 pb-4 ${COLUMNS[items.length] ?? 'grid-cols-2 sm:grid-cols-4'}`}>
         {items.map(item => (
           <button
             key={item.key}

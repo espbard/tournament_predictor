@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '@/lib/api';
@@ -61,6 +61,8 @@ export default function LiveCompetitionDetailPage() {
   const [stageKey, setStageKey] = useState<string | null>(null);
   const [matchday, setMatchday] = useState<number | null>(null);
   const [savingFixtureId, setSavingFixtureId] = useState<string | null>(null);
+  const [scrollToFixtures, setScrollToFixtures] = useState(0);
+  const fixturesRef = useRef<HTMLDivElement>(null);
   const [savedFixtures, setSavedFixtures] = useState<Record<string, number>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -135,6 +137,13 @@ export default function LiveCompetitionDetailPage() {
     queryFn: () => liveApi.bonusAnswers(id!),
     enabled: !!id,
   });
+
+  // Scrolling waits for the render that the stage and gameweek change causes, so that the
+  // list under the heading is already the round being scrolled to.
+  useEffect(() => {
+    if (scrollToFixtures === 0) return;
+    fixturesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [scrollToFixtures]);
 
   // Live updates. One connection per page, same pattern as CompetitionDetailPage.
   useEffect(() => {
@@ -218,6 +227,29 @@ export default function LiveCompetitionDetailPage() {
       }),
     [matchdays, stageFixtures],
   );
+
+  // ── The next round ─────────────────────────────────────────────────────────
+  //
+  // The earliest round with matches still open to predict, across every stage rather than
+  // only the one being shown — a member who is looking at last week's results should still
+  // be told that this week is unfilled. Matches whose kickoff has already passed are left
+  // out of the count: nothing can be done about them, so counting them would leave the
+  // reminder stuck at "4 of 5" for good.
+  const nextRound = useMemo(() => {
+    const open = fixtures.filter(
+      f => f.isSelected && f.isPredictable && !f.isLocked && !!f.kickoffAt,
+    );
+    if (open.length === 0) return null;
+
+    const first = open.reduce((a, b) => ((a.kickoffAt ?? '') <= (b.kickoffAt ?? '') ? a : b));
+    const round = open.filter(f => f.stageKey === first.stageKey && f.matchday === first.matchday);
+    return {
+      stageKey: first.stageKey,
+      matchday: first.matchday,
+      total: round.length,
+      predicted: round.filter(f => f.prediction !== null).length,
+    };
+  }, [fixtures]);
 
   const shownMatchday = matchday ?? matchdays[0] ?? null;
   const shownSelectedCount = stageFixtures.filter(
@@ -408,12 +440,37 @@ export default function LiveCompetitionDetailPage() {
     });
   }
 
+  // The fourth item, and the only one that comes back: the round being played next. Unlike
+  // the other three this one survives the first kickoff, which is what keeps the panel
+  // useful — as a single line — for the rest of the season.
+  if (nextRound) {
+    checklist.push({
+      key: 'round',
+      done: nextRound.predicted === nextRound.total,
+      detail: t('live.checklist.roundProgress', {
+        predicted: nextRound.predicted,
+        total: nextRound.total,
+      }),
+    });
+  }
+
   // They all close together — an hour before the first match — so any of them can say when.
   const checklistDeadline =
     (tableView?.available ? tableView.lockedAt : null) ??
     (scorerView?.available ? scorerView.lockedAt : null);
 
-  const openTab = (key: ChecklistKey) => navigate(`/live/competitions/${id}?tab=${key}`);
+  const openTab = (key: ChecklistKey) => {
+    // The round is on this tab already: switch the stage and gameweek to it and bring the
+    // matches into view, rather than navigating somewhere.
+    if (key === 'round') {
+      if (nextRound?.stageKey) setStageKey(nextRound.stageKey);
+      setMatchday(nextRound?.matchday ?? null);
+      // A counter rather than a boolean, so pressing the tile a second time scrolls again.
+      setScrollToFixtures(n => n + 1);
+      return;
+    }
+    navigate(`/live/competitions/${id}?tab=${key}`);
+  };
 
   if (
     loadingCompetition ||
@@ -559,7 +616,9 @@ export default function LiveCompetitionDetailPage() {
               note={competition.tournament?.lastSyncError ?? null}
             />
           ) : (
-            <>
+            // scroll-mt keeps the stage pills clear of the top edge when the "next round"
+            // reminder scrolls the matches into view.
+            <div ref={fixturesRef} className="scroll-mt-4">
               {stages.length > 1 && (
                 <div className="mb-3 flex flex-wrap gap-1.5">
                   {stages.map(stage => (
@@ -616,7 +675,7 @@ export default function LiveCompetitionDetailPage() {
                 errors={errors}
                 competitionId={id!}
               />
-            </>
+            </div>
           )}
         </>
       )}

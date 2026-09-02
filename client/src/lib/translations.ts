@@ -639,10 +639,12 @@ const translations = {
         done: 'Done',
         todo: 'Not done yet',
         bonusProgress: '{{answered}} of {{total}} answered',
+        roundProgress: '{{predicted}} of {{total}} predicted',
         items: {
           table: 'Final table',
           scorers: 'Top scorers',
           bonus: 'Bonus questions',
+          round: 'Next round',
         },
       },
       multiplier: {
@@ -1641,10 +1643,12 @@ const translations = {
         done: 'Levert',
         todo: 'Ikke gjort ennå',
         bonusProgress: '{{answered}} av {{total}} besvart',
+        roundProgress: '{{predicted}} av {{total}} tippet',
         items: {
           table: 'Tabelltips',
           scorers: 'Toppscorere',
           bonus: 'Bonusspørsmål',
+          round: 'Neste runde',
         },
       },
       multiplier: {
@@ -2643,10 +2647,12 @@ const translations = {
         done: 'Erledigt',
         todo: 'Noch offen',
         bonusProgress: '{{answered}} von {{total}} beantwortet',
+        roundProgress: '{{predicted}} von {{total}} getippt',
         items: {
           table: 'Endtabelle',
           scorers: 'Torjäger',
           bonus: 'Bonusfragen',
+          round: 'Nächste Runde',
         },
       },
       multiplier: {
