@@ -502,6 +502,10 @@ export const liveApi = {
   /** Drops the caller's ranking. Refused once it has locked. */
   clearScorerPrediction: (competitionId: string) =>
     api.delete<{ ok: boolean }>(`/live/competitions/${competitionId}/scorer-prediction`),
+  otherUserScorerPrediction: (competitionId: string, userId: string) =>
+    api.get<LiveScorerPrediction | null>(
+      `/live/competitions/${competitionId}/scorer-prediction/${userId}`,
+    ),
 
   bonusQuestions: (competitionId: string) =>
     api.get<LiveBonusQuestionView[]>(`/live/competitions/${competitionId}/bonus-questions`),
@@ -556,6 +560,8 @@ export const liveKeys = {
     ['live', 'user-predictions', competitionId, userId] as const,
   userTablePrediction: (competitionId: string, userId: string) =>
     ['live', 'user-table-prediction', competitionId, userId] as const,
+  userScorerPrediction: (competitionId: string, userId: string) =>
+    ['live', 'user-scorer-prediction', competitionId, userId] as const,
   leaderboard: (competitionId: string) => ['live', 'leaderboard', competitionId] as const,
   tablePrediction: (competitionId: string) => ['live', 'table-prediction', competitionId] as const,
   scorerPrediction: (competitionId: string) =>

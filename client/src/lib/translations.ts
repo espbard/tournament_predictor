@@ -607,6 +607,7 @@ const translations = {
       },
       userPredictions: {
         noTable: '{{name}} did not predict the table.',
+        noScorers: '{{name}} did not rank the top scorers.',
       },
       saveFailed: 'Could not save your prediction.',
       tbd: 'TBD',
@@ -692,7 +693,7 @@ const translations = {
       table: {
         title: 'Predict the final table',
         explainer: 'Put the teams in the order you think they will finish. Each team in exactly the right position is worth {{exact}} points.',
-        explainerWithBands: 'Put the teams in the order you think they will finish. Each team in exactly the right position is worth {{exact}} points, and landing a team in the right part of the table is worth {{band}} more — so an exact placing scores {{total}} in all.',
+        explainerWithBands: 'Put the teams in the order you think they will finish the league stage. Each team that finishes in exactly the position you predict is worth {{total}} points, and landing a team in the right part of the table is worth {{band}}.',
         save: 'Save table',
         submit: 'Submit my table',
         gateTitle: 'First, predict the final table',
@@ -1566,7 +1567,7 @@ const translations = {
         scorers: 'Toppscorere',
         bonus: 'Bonusspørsmål',
         standings: 'Tabell',
-        leaderboard: 'Poengtavle',
+        leaderboard: 'Ledertavle',
       },
       matchday: 'Runde',
       gameweekProgress: 'Runder',
@@ -1589,6 +1590,7 @@ const translations = {
       },
       userPredictions: {
         noTable: '{{name}} tippet ikke tabellen.',
+        noScorers: '{{name}} tippet ikke toppscorerlisten.',
       },
       saveFailed: 'Klarte ikke å lagre tippingen.',
       tbd: 'Ikke klart',
@@ -1669,12 +1671,12 @@ const translations = {
       bands: {
         automatic: 'Direkte videre',
         playoff: 'Playoff-plasser',
-        eliminated: 'Ute',
+        eliminated: 'Rykker ut',
       },
       table: {
         title: 'Tipp sluttabellen',
         explainer: 'Sett lagene i den rekkefølgen du tror de ender opp. Hvert lag på nøyaktig riktig plass gir {{exact}} poeng.',
-        explainerWithBands: 'Sett lagene i den rekkefølgen du tror de ender opp. Hvert lag på nøyaktig riktig plass gir {{exact}} poeng, og riktig del av tabellen gir {{band}} poeng til — så nøyaktig plassering gir {{total}} til sammen.',
+        explainerWithBands: 'Sett lagene i den rekkefølgen du tror de ender opp i ligafasen. Hvert lag som havner på nøyaktig den plassen du tipper gir {{total}} poeng, og riktig del av tabellen gir {{band}}.',
         save: 'Lagre tabell',
         submit: 'Send inn tabellen min',
         gateTitle: 'Først: tipp sluttabellen',
@@ -2570,6 +2572,7 @@ const translations = {
       },
       userPredictions: {
         noTable: '{{name}} hat die Tabelle nicht getippt.',
+        noScorers: '{{name}} hat die Torjägerliste nicht sortiert.',
       },
       saveFailed: 'Tipp konnte nicht gespeichert werden.',
       tbd: 'Offen',
@@ -2655,7 +2658,7 @@ const translations = {
       table: {
         title: 'Endtabelle tippen',
         explainer: 'Bringe die Teams in die Reihenfolge, in der sie deiner Meinung nach landen. Jedes Team auf genau dem richtigen Platz bringt {{exact}} Punkte.',
-        explainerWithBands: 'Bringe die Teams in die Reihenfolge, in der sie deiner Meinung nach landen. Jedes Team auf genau dem richtigen Platz bringt {{exact}} Punkte, der richtige Tabellenbereich {{band}} weiteren — ein exakter Platz bringt also {{total}} zusammen.',
+        explainerWithBands: 'Bringe die Teams in die Reihenfolge, in der sie die Ligaphase deiner Meinung nach beenden. Jedes Team, das genau auf dem getippten Platz landet, bringt {{total}} Punkte, der richtige Tabellenbereich {{band}}.',
         save: 'Tabelle speichern',
         submit: 'Meine Tabelle abgeben',
         gateTitle: 'Zuerst: die Abschlusstabelle tippen',

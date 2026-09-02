@@ -1193,6 +1193,42 @@ liveCompetitionsRouter.put('/competitions/:id/scorer-prediction', requireAuth, a
 });
 
 /**
+ * Another member's ranking.
+ *
+ * Only their order: the shortlist, the deadline and the scoring all belong to the
+ * competition and the caller already has them from their own view.
+ *
+ * Deliberately not gated on the ranking having locked, unlike a fixture prediction. It
+ * closes at the first kickoff for everybody at once, so by the time there is a leaderboard
+ * to click a name on, every ranking in the competition is already final.
+ */
+liveCompetitionsRouter.get(
+  '/competitions/:id/scorer-prediction/:userId',
+  requireAuth,
+  async (req, res) => {
+    try {
+      const { id, userId } = req.params;
+      if (!(await assertMember(id, res.locals.user))) {
+        return res.status(403).json({ error: 'Not a member of this competition' });
+      }
+
+      const [prediction] = await db
+        .select()
+        .from(liveScorerPredictions)
+        .where(
+          and(
+            eq(liveScorerPredictions.liveCompetitionId, id),
+            eq(liveScorerPredictions.userId, userId),
+          ),
+        );
+      return res.json(prediction ?? null);
+    } catch (err) {
+      return fail(res, err);
+    }
+  },
+);
+
+/**
  * Delete the caller's ranking, putting them back in front of the first-run gate.
  *
  * Only while it is still open, for the same reason the table prediction is: once it locks

@@ -5,6 +5,7 @@ import {
   liveApi,
   liveKeys,
   type LiveFixtureView,
+  type LiveScorerPredictionView,
   type LiveTablePredictionView,
 } from '@/lib/liveApi';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
@@ -17,6 +18,7 @@ import LiveGameweekProgress, {
   type LiveGameweekProgressItem,
 } from '@/components/live/LiveGameweekProgress';
 import LiveTablePrediction from '@/components/live/LiveTablePrediction';
+import LiveScorerPrediction from '@/components/live/LiveScorerPrediction';
 import LiveBonusQuestionsTab from '@/components/live/LiveBonusQuestionsTab';
 
 // ── One member's predictions, read-only ───────────────────────────────────────
@@ -35,7 +37,7 @@ import LiveBonusQuestionsTab from '@/components/live/LiveBonusQuestionsTab';
 // Looking at yourself is the one case that reads none of that, since the competition's own
 // queries already hold your predictions.
 
-const TABS = ['fixtures', 'table', 'bonus'] as const;
+const TABS = ['fixtures', 'table', 'scorers', 'bonus'] as const;
 type TabId = (typeof TABS)[number];
 
 export default function LiveUserPredictionsPage() {
@@ -88,6 +90,18 @@ export default function LiveUserPredictionsPage() {
   const { data: theirTable } = useQuery({
     queryKey: liveKeys.userTablePrediction(id!, userId!),
     queryFn: () => liveApi.otherUserTablePrediction(id!, userId!),
+    enabled: !!id && !!userId && !isSelf,
+  });
+
+  const { data: scorerView } = useQuery({
+    queryKey: liveKeys.scorerPrediction(id!),
+    queryFn: () => liveApi.scorerPrediction(id!),
+    enabled: !!id,
+  });
+
+  const { data: theirScorers } = useQuery({
+    queryKey: liveKeys.userScorerPrediction(id!, userId!),
+    queryFn: () => liveApi.otherUserScorerPrediction(id!, userId!),
     enabled: !!id && !!userId && !isSelf,
   });
 
@@ -208,6 +222,17 @@ export default function LiveUserPredictionsPage() {
     ? { ...availableTable, prediction: isSelf ? availableTable.prediction : theirTable ?? null }
     : null;
 
+  // The ranking works the same way: the shortlist and the scoring are the competition's,
+  // only the order is theirs.
+  const availableScorers: Extract<LiveScorerPredictionView, { available: true }> | null =
+    scorerView && scorerView.available ? scorerView : null;
+  const theirScorerView = availableScorers
+    ? {
+        ...availableScorers,
+        prediction: isSelf ? availableScorers.prediction : theirScorers ?? null,
+      }
+    : null;
+
   return (
     <main className="mx-auto max-w-2xl md:max-w-4xl lg:max-w-[80%] px-4 pt-2.5 pb-12 sm:pt-8">
       <BackButton href={`/live/competitions/${id}?tab=leaderboard`} />
@@ -318,6 +343,26 @@ export default function LiveUserPredictionsPage() {
         ) : (
           <LiveTablePrediction
             view={theirTableView}
+            onSave={() => {}}
+            isSaving={false}
+            savedAt={null}
+            error={null}
+            readOnly
+          />
+        ))}
+
+      {activeTab === 'scorers' &&
+        (!theirScorerView ? (
+          <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+            {t('live.scorers.unavailable')}
+          </p>
+        ) : !theirScorerView.prediction ? (
+          <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+            {t('live.userPredictions.noScorers', { name: username })}
+          </p>
+        ) : (
+          <LiveScorerPrediction
+            view={theirScorerView}
             onSave={() => {}}
             isSaving={false}
             savedAt={null}
