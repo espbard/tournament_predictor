@@ -87,6 +87,7 @@ anything under a `live` prefix. A summary is in the "Live tournaments" section b
 │       │                           # LiveTableBandLegend
 │       ├── lib/                    # api.ts (fetch wrapper), translations.ts (no/en/de), useT.ts,
 │       │                           # tiebreakers.ts, pointSources.ts, teamTranslations.ts, utils.ts
+│       │   ├── playerSearch.ts    # the bonus-question player picker's two-database name search
 │       │   ├── liveApi.ts          # typed wrappers + query keys for /api/live/*
 │       │   ├── liveTableOrder.ts    # pure ordering helpers for the table prediction
 │       │   └── liveBands.ts         # table-band colours, shared by the real and predicted tables

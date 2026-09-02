@@ -1,14 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { useT } from '@/lib/useT';
-
-interface SportsDbPlayer {
-  idPlayer: string;
-  strPlayer: string;
-  strTeam: string | null;
-  strSport: string | null;
-  strThumb: string | null;
-  strCutout: string | null;
-}
+import {
+  searchPlayers,
+  isAborted,
+  PLAYER_SEARCH_MIN_LENGTH,
+  type PlayerOption,
+} from '@/lib/playerSearch';
 
 interface Props {
   value: string;
@@ -28,6 +25,8 @@ interface Props {
   allowFreeText?: boolean;
 }
 
+const SEARCH_DEBOUNCE_MS = 350;
+
 export default function PlayerSearchInput({
   value,
   onChange,
@@ -37,16 +36,20 @@ export default function PlayerSearchInput({
 }: Props) {
   const { t } = useT();
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<SportsDbPlayer[]>([]);
+  const [results, setResults] = useState<PlayerOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
-  // The search is a request to a third-party database. "It is down" and "there is no such
+  // Which suggestion the arrow keys are on. -1 while the typed text is still what is shown.
+  const [highlight, setHighlight] = useState(-1);
+  // The search is a request to third-party databases. "They are down" and "there is no such
   // player" look identical on screen otherwise, and only one of them is worth retrying.
   const [searchFailed, setSearchFailed] = useState(false);
   // Player data for the currently selected value (only populated when selected this session)
-  const [selectedMeta, setSelectedMeta] = useState<SportsDbPlayer | null>(null);
+  const [selectedMeta, setSelectedMeta] = useState<PlayerOption | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
@@ -58,6 +61,9 @@ export default function PlayerSearchInput({
     return () => document.removeEventListener('mousedown', onClickOutside);
   }, []);
 
+  // Nothing in flight outlives the field.
+  useEffect(() => () => abortRef.current?.abort(), []);
+
   // Bring the field up the screen when suggestions appear. On a phone the list renders
   // below an input that is often already near the keyboard, and a suggestion nobody can see
   // is a suggestion nobody can pick — which now means no answer at all.
@@ -65,6 +71,13 @@ export default function PlayerSearchInput({
     if (!open) return;
     containerRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
   }, [open]);
+
+  // Keep the arrow-key selection inside the visible part of a scrolling list.
+  useEffect(() => {
+    if (highlight < 0) return;
+    const row = listRef.current?.children[highlight] as HTMLElement | undefined;
+    row?.scrollIntoView({ block: 'nearest' });
+  }, [highlight]);
 
   // When value is cleared externally, reset
   useEffect(() => {
@@ -77,61 +90,91 @@ export default function PlayerSearchInput({
 
   function handleInputChange(q: string) {
     setQuery(q);
+    setHighlight(-1);
     // Clear selected meta if user types over it
-    if (selectedMeta && q !== selectedMeta.strPlayer) setSelectedMeta(null);
+    if (selectedMeta && q !== selectedMeta.name) setSelectedMeta(null);
     // The typed text is the answer until a suggestion replaces it.
     if (allowFreeText) onChange(q);
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    abortRef.current?.abort();
     setSearchFailed(false);
-    if (q.trim().length < 2) {
+    if (q.trim().length < PLAYER_SEARCH_MIN_LENGTH) {
       setResults([]);
       setOpen(false);
+      setLoading(false);
       return;
     }
 
+    // Open on the first keystroke worth searching, so the list can say it is working
+    // rather than appearing out of nowhere a moment later.
+    setOpen(true);
+    setLoading(true);
     debounceRef.current = setTimeout(async () => {
-      setLoading(true);
+      const controller = new AbortController();
+      abortRef.current = controller;
       try {
-        const res = await fetch(
-          `https://www.thesportsdb.com/api/v1/json/3/searchplayers.php?p=${encodeURIComponent(q.trim())}`
-        );
-        const data = await res.json();
-        const players: SportsDbPlayer[] = (data.player ?? [])
-          .filter((p: SportsDbPlayer) => !p.strSport || p.strSport === 'Soccer')
-          .slice(0, 8);
+        const players = await searchPlayers(q, controller.signal);
+        if (controller.signal.aborted) return;
         setResults(players);
-        setOpen(players.length > 0);
-      } catch {
+        setHighlight(-1);
+      } catch (err) {
+        if (isAborted(err) || controller.signal.aborted) return;
         setResults([]);
-        setOpen(false);
         setSearchFailed(true);
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
-    }, 350);
+    }, SEARCH_DEBOUNCE_MS);
   }
 
-  function selectPlayer(p: SportsDbPlayer) {
+  function selectPlayer(p: PlayerOption) {
+    abortRef.current?.abort();
     setSelectedMeta(p);
-    setQuery(p.strPlayer);
-    onChange(p.strPlayer);
+    setQuery(p.name);
+    onChange(p.name);
     setOpen(false);
     setResults([]);
+    setHighlight(-1);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Escape') {
+      setOpen(false);
+      setHighlight(-1);
+      return;
+    }
+    if (e.key === 'Enter') {
+      if (open && highlight >= 0 && results[highlight]) {
+        e.preventDefault();
+        selectPlayer(results[highlight]);
+      }
+      return;
+    }
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    if (results.length === 0) return;
+    e.preventDefault();
+    setOpen(true);
+    setHighlight(prev => {
+      const next = e.key === 'ArrowDown' ? prev + 1 : prev - 1;
+      if (next < 0) return results.length - 1;
+      if (next >= results.length) return 0;
+      return next;
+    });
   }
 
   function clear() {
+    abortRef.current?.abort();
     setSelectedMeta(null);
     setQuery('');
     onChange('');
     setResults([]);
     setOpen(false);
+    setHighlight(-1);
     setSearchFailed(false);
   }
 
-  const thumbUrl = selectedMeta?.strThumb && selectedMeta.strThumb !== ''
-    ? selectedMeta.strThumb
-    : null;
+  const thumbUrl = selectedMeta?.thumb ? selectedMeta.thumb : null;
 
   // Disabled read-only display
   if (disabled) {
@@ -149,7 +192,8 @@ export default function PlayerSearchInput({
 
   // Where a pick is required, typed text is not an answer — say so once there is enough of
   // it to have searched on and the search has come back.
-  const needsPick = !allowFreeText && !isSelected && query.trim().length >= 2 && !loading;
+  const needsPick =
+    !allowFreeText && !isSelected && query.trim().length >= PLAYER_SEARCH_MIN_LENGTH && !loading;
 
   return (
     <div ref={containerRef} className="relative">
@@ -167,9 +211,9 @@ export default function PlayerSearchInput({
             <div className="h-10 w-10 rounded-full bg-muted flex-shrink-0" />
           )}
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">{selectedMeta?.strPlayer ?? value}</p>
-            {selectedMeta?.strTeam && (
-              <p className="text-xs text-muted-foreground truncate">{selectedMeta.strTeam}</p>
+            <p className="text-sm font-medium truncate">{selectedMeta?.name ?? value}</p>
+            {selectedMeta?.team && (
+              <p className="text-xs text-muted-foreground truncate">{selectedMeta.team}</p>
             )}
           </div>
           <button
@@ -187,8 +231,12 @@ export default function PlayerSearchInput({
             type="text"
             value={query}
             onChange={e => handleInputChange(e.target.value)}
-            onFocus={() => results.length > 0 && setOpen(true)}
+            onKeyDown={handleKeyDown}
+            onFocus={() => (results.length > 0 || loading) && setOpen(true)}
             placeholder={placeholder ?? (value || 'Search for a player…')}
+            role="combobox"
+            aria-expanded={open}
+            aria-autocomplete="list"
             className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           />
           {loading && (
@@ -211,38 +259,49 @@ export default function PlayerSearchInput({
         </p>
       )}
 
-      {/* Dropdown */}
-      {open && results.length > 0 && (
-        <div className="absolute z-20 mt-1 w-full rounded-md border bg-background shadow-lg max-h-64 overflow-y-auto">
-          {results.map(p => {
-            const img = p.strThumb && p.strThumb !== '' ? p.strThumb : null;
-            return (
-              <button
-                key={p.idPlayer}
-                type="button"
-                onMouseDown={e => e.preventDefault()}
-                onClick={() => selectPlayer(p)}
-                className="flex w-full items-center gap-3 px-3 py-2.5 hover:bg-muted text-left"
-              >
-                {img ? (
-                  <img
-                    src={img}
-                    alt=""
-                    className="h-9 w-9 rounded-full object-cover flex-shrink-0 bg-muted"
-                    onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                  />
-                ) : (
-                  <div className="h-9 w-9 rounded-full bg-muted flex-shrink-0" />
-                )}
-                <div className="min-w-0">
-                  <p className="text-sm font-medium truncate">{p.strPlayer}</p>
-                  {p.strTeam && (
-                    <p className="text-xs text-muted-foreground truncate">{p.strTeam}</p>
+      {/* Dropdown. Tall enough for five suggestions, and scrolls past that: a list that
+          shows one name at a time is a list nobody can compare. */}
+      {open && !isSelected && (loading || results.length > 0) && (
+        <div className="absolute z-20 mt-1 w-full rounded-md border bg-background shadow-lg">
+          {loading && results.length === 0 ? (
+            <p className="px-3 py-2.5 text-sm text-muted-foreground">
+              {t('bonusQuestions.picker.searching')}
+            </p>
+          ) : (
+            <div ref={listRef} role="listbox" className="max-h-[17.5rem] overflow-y-auto">
+              {results.map((p, i) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  role="option"
+                  aria-selected={i === highlight}
+                  onMouseDown={e => e.preventDefault()}
+                  onMouseEnter={() => setHighlight(i)}
+                  onClick={() => selectPlayer(p)}
+                  className={`flex w-full items-center gap-3 px-3 py-2 text-left ${
+                    i === highlight ? 'bg-muted' : 'hover:bg-muted'
+                  }`}
+                >
+                  {p.thumb ? (
+                    <img
+                      src={p.thumb}
+                      alt=""
+                      className="h-8 w-8 rounded-full object-cover flex-shrink-0 bg-muted"
+                      onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                    />
+                  ) : (
+                    <div className="h-8 w-8 rounded-full bg-muted flex-shrink-0" />
                   )}
-                </div>
-              </button>
-            );
-          })}
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{p.name}</p>
+                    {p.team && (
+                      <p className="text-xs text-muted-foreground truncate">{p.team}</p>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
