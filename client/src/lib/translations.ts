@@ -588,6 +588,10 @@ const translations = {
         bonus: 'Bonus questions',
         standings: 'Table',
         leaderboard: 'Leaderboard',
+        userStats: 'Stats',
+      },
+      userStats: {
+        empty: 'Nothing to show yet — the statistics need a few table predictions first.',
       },
       matchday: 'Matchday',
       gameweekProgress: 'Gameweeks',
@@ -1592,6 +1596,10 @@ const translations = {
         bonus: 'Bonusspørsmål',
         standings: 'Tabell',
         leaderboard: 'Ledertavle',
+        userStats: 'Statistikk',
+      },
+      userStats: {
+        empty: 'Ingenting å vise ennå — statistikken trenger noen tabelltips først.',
       },
       matchday: 'Runde',
       gameweekProgress: 'Runder',
@@ -2596,6 +2604,10 @@ const translations = {
         bonus: 'Bonusfragen',
         standings: 'Tabelle',
         leaderboard: 'Rangliste',
+        userStats: 'Statistiken',
+      },
+      userStats: {
+        empty: 'Noch nichts zu zeigen — die Statistiken brauchen erst ein paar Tabellentipps.',
       },
       matchday: 'Spieltag',
       gameweekProgress: 'Spieltage',

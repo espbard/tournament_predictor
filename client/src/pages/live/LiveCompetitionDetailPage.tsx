@@ -22,6 +22,7 @@ import LiveUpcomingChecklist, {
 } from '@/components/live/LiveUpcomingChecklist';
 import LiveTablePredictionGate from '@/components/live/LiveTablePredictionGate';
 import LiveBonusQuestionsGate from '@/components/live/LiveBonusQuestionsGate';
+import UserStatCard from '@/components/UserStatCard';
 import InviteButton from '@/components/InviteButton';
 import { useAuthStore } from '@/store/authStore';
 import type { Team } from '@tournament-predictor/shared';
@@ -41,14 +42,14 @@ import type { Team } from '@tournament-predictor/shared';
 //
 // See docs/LIVE_TOURNAMENTS_PLAN.md §11.
 
-const TABS = ['fixtures', 'table', 'scorers', 'bonus', 'standings', 'leaderboard'] as const;
+const TABS = ['fixtures', 'table', 'scorers', 'bonus', 'standings', 'leaderboard', 'userStats'] as const;
 type TabId = (typeof TABS)[number];
 
 const LIVE_STATUSES = new Set(['in_play', 'paused']);
 
 export default function LiveCompetitionDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { t } = useT();
+  const { t, language } = useT();
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
@@ -56,7 +57,11 @@ export default function LiveCompetitionDetailPage() {
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
 
   const tabParam = searchParams.get('tab') as TabId | null;
-  const activeTab: TabId = tabParam && TABS.includes(tabParam) ? tabParam : 'fixtures';
+  const requestedTab: TabId = tabParam && TABS.includes(tabParam) ? tabParam : 'fixtures';
+  // The statistics are a test-account preview for now, and the server refuses everyone
+  // else — so anyone else is put back on the fixtures rather than shown an empty section.
+  const activeTab: TabId =
+    requestedTab === 'userStats' && !user?.isTestAccount ? 'fixtures' : requestedTab;
 
   const [stageKey, setStageKey] = useState<string | null>(null);
   const [matchday, setMatchday] = useState<number | null>(null);
@@ -99,6 +104,14 @@ export default function LiveCompetitionDetailPage() {
     queryKey: liveKeys.leaderboard(id!),
     queryFn: () => liveApi.leaderboard(id!),
     enabled: !!id && activeTab === 'leaderboard',
+  });
+
+  // The cards are worded server-side, so the language is part of the key rather than
+  // something the component re-renders around.
+  const { data: userStats = [] } = useQuery({
+    queryKey: liveKeys.userStats(id!, language),
+    queryFn: () => liveApi.userStats(id!, language),
+    enabled: !!id && activeTab === 'userStats' && !!user?.isTestAccount,
   });
 
   const { data: teams = [] } = useQuery({
@@ -745,6 +758,24 @@ export default function LiveCompetitionDetailPage() {
       )}
 
       {activeTab === 'leaderboard' && <LiveLeaderboard rows={leaderboard} competitionId={id!} />}
+
+      {activeTab === 'userStats' && (
+        // The same masonry the manual competition type uses, so a deck that grows past one
+        // card lays itself out the same way there and here.
+        <div className="columns-1 gap-6 px-4 sm:columns-2 sm:px-0 md:columns-3 lg:columns-4 min-[1260px]:columns-5 2xl:columns-6 min-[1840px]:columns-7">
+          {userStats.length === 0 ? (
+            <p className="py-4 text-center text-sm text-muted-foreground">
+              {t('live.userStats.empty')}
+            </p>
+          ) : (
+            userStats.map(stat => (
+              <div key={stat.id} className="mb-6 break-inside-avoid">
+                <UserStatCard competitionId={id!} data={stat} />
+              </div>
+            ))
+          )}
+        </div>
+      )}
     </main>
   );
 }

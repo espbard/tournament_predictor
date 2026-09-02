@@ -19,6 +19,7 @@ import type {
   LiveTournament,
   LiveTournamentStatus,
   LiveTournamentPreset,
+  UserStatCardData,
 } from '@tournament-predictor/shared';
 
 // ── Live tournament API client ────────────────────────────────────────────────
@@ -480,6 +481,9 @@ export const liveApi = {
   leave: (id: string) => api.delete<{ ok: true }>(`/live/competitions/${id}/leave`),
   members: (id: string) => api.get<LiveMember[]>(`/live/competitions/${id}/members`),
   leaderboard: (id: string) => api.get<LiveLeaderboardRow[]>(`/live/competitions/${id}/leaderboard`),
+  /** Test accounts and admins only for now. Cards come pre-worded in the given language. */
+  userStats: (id: string, lang: string) =>
+    api.get<UserStatCardData[]>(`/live/competitions/${id}/user-stats?lang=${lang}`),
   recalculateCompetition: (id: string) =>
     api.post<{ scoredPredictions: number }>(`/live/competitions/${id}/recalculate`, {}),
 
@@ -571,6 +575,8 @@ export const liveKeys = {
   userScorerPrediction: (competitionId: string, userId: string) =>
     ['live', 'user-scorer-prediction', competitionId, userId] as const,
   leaderboard: (competitionId: string) => ['live', 'leaderboard', competitionId] as const,
+  userStats: (competitionId: string, lang: string) =>
+    ['live', 'user-stats', competitionId, lang] as const,
   tablePrediction: (competitionId: string) => ['live', 'table-prediction', competitionId] as const,
   scorerPrediction: (competitionId: string) =>
     ['live', 'scorer-prediction', competitionId] as const,

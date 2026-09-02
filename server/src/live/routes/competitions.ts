@@ -47,6 +47,7 @@ import { redactLiveBonusAnswerPoints, redactLiveBonusQuestions } from '../bonusV
 import { recalculateLiveCompetition } from '../scoringTrigger';
 import { loadSelectionIndex } from '../selections';
 import { rankLiveScorers } from '../scorerScoring';
+import { buildLiveUserStats, type LiveStatsLang } from '../userStats';
 import { validateTableOrder } from '../tableScoring';
 import { joinLiveCompetition } from '../../lib/competitionJoin';
 import { ensureLiveInviteToken, inviteTokenPath } from '../../lib/inviteLinks';
@@ -447,6 +448,75 @@ liveCompetitionsRouter.get('/competitions/:id/leaderboard', requireAuth, async (
         };
       }),
     );
+  } catch (err) {
+    return fail(res, err);
+  }
+});
+
+/**
+ * User statistics — the same card deck the manual competition type has, built from live
+ * data.
+ *
+ * Test accounts and admins only while the deck is one card deep.
+ *
+ * The predictions are read through the membership table rather than straight off
+ * live_table_predictions: leaving a competition removes the membership row and leaves the
+ * prediction behind, and someone who has left should not still get a vote.
+ */
+liveCompetitionsRouter.get('/competitions/:id/user-stats', requireAuth, async (req, res) => {
+  try {
+    const user = res.locals.user;
+    if (!user.isAdmin && !user.isTestAccount) {
+      return res.status(403).json({ error: 'Not available' });
+    }
+    if (!(await assertMember(req.params.id, user))) {
+      return res.status(403).json({ error: 'Not a member of this competition' });
+    }
+    const lang: LiveStatsLang =
+      req.query.lang === 'no' ? 'no' : req.query.lang === 'de' ? 'de' : 'en';
+
+    const [competition] = await db
+      .select()
+      .from(liveCompetitions)
+      .where(eq(liveCompetitions.id, req.params.id));
+    if (!competition) return res.status(404).json({ error: 'Not found' });
+
+    const [tournament] = await db
+      .select()
+      .from(liveTournaments)
+      .where(eq(liveTournaments.id, competition.liveTournamentId));
+    if (!tournament) return res.status(404).json({ error: 'Live tournament not found' });
+
+    const stage = tablePredictionStage(getLiveFormat(tournament.format), tournament.startStageKey);
+    if (!stage) return res.json([]);
+
+    const [predictions, teams] = await Promise.all([
+      db
+        .select({
+          userId: liveTablePredictions.userId,
+          orderedTeamIds: liveTablePredictions.orderedTeamIds,
+        })
+        .from(liveTablePredictions)
+        .innerJoin(
+          liveCompetitionMembers,
+          and(
+            eq(liveCompetitionMembers.liveCompetitionId, liveTablePredictions.liveCompetitionId),
+            eq(liveCompetitionMembers.userId, liveTablePredictions.userId),
+          ),
+        )
+        .where(
+          and(
+            eq(liveTablePredictions.liveCompetitionId, competition.id),
+            eq(liveTablePredictions.stageKey, stage.key),
+          ),
+        ),
+      db
+        .select({ id: liveTeams.id, name: liveTeams.name, crestUrl: liveTeams.crestUrl })
+        .from(liveTeams)
+        .where(eq(liveTeams.liveTournamentId, tournament.id)),
+    ]);
+
+    return res.json(buildLiveUserStats(predictions, teams, lang));
   } catch (err) {
     return fail(res, err);
   }

@@ -1081,6 +1081,7 @@ Mounted as `app.use('/api/live', liveRouter)` in `server/src/index.ts`.
 | DELETE | `/competitions/:id/leave` | auth |
 | GET | `/competitions/:id/members` | auth |
 | GET | `/competitions/:id/leaderboard` | auth |
+| GET | `/competitions/:id/user-stats?lang=` | auth (member) **+ test account or admin** — the stat-card deck, worded server-side |
 | GET | `/competitions/:id/events` | auth — SSE: `fixtures-updated`, `leaderboard-updated` |
 | GET | `/competitions/:id/fixtures` | auth — **main read model**: fixtures for a stage/matchday + caller's prediction + `lockedAt` + `isLocked` + `isSelected` + awarded points, in one call |
 | PUT | `/competitions/:id/predictions` | auth — upsert one `{fixtureId, homeScore, awayScore}`; rejects a fixture left out of its gameweek's selected matches |

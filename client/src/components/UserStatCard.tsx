@@ -117,6 +117,7 @@ const CARD_EMOJIS: Record<string, string> = {
   hitOrMiss: '🎯',
   knockoutSpecialist: '🥊',
   theOptimist: '☀️',
+  peoplesFavourite: '❤️',
 };
 
 // Very small drop shadow so emoji overlays read clearly against any image behind them.
