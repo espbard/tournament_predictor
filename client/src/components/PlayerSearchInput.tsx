@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useT } from '@/lib/useT';
 import {
   searchPlayers,
@@ -27,6 +28,20 @@ interface Props {
 
 const SEARCH_DEBOUNCE_MS = 350;
 
+/** Room for five suggestions. Past that the panel scrolls rather than grows. */
+const PANEL_MAX_HEIGHT = 320;
+
+/** Breathing room between the panel and the edge of the window. */
+const VIEWPORT_MARGIN = 12;
+
+interface PanelPosition {
+  left: number;
+  width: number;
+  top?: number;
+  bottom?: number;
+  maxHeight: number;
+}
+
 export default function PlayerSearchInput({
   value,
   onChange,
@@ -46,16 +61,46 @@ export default function PlayerSearchInput({
   const [searchFailed, setSearchFailed] = useState(false);
   // Player data for the currently selected value (only populated when selected this session)
   const [selectedMeta, setSelectedMeta] = useState<PlayerOption | null>(null);
+  const [position, setPosition] = useState<PanelPosition | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * Where the suggestions go.
+   *
+   * Measured off the field and drawn at the top of the document rather than beside it: the
+   * panel then belongs to no card and no scrolling box, so nothing can clip it and nothing
+   * moves to make room for it. The field's own section keeps exactly the height it had
+   * before anybody typed.
+   */
+  const updatePosition = useCallback(() => {
+    const anchor = containerRef.current;
+    if (!anchor) return;
+    const rect = anchor.getBoundingClientRect();
+    const below = window.innerHeight - rect.bottom - VIEWPORT_MARGIN;
+    const above = rect.top - VIEWPORT_MARGIN;
+    // Above the field when there is more room there — which is what a field near the foot
+    // of a phone screen, under the keyboard, always has.
+    const flip = below < PANEL_MAX_HEIGHT && above > below;
+    setPosition({
+      left: rect.left,
+      width: rect.width,
+      top: flip ? undefined : rect.bottom + 4,
+      bottom: flip ? window.innerHeight - rect.top + 4 : undefined,
+      maxHeight: Math.min(PANEL_MAX_HEIGHT, Math.max(flip ? above : below, 120)),
+    });
+  }, []);
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
+      const target = e.target as Node;
+      // The panel lives outside this component's box now, so "outside" has to mean outside
+      // both — otherwise the first click on a suggestion closes the list it is aimed at.
+      if (containerRef.current?.contains(target) || panelRef.current?.contains(target)) return;
+      setOpen(false);
     }
     document.addEventListener('mousedown', onClickOutside);
     return () => document.removeEventListener('mousedown', onClickOutside);
@@ -64,13 +109,18 @@ export default function PlayerSearchInput({
   // Nothing in flight outlives the field.
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  // Bring the field up the screen when suggestions appear. On a phone the list renders
-  // below an input that is often already near the keyboard, and a suggestion nobody can see
-  // is a suggestion nobody can pick — which now means no answer at all.
+  // A panel drawn at fixed coordinates has to be re-measured whenever anything moves it:
+  // the page scrolling, a scrolling card, the window resizing, the phone turning.
   useEffect(() => {
     if (!open) return;
-    containerRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  }, [open]);
+    updatePosition();
+    window.addEventListener('scroll', updatePosition, true);
+    window.addEventListener('resize', updatePosition);
+    return () => {
+      window.removeEventListener('scroll', updatePosition, true);
+      window.removeEventListener('resize', updatePosition);
+    };
+  }, [open, updatePosition]);
 
   // Keep the arrow-key selection inside the visible part of a scrolling list.
   useEffect(() => {
@@ -106,9 +156,10 @@ export default function PlayerSearchInput({
       return;
     }
 
-    // Open on the first keystroke worth searching, so the list can say it is working
+    // Open on the first keystroke worth searching, so the panel can say it is working
     // rather than appearing out of nowhere a moment later.
     setOpen(true);
+    updatePosition();
     setLoading(true);
     debounceRef.current = setTimeout(async () => {
       const controller = new AbortController();
@@ -190,10 +241,24 @@ export default function PlayerSearchInput({
   // shown only for a real pick — otherwise it would swallow the field mid-word.
   const isSelected = allowFreeText ? !!selectedMeta : !!value;
 
-  // Where a pick is required, typed text is not an answer — say so once there is enough of
-  // it to have searched on and the search has come back.
+  // Where a pick is required, typed text is not an answer. Said with the field's own border
+  // rather than a line of text under it: a warning that comes and goes with the search would
+  // otherwise push the rest of the question around while somebody is still typing.
   const needsPick =
     !allowFreeText && !isSelected && query.trim().length >= PLAYER_SEARCH_MIN_LENGTH && !loading;
+
+  const message = searchFailed
+    ? t('bonusQuestions.picker.searchUnavailable')
+    : results.length === 0 && !loading
+      ? t('bonusQuestions.picker.noMatches')
+      : null;
+
+  const showPanel = open && !isSelected && (loading || results.length > 0 || message !== null);
+
+  // The border only warns once there is something to warn about: while the suggestions are
+  // up, the panel's own footer says what to do, and a field somebody is still typing into
+  // has no business looking like a mistake.
+  const warn = needsPick && (!showPanel || results.length === 0);
 
   return (
     <div ref={containerRef} className="relative">
@@ -232,12 +297,21 @@ export default function PlayerSearchInput({
             value={query}
             onChange={e => handleInputChange(e.target.value)}
             onKeyDown={handleKeyDown}
-            onFocus={() => (results.length > 0 || loading) && setOpen(true)}
+            onFocus={() => {
+              if (results.length === 0 && !loading && !searchFailed) return;
+              setOpen(true);
+              updatePosition();
+            }}
             placeholder={placeholder ?? (value || 'Search for a player…')}
             role="combobox"
-            aria-expanded={open}
+            aria-expanded={showPanel}
             aria-autocomplete="list"
-            className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            title={needsPick ? t('bonusQuestions.picker.pickOne') : undefined}
+            className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
+              warn
+                ? 'border-amber-500 focus:ring-amber-500 dark:border-amber-400'
+                : 'focus:ring-ring'
+            }`}
           />
           {loading && (
             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">…</span>
@@ -245,65 +319,82 @@ export default function PlayerSearchInput({
         </div>
       )}
 
-      {/* Typed but not picked, so there is no answer yet. Said out loud rather than left to
-          a disabled save button, since on a phone the suggestions can be under the keyboard. */}
-      {needsPick && (
-        <p
-          className={`mt-1 text-xs ${searchFailed ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}
-        >
-          {searchFailed
-            ? t('bonusQuestions.picker.searchUnavailable')
-            : results.length === 0
-              ? t('bonusQuestions.picker.noMatches')
-              : t('bonusQuestions.picker.pickOne')}
-        </p>
-      )}
-
-      {/* Dropdown. Tall enough for five suggestions, and scrolls past that: a list that
-          shows one name at a time is a list nobody can compare. */}
-      {open && !isSelected && (loading || results.length > 0) && (
-        <div className="absolute z-20 mt-1 w-full rounded-md border bg-background shadow-lg">
-          {loading && results.length === 0 ? (
-            <p className="px-3 py-2.5 text-sm text-muted-foreground">
-              {t('bonusQuestions.picker.searching')}
-            </p>
-          ) : (
-            <div ref={listRef} role="listbox" className="max-h-[17.5rem] overflow-y-auto">
-              {results.map((p, i) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  role="option"
-                  aria-selected={i === highlight}
-                  onMouseDown={e => e.preventDefault()}
-                  onMouseEnter={() => setHighlight(i)}
-                  onClick={() => selectPlayer(p)}
-                  className={`flex w-full items-center gap-3 px-3 py-2 text-left ${
-                    i === highlight ? 'bg-muted' : 'hover:bg-muted'
-                  }`}
-                >
-                  {p.thumb ? (
-                    <img
-                      src={p.thumb}
-                      alt=""
-                      className="h-8 w-8 rounded-full object-cover flex-shrink-0 bg-muted"
-                      onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                    />
-                  ) : (
-                    <div className="h-8 w-8 rounded-full bg-muted flex-shrink-0" />
-                  )}
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">{p.name}</p>
-                    {p.team && (
-                      <p className="text-xs text-muted-foreground truncate">{p.team}</p>
-                    )}
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+      {/* The suggestions, drawn over the page rather than inside the question. Five fit;
+          the rest scroll. Nothing here takes up room in the layout underneath. */}
+      {showPanel && position &&
+        createPortal(
+          <div
+            ref={panelRef}
+            role="listbox"
+            style={{
+              position: 'fixed',
+              left: position.left,
+              width: position.width,
+              top: position.top,
+              bottom: position.bottom,
+              maxHeight: position.maxHeight,
+            }}
+            className="z-[60] flex flex-col overflow-hidden rounded-md border bg-background shadow-lg"
+          >
+            {loading && results.length === 0 ? (
+              <p className="px-3 py-2.5 text-sm text-muted-foreground">
+                {t('bonusQuestions.picker.searching')}
+              </p>
+            ) : results.length === 0 ? (
+              <p
+                className={`px-3 py-2.5 text-sm ${
+                  searchFailed ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'
+                }`}
+              >
+                {message}
+              </p>
+            ) : (
+              <>
+                <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto">
+                  {results.map((p, i) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      role="option"
+                      aria-selected={i === highlight}
+                      onMouseDown={e => e.preventDefault()}
+                      onMouseEnter={() => setHighlight(i)}
+                      onClick={() => selectPlayer(p)}
+                      className={`flex w-full items-center gap-3 px-3 py-2 text-left ${
+                        i === highlight ? 'bg-muted' : 'hover:bg-muted'
+                      }`}
+                    >
+                      {p.thumb ? (
+                        <img
+                          src={p.thumb}
+                          alt=""
+                          className="h-8 w-8 rounded-full object-cover flex-shrink-0 bg-muted"
+                          onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                        />
+                      ) : (
+                        <div className="h-8 w-8 rounded-full bg-muted flex-shrink-0" />
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{p.name}</p>
+                        {p.team && (
+                          <p className="text-xs text-muted-foreground truncate">{p.team}</p>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                {/* Typed but not picked is not an answer, and the phone user who cannot see
+                    a disabled save button below the keyboard is told so here. */}
+                {!allowFreeText && (
+                  <p className="border-t px-3 py-1.5 text-xs text-muted-foreground">
+                    {t('bonusQuestions.picker.pickOne')}
+                  </p>
+                )}
+              </>
+            )}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
