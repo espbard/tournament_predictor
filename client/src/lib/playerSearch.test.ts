@@ -1,5 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { searchPlayers, clearPlayerSearchCache, foldPlayerName } from './playerSearch';
+import {
+  searchPlayers,
+  clearPlayerSearchCache,
+  foldPlayerName,
+  narrowCachedPlayers,
+  filterPlayersByQuery,
+} from './playerSearch';
 
 /**
  * The two databases, stubbed to behave the way the real ones do — which is the whole point
@@ -26,7 +32,13 @@ const SPORTS_DB_PLAYERS = [
 
 const WIKIPEDIA_PAGES = [
   { pageid: 9, title: 'Helmersen', description: 'surname', index: 1 },
-  { pageid: 10, title: 'Andreas Helmersen', description: 'Norwegian footballer', index: 3 },
+  {
+    pageid: 10,
+    title: 'Andreas Helmersen',
+    description: 'Norwegian footballer',
+    index: 3,
+    thumbnail: { source: 'https://example.test/wiki/helmersen.jpg' },
+  },
   {
     pageid: 11,
     title: 'Nils Helmersen (footballer, born 1990)',
@@ -39,19 +51,39 @@ const WIKIPEDIA_PAGES = [
 interface Stub {
   sportsDbFails?: boolean;
   wikipediaFails?: boolean;
+  /** Milliseconds TheSportsDB takes to answer — its free tier is the slow half. */
+  sportsDbDelay?: number;
+  /** TheSportsDB never answers at all, until something aborts the request. */
+  sportsDbHangs?: boolean;
+}
+
+/** What a fetch does when its signal is aborted, timeout or otherwise. */
+function abortable<T>(signal: AbortSignal | undefined, run: () => Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    signal?.addEventListener('abort', () =>
+      reject(new DOMException('The operation was aborted.', 'AbortError')),
+    );
+    run().then(resolve, reject);
+  });
 }
 
 function stubFetch(stub: Stub = {}) {
   const calls: string[] = [];
-  const fetchMock = vi.fn(async (url: string) => {
+  const fetchMock = vi.fn(async (url: string, init?: { signal?: AbortSignal }) => {
     calls.push(url);
     if (url.includes('thesportsdb')) {
       if (stub.sportsDbFails) throw new Error('offline');
+      if (stub.sportsDbHangs) return abortable(init?.signal, () => new Promise<never>(() => {}));
       const term = new URL(url).searchParams.get('p') ?? '';
       const hits = SPORTS_DB_PLAYERS.filter(p =>
         p.strPlayer.toLowerCase().startsWith(term.toLowerCase()),
       );
-      return { ok: true, json: async () => ({ player: hits.length > 0 ? hits : null }) };
+      const answer = { ok: true, json: async () => ({ player: hits.length > 0 ? hits : null }) };
+      if (!stub.sportsDbDelay) return answer;
+      return abortable(
+        init?.signal,
+        () => new Promise(resolve => setTimeout(() => resolve(answer), stub.sportsDbDelay)),
+      );
     }
     if (stub.wikipediaFails) throw new Error('offline');
     const search = new URL(url).searchParams.get('gsrsearch') ?? '';
@@ -154,5 +186,90 @@ describe('searchPlayers', () => {
 
     expect(await searchPlayers('a')).toEqual([]);
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe('being quick about it', () => {
+  it('shows what Wikipedia found without waiting for the slow database', async () => {
+    stubFetch({ sportsDbDelay: 300 });
+    const snapshots: string[][] = [];
+
+    const search = searchPlayers('Helmersen', {
+      onResults: found => snapshots.push(found.map(r => r.name)),
+    });
+
+    // Long enough for the quick leg, nowhere near long enough for the slow one.
+    await vi.waitFor(() => expect(snapshots.length).toBeGreaterThan(0));
+    expect(snapshots[0]).toContain('Andreas Helmersen');
+
+    const final = await search;
+    // And the club the slow leg was carrying lands on the row that was already there.
+    expect(final.find(r => r.name === 'Andreas Helmersen')?.team).toBe('Rosenborg');
+    expect(snapshots.length).toBeGreaterThan(1);
+  });
+
+  it('gives a suggestion a face from the article, before any club is known', async () => {
+    stubFetch({ sportsDbDelay: 300 });
+    const snapshots: (string | null)[][] = [];
+
+    const search = searchPlayers('Helmersen', {
+      onResults: found => snapshots.push(found.map(r => r.thumb)),
+    });
+    await vi.waitFor(() => expect(snapshots.length).toBeGreaterThan(0));
+
+    expect(snapshots[0]).toContain('https://example.test/wiki/helmersen.jpg');
+    await search;
+  });
+
+  it('does not look a player up twice across two different searches', async () => {
+    const calls = stubFetch();
+    // Resolves "Nils Helmersen" as one of the names behind the surname.
+    await searchPlayers('Helmersen');
+    const asked = calls.length;
+
+    // A different search, but the player behind it is one TheSportsDB has already answered
+    // for, so only the search itself costs anything.
+    await searchPlayers('Nils Helmersen');
+    const added = calls.slice(asked);
+    expect(added).toHaveLength(1);
+    expect(added[0]).toContain('wikipedia');
+  });
+
+  it('narrows what is already on screen while the search runs', async () => {
+    stubFetch();
+    await searchPlayers('Helmersen');
+
+    // A longer version of a search already made is answered on the spot.
+    const narrowed = narrowCachedPlayers('Andreas Helmersen');
+    expect(narrowed?.map(r => r.name)).toEqual(['Andreas Helmersen']);
+
+    // Something unrelated is not, and the caller is told so rather than shown the wrong list.
+    expect(narrowCachedPlayers('Ronaldo')).toBeNull();
+  });
+
+  it('drops the names a fresh query no longer fits', () => {
+    const shown = [
+      { id: '1', name: 'Andreas Helmersen', team: null, thumb: null },
+      { id: '2', name: 'Erling Haaland', team: null, thumb: null },
+    ];
+    expect(filterPlayersByQuery(shown, 'helm').map(r => r.name)).toEqual(['Andreas Helmersen']);
+    expect(filterPlayersByQuery(shown, 'zzz')).toEqual([]);
+  });
+
+  it('goes on without a database that has stopped answering', async () => {
+    vi.useFakeTimers();
+    try {
+      stubFetch({ sportsDbHangs: true });
+      const search = searchPlayers('Helmersen');
+
+      // The hung leg is dropped at the timeout — as is the lookup behind it, which asks the
+      // same silent database — and what Wikipedia found still stands.
+      await vi.advanceTimersByTimeAsync(6_000);
+      await vi.advanceTimersByTimeAsync(6_000);
+      const names = (await search).map(r => r.name);
+      expect(names).toContain('Andreas Helmersen');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

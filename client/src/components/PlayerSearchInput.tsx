@@ -3,6 +3,9 @@ import { createPortal } from 'react-dom';
 import { useT } from '@/lib/useT';
 import {
   searchPlayers,
+  narrowCachedPlayers,
+  filterPlayersByQuery,
+  warmPlayerSearch,
   isAborted,
   PLAYER_SEARCH_MIN_LENGTH,
   type PlayerOption,
@@ -26,7 +29,12 @@ interface Props {
   allowFreeText?: boolean;
 }
 
-const SEARCH_DEBOUNCE_MS = 350;
+/**
+ * Long enough that a fast typist is one search rather than eight, short enough that a
+ * thoughtful one is not left waiting on a timer before the request even goes out. Anything
+ * already searched is answered from the cache without waiting for this at all.
+ */
+const SEARCH_DEBOUNCE_MS = 180;
 
 /** Room for five suggestions. Past that the panel scrolls rather than grows. */
 const PANEL_MAX_HEIGHT = 320;
@@ -156,6 +164,13 @@ export default function PlayerSearchInput({
       return;
     }
 
+    // Answer this keystroke before anybody is asked anything. Typing a name is the same
+    // search over and over, each one a longer version of the last, so a search already made
+    // usually covers it — and failing that, the suggestions already on screen are narrowed
+    // to the ones that still match. Either way the list never shows a name that no longer
+    // fits what is in the field.
+    setResults(prev => narrowCachedPlayers(q) ?? filterPlayersByQuery(prev, q));
+
     // Open on the first keystroke worth searching, so the panel can say it is working
     // rather than appearing out of nowhere a moment later.
     setOpen(true);
@@ -165,10 +180,17 @@ export default function PlayerSearchInput({
       const controller = new AbortController();
       abortRef.current = controller;
       try {
-        const players = await searchPlayers(q, controller.signal);
-        if (controller.signal.aborted) return;
-        setResults(players);
-        setHighlight(-1);
+        const players = await searchPlayers(q, {
+          signal: controller.signal,
+          // Every time one of the databases reports, not once they all have.
+          onResults: found => {
+            if (controller.signal.aborted) return;
+            setResults(found);
+          },
+        });
+        // The last word: a search that found nothing has to be able to empty a list that
+        // narrowing put there.
+        if (!controller.signal.aborted) setResults(players);
       } catch (err) {
         if (isAborted(err) || controller.signal.aborted) return;
         setResults([]);
@@ -298,6 +320,9 @@ export default function PlayerSearchInput({
             onChange={e => handleInputChange(e.target.value)}
             onKeyDown={handleKeyDown}
             onFocus={() => {
+              // Open the connections now, while somebody is still reaching for the first
+              // letter: the first search is then a request rather than two handshakes.
+              warmPlayerSearch();
               if (results.length === 0 && !loading && !searchFailed) return;
               setOpen(true);
               updatePosition();
