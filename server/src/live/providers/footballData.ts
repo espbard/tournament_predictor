@@ -3,12 +3,15 @@ import { RateLimiter } from './rateLimiter';
 import { trimmedSample } from './sample';
 import {
   ProviderError,
+  SCORER_FEED_LIMIT,
   type FetchFixturesOptions,
   type LiveProvider,
   type ProviderCompetitionSummary,
   type ProviderFixture,
   type ProviderFixtureScore,
   type ProviderScorePair,
+  type ProviderScorer,
+  type ProviderSquadPlayer,
   type ProviderProbe,
   type ProviderProbeKey,
   type ProviderStandingRow,
@@ -82,6 +85,19 @@ interface RawMatch {
   homeTeam?: RawTeamRef | null;
   awayTeam?: RawTeamRef | null;
   score?: RawScore;
+}
+
+interface RawSquadPlayer {
+  id?: number | null;
+  name?: string | null;
+  position?: string | null;
+}
+
+interface RawScorer {
+  player?: { id?: number | null; name?: string | null; nationality?: string | null } | null;
+  team?: RawTeamRef | null;
+  goals?: number | null;
+  assists?: number | null;
 }
 
 // ── Status mapping ────────────────────────────────────────────────────────────
@@ -232,6 +248,70 @@ export function mapTeam(raw: RawTeamRef & { id: number }): ProviderTeam {
     // football-data expresses groups on the fixture, not the team. The sync engine
     // backfills this from fixtures for formats that actually have groups.
     groupName: null,
+  };
+}
+
+/**
+ * Flatten the squads out of a `/competitions/{id}/teams` payload.
+ *
+ * The teams endpoint carries a `squad` array per club, which is the only place the
+ * provider lists players who have not scored — and before a competition starts, that is
+ * every player. An entry with no id or no name is dropped: without an id there is nothing
+ * stable to match a goal tally against later, and without a name there is nothing to show.
+ *
+ * A team whose squad is absent or empty simply contributes nothing. Squads are published
+ * per season and can be missing for one the provider has only just created, which is a
+ * reason to report "no players" rather than to fail.
+ */
+export function mapSquads(payload: unknown): ProviderSquadPlayer[] {
+  const teams = (payload as { teams?: unknown[] } | null)?.teams ?? [];
+  const players: ProviderSquadPlayer[] = [];
+
+  for (const team of teams as Array<Record<string, any>>) {
+    const providerTeamId = team?.id != null ? String(team.id) : null;
+    if (!providerTeamId) continue;
+
+    for (const raw of (team.squad ?? []) as RawSquadPlayer[]) {
+      const name = emptyToNull(raw?.name);
+      if (raw?.id == null || !name) continue;
+      players.push({
+        providerPlayerId: String(raw.id),
+        name,
+        providerTeamId,
+        position: emptyToNull(raw.position),
+      });
+    }
+  }
+
+  return players;
+}
+
+/**
+ * Map one scorer entry.
+ *
+ * `assists` is null for plenty of real entries — the provider reports it only where its
+ * source has it — and null is taken as zero rather than as "unknown". The field is only
+ * ever used to break a tie on goals, so a missing value falling through to the name
+ * tie-break is the right answer, and a nullable number would spread through the ranking
+ * code for no gain.
+ */
+export function mapScorer(raw: RawScorer): ProviderScorer | null {
+  const id = raw.player?.id;
+  const name = emptyToNull(raw.player?.name);
+  // Without an id there is nothing stable to match on across syncs, and without a name
+  // there is nothing to show. Either missing means the entry is dropped rather than
+  // stored as a nameless row an admin cannot act on.
+  if (id == null || !name) return null;
+
+  return {
+    providerPlayerId: String(id),
+    name,
+    providerTeamId: raw.team?.id != null ? String(raw.team.id) : null,
+    // Kept whatever the provider calls it. Nothing downstream parses country names, and
+    // folding them would only invent a second spelling to disagree with.
+    nationality: emptyToNull(raw.player?.nationality),
+    goals: Math.max(0, Math.trunc(raw.goals ?? 0)),
+    assists: Math.max(0, Math.trunc(raw.assists ?? 0)),
   };
 }
 
@@ -404,6 +484,41 @@ export class FootballDataProvider implements LiveProvider {
     return mapStandings(data);
   }
 
+  /**
+   * Every club's squad in the competition, from the same endpoint fetchTeams uses.
+   *
+   * One request for the whole competition — the payload already carries `squad` per club,
+   * so there is no reason to ask for 36 teams individually and spend the rate limit.
+   */
+  async fetchSquads(competitionId: string, season: string): Promise<ProviderSquadPlayer[]> {
+    const data = await this.get<unknown>(
+      `/competitions/${encodeURIComponent(competitionId)}/teams?season=${encodeURIComponent(season)}`,
+    );
+    return mapSquads(data);
+  }
+
+  /**
+   * The competition's scorers, most goals first.
+   *
+   * `limit` matters: the endpoint defaults to the top 10, which is fewer than a shortlist
+   * usually needs. The response's own `count` is not returned here — the caller sees how
+   * many players it got, and a list exactly `limit` long is the signal that it was cut
+   * short.
+   */
+  async fetchScorers(
+    competitionId: string,
+    season: string,
+    limit = SCORER_FEED_LIMIT,
+  ): Promise<ProviderScorer[]> {
+    const data = await this.get<{ scorers?: RawScorer[] }>(
+      `/competitions/${encodeURIComponent(competitionId)}/scorers` +
+        `?season=${encodeURIComponent(season)}&limit=${encodeURIComponent(String(limit))}`,
+    );
+    return (data.scorers ?? [])
+      .map(mapScorer)
+      .filter((s): s is ProviderScorer => s !== null);
+  }
+
   // ── Diagnostics ─────────────────────────────────────────────────────────────
 
   /** One probe: the request, its status, and what it returned. Never throws. */
@@ -493,14 +608,23 @@ export class FootballDataProvider implements LiveProvider {
 
     probes.push(
       await this.probeOne('teams', `/competitions/${id}/teams?season=${s}`, body => {
+        const squadPlayers = mapSquads(body).length;
         const teams: any[] = body?.teams ?? [];
         return {
           count: teams.length,
           countForSeason: teams.length,
-          detail: teams
-            .slice(0, 6)
-            .map(t => t.tla ?? t.shortName ?? t.name)
-            .join(', ') || null,
+          // The squad count matters as much as the team count: it is what a top-scorer
+          // shortlist is built from, and it can be empty while the teams are not.
+          detail:
+            [
+              teams
+                .slice(0, 6)
+                .map(t => t.tla ?? t.shortName ?? t.name)
+                .join(', '),
+              `${squadPlayers} squad player(s)`,
+            ]
+              .filter(Boolean)
+              .join(' · ') || null,
         };
       }),
     );
@@ -520,6 +644,38 @@ export class FootballDataProvider implements LiveProvider {
           detail: rows === 0 ? null : `${total.length} table(s), ${played} games played`,
         };
       }),
+    );
+
+    // Asked at the limit the sync actually uses. Two things beyond "does it answer" are
+    // worth knowing here and are otherwise expensive to find out: whether the payload
+    // carries nationality, which the Norwegian-goals card counts on, and whether the
+    // endpoint honours a large limit or quietly clamps it — a clamped list would make
+    // every total a floor while looking exactly like a complete one.
+    probes.push(
+      await this.probeOne(
+        'scorers',
+        `/competitions/${id}/scorers?season=${s}&limit=${SCORER_FEED_LIMIT}`,
+        body => {
+          const scorers: RawScorer[] = body?.scorers ?? [];
+          const withGoals = scorers.filter(x => (x.goals ?? 0) > 0).length;
+          const withNationality = scorers.filter(x => !!x.player?.nationality).length;
+          const top = scorers[0];
+          return {
+            count: scorers.length,
+            countForSeason: scorers.length,
+            detail:
+              scorers.length === 0
+                ? 'the response carried no scorers at all'
+                : `${withGoals} with a goal · ${withNationality}/${scorers.length} with a ` +
+                  `nationality · asked for ${SCORER_FEED_LIMIT}, got ${scorers.length}` +
+                  (scorers.length >= SCORER_FEED_LIMIT
+                    ? ' (at the limit — the list may be cut short)'
+                    : '') +
+                  ` · top: ${top?.player?.name ?? '?'} (${top?.goals ?? 0}g ` +
+                  `${top?.assists ?? 0}a, ${top?.player?.nationality ?? 'no nationality'})`,
+          };
+        },
+      ),
     );
 
     return probes;

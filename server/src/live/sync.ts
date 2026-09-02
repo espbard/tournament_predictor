@@ -18,6 +18,7 @@ import {
 } from '../db/liveSchema';
 import { mirrorTeamCrests } from './crests';
 import { deriveMatchdays } from './matchdays';
+import { refreshLivePlayerGoals } from './scorers';
 import { seasonWindow } from './season';
 import { getProvider } from './providers';
 import { buildTeamNameIndex, matchTeamByName } from './teamMatching';
@@ -80,6 +81,12 @@ export interface SyncResult {
   crestsMirrored: number;
   /** Fixtures removed because their kickoff falls outside the tournament's season. */
   outOfSeasonRemoved: number;
+  /**
+   * Shortlisted players whose goals were refreshed from the provider's scorer list. Zero
+   * for a provider that serves none — the top-scorer ranking then runs on the counts an
+   * admin maintains by hand.
+   */
+  scorersSynced: number;
 }
 
 function emptyResult(): SyncResult {
@@ -94,6 +101,7 @@ function emptyResult(): SyncResult {
     seasonUnavailable: false,
     crestsMirrored: 0,
     outOfSeasonRemoved: 0,
+    scorersSynced: 0,
   };
 }
 
@@ -970,6 +978,22 @@ export async function syncTournamentStructure(tournamentId: string): Promise<Syn
     } catch (err) {
       console.warn(
         `[live-sync] ${tournament.id}: crest mirroring skipped:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+
+    // Also best-effort: the scorer list is a separate resource that a provider may not
+    // serve at all, and the top-scorer ranking falls back to hand-entered goals when it
+    // does not. Losing the fixtures and standings over it would be absurd.
+    //
+    // Refresh only. The shortlist is built by an admin searching for players, so a sync
+    // has no business adding anybody to it.
+    try {
+      const players = await refreshLivePlayerGoals(tournament.id);
+      result.scorersSynced = players.updated + players.adopted;
+    } catch (err) {
+      console.warn(
+        `[live-sync] ${tournament.id}: scorer list skipped:`,
         err instanceof Error ? err.message : err,
       );
     }

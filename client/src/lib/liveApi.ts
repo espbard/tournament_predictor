@@ -8,6 +8,8 @@ import type {
   LiveFixture,
   LiveFormatDef,
   LiveFormatKey,
+  LivePlayer,
+  LiveScorerPrediction,
   LiveScoringConfig,
   LiveStageDef,
   LiveStanding,
@@ -15,7 +17,9 @@ import type {
   LiveTablePrediction,
   LiveTeam,
   LiveTournament,
+  LiveTournamentStatus,
   LiveTournamentPreset,
+  UserStatCardData,
 } from '@tournament-predictor/shared';
 
 // ── Live tournament API client ────────────────────────────────────────────────
@@ -38,6 +42,7 @@ export interface LiveFixtureView extends LiveFixture {
     correctOutcomePoints: number;
     correctGoalDifferencePoints: number;
     exactScorePoints: number;
+    multiplierBonusPoints: number;
   } | null;
   /** kickoff − 60 min, or null when the kickoff time is still unknown. */
   lockedAt: string | null;
@@ -66,7 +71,11 @@ export interface LiveLeaderboardRow {
     correctOutcomePoints: number;
     correctGoalDifferencePoints: number;
     exactScorePoints: number;
+    /** What highlighted (multiplied) matches added on top of the three tiers. */
+    multiplierBonusPoints: number;
     tablePoints: number;
+    /** Zero until the tournament is marked completed, like the bonus points below. */
+    scorerPoints: number;
     /** Zero until the tournament is marked completed — bonus points are withheld until then. */
     bonusPoints: number;
   };
@@ -111,6 +120,65 @@ export type LiveTablePredictionView =
       currentOrder: string[];
       scoringConfig: LiveScoringConfig;
     };
+
+/** The top-scorer ranking as GET /live/competitions/:id/scorer-prediction returns it. */
+export type LiveScorerPredictionView =
+  | { available: false }
+  | {
+      available: true;
+      /** The shortlist an admin curated. Nothing else is ranked or scored. */
+      players: LivePlayer[];
+      /** The tournament's clubs, so a row can show the crest a player's team id points at. */
+      teams: LiveTeam[];
+      prediction: LiveScorerPrediction | null;
+      /** First kickoff of the starting stage − 60 min: the ranking closes with the table. */
+      lockedAt: string | null;
+      isLocked: boolean;
+      /** The ranking as it stands today, settled the same way the final one will be. */
+      currentOrder: string[];
+      /** Points are only awarded once the tournament is marked completed. */
+      isTournamentCompleted: boolean;
+      scoringConfig: LiveScoringConfig;
+    };
+
+/** What POST /live/tournaments/:id/players/refresh reports back. */
+export interface LiveScorerSyncResult {
+  /** False when the tournament's provider serves no scorer list. */
+  supported: boolean;
+  /** Players the scorers list carried. Zero before anybody has scored, which is normal. */
+  scorersFetched: number;
+  /** How many players are in the shortlist at all — tells "nothing to do" apart from "no goals yet". */
+  shortlistSize: number;
+  /** Shortlisted players whose goals moved. */
+  updated: number;
+  adopted: number;
+  /** Shortlisted players the scorer list did not mention — they may simply not have scored. */
+  unmatchedNames: string[];
+  truncated: boolean;
+  /** The provider has not published this season yet — try the previous one. */
+  seasonUnavailable: boolean;
+}
+
+/** One squad player a search turned up, as the admin's picker renders it. */
+export interface LivePlayerSearchHit {
+  providerPlayerId: string;
+  name: string;
+  providerTeamId: string;
+  position: string | null;
+  /** The club as this tournament stores it, when it is one we know. */
+  teamId: string | null;
+  teamName: string | null;
+  /** True when this player is already in the tournament's list. */
+  alreadyAdded: boolean;
+}
+
+export interface LivePlayerSearchResult {
+  /** False when the tournament's provider publishes no squads to search. */
+  supported: boolean;
+  /** The provider has not published this season yet — search the previous one. */
+  seasonUnavailable: boolean;
+  hits: LivePlayerSearchHit[];
+}
 
 export interface LiveCompetitionDetail extends LiveCompetition {
   tournament: LiveTournament | null;
@@ -301,6 +369,58 @@ export const liveApi = {
     id: string,
     body: { stageKey: string; matchday: number; fixtureIds: string[] | null },
   ) => api.put<SaveLiveSelectionResult>(`/live/tournaments/${id}/selected-matches`, body),
+  /** Make one match worth more. 1 is the default and leaves scoring untouched. */
+  saveFixtureMultiplier: (id: string, fixtureId: string, multiplier: number) =>
+    api.patch<{
+      fixture: { id: string; multiplier: number };
+      scoredPredictions: number;
+    }>(`/live/tournaments/${id}/fixtures/${fixtureId}/multiplier`, { multiplier }),
+  // ── Top-scorer ranking ────────────────────────────────────────────────────
+  // Players belong to the tournament, the ranking to a competition.
+  tournamentPlayers: (id: string) => api.get<LivePlayer[]>(`/live/tournaments/${id}/players`),
+  /** Look a player up in the provider's squads. Admin-only; answers from a short cache. */
+  searchPlayers: (id: string, q: string, season?: string) =>
+    api.get<LivePlayerSearchResult>(
+      `/live/tournaments/${id}/players/search${query({ q, season })}`,
+    ),
+  createPlayer: (
+    id: string,
+    body: {
+      name: string;
+      /** From a search hit. Omitted for a player the provider does not list at all. */
+      providerPlayerId?: string | null;
+      teamId?: string | null;
+      position?: string | null;
+      imageUrl?: string | null;
+      glowColor?: string | null;
+      goals?: number;
+      assists?: number;
+      isSelected?: boolean;
+    },
+  ) => api.post<LivePlayer>(`/live/tournaments/${id}/players`, body),
+  updatePlayer: (
+    id: string,
+    playerId: string,
+    body: {
+      name?: string;
+      teamId?: string | null;
+      position?: string | null;
+      imageUrl?: string | null;
+      glowColor?: string | null;
+      goals?: number;
+      assists?: number;
+      isSelected?: boolean;
+    },
+  ) => api.patch<LivePlayer>(`/live/tournaments/${id}/players/${playerId}`, body),
+  deletePlayer: (id: string, playerId: string) =>
+    api.delete<{ ok: boolean }>(`/live/tournaments/${id}/players/${playerId}`),
+  /** Drop every player who is not in the shortlist — the clean-up for old bulk imports. */
+  deleteUnselectedPlayers: (id: string) =>
+    api.delete<{ deleted: number }>(`/live/tournaments/${id}/players/unselected`),
+  /** Refresh the shortlist's goals and assists from the provider. Never adds anybody. */
+  refreshPlayerGoals: (id: string, body: { season?: string; limit?: number } = {}) =>
+    api.post<LiveScorerSyncResult>(`/live/tournaments/${id}/players/refresh`, body),
+
   // ── Bonus questions ───────────────────────────────────────────────────────
   // Questions belong to the tournament; answers to a competition.
   tournamentBonusQuestions: (id: string) =>
@@ -331,7 +451,19 @@ export const liveApi = {
     api.get<LiveStandingView[]>(`/live/tournaments/${id}/standings${query({ stageKey })}`),
 
   // ── Competitions ──────────────────────────────────────────────────────────
-  competitions: () => api.get<LiveCompetition[]>('/live/competitions'),
+  /**
+   * The list carries its tournament's status, so finished leagues can be sorted last, and
+   * the first predictable kickoff, so a card can say whether the league has started.
+   */
+  competitions: () =>
+    api.get<
+      Array<
+        LiveCompetition & {
+          tournamentStatus: LiveTournamentStatus | null;
+          firstKickoffAt: string | null;
+        }
+      >
+    >('/live/competitions'),
   competition: (id: string) => api.get<LiveCompetitionDetail>(`/live/competitions/${id}`),
   createCompetition: (body: {
     liveTournamentId: string;
@@ -349,6 +481,9 @@ export const liveApi = {
   leave: (id: string) => api.delete<{ ok: true }>(`/live/competitions/${id}/leave`),
   members: (id: string) => api.get<LiveMember[]>(`/live/competitions/${id}/members`),
   leaderboard: (id: string) => api.get<LiveLeaderboardRow[]>(`/live/competitions/${id}/leaderboard`),
+  /** Test accounts and admins only for now. Cards come pre-worded in the given language. */
+  userStats: (id: string, lang: string) =>
+    api.get<UserStatCardData[]>(`/live/competitions/${id}/user-stats?lang=${lang}`),
   recalculateCompetition: (id: string) =>
     api.post<{ scoredPredictions: number }>(`/live/competitions/${id}/recalculate`, {}),
 
@@ -368,6 +503,20 @@ export const liveApi = {
   otherUserTablePrediction: (competitionId: string, userId: string) =>
     api.get<LiveTablePrediction | null>(
       `/live/competitions/${competitionId}/table-prediction/${userId}`,
+    ),
+
+  scorerPrediction: (competitionId: string) =>
+    api.get<LiveScorerPredictionView>(`/live/competitions/${competitionId}/scorer-prediction`),
+  saveScorerPrediction: (competitionId: string, orderedPlayerIds: string[]) =>
+    api.put<LiveScorerPrediction>(`/live/competitions/${competitionId}/scorer-prediction`, {
+      orderedPlayerIds,
+    }),
+  /** Drops the caller's ranking. Refused once it has locked. */
+  clearScorerPrediction: (competitionId: string) =>
+    api.delete<{ ok: boolean }>(`/live/competitions/${competitionId}/scorer-prediction`),
+  otherUserScorerPrediction: (competitionId: string, userId: string) =>
+    api.get<LiveScorerPrediction | null>(
+      `/live/competitions/${competitionId}/scorer-prediction/${userId}`,
     ),
 
   bonusQuestions: (competitionId: string) =>
@@ -393,6 +542,7 @@ export const liveApi = {
         correctOutcomePoints: number;
         correctGoalDifferencePoints: number;
         exactScorePoints: number;
+        multiplierBonusPoints: number;
       }>
     >(`/live/competitions/${competitionId}/predictions/${userId}`),
 
@@ -422,8 +572,14 @@ export const liveKeys = {
     ['live', 'user-predictions', competitionId, userId] as const,
   userTablePrediction: (competitionId: string, userId: string) =>
     ['live', 'user-table-prediction', competitionId, userId] as const,
+  userScorerPrediction: (competitionId: string, userId: string) =>
+    ['live', 'user-scorer-prediction', competitionId, userId] as const,
   leaderboard: (competitionId: string) => ['live', 'leaderboard', competitionId] as const,
+  userStats: (competitionId: string, lang: string) =>
+    ['live', 'user-stats', competitionId, lang] as const,
   tablePrediction: (competitionId: string) => ['live', 'table-prediction', competitionId] as const,
+  scorerPrediction: (competitionId: string) =>
+    ['live', 'scorer-prediction', competitionId] as const,
   members: (competitionId: string) => ['live', 'members', competitionId] as const,
   standings: (tournamentId: string, stageKey?: string) =>
     ['live', 'standings', tournamentId, stageKey ?? null] as const,
@@ -432,6 +588,11 @@ export const liveKeys = {
   tournamentTeams: (id: string) => ['live', 'tournament', id, 'teams'] as const,
   tournamentFixtures: (id: string) => ['live', 'tournament', id, 'fixtures'] as const,
   selectedMatches: (id: string) => ['live', 'tournament', id, 'selected-matches'] as const,
+  tournamentPlayers: (id: string) => ['live', 'tournament', id, 'players'] as const,
+  playerSearch: (id: string, q: string, season: string) =>
+    ['live', 'tournament', id, 'player-search', q, season] as const,
+  /** Prefix of every search in one tournament — adding a player invalidates all of them. */
+  playerSearchAll: (id: string) => ['live', 'tournament', id, 'player-search'] as const,
   tournamentBonusQuestions: (id: string) => ['live', 'tournament', id, 'bonus-questions'] as const,
   bonusQuestions: (competitionId: string) => ['live', 'bonus-questions', competitionId] as const,
   bonusAnswers: (competitionId: string, userId?: string) =>

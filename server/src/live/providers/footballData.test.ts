@@ -13,7 +13,7 @@ import {
   mapTeam,
   normalTimeFromScore,
 } from './footballData';
-import { ProviderError } from './types';
+import { ProviderError, SCORER_FEED_LIMIT } from './types';
 import { RateLimiter } from './rateLimiter';
 
 // Raw→DTO mapping, checked against payloads actually returned by football-data.org on
@@ -433,6 +433,21 @@ describe('FootballDataProvider.probe', () => {
       '/competitions/CL/matches': { body: clMatches },
       '/competitions/CL/teams?season=2026': { status: 403, body: { message: 'restricted' } },
       '/competitions/CL/standings?season=2026': { body: clStandings },
+      [`/competitions/CL/scorers?season=2026&limit=${SCORER_FEED_LIMIT}`]: {
+        body: {
+          scorers: [
+            {
+              player: { id: 44, name: 'Kylian Mbappé', nationality: 'France' },
+              team: { id: 86 },
+              goals: 11,
+              assists: 3,
+            },
+            // No nationality, so the probe's coverage count is 1 of 2 — which is the
+            // signal that the nationality stat card would be undercounting.
+            { player: { id: 7, name: 'Lamine Yamal' }, team: { id: 81 }, goals: 6, assists: 5 },
+          ],
+        },
+      },
     });
 
     const probes = await provider().probe('CL', '2026');
@@ -444,6 +459,7 @@ describe('FootballDataProvider.probe', () => {
       'matches_unfiltered',
       'teams',
       'standings',
+      'scorers',
     ]);
     expect(by.get('competition')!.countForSeason).toBe(1);
     expect(by.get('matches_season')!.count).toBe(0);
@@ -453,6 +469,15 @@ describe('FootballDataProvider.probe', () => {
     expect(by.get('teams')!.ok).toBe(false);
     expect(by.get('teams')!.status).toBe(403);
     expect(by.get('standings')!.count).toBeGreaterThan(0);
+    // The probe that answers "can this competition's goal counts come from the provider
+    // at all?" — the go/no-go for syncing the top-scorer list rather than typing it. It
+    // also answers the two questions the nationality card depends on: how many rows carry
+    // a nationality, and whether the endpoint honoured the limit or clamped it.
+    expect(by.get('scorers')!.count).toBe(2);
+    expect(by.get('scorers')!.detail).toContain('Kylian Mbappé');
+    expect(by.get('scorers')!.detail).toContain('1/2 with a nationality');
+    expect(by.get('scorers')!.detail).toContain(`asked for ${SCORER_FEED_LIMIT}, got 2`);
+    expect(by.get('scorers')!.detail).not.toContain('at the limit');
   });
 
   it('records the URL it asked for, so the request itself can be checked', async () => {

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { liveFixtureMultiplier } from '@tournament-predictor/shared';
 import { useT } from '@/lib/useT';
 import LiveCountdown from '@/components/live/LiveCountdown';
 import LiveMatchPredictions from '@/components/live/LiveMatchPredictions';
@@ -12,6 +13,10 @@ import type { LiveFixtureView } from '@/lib/liveApi';
 //
 // Once the match is played it also carries the dropdown of what the whole league
 // predicted — which needs the competition, so `competitionId` is what switches it on.
+//
+// A match an admin has given a multiplier is rendered gold — border, tint and a ×N badge —
+// and says so in a line at the foot of the card, because a match worth several times the
+// rest is worth noticing before the deadline rather than after it.
 
 interface Props {
   fixture: LiveFixtureView;
@@ -38,6 +43,19 @@ function TeamBadge({ crestUrl }: { crestUrl: string | null }) {
 }
 
 const LIVE_STATUSES = new Set(['in_play', 'paused']);
+
+/**
+ * Which wording explains a multiplied match.
+ *
+ * Doubling and tripling have their own words; anything else falls back to the number.
+ * `applied` switches to the past tense, for a match whose points have been awarded.
+ */
+function multiplierExplainerKey(multiplier: number, applied: boolean): string {
+  const base = applied ? 'live.multiplier.explainerApplied' : 'live.multiplier.explainer';
+  if (multiplier === 2) return `${base}Double`;
+  if (multiplier === 3) return `${base}Triple`;
+  return base;
+}
 
 export default function LiveFixtureCard({
   fixture,
@@ -71,6 +89,10 @@ export default function LiveFixtureCard({
   // A match the admin left out of its gameweek's selection is not part of the game, so it
   // is shown as a result only — exactly like a fixture below the starting stage.
   const inPredictionGame = fixture.isPredictable && fixture.isSelected;
+  // Only meaningful on a match that is actually part of the game: a multiplier on a
+  // fixture nobody predicts multiplies nothing.
+  const multiplier = liveFixtureMultiplier(fixture.multiplier);
+  const isMultiplied = inPredictionGame && multiplier > 1;
   const editable = !readOnly && !fixture.isLocked && inPredictionGame && fixture.homeTeamId !== null;
   const dirty =
     home !== '' &&
@@ -97,20 +119,33 @@ export default function LiveFixtureCard({
   return (
     <div
       className={`rounded-lg border p-3 transition-colors ${
-        isLive ? 'border-green-500/60 bg-green-500/5' : ''
+        isMultiplied
+          ? // Gold outranks the live tint: a live match already says so with its pulsing
+            // minute, while the multiplier has nothing else to announce it.
+            'border-amber-400/70 bg-gradient-to-b from-amber-400/10 to-amber-400/[0.02] shadow-[0_0_0_1px_rgba(251,191,36,0.15)] dark:border-amber-300/50'
+          : isLive
+            ? 'border-green-500/60 bg-green-500/5'
+            : ''
       }`}
     >
       <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="text-xs text-muted-foreground">
-          {kickoff
-            ? kickoff.toLocaleString(undefined, {
-                weekday: 'short',
-                day: 'numeric',
-                month: 'short',
-                hour: '2-digit',
-                minute: '2-digit',
-              })
-            : t('live.kickoffTbd')}
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="truncate text-xs text-muted-foreground">
+            {kickoff
+              ? kickoff.toLocaleString(undefined, {
+                  weekday: 'short',
+                  day: 'numeric',
+                  month: 'short',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })
+              : t('live.kickoffTbd')}
+          </span>
+          {isMultiplied && (
+            <span className="shrink-0 rounded-full border border-amber-400/70 bg-amber-400/15 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-amber-700 dark:text-amber-300">
+              {t('live.multiplier.badge', { multiplier })}
+            </span>
+          )}
         </span>
 
         {isLive ? (
@@ -200,11 +235,23 @@ export default function LiveFixtureCard({
                   ? 'bg-green-500/15 text-green-700 dark:text-green-400'
                   : 'bg-muted text-muted-foreground'
               }`}
-              title={t('live.pointsBreakdown', {
-                outcome: fixture.prediction.correctOutcomePoints,
-                gd: fixture.prediction.correctGoalDifferencePoints,
-                exact: fixture.prediction.exactScorePoints,
-              })}
+              // The three tiers hold what the prediction earned at face value, so on a
+              // highlighted match they no longer add up to the badge without saying what
+              // the multiplier put on top.
+              title={
+                fixture.prediction.multiplierBonusPoints > 0
+                  ? t('live.pointsBreakdownWithHighlight', {
+                      outcome: fixture.prediction.correctOutcomePoints,
+                      gd: fixture.prediction.correctGoalDifferencePoints,
+                      exact: fixture.prediction.exactScorePoints,
+                      highlight: fixture.prediction.multiplierBonusPoints,
+                    })
+                  : t('live.pointsBreakdown', {
+                      outcome: fixture.prediction.correctOutcomePoints,
+                      gd: fixture.prediction.correctGoalDifferencePoints,
+                      exact: fixture.prediction.exactScorePoints,
+                    })
+              }
             >
               {t('live.pointsShort', { points: fixture.prediction.points })}
             </span>
@@ -224,6 +271,16 @@ export default function LiveFixtureCard({
       {isFinished && inPredictionGame && fixture.normalTimeHome === null && (
         <p className="mt-1 text-center text-xs text-amber-600 dark:text-amber-400">
           {t('live.notScorable')}
+        </p>
+      )}
+
+      {/* Why the card is gold. Past tense once the points have actually been written,
+          future while the match is still to be scored — and a word rather than a sum for
+          the two multipliers a language has one for: "counts double" reads better than
+          "multiplied by 2", in every language this app speaks. */}
+      {isMultiplied && (
+        <p className="mt-2 text-center text-xs font-medium text-amber-700 dark:text-amber-300">
+          {t(multiplierExplainerKey(multiplier, fixture.prediction?.points != null), { multiplier })}
         </p>
       )}
 

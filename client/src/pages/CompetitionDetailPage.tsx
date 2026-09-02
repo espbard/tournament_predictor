@@ -1137,11 +1137,6 @@ export default function CompetitionDetailPage() {
               <div className="min-w-0 overflow-hidden">
                 <h2 className="text-xl sm:text-2xl font-bold leading-tight">{competition.name}</h2>
                 {tournament && <p className="mt-0.5 text-sm text-muted-foreground">{tournament.name}</p>}
-                {!user?.isAdmin && (
-                  <p className="mt-0.5 text-xs text-muted-foreground font-mono tracking-wider whitespace-nowrap">
-                    {t('competitionDetail.inviteCodeLabel')}: {competition.inviteCode}
-                  </p>
-                )}
               </div>
               {/* Leave (or Edit, for an admin) with Invite stacked underneath. */}
               <div className="flex flex-col items-stretch gap-2 flex-shrink-0">

@@ -76,8 +76,14 @@ export default function Navbar() {
   // top, so the site name beside it is noise — the home icon is still there to get out.
   const isOnUserPredictionsPage = isOnPredictionsPage || isOnLivePredictionsPage;
   const liveCompetitionId = location.pathname.match(/^\/live\/competitions\/([^/]+)/)?.[1];
-  const LIVE_PREDICTION_TABS = ['fixtures', 'table', 'bonus'] as const;
-  const LIVE_RESULT_TABS = ['standings', 'leaderboard'] as const;
+  const LIVE_PREDICTION_TABS = ['fixtures', 'table', 'scorers', 'bonus'] as const;
+  // The statistics are a test-account preview for now; the live user-stats endpoint
+  // refuses everyone else, so the entry is not offered to them either.
+  const LIVE_RESULT_TABS = (
+    user?.isTestAccount
+      ? ['standings', 'leaderboard', 'userStats']
+      : ['standings', 'leaderboard']
+  ) as readonly ('standings' | 'leaderboard' | 'userStats')[];
   const liveTabParam = searchParams.get('tab') ?? '';
   const liveActiveTab = [...LIVE_PREDICTION_TABS, ...LIVE_RESULT_TABS].some(tab => tab === liveTabParam)
     ? liveTabParam

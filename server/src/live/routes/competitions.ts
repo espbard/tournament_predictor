@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { and, asc, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { generateId } from 'lucia';
 import {
   CreateLiveCompetitionSchema,
@@ -7,6 +7,7 @@ import {
   ListLiveFixturesQuerySchema,
   SaveLiveBonusAnswerSchema,
   SaveLivePredictionSchema,
+  SaveLiveScorerPredictionSchema,
   SaveLiveTablePredictionSchema,
   UpdateLiveCompetitionSchema,
   bonusQuestionLockAt,
@@ -30,7 +31,9 @@ import {
   liveCompetitionMembers,
   liveCompetitions,
   liveFixtures,
+  livePlayers,
   livePredictions,
+  liveScorerPredictions,
   liveStandings,
   liveTablePredictions,
   liveTeams,
@@ -43,6 +46,8 @@ import { loadLiveBonusAnswers } from '../bonusScoring';
 import { redactLiveBonusAnswerPoints, redactLiveBonusQuestions } from '../bonusVisibility';
 import { recalculateLiveCompetition } from '../scoringTrigger';
 import { loadSelectionIndex } from '../selections';
+import { rankLiveScorers } from '../scorerScoring';
+import { buildLiveUserStats, type LiveStatsLang } from '../userStats';
 import { validateTableOrder } from '../tableScoring';
 import { joinLiveCompetition } from '../../lib/competitionJoin';
 import { ensureLiveInviteToken, inviteTokenPath } from '../../lib/inviteLinks';
@@ -90,24 +95,85 @@ async function assertMember(
 liveCompetitionsRouter.get('/competitions', requireAuth, async (_req, res) => {
   try {
     const user = res.locals.user;
-    if (user.isAdmin) {
-      const all = await db
-        .select()
-        .from(liveCompetitions)
-        .orderBy(asc(liveCompetitions.createdAt));
-      return res.json(all);
-    }
 
-    const rows = await db
-      .select({ competition: liveCompetitions })
-      .from(liveCompetitionMembers)
-      .innerJoin(liveCompetitions, eq(liveCompetitionMembers.liveCompetitionId, liveCompetitions.id))
-      .where(eq(liveCompetitionMembers.userId, user.id));
-    return res.json(rows.map(r => r.competition));
+    // The tournament's status and its first kickoff ride along, so the competition list
+    // can sort finished leagues last and say whether a league has started without
+    // fetching a tournament and its fixtures per row.
+    const base = {
+      competition: liveCompetitions,
+      tournamentStatus: liveTournaments.status,
+      liveTournamentId: liveCompetitions.liveTournamentId,
+    };
+
+    const rows = user.isAdmin
+      ? await db
+          .select(base)
+          .from(liveCompetitions)
+          .leftJoin(liveTournaments, eq(liveCompetitions.liveTournamentId, liveTournaments.id))
+          .orderBy(asc(liveCompetitions.createdAt))
+      : await db
+          .select(base)
+          .from(liveCompetitionMembers)
+          .innerJoin(
+            liveCompetitions,
+            eq(liveCompetitionMembers.liveCompetitionId, liveCompetitions.id),
+          )
+          .leftJoin(liveTournaments, eq(liveCompetitions.liveTournamentId, liveTournaments.id))
+          .where(eq(liveCompetitionMembers.userId, user.id));
+
+    const firstKickoffs = await firstKickoffByTournament([
+      ...new Set(rows.map(r => r.liveTournamentId)),
+    ]);
+
+    return res.json(
+      rows.map(r => ({
+        ...r.competition,
+        tournamentStatus: r.tournamentStatus,
+        firstKickoffAt: firstKickoffs.get(r.liveTournamentId) ?? null,
+      })),
+    );
   } catch (err) {
     return fail(res, err);
   }
 });
+
+/**
+ * When each tournament's first predictable match kicks off.
+ *
+ * The starting stage only: everything below it is ingested but never predicted on, so a
+ * summer qualifier must not make a league look under way in August. One query for the
+ * whole list rather than one per competition.
+ */
+async function firstKickoffByTournament(
+  tournamentIds: string[],
+): Promise<Map<string, string | null>> {
+  const out = new Map<string, string | null>();
+  if (tournamentIds.length === 0) return out;
+
+  const rows = await db
+    .select({
+      liveTournamentId: liveFixtures.liveTournamentId,
+      firstKickoffAt: sql<string | null>`min(${liveFixtures.kickoffAt})`,
+    })
+    .from(liveFixtures)
+    .innerJoin(
+      liveTournaments,
+      and(
+        eq(liveTournaments.id, liveFixtures.liveTournamentId),
+        eq(liveFixtures.stageKey, liveTournaments.startStageKey),
+      ),
+    )
+    .where(inArray(liveFixtures.liveTournamentId, tournamentIds))
+    .groupBy(liveFixtures.liveTournamentId);
+
+  for (const row of rows) {
+    out.set(
+      row.liveTournamentId,
+      row.firstKickoffAt ? new Date(row.firstKickoffAt).toISOString() : null,
+    );
+  }
+  return out;
+}
 
 // Defined before /competitions/:id so 'join' is not swallowed as an id.
 liveCompetitionsRouter.post('/competitions/join', requireAuth, async (req, res) => {
@@ -345,7 +411,9 @@ liveCompetitionsRouter.get('/competitions/:id/leaderboard', requireAuth, async (
         correctOutcomePoints: liveCompetitionMembers.correctOutcomePoints,
         correctGoalDifferencePoints: liveCompetitionMembers.correctGoalDifferencePoints,
         exactScorePoints: liveCompetitionMembers.exactScorePoints,
+        multiplierBonusPoints: liveCompetitionMembers.multiplierBonusPoints,
         tablePoints: liveCompetitionMembers.tablePoints,
+        scorerPoints: liveCompetitionMembers.scorerPoints,
         bonusPoints: liveCompetitionMembers.bonusPoints,
       })
       .from(liveCompetitionMembers)
@@ -372,11 +440,120 @@ liveCompetitionsRouter.get('/competitions/:id/leaderboard', requireAuth, async (
             correctOutcomePoints: row.correctOutcomePoints,
             correctGoalDifferencePoints: row.correctGoalDifferencePoints,
             exactScorePoints: row.exactScorePoints,
+            multiplierBonusPoints: row.multiplierBonusPoints,
             tablePoints: row.tablePoints,
+            scorerPoints: row.scorerPoints,
             bonusPoints: row.bonusPoints,
           },
         };
       }),
+    );
+  } catch (err) {
+    return fail(res, err);
+  }
+});
+
+/**
+ * User statistics — the same card deck the manual competition type has, built from live
+ * data.
+ *
+ * Test accounts and admins only while the deck is shallow.
+ */
+liveCompetitionsRouter.get('/competitions/:id/user-stats', requireAuth, async (req, res) => {
+  try {
+    const user = res.locals.user;
+    if (!user.isAdmin && !user.isTestAccount) {
+      return res.status(403).json({ error: 'Not available' });
+    }
+    if (!(await assertMember(req.params.id, user))) {
+      return res.status(403).json({ error: 'Not a member of this competition' });
+    }
+    const lang: LiveStatsLang =
+      req.query.lang === 'no' ? 'no' : req.query.lang === 'de' ? 'de' : 'en';
+
+    const [competition] = await db
+      .select()
+      .from(liveCompetitions)
+      .where(eq(liveCompetitions.id, req.params.id));
+    if (!competition) return res.status(404).json({ error: 'Not found' });
+
+    const [tournament] = await db
+      .select()
+      .from(liveTournaments)
+      .where(eq(liveTournaments.id, competition.liveTournamentId));
+    if (!tournament) return res.status(404).json({ error: 'Live tournament not found' });
+
+    // A format with no table stage can still have a top-scorer ranking, so this narrows
+    // the table half rather than ending the whole request.
+    const stage = tablePredictionStage(getLiveFormat(tournament.format), tournament.startStageKey);
+
+    const [tablePredictions, teams, scorerPredictions, players] = await Promise.all([
+      stage
+        ? db
+            .select({
+              userId: liveTablePredictions.userId,
+              orderedTeamIds: liveTablePredictions.orderedTeamIds,
+            })
+            .from(liveTablePredictions)
+            // Read through the membership table rather than straight off the prediction
+            // table: leaving a competition removes the membership row and leaves the
+            // prediction behind, and someone who has left should not still get a vote.
+            .innerJoin(
+              liveCompetitionMembers,
+              and(
+                eq(
+                  liveCompetitionMembers.liveCompetitionId,
+                  liveTablePredictions.liveCompetitionId,
+                ),
+                eq(liveCompetitionMembers.userId, liveTablePredictions.userId),
+              ),
+            )
+            .where(
+              and(
+                eq(liveTablePredictions.liveCompetitionId, competition.id),
+                eq(liveTablePredictions.stageKey, stage.key),
+              ),
+            )
+        : [],
+      db
+        .select({ id: liveTeams.id, name: liveTeams.name, crestUrl: liveTeams.crestUrl })
+        .from(liveTeams)
+        .where(eq(liveTeams.liveTournamentId, tournament.id)),
+      db
+        .select({
+          userId: liveScorerPredictions.userId,
+          orderedPlayerIds: liveScorerPredictions.orderedPlayerIds,
+        })
+        .from(liveScorerPredictions)
+        // Same membership join, for the same reason.
+        .innerJoin(
+          liveCompetitionMembers,
+          and(
+            eq(liveCompetitionMembers.liveCompetitionId, liveScorerPredictions.liveCompetitionId),
+            eq(liveCompetitionMembers.userId, liveScorerPredictions.userId),
+          ),
+        )
+        .where(eq(liveScorerPredictions.liveCompetitionId, competition.id)),
+      // Every player, not just the shortlist: a ranking saved before the admin deselected
+      // someone still holds that id, and the card should be able to name them.
+      db
+        .select({ id: livePlayers.id, name: livePlayers.name, imageUrl: livePlayers.imageUrl })
+        .from(livePlayers)
+        .where(eq(livePlayers.liveTournamentId, tournament.id)),
+    ]);
+
+    return res.json(
+      buildLiveUserStats(
+        {
+          tablePredictions,
+          teams,
+          scorerPredictions,
+          players,
+          // Already on the row this route loaded, so the nationality card costs no query.
+          scorerNationalities: tournament.scorerNationalities ?? null,
+        },
+        lang,
+      ),
     );
   } catch (err) {
     return fail(res, err);
@@ -494,6 +671,7 @@ liveCompetitionsRouter.get('/competitions/:id/fixtures', requireAuth, async (req
                 correctOutcomePoints: prediction.correctOutcomePoints,
                 correctGoalDifferencePoints: prediction.correctGoalDifferencePoints,
                 exactScorePoints: prediction.exactScorePoints,
+                multiplierBonusPoints: prediction.multiplierBonusPoints,
               }
             : null,
           lockedAt: lockAt ? lockAt.toISOString() : null,
@@ -987,6 +1165,296 @@ liveCompetitionsRouter.get(
  * Gated on the fixture's own lock, the same rule the per-user routes above follow: until
  * kickoff − 60 min this would be a way to copy somebody else's prediction.
  */
+// ── Top-scorer ranking ────────────────────────────────────────────────────────
+//
+// The tournament's second ranking prediction. Same shape as the table above — order a
+// list, score the positions you got exactly right — but over the shortlist of players an
+// admin curated, and settled on goals rather than results.
+//
+// It closes with the table prediction, an hour before the first match of the starting
+// stage, because a ranking of who will end up top scorer means nothing once the goals
+// have started going in.
+
+/** Everything the ranking tab needs: the shortlist, the saved order, the lock, the result. */
+liveCompetitionsRouter.get('/competitions/:id/scorer-prediction', requireAuth, async (req, res) => {
+  try {
+    const user = res.locals.user;
+    const [competition] = await db
+      .select()
+      .from(liveCompetitions)
+      .where(eq(liveCompetitions.id, req.params.id));
+    if (!competition) return res.status(404).json({ error: 'Not found' });
+    if (!(await assertMember(competition.id, user))) {
+      return res.status(403).json({ error: 'Not a member of this competition' });
+    }
+
+    const [tournament] = await db
+      .select()
+      .from(liveTournaments)
+      .where(eq(liveTournaments.id, competition.liveTournamentId));
+    if (!tournament) return res.status(404).json({ error: 'Live tournament not found' });
+
+    const players = await db
+      .select()
+      .from(livePlayers)
+      .where(
+        and(eq(livePlayers.liveTournamentId, tournament.id), eq(livePlayers.isSelected, true)),
+      );
+
+    // No shortlist, no ranking. An admin who has not picked anybody has not opened this
+    // part of the game, and an empty ranking must never gate a member out of the league.
+    if (players.length < 2) return res.json({ available: false });
+
+    const stage = tablePredictionStage(getLiveFormat(tournament.format), tournament.startStageKey);
+    const stageFixtures = stage
+      ? await db
+          .select({ kickoffAt: liveFixtures.kickoffAt })
+          .from(liveFixtures)
+          .where(
+            and(
+              eq(liveFixtures.liveTournamentId, tournament.id),
+              eq(liveFixtures.stageKey, stage.key),
+            ),
+          )
+      : [];
+    const kickoffs = stageFixtures.map(f => f.kickoffAt);
+    const lockAt = tablePredictionLockAt(kickoffs);
+
+    const [prediction] = await db
+      .select()
+      .from(liveScorerPredictions)
+      .where(
+        and(
+          eq(liveScorerPredictions.liveCompetitionId, competition.id),
+          eq(liveScorerPredictions.userId, user.id),
+        ),
+      );
+
+    // The ranking as it stands today, by the same rule the final one is settled by. It
+    // seeds a new prediction and, later, shows how the real thing is going.
+    const currentOrder = rankLiveScorers(players).map(p => p.id);
+
+    // The clubs, for their crests: a player row shows who they play for, and a player
+    // carries only a team id.
+    const teams = await db
+      .select()
+      .from(liveTeams)
+      .where(eq(liveTeams.liveTournamentId, tournament.id));
+
+    return res.json({
+      available: true,
+      players,
+      teams,
+      prediction: prediction ?? null,
+      lockedAt: lockAt ? lockAt.toISOString() : null,
+      isLocked: isTablePredictionLocked(kickoffs),
+      currentOrder,
+      // Points are only awarded once the tournament is completed, which is what the tab
+      // tells the user while the season runs.
+      isTournamentCompleted: tournament.status === 'completed',
+      scoringConfig: withLiveScoringDefaults(competition.scoringConfig),
+    });
+  } catch (err) {
+    return fail(res, err);
+  }
+});
+
+/**
+ * Save the whole ranking.
+ *
+ * Validated as a complete permutation of the shortlist, exactly as the table is: a
+ * partial or duplicated ranking would let somebody quietly stack the positions they are
+ * confident about.
+ */
+liveCompetitionsRouter.put('/competitions/:id/scorer-prediction', requireAuth, async (req, res) => {
+  try {
+    const parsed = SaveLiveScorerPredictionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid body', details: parsed.error.flatten() });
+    }
+
+    const user = res.locals.user;
+    if (user.isLeaderboardUser) {
+      return res.status(403).json({ error: 'This account cannot make predictions' });
+    }
+    const [competition] = await db
+      .select()
+      .from(liveCompetitions)
+      .where(eq(liveCompetitions.id, req.params.id));
+    if (!competition) return res.status(404).json({ error: 'Not found' });
+    if (!(await assertMember(competition.id, user))) {
+      return res.status(403).json({ error: 'Not a member of this competition' });
+    }
+
+    const [tournament] = await db
+      .select()
+      .from(liveTournaments)
+      .where(eq(liveTournaments.id, competition.liveTournamentId));
+    if (!tournament) return res.status(404).json({ error: 'Live tournament not found' });
+
+    const stage = tablePredictionStage(getLiveFormat(tournament.format), tournament.startStageKey);
+    const kickoffs = stage
+      ? (
+          await db
+            .select({ kickoffAt: liveFixtures.kickoffAt })
+            .from(liveFixtures)
+            .where(
+              and(
+                eq(liveFixtures.liveTournamentId, tournament.id),
+                eq(liveFixtures.stageKey, stage.key),
+              ),
+            )
+        ).map(f => f.kickoffAt)
+      : [];
+
+    if (isTablePredictionLocked(kickoffs)) {
+      const lockAt = tablePredictionLockAt(kickoffs);
+      return res.status(400).json({
+        error: 'The top-scorer ranking for this competition is closed',
+        lockedAt: lockAt ? lockAt.toISOString() : null,
+      });
+    }
+
+    const players = await db
+      .select({ id: livePlayers.id })
+      .from(livePlayers)
+      .where(
+        and(eq(livePlayers.liveTournamentId, tournament.id), eq(livePlayers.isSelected, true)),
+      );
+    if (players.length < 2) {
+      return res.status(400).json({ error: 'This tournament has no top-scorer shortlist' });
+    }
+
+    // Shared with the table prediction: the same "every id exactly once" rule.
+    const validation = validateTableOrder(
+      parsed.data.orderedPlayerIds,
+      players.map(p => p.id),
+    );
+    if (!validation.ok) {
+      return res.status(400).json({ error: 'Invalid ranking', reason: validation.reason });
+    }
+
+    const now = new Date();
+    const [saved] = await db
+      .insert(liveScorerPredictions)
+      .values({
+        id: generateId(15),
+        liveCompetitionId: competition.id,
+        userId: user.id,
+        orderedPlayerIds: parsed.data.orderedPlayerIds,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [liveScorerPredictions.liveCompetitionId, liveScorerPredictions.userId],
+        set: { orderedPlayerIds: parsed.data.orderedPlayerIds, updatedAt: now },
+      })
+      .returning();
+
+    return res.json(saved);
+  } catch (err) {
+    return fail(res, err);
+  }
+});
+
+/**
+ * Another member's ranking.
+ *
+ * Only their order: the shortlist, the deadline and the scoring all belong to the
+ * competition and the caller already has them from their own view.
+ *
+ * Deliberately not gated on the ranking having locked, unlike a fixture prediction. It
+ * closes at the first kickoff for everybody at once, so by the time there is a leaderboard
+ * to click a name on, every ranking in the competition is already final.
+ */
+liveCompetitionsRouter.get(
+  '/competitions/:id/scorer-prediction/:userId',
+  requireAuth,
+  async (req, res) => {
+    try {
+      const { id, userId } = req.params;
+      if (!(await assertMember(id, res.locals.user))) {
+        return res.status(403).json({ error: 'Not a member of this competition' });
+      }
+
+      const [prediction] = await db
+        .select()
+        .from(liveScorerPredictions)
+        .where(
+          and(
+            eq(liveScorerPredictions.liveCompetitionId, id),
+            eq(liveScorerPredictions.userId, userId),
+          ),
+        );
+      return res.json(prediction ?? null);
+    } catch (err) {
+      return fail(res, err);
+    }
+  },
+);
+
+/**
+ * Delete the caller's ranking, putting them back in front of the first-run gate.
+ *
+ * Only while it is still open, for the same reason the table prediction is: once it locks
+ * it is what the tournament is scored against. Nothing needs recomputing — ranking points
+ * are not awarded until the tournament completes, long after this deadline.
+ */
+liveCompetitionsRouter.delete(
+  '/competitions/:id/scorer-prediction',
+  requireAuth,
+  async (req, res) => {
+    try {
+      const user = res.locals.user;
+      const [competition] = await db
+        .select()
+        .from(liveCompetitions)
+        .where(eq(liveCompetitions.id, req.params.id));
+      if (!competition) return res.status(404).json({ error: 'Not found' });
+      if (!(await assertMember(competition.id, user))) {
+        return res.status(403).json({ error: 'Not a member of this competition' });
+      }
+
+      const [tournament] = await db
+        .select()
+        .from(liveTournaments)
+        .where(eq(liveTournaments.id, competition.liveTournamentId));
+      if (!tournament) return res.status(404).json({ error: 'Live tournament not found' });
+
+      const stage = tablePredictionStage(getLiveFormat(tournament.format), tournament.startStageKey);
+      const kickoffs = stage
+        ? (
+            await db
+              .select({ kickoffAt: liveFixtures.kickoffAt })
+              .from(liveFixtures)
+              .where(
+                and(
+                  eq(liveFixtures.liveTournamentId, tournament.id),
+                  eq(liveFixtures.stageKey, stage.key),
+                ),
+              )
+          ).map(f => f.kickoffAt)
+        : [];
+      if (isTablePredictionLocked(kickoffs)) {
+        return res.status(400).json({ error: 'The top-scorer ranking for this competition is closed' });
+      }
+
+      await db
+        .delete(liveScorerPredictions)
+        .where(
+          and(
+            eq(liveScorerPredictions.liveCompetitionId, competition.id),
+            eq(liveScorerPredictions.userId, user.id),
+          ),
+        );
+
+      return res.json({ ok: true });
+    } catch (err) {
+      return fail(res, err);
+    }
+  },
+);
+
 liveCompetitionsRouter.get(
   '/competitions/:id/fixtures/:fixtureId/predictions',
   requireAuth,
@@ -1030,6 +1498,7 @@ liveCompetitionsRouter.get(
           correctOutcomePoints: livePredictions.correctOutcomePoints,
           correctGoalDifferencePoints: livePredictions.correctGoalDifferencePoints,
           exactScorePoints: livePredictions.exactScorePoints,
+          multiplierBonusPoints: livePredictions.multiplierBonusPoints,
         })
         .from(liveCompetitionMembers)
         .innerJoin(users, eq(liveCompetitionMembers.userId, users.id))

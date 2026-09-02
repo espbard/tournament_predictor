@@ -113,6 +113,54 @@ export interface ProviderStandingRow {
   form: string | null;
 }
 
+/**
+ * How many rows the scorer feed is asked for.
+ *
+ * Shared by the sync and the diagnostic probe so they cannot drift, and deliberately far
+ * above the size of any shortlist: the feed is ranked, so a small limit returns the top
+ * scorers and silently omits the long tail of one-goal players. That is harmless when the
+ * only job is refreshing a ten-player shortlist and wrong the moment anything counts a
+ * total — see the nationality snapshot in server/src/live/scorers.ts.
+ */
+export const SCORER_FEED_LIMIT = 500;
+
+/**
+ * One player in a competition's scorer list.
+ *
+ * `assists` is carried because the top-scorer ranking breaks a tie on goals with it —
+ * a provider that does not report assists should send 0 rather than guessing, which
+ * simply falls the tie-break through to the player's name.
+ */
+export interface ProviderScorer {
+  providerPlayerId: string;
+  name: string;
+  /** The club the provider lists them under. Null when the payload omits it. */
+  providerTeamId: string | null;
+  /**
+   * The provider's own country name for the player — football-data spells them in English
+   * ("Norway", "Bosnia and Herzegovina"). Null when the payload omits it, which a provider
+   * that does not report nationality must send rather than guessing one.
+   */
+  nationality: string | null;
+  goals: number;
+  assists: number;
+}
+
+/**
+ * One player in a club's squad.
+ *
+ * The roster, not the scoring: this is how a shortlist can be built before a ball has been
+ * kicked, when the scorer list is empty by definition. Goals arrive separately, through
+ * fetchScorers, and the two are matched on `providerPlayerId`.
+ */
+export interface ProviderSquadPlayer {
+  providerPlayerId: string;
+  name: string;
+  providerTeamId: string;
+  /** "Goalkeeper", "Centre-Back", "Centre-Forward"… Free text; the provider's own wording. */
+  position: string | null;
+}
+
 export interface FetchFixturesOptions {
   /** ISO date, inclusive. Used by the live window sync to fetch only today's fixtures. */
   dateFrom?: string;
@@ -141,7 +189,9 @@ export type ProviderProbeKey =
   | 'matches_paged'
   | 'matches_unfiltered'
   | 'teams'
-  | 'standings';
+  | 'standings'
+  /** Does this provider serve a scorer list for the season, and how long is it? */
+  | 'scorers';
 
 export interface ProviderProbe {
   key: ProviderProbeKey;
@@ -184,6 +234,23 @@ export interface LiveProvider {
     opts?: FetchFixturesOptions,
   ): Promise<ProviderFixture[]>;
   fetchStandings(competitionId: string, season: string): Promise<ProviderStandingRow[]>;
+  /**
+   * Every club's squad, flattened.
+   *
+   * Optional, like fetchScorers. This is the list an admin picks a top-scorer shortlist
+   * from, so it has to include players who have not scored — which is all of them before
+   * the competition starts.
+   */
+  fetchSquads?(competitionId: string, season: string): Promise<ProviderSquadPlayer[]>;
+  /**
+   * The competition's scorers, most goals first.
+   *
+   * Optional: a fixtures-only provider has none, and the top-scorer ranking falls back to
+   * the goal counts an admin maintains by hand. An adapter that implements it should ask
+   * for `limit` players and let the caller notice a truncated list rather than paging
+   * silently — the shortlist is a handful of names, not the whole competition.
+   */
+  fetchScorers?(competitionId: string, season: string, limit?: number): Promise<ProviderScorer[]>;
   /**
    * Ask every endpoint separately and report what came back, without throwing.
    *

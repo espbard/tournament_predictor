@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '@/lib/api';
@@ -14,6 +14,13 @@ import LiveLeaderboard from '@/components/live/LiveLeaderboard';
 import LiveQualifiedTeamsPanel from '@/components/live/LiveQualifiedTeamsPanel';
 import LiveTablePrediction from '@/components/live/LiveTablePrediction';
 import LiveBonusQuestionsTab from '@/components/live/LiveBonusQuestionsTab';
+import LiveScorerPrediction from '@/components/live/LiveScorerPrediction';
+import LiveScorerPredictionGate from '@/components/live/LiveScorerPredictionGate';
+import LiveUpcomingChecklist, {
+  type ChecklistItem,
+  type ChecklistKey,
+} from '@/components/live/LiveUpcomingChecklist';
+import LiveUserStatCard from '@/components/live/LiveUserStatCard';
 import LiveTablePredictionGate from '@/components/live/LiveTablePredictionGate';
 import LiveBonusQuestionsGate from '@/components/live/LiveBonusQuestionsGate';
 import InviteButton from '@/components/InviteButton';
@@ -35,14 +42,14 @@ import type { Team } from '@tournament-predictor/shared';
 //
 // See docs/LIVE_TOURNAMENTS_PLAN.md §11.
 
-const TABS = ['fixtures', 'table', 'bonus', 'standings', 'leaderboard'] as const;
+const TABS = ['fixtures', 'table', 'scorers', 'bonus', 'standings', 'leaderboard', 'userStats'] as const;
 type TabId = (typeof TABS)[number];
 
 const LIVE_STATUSES = new Set(['in_play', 'paused']);
 
 export default function LiveCompetitionDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { t } = useT();
+  const { t, language } = useT();
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
@@ -50,11 +57,17 @@ export default function LiveCompetitionDetailPage() {
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
 
   const tabParam = searchParams.get('tab') as TabId | null;
-  const activeTab: TabId = tabParam && TABS.includes(tabParam) ? tabParam : 'fixtures';
+  const requestedTab: TabId = tabParam && TABS.includes(tabParam) ? tabParam : 'fixtures';
+  // The statistics are a test-account preview for now, and the server refuses everyone
+  // else — so anyone else is put back on the fixtures rather than shown an empty section.
+  const activeTab: TabId =
+    requestedTab === 'userStats' && !user?.isTestAccount ? 'fixtures' : requestedTab;
 
   const [stageKey, setStageKey] = useState<string | null>(null);
   const [matchday, setMatchday] = useState<number | null>(null);
   const [savingFixtureId, setSavingFixtureId] = useState<string | null>(null);
+  const [scrollToFixtures, setScrollToFixtures] = useState(0);
+  const fixturesRef = useRef<HTMLDivElement>(null);
   const [savedFixtures, setSavedFixtures] = useState<Record<string, number>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -93,6 +106,14 @@ export default function LiveCompetitionDetailPage() {
     enabled: !!id && activeTab === 'leaderboard',
   });
 
+  // The cards are worded server-side, so the language is part of the key rather than
+  // something the component re-renders around.
+  const { data: userStats = [] } = useQuery({
+    queryKey: liveKeys.userStats(id!, language),
+    queryFn: () => liveApi.userStats(id!, language),
+    enabled: !!id && activeTab === 'userStats' && !!user?.isTestAccount,
+  });
+
   const { data: teams = [] } = useQuery({
     queryKey: liveKeys.tournamentTeams(tournamentId ?? ''),
     queryFn: () => liveApi.tournamentTeams(tournamentId!),
@@ -107,7 +128,16 @@ export default function LiveCompetitionDetailPage() {
     enabled: !!id,
   });
 
-  // Also fetched on every tab: the bonus questions are the second step of the first-run
+  // Fetched on every tab for the same reason as the table: the ranking is a step of the
+  // first-run flow, so whether one exists decides whether the rest of the page is
+  // reachable. `available: false` when the admin has picked no shortlist, which skips it.
+  const { data: scorerView, isLoading: loadingScorers } = useQuery({
+    queryKey: liveKeys.scorerPrediction(id!),
+    queryFn: () => liveApi.scorerPrediction(id!),
+    enabled: !!id,
+  });
+
+  // Also fetched on every tab: the bonus questions are the third step of the first-run
   // flow, so whether any are unanswered decides whether the competition is reachable.
   const { data: bonusQuestions = [], isLoading: loadingBonusQuestions } = useQuery({
     queryKey: liveKeys.bonusQuestions(id!),
@@ -120,6 +150,13 @@ export default function LiveCompetitionDetailPage() {
     queryFn: () => liveApi.bonusAnswers(id!),
     enabled: !!id,
   });
+
+  // Scrolling waits for the render that the stage and gameweek change causes, so that the
+  // list under the heading is already the round being scrolled to.
+  useEffect(() => {
+    if (scrollToFixtures === 0) return;
+    fixturesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [scrollToFixtures]);
 
   // Live updates. One connection per page, same pattern as CompetitionDetailPage.
   useEffect(() => {
@@ -203,6 +240,29 @@ export default function LiveCompetitionDetailPage() {
       }),
     [matchdays, stageFixtures],
   );
+
+  // ── The next round ─────────────────────────────────────────────────────────
+  //
+  // The earliest round with matches still open to predict, across every stage rather than
+  // only the one being shown — a member who is looking at last week's results should still
+  // be told that this week is unfilled. Matches whose kickoff has already passed are left
+  // out of the count: nothing can be done about them, so counting them would leave the
+  // reminder stuck at "4 of 5" for good.
+  const nextRound = useMemo(() => {
+    const open = fixtures.filter(
+      f => f.isSelected && f.isPredictable && !f.isLocked && !!f.kickoffAt,
+    );
+    if (open.length === 0) return null;
+
+    const first = open.reduce((a, b) => ((a.kickoffAt ?? '') <= (b.kickoffAt ?? '') ? a : b));
+    const round = open.filter(f => f.stageKey === first.stageKey && f.matchday === first.matchday);
+    return {
+      stageKey: first.stageKey,
+      matchday: first.matchday,
+      total: round.length,
+      predicted: round.filter(f => f.prediction !== null).length,
+    };
+  }, [fixtures]);
 
   const shownMatchday = matchday ?? matchdays[0] ?? null;
   const shownSelectedCount = stageFixtures.filter(
@@ -288,6 +348,36 @@ export default function LiveCompetitionDetailPage() {
       setClearTableError(err instanceof ApiError ? err.message : t('live.table.clearFailed')),
   });
 
+  const [scorerSavedAt, setScorerSavedAt] = useState<number | null>(null);
+  const [scorerError, setScorerError] = useState<string | null>(null);
+  const [clearScorerError, setClearScorerError] = useState<string | null>(null);
+
+  const saveScorerMutation = useMutation({
+    mutationFn: (orderedPlayerIds: string[]) =>
+      liveApi.saveScorerPrediction(id!, orderedPlayerIds),
+    onMutate: () => setScorerError(null),
+    onSuccess: () => {
+      setScorerSavedAt(Date.now());
+      queryClient.invalidateQueries({ queryKey: liveKeys.scorerPrediction(id!) });
+      setTimeout(() => setScorerSavedAt(null), 2500);
+    },
+    onError: err => {
+      setScorerError(err instanceof ApiError ? err.message : t('live.saveFailed'));
+      // Usually the deadline passing mid-edit; refetch so the UI locks itself.
+      queryClient.invalidateQueries({ queryKey: liveKeys.scorerPrediction(id!) });
+    },
+  });
+
+  const clearScorerMutation = useMutation({
+    mutationFn: () => liveApi.clearScorerPrediction(id!),
+    onMutate: () => setClearScorerError(null),
+    // As with the table: with the ranking gone the first-run gate takes the screen again,
+    // and reloading leaves no half-edited order behind it.
+    onSuccess: () => window.location.reload(),
+    onError: err =>
+      setClearScorerError(err instanceof ApiError ? err.message : t('live.scorers.clearFailed')),
+  });
+
   // ── The table-prediction gate ───────────────────────────────────────────────
   //
   // A member who has not submitted a table prediction sees only that, full screen, until
@@ -320,15 +410,88 @@ export default function LiveCompetitionDetailPage() {
     !tableView.prediction &&
     tableView.teams.length > 0;
 
-  // Step two: the bonus questions that are still open and still unanswered. A closed one
+  // Step two: the top-scorer ranking, which closes at the same instant the table does and
+  // so can never be made later either. Skipped entirely where the tournament has no
+  // shortlist — an admin who has not picked players has not opened this part of the game.
+  const mustRankScorers =
+    canBeGated &&
+    !mustPredictTable &&
+    !!scorerView?.available &&
+    !scorerView.isLocked &&
+    !scorerView.prediction;
+
+  // The same three predictions the gate asks for, as a reminder at the top of the fixtures
+  // tab for as long as they are still open. Anything already closed is left out: there is
+  // nothing to be done about it, so putting it on a to-do list would only annoy.
+  const checklist: ChecklistItem[] = [];
+  if (tableView?.available && !tableView.isLocked && tableView.teams.length > 0) {
+    checklist.push({ key: 'table', done: !!tableView.prediction });
+  }
+  if (scorerView?.available && !scorerView.isLocked) {
+    checklist.push({ key: 'scorers', done: !!scorerView.prediction });
+  }
+
+  // Step three: the bonus questions that are still open and still unanswered. A closed one
   // can never be answered, so requiring it would trap the member out of the competition.
   const answeredQuestionIds = new Set(bonusAnswers.map(a => a.questionId));
   const unansweredBonusQuestions = bonusQuestions.filter(
     q => !q.isLocked && !answeredQuestionIds.has(q.id),
   );
-  const mustAnswerBonus = canBeGated && !mustPredictTable && unansweredBonusQuestions.length > 0;
+  const mustAnswerBonus =
+    canBeGated && !mustPredictTable && !mustRankScorers && unansweredBonusQuestions.length > 0;
 
-  if (loadingCompetition || loadingTable || loadingBonusQuestions || loadingBonusAnswers) {
+  const openBonusQuestions = bonusQuestions.filter(q => !q.isLocked);
+  if (openBonusQuestions.length > 0) {
+    const answered = openBonusQuestions.length - unansweredBonusQuestions.length;
+    checklist.push({
+      key: 'bonus',
+      done: unansweredBonusQuestions.length === 0,
+      detail: t('live.checklist.bonusProgress', {
+        answered,
+        total: openBonusQuestions.length,
+      }),
+    });
+  }
+
+  // The fourth item, and the only one that comes back: the round being played next. Unlike
+  // the other three this one survives the first kickoff, which is what keeps the panel
+  // useful — as a single line — for the rest of the season.
+  if (nextRound) {
+    checklist.push({
+      key: 'round',
+      done: nextRound.predicted === nextRound.total,
+      detail: t('live.checklist.roundProgress', {
+        predicted: nextRound.predicted,
+        total: nextRound.total,
+      }),
+    });
+  }
+
+  // They all close together — an hour before the first match — so any of them can say when.
+  const checklistDeadline =
+    (tableView?.available ? tableView.lockedAt : null) ??
+    (scorerView?.available ? scorerView.lockedAt : null);
+
+  const openTab = (key: ChecklistKey) => {
+    // The round is on this tab already: switch the stage and gameweek to it and bring the
+    // matches into view, rather than navigating somewhere.
+    if (key === 'round') {
+      if (nextRound?.stageKey) setStageKey(nextRound.stageKey);
+      setMatchday(nextRound?.matchday ?? null);
+      // A counter rather than a boolean, so pressing the tile a second time scrolls again.
+      setScrollToFixtures(n => n + 1);
+      return;
+    }
+    navigate(`/live/competitions/${id}?tab=${key}`);
+  };
+
+  if (
+    loadingCompetition ||
+    loadingTable ||
+    loadingScorers ||
+    loadingBonusQuestions ||
+    loadingBonusAnswers
+  ) {
     return <LoadingSpinner />;
   }
   if (!competition) {
@@ -339,8 +502,8 @@ export default function LiveCompetitionDetailPage() {
     );
   }
 
-  // The first-run flow, in order: the table, then the bonus questions, then the
-  // competition itself.
+  // The first-run flow, in order: the table, the top-scorer ranking, the bonus questions,
+  // then the competition itself.
   if (mustPredictTable && tableView?.available) {
     return (
       <LiveTablePredictionGate
@@ -349,6 +512,18 @@ export default function LiveCompetitionDetailPage() {
         onSave={orderedTeamIds => saveTableMutation.mutate(orderedTeamIds)}
         isSaving={saveTableMutation.isPending}
         error={tableError}
+      />
+    );
+  }
+
+  if (mustRankScorers && scorerView?.available) {
+    return (
+      <LiveScorerPredictionGate
+        competitionName={competition.name}
+        view={scorerView}
+        onSave={orderedPlayerIds => saveScorerMutation.mutate(orderedPlayerIds)}
+        isSaving={saveScorerMutation.isPending}
+        error={scorerError}
       />
     );
   }
@@ -380,9 +555,6 @@ export default function LiveCompetitionDetailPage() {
           <h1 className="truncate text-2xl font-bold">{competition.name}</h1>
           <p className="truncate text-sm text-muted-foreground">
             {competition.tournament?.name ?? ''}
-          </p>
-          <p className="mt-0.5 font-mono text-xs tracking-wider text-muted-foreground">
-            {t('competitionDetail.inviteCodeLabel')}: {competition.inviteCode}
           </p>
         </div>
         {/* Leave with Invite stacked underneath, same as the manual competition page. */}
@@ -441,6 +613,12 @@ export default function LiveCompetitionDetailPage() {
 
       {activeTab === 'fixtures' && (
         <>
+          <LiveUpcomingChecklist
+            items={checklist}
+            deadline={checklistDeadline}
+            onOpen={openTab}
+          />
+
           {loadingFixtures ? (
             <LoadingSpinner />
           ) : fixtures.length === 0 ? (
@@ -451,7 +629,9 @@ export default function LiveCompetitionDetailPage() {
               note={competition.tournament?.lastSyncError ?? null}
             />
           ) : (
-            <>
+            // scroll-mt keeps the stage pills clear of the top edge when the "next round"
+            // reminder scrolls the matches into view.
+            <div ref={fixturesRef} className="scroll-mt-4">
               {stages.length > 1 && (
                 <div className="mb-3 flex flex-wrap gap-1.5">
                   {stages.map(stage => (
@@ -508,7 +688,7 @@ export default function LiveCompetitionDetailPage() {
                 errors={errors}
                 competitionId={id!}
               />
-            </>
+            </div>
           )}
         </>
       )}
@@ -531,6 +711,24 @@ export default function LiveCompetitionDetailPage() {
             onClear={() => clearTableMutation.mutate()}
             isClearing={clearTableMutation.isPending}
             clearError={clearTableError}
+          />
+        ))}
+
+      {activeTab === 'scorers' &&
+        (!scorerView?.available ? (
+          <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+            {t('live.scorers.unavailable')}
+          </p>
+        ) : (
+          <LiveScorerPrediction
+            view={scorerView}
+            onSave={orderedPlayerIds => saveScorerMutation.mutate(orderedPlayerIds)}
+            isSaving={saveScorerMutation.isPending}
+            savedAt={scorerSavedAt}
+            error={scorerError}
+            onClear={() => clearScorerMutation.mutate()}
+            isClearing={clearScorerMutation.isPending}
+            clearError={clearScorerError}
           />
         ))}
 
@@ -560,6 +758,24 @@ export default function LiveCompetitionDetailPage() {
       )}
 
       {activeTab === 'leaderboard' && <LiveLeaderboard rows={leaderboard} competitionId={id!} />}
+
+      {activeTab === 'userStats' && (
+        // The same masonry the manual competition type uses, so a deck that grows past one
+        // card lays itself out the same way there and here.
+        <div className="columns-1 gap-6 px-4 sm:columns-2 sm:px-0 md:columns-3 lg:columns-4 min-[1260px]:columns-5 2xl:columns-6 min-[1840px]:columns-7">
+          {userStats.length === 0 ? (
+            <p className="py-4 text-center text-sm text-muted-foreground">
+              {t('live.userStats.empty')}
+            </p>
+          ) : (
+            userStats.map(stat => (
+              <div key={stat.id} className="mb-6 break-inside-avoid">
+                <LiveUserStatCard data={stat} />
+              </div>
+            ))
+          )}
+        </div>
+      )}
     </main>
   );
 }

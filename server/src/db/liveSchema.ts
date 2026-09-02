@@ -6,11 +6,16 @@ import {
   boolean,
   integer,
   json,
+  jsonb,
   index,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import type { LiveBonusAnswerType, LiveScoringConfig } from '@tournament-predictor/shared';
+import type {
+  LiveBonusAnswerType,
+  LiveScorerNationalities,
+  LiveScoringConfig,
+} from '@tournament-predictor/shared';
 import { users } from './schema';
 
 // ── Live (API-linked) tournaments ─────────────────────────────────────────────
@@ -89,6 +94,16 @@ export const liveTournaments = pgTable(
     startStageKey: text('start_stage_key').notNull(),
     status: liveTournamentStatusEnum('status').notNull().default('upcoming'),
     syncEnabled: boolean('sync_enabled').notNull().default(true),
+    /**
+     * The scorer feed folded into goals per nationality, refreshed whenever the shortlist's
+     * goals are. Read whole by the "Norwegian goals" stat card and written whole by
+     * refreshLivePlayerGoals; null until that has run once.
+     *
+     * `truncated` says the feed came back at the request limit, so the list is the top N
+     * scorers rather than all of them and every total below it is a floor. The card says
+     * "at least" when it is set rather than printing a number that reads as exact.
+     */
+    scorerNationalities: jsonb('scorer_nationalities').$type<LiveScorerNationalities>(),
     lastStructureSyncAt: timestamp('last_structure_sync_at'),
     lastFixtureSyncAt: timestamp('last_fixture_sync_at'),
     lastSyncError: text('last_sync_error'),
@@ -154,6 +169,11 @@ export const liveFixtures = pgTable(
     /** Groups the two legs of a two-legged tie. Null for single-leg fixtures. */
     tieKey: text('tie_key'),
     legNumber: integer('leg_number'),
+    /**
+     * Whole-number multiplier on every point this fixture awards. Set by an admin, never
+     * by the provider — the sync upsert deliberately leaves it alone.
+     */
+    multiplier: integer('multiplier').notNull().default(1),
 
     // Score at the end of normal time (90 minutes plus stoppage). The ONLY score that
     // awards points — extra time and penalties are stored for display but never scored.
@@ -255,8 +275,12 @@ export const liveCompetitionMembers = pgTable(
     exactScorePoints: integer('exact_score_points').notNull().default(0),
     /** Exact-position plus band points from the table prediction. */
     tablePoints: integer('table_points').notNull().default(0),
+    /** What highlighted (multiplied) matches added on top of the three tiers. */
+    multiplierBonusPoints: integer('multiplier_bonus_points').notNull().default(0),
     /** Bonus question points. Stays zero until the tournament is marked completed. */
     bonusPoints: integer('bonus_points').notNull().default(0),
+    /** Top-scorer ranking points. Also withheld until the tournament is completed. */
+    scorerPoints: integer('scorer_points').notNull().default(0),
     totalPoints: integer('total_points').notNull().default(0),
   },
   t => ({
@@ -287,6 +311,8 @@ export const livePredictions = pgTable(
     correctOutcomePoints: integer('correct_outcome_points').notNull().default(0),
     correctGoalDifferencePoints: integer('correct_goal_difference_points').notNull().default(0),
     exactScorePoints: integer('exact_score_points').notNull().default(0),
+    /** What the fixture's multiplier added on top of the tiers. Zero on a normal match. */
+    multiplierBonusPoints: integer('multiplier_bonus_points').notNull().default(0),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
   },
@@ -331,6 +357,77 @@ export const liveTablePredictions = pgTable(
       t.liveCompetitionId,
       t.userId,
       t.stageKey,
+    ),
+  }),
+);
+
+export const livePlayers = pgTable(
+  'live_players',
+  {
+    id: text('id').primaryKey(),
+    liveTournamentId: text('live_tournament_id')
+      .notNull()
+      .references(() => liveTournaments.id, { onDelete: 'cascade' }),
+    /**
+     * The provider's own player id, when the row came from the scorers feed.
+     *
+     * Null for a player an admin typed in, which is also what protects that player's
+     * hand-entered goals: the sync only writes rows it can identify.
+     */
+    providerPlayerId: text('provider_player_id'),
+    name: text('name').notNull(),
+    teamId: text('team_id').references(() => liveTeams.id, { onDelete: 'set null' }),
+    /** The provider's own wording — "Centre-Forward". Only used to filter the admin list. */
+    position: text('position'),
+    imageUrl: text('image_url'),
+    /** Hex colour drawn as a glow on this player's row in the ranking. Null = no glow. */
+    glowColor: text('glow_color'),
+    goals: integer('goals').notNull().default(0),
+    /** Breaks a tie on goals. See rankLiveScorers in server/src/live/scorerScoring.ts. */
+    assists: integer('assists').notNull().default(0),
+    /** Whether the player is in the shortlist users rank. Admin-chosen, false by default. */
+    isSelected: boolean('is_selected').notNull().default(false),
+    providerLastUpdated: timestamp('provider_last_updated'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  t => ({
+    // Postgres treats NULLs as distinct, so every hand-added player is unique here
+    // however many of them there are — which is exactly what this needs.
+    providerPlayerUnique: uniqueIndex('live_players_tournament_provider_player_unique').on(
+      t.liveTournamentId,
+      t.providerPlayerId,
+    ),
+    tournamentIdx: index('live_players_tournament_idx').on(t.liveTournamentId),
+  }),
+);
+
+export const liveScorerPredictions = pgTable(
+  'live_scorer_predictions',
+  {
+    id: text('id').primaryKey(),
+    liveCompetitionId: text('live_competition_id')
+      .notNull()
+      .references(() => liveCompetitions.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /**
+     * live_players ids, top scorer first. Stored whole for the same reason the table
+     * prediction is, and with no FK for the same reason: a player dropped from the
+     * shortlist should leave a stale id, not destroy the ranking around it.
+     */
+    orderedPlayerIds: json('ordered_player_ids').notNull().$type<string[]>(),
+    /** Null until the tournament is marked completed and scoring runs. */
+    points: integer('points'),
+    exactPositionPoints: integer('exact_position_points').notNull().default(0),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  t => ({
+    scorerPredictionUnique: uniqueIndex('live_scorer_predictions_competition_user_unique').on(
+      t.liveCompetitionId,
+      t.userId,
     ),
   }),
 );

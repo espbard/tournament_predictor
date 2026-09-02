@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { LIVE_FORMAT_KEYS } from './formats';
+import { LIVE_MAX_MULTIPLIER, LIVE_MIN_MULTIPLIER } from './types';
 
 // Scores are entered by hand, so bound them the same way the manual type does
 // (SaveBracketPredictionsSchema caps at 30).
@@ -15,6 +16,7 @@ export const LiveScoringConfigSchema = z.object({
   // update; withLiveScoringDefaults fills them in on read.
   table_exact_position: points.optional(),
   table_correct_band: points.optional(),
+  scorer_exact_position: points.optional(),
 });
 
 export const CreateLiveTournamentSchema = z.object({
@@ -73,6 +75,76 @@ export const SaveLiveTablePredictionSchema = z.object({
   orderedTeamIds: z.array(z.string().min(1)).min(2).max(64),
 });
 
+// ── Top-scorer ranking ────────────────────────────────────────────────────────
+
+/**
+ * A player in the ranking shortlist.
+ *
+ * Goals and assists are accepted on create so an admin can enter a player mid-season
+ * without a second request; both default to zero. `imageUrl` is a URL the upload endpoint
+ * returned, or null for no picture.
+ */
+/**
+ * A CSS hex colour, the only form the glow accepts.
+ *
+ * Restricted to hex rather than any CSS colour because the value is interpolated into an
+ * inline style and into rgba() shadows client-side; a free-form string there is both a
+ * rendering hazard and impossible to derive a translucent variant from.
+ */
+const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Must be a hex colour like #22c55e');
+
+export const CreateLivePlayerSchema = z.object({
+  name: z.string().min(1).max(120),
+  teamId: z.string().min(1).nullable().optional(),
+  /** Set when the player came from a provider search, so goal syncs can find them again. */
+  providerPlayerId: z.string().min(1).max(64).nullable().optional(),
+  position: z.string().min(1).max(60).nullable().optional(),
+  imageUrl: z.string().max(500).nullable().optional(),
+  glowColor: hexColor.nullable().optional(),
+  goals: z.number().int().min(0).max(200).optional(),
+  assists: z.number().int().min(0).max(200).optional(),
+  isSelected: z.boolean().optional(),
+});
+
+export const UpdateLivePlayerSchema = z.object({
+  name: z.string().min(1).max(120).optional(),
+  teamId: z.string().min(1).nullable().optional(),
+  position: z.string().min(1).max(60).nullable().optional(),
+  imageUrl: z.string().max(500).nullable().optional(),
+  glowColor: hexColor.nullable().optional(),
+  goals: z.number().int().min(0).max(200).optional(),
+  assists: z.number().int().min(0).max(200).optional(),
+  isSelected: z.boolean().optional(),
+});
+
+/** Look a player up in the provider's squads by name. */
+export const SearchLivePlayersQuerySchema = z.object({
+  q: z.string().min(2).max(60),
+  season: z.string().min(4).max(9).optional(),
+});
+
+/**
+ * Refresh the shortlist's goals from the provider's scorer list.
+ *
+ * `season` defaults to the tournament's own; passing another is how an admin reads goals
+ * from a season the tournament is not itself keyed to.
+ */
+export const RefreshLivePlayerGoalsSchema = z.object({
+  season: z.string().min(4).max(9).optional(),
+  limit: z.number().int().min(1).max(100).optional(),
+});
+
+/**
+ * A full predicted top-scorer ranking, top to bottom.
+ *
+ * The server checks the ids against the tournament's selected players; this only enforces
+ * shape and a sane upper bound. The lower bound of 2 matches the table prediction: a
+ * ranking of one is not a ranking.
+ */
+export const SaveLiveScorerPredictionSchema = z.object({
+  orderedPlayerIds: z.array(z.string().min(1)).min(2).max(40),
+});
+
 /**
  * Register which fixtures of one gameweek users predict on.
  *
@@ -85,6 +157,16 @@ export const SaveLiveGameweekSelectionSchema = z.object({
   stageKey: z.string().min(1),
   matchday: z.number().int().min(1).max(60),
   fixtureIds: z.array(z.string().min(1)).max(200).nullable(),
+});
+
+/**
+ * A fixture's point multiplier.
+ *
+ * Whole numbers only, and never below 1 — see LIVE_MIN_MULTIPLIER. The upper bound is a
+ * sanity limit rather than a rule of the game: a x10 match already dwarfs a gameweek.
+ */
+export const SaveLiveFixtureMultiplierSchema = z.object({
+  multiplier: z.number().int().min(LIVE_MIN_MULTIPLIER).max(LIVE_MAX_MULTIPLIER),
 });
 
 // ── Bonus questions ───────────────────────────────────────────────────────────
@@ -157,6 +239,12 @@ export type SaveLivePredictionInput = z.infer<typeof SaveLivePredictionSchema>;
 export type SaveLiveTablePredictionInput = z.infer<typeof SaveLiveTablePredictionSchema>;
 export type ListLiveFixturesQuery = z.infer<typeof ListLiveFixturesQuerySchema>;
 export type SaveLiveGameweekSelectionInput = z.infer<typeof SaveLiveGameweekSelectionSchema>;
+export type SaveLiveFixtureMultiplierInput = z.infer<typeof SaveLiveFixtureMultiplierSchema>;
+export type CreateLivePlayerInput = z.infer<typeof CreateLivePlayerSchema>;
+export type UpdateLivePlayerInput = z.infer<typeof UpdateLivePlayerSchema>;
+export type RefreshLivePlayerGoalsInput = z.infer<typeof RefreshLivePlayerGoalsSchema>;
+export type SearchLivePlayersQuery = z.infer<typeof SearchLivePlayersQuerySchema>;
+export type SaveLiveScorerPredictionInput = z.infer<typeof SaveLiveScorerPredictionSchema>;
 export type CreateLiveBonusQuestionInput = z.infer<typeof CreateLiveBonusQuestionSchema>;
 export type UpdateLiveBonusQuestionInput = z.infer<typeof UpdateLiveBonusQuestionSchema>;
 export type SaveLiveBonusAnswerInput = z.infer<typeof SaveLiveBonusAnswerSchema>;

@@ -328,6 +328,56 @@ Three **stacking** tiers, evaluated per fixture:
 The tiers are nested — an exact scoreline necessarily also has the right goal difference and
 outcome — so points simply add.
 
+### Fixture multipliers
+
+An admin can make one match worth more than the rest by giving it a whole-number multiplier
+(`live_fixtures.multiplier`, default 1, capped at `LIVE_MAX_MULTIPLIER`). Everything the fixture
+awards is multiplied by it, so a ×3 match maxes out at 12 rather than 4.
+
+The extra is stored **separately** from the tiers, in `multiplier_bonus_points`: a perfect
+prediction on a ×3 match is 1 + 1 + 2 with a bonus of 8, not 3 + 3 + 6. The leaderboard shows a
+column per source, and inflating the tiers would make somebody look like a better predictor of
+goal difference than they are purely because an admin highlighted a match they got right. The
+four parts always sum to `points`.
+
+The multiplier is set from the selected-matches panel, and changing it recalculates the
+tournament there and then, exactly as deselecting a match does. The provider never owns this
+column, so a sync leaves it alone.
+
+### Top-scorer ranking
+
+An admin curates a shortlist of players out of `live_players`; users order it by how many
+goals each will finish the tournament on. Every player placed in exactly the right position
+is worth `scorer_exact_position` (2 by default). No bands — a top-scorer list has no
+meaningful sections, so close is worth nothing.
+
+The final ranking is made **strict 1..N** by breaking a tie on goals with assists, and a tie
+on both with the player's name (case-folded, and compared without `localeCompare` so the
+order cannot differ between machines). Shared ranks were the alternative and were rejected:
+with three players level on 9 goals, nobody could ever score positions 2 and 3.
+
+The shortlist is built **by searching**, not by importing. An admin types a name, the
+competition's squads are searched for it, and the player they pick becomes one row —
+nothing else is stored. The squads come from the `squad` array on
+`/competitions/{id}/teams` (the scorers endpoint lists only players who have *already
+scored*, so it is empty before a competition starts and useless for building a list), and
+they are cached in memory for ten minutes, so a burst of typing is one provider request
+rather than one per keystroke.
+
+Goals and assists then come from the scorers endpoint, on every cold sync and on demand.
+That refresh **never creates a row**: a hundred scorers nobody picked have no business in
+the list. A player the provider does not list at all can still be added by name, and is
+adopted — given the provider's id, and kept current from then on — the first time a refresh
+matches their name unambiguously. `live_players.provider_player_id` is what tells a
+provider-backed row from a hand-kept one.
+
+Each shortlisted player also carries a picture and a **glow colour** (`glow_color`, a hex
+string), both chosen by the admin, and their club's crest is shown beside them. The colour is drawn as a tinted border and halo around
+that player's row in the ranking every user sees; it is decoration and means nothing about
+goals or points. An exactly-right player's green scored state wins over it — two glows on
+one row fight. Points are withheld until the tournament is marked completed, exactly as bonus
+points are, so the ranking cannot be reverse-engineered from a moving total mid-season.
+
 ### League table prediction
 
 Alongside the per-fixture predictions, users order **every team in the table stage** from top to
@@ -573,8 +623,18 @@ export const liveQualificationEnum = pgEnum('live_qualification_status', [
 ### `live_tournaments`
 `id` pk · `name` · `imageUrl` · `presetKey` · `provider` · `providerCompetitionId` · `season` ·
 `format` text · `startStageKey` text · `status` · `syncEnabled` bool default true ·
-`lastStructureSyncAt` · `lastFixtureSyncAt` · `lastSyncError` text · `createdAt`.
+`scorerNationalities` jsonb nullable · `lastStructureSyncAt` · `lastFixtureSyncAt` ·
+`lastSyncError` text · `createdAt`.
 **Unique** `(provider, provider_competition_id, season)`.
+
+`scorerNationalities` is the scorer feed folded into goals per country —
+`{ fetchedAt, count, truncated, byNationality: { "Norway": { goals, players } } }` — written
+whole by `refreshLivePlayerGoals` from the payload it already fetches, and read whole by the
+"Norwegian goals" stat card. One jsonb column rather than a table for the same reason
+`ordered_team_ids` is one column: it is only ever read and written entire. Deliberately not
+on `live_players`, which is the admin's curated shortlist and is meant to stay small.
+`truncated` says the feed came back at the request limit, so every total in it is a floor;
+anything printing those numbers has to say "at least".
 
 ### `live_teams`
 `id` pk · `liveTournamentId` → cascade · `providerTeamId` · `name` · `shortName` · `tla` ·
@@ -586,6 +646,7 @@ export const liveQualificationEnum = pgEnum('live_qualification_status', [
 `live_teams` nullable (knockout fixtures exist before teams are known) · `kickoffAt` nullable ·
 `kickoffConfirmed` bool · `status` enum · `stageKey` text nullable · `providerStage` text ·
 `groupName` · `matchday` int · `tieKey` text nullable · `legNumber` int nullable ·
+`multiplier` int not null default 1 (admin-set point multiplier; never written by a sync) ·
 
 **Scores:** `normalTimeHome` / `normalTimeAway` (← the values that score) · `halfTimeHome` /
 `halfTimeAway` · `extraTimeHome` / `extraTimeAway` · `penaltiesHome` / `penaltiesAway` ·
@@ -595,6 +656,26 @@ bug diagnosable after the fact) · `providerLastUpdated` · `updatedAt`.
 
 **Unique** `(live_tournament_id, provider_fixture_id)`.
 **Index** `(live_tournament_id, kickoff_at)`, `(live_tournament_id, stage_key)`, `(status)`.
+
+### `live_players`
+`id` pk · `liveTournamentId` → cascade · `providerPlayerId` text nullable (null = added by
+hand, and never overwritten by a sync) · `name` · `teamId` → `live_teams` set null ·
+`position` text nullable (the provider's own wording) ·
+`imageUrl` text nullable (admin-uploaded, R2 folder `live-players`) ·
+`glowColor` text nullable (hex; the glow on this player's row in the ranking) · `goals` int ·
+`assists` int (only ever used to break a tie on goals) · `isSelected` bool (the shortlist
+users rank) · `providerLastUpdated` · `createdAt` · `updatedAt`.
+
+**Unique** `(live_tournament_id, provider_player_id)` — NULLs are distinct in Postgres, so
+every hand-added row is unique however many there are. **Index** `(live_tournament_id)`.
+
+### `live_scorer_predictions`
+`id` pk · `liveCompetitionId` → cascade · `userId` → cascade · `orderedPlayerIds` json
+(whole ranking, index 0 = top scorer; no FK, so a player dropped from the shortlist leaves
+a stale id rather than destroying the ranking) · `points` int nullable (null until the
+tournament completes) · `exactPositionPoints` · `createdAt` · `updatedAt`.
+
+**Unique** `(live_competition_id, user_id)`.
 
 ### `live_standings`
 `id` pk · `liveTournamentId` → cascade · `stageKey` · `groupName` nullable · `teamId` →
@@ -961,7 +1042,10 @@ via both equal — each awarding its configured value, summed.
   scoring inline inside `PATCH /api/matches/:id`.
 
 **Leaderboard** is a straight read of the denormalised columns on `live_competition_members`,
-sorted by `totalPoints` desc — three point sources instead of the manual type's nine.
+sorted by `totalPoints` desc: one column per point source, in the order a season earns them —
+Result, GD, Exact, Highlight (what multiplied matches added), Table, Scorers, Bonus, Total.
+All of them are always shown, zeros dimmed rather than hidden, because a table that changes
+shape mid-season answers nobody's "what else can I score for?".
 
 ---
 
@@ -989,6 +1073,12 @@ Mounted as `app.use('/api/live', liveRouter)` in `server/src/index.ts`.
 | POST / PATCH / DELETE | `/tournaments/:id/bonus-questions[/:questionId]` | admin | recording a correct answer scores it, but only once the tournament is completed |
 | GET | `/tournaments/:id/selected-matches` | auth | every gameweek with `isCustomised` and its selected fixture ids |
 | PUT | `/tournaments/:id/selected-matches` | admin | `{stageKey, matchday, fixtureIds}`; `fixtureIds: null` (or empty) resets the gameweek to "all selected". Recalculates the tournament, since a deselected match must give its points back |
+| PATCH | `/tournaments/:id/fixtures/:fixtureId/multiplier` | admin | `{multiplier}`, a whole number from 1 to `LIVE_MAX_MULTIPLIER`. Recalculates the tournament, since an already-scored match has to be rescored |
+| GET | `/tournaments/:id/players` | auth | the top-scorer list, shortlist first |
+| POST / PATCH / DELETE | `/tournaments/:id/players[/:playerId]` | admin | `{name, teamId?, imageUrl?, goals?, assists?, isSelected?}`; anything touching goals, assists or the shortlist recalculates the tournament |
+| GET | `/tournaments/:id/players/search` | admin | `?q=&season=` — search the competition's squads by name, folded for accents. Answers from a ten-minute cache of the squads |
+| POST | `/tournaments/:id/players/refresh` | admin | `{season?, limit?}` — refresh the list's goals from the scorer endpoint. Adds nobody |
+| DELETE | `/tournaments/:id/players/unselected` | admin | drop every player not in the shortlist — the clean-up for tournaments that were populated by the old whole-squad import. Registered before the `:playerId` route, or "unselected" would be read as an id |
 
 ### `server/src/live/routes/competitions.ts`
 
@@ -1001,6 +1091,7 @@ Mounted as `app.use('/api/live', liveRouter)` in `server/src/index.ts`.
 | DELETE | `/competitions/:id/leave` | auth |
 | GET | `/competitions/:id/members` | auth |
 | GET | `/competitions/:id/leaderboard` | auth |
+| GET | `/competitions/:id/user-stats?lang=` | auth (member) **+ test account or admin** — the stat-card deck, worded server-side |
 | GET | `/competitions/:id/events` | auth — SSE: `fixtures-updated`, `leaderboard-updated` |
 | GET | `/competitions/:id/fixtures` | auth — **main read model**: fixtures for a stage/matchday + caller's prediction + `lockedAt` + `isLocked` + `isSelected` + awarded points, in one call |
 | PUT | `/competitions/:id/predictions` | auth — upsert one `{fixtureId, homeScore, awayScore}`; rejects a fixture left out of its gameweek's selected matches |
@@ -1457,6 +1548,15 @@ Recorded as they happen, so the document stays trustworthy.
 | A typed-but-unpicked box now says so, and says separately when the database is unreachable | A disabled Next button is not an explanation. The two cases also differ in what to do about them — one is a spelling to fix, the other is a network to change — and they look identical on screen otherwise |
 | Opening the suggestions scrolls the field to the middle of the screen | The list renders under the input, which on a phone is often already near the keyboard. This is what likely produced the typed answers in the first place: the suggestions were there, just not visible |
 | A member behind a firewall that blocks the player database now cannot pass the gate on a free-form player question | Accepted, and requested. The way out is on the admin side, which already exists: narrowing the question to a list of allowed answers turns it into a `<select>` with no external dependency |
+
+**Phase 7 — statistics**
+
+| Change | Why |
+|---|---|
+| The scorer feed limit rose from 100 to 500, shared by the sync and the doctor probe as `SCORER_FEED_LIMIT` | The feed is *ranked*. 100 is ample for refreshing a ten-player shortlist — they are all near the top — but a UCL league phase has a few hundred distinct scorers, so a top-100 list omits exactly the one-goal tail that a nationality total is made of. It is one request either way |
+| Live competitions render stat cards through their own `LiveUserStatCard`, not the manual type's `UserStatCard` | The live cards are tiles with the picture as the background and no emoji. Sharing the payload type (`UserStatCardData`) was worth it; sharing the layout was not |
+| `UserStatSubject.type` gained `'player'` | It says how to picture a subject rather than what kind of thing it is: a crest is shown whole, a photograph is cropped to fill. A flag uses `'team'` for that reason |
+| Whether `/scorers` carries `player.nationality`, and what its maximum `limit` is, are unverified | `api.football-data.org` is unreachable from a cloud session. The `scorers` probe reports both, so `npm run live:doctor` answers them locally in one run — and the "at least" wording means a clamped limit produces an honest card rather than a wrong one |
 
 ---
 

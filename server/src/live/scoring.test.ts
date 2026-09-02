@@ -37,6 +37,7 @@ describe('calculateLivePoints', () => {
       correctOutcomePoints: 1,
       correctGoalDifferencePoints: 1,
       exactScorePoints: 2,
+      multiplierBonusPoints: 0,
     });
   });
 
@@ -46,6 +47,7 @@ describe('calculateLivePoints', () => {
       correctOutcomePoints: 1,
       correctGoalDifferencePoints: 1,
       exactScorePoints: 0,
+      multiplierBonusPoints: 0,
     });
   });
 
@@ -55,6 +57,7 @@ describe('calculateLivePoints', () => {
       correctOutcomePoints: 1,
       correctGoalDifferencePoints: 0,
       exactScorePoints: 0,
+      multiplierBonusPoints: 0,
     });
   });
 
@@ -68,6 +71,7 @@ describe('calculateLivePoints', () => {
       correctOutcomePoints: 0,
       correctGoalDifferencePoints: 0,
       exactScorePoints: 0,
+      multiplierBonusPoints: 0,
     });
   });
 
@@ -78,6 +82,7 @@ describe('calculateLivePoints', () => {
       correctOutcomePoints: 1,
       correctGoalDifferencePoints: 1,
       exactScorePoints: 0,
+      multiplierBonusPoints: 0,
     });
   });
 
@@ -108,6 +113,73 @@ describe('calculateLivePoints', () => {
       exact_score: 0,
     };
     expect(score([2, 1], [2, 1], zeroed).points).toBe(0);
+  });
+});
+
+describe('calculateLivePoints — fixture multipliers', () => {
+  const multiplied = (
+    actual: [number, number],
+    predicted: [number, number],
+    multiplier: number | null | undefined,
+  ) =>
+    calculateLivePoints(
+      { homeScore: predicted[0], awayScore: predicted[1] },
+      { ...finished(actual[0], actual[1]), multiplier },
+      CONFIG,
+    );
+
+  it('keeps the tiers at face value and puts the extra in the bonus', () => {
+    // The worked example: a perfect prediction on a x3 match is 1 + 1 + 2 with 8 more on
+    // top, not 3 + 3 + 6. The tiers say how good the prediction was, the bonus says what
+    // the highlight was worth.
+    expect(multiplied([2, 1], [2, 1], 3)).toEqual({
+      points: 12,
+      correctOutcomePoints: 1,
+      correctGoalDifferencePoints: 1,
+      exactScorePoints: 2,
+      multiplierBonusPoints: 8,
+    });
+  });
+
+  it('the four parts always add up to the total', () => {
+    for (const multiplier of [1, 2, 3, 10]) {
+      for (const predicted of [[2, 1], [3, 2], [3, 1], [1, 1]] as Array<[number, number]>) {
+        const r = multiplied([2, 1], predicted, multiplier);
+        expect(r.correctOutcomePoints + r.correctGoalDifferencePoints + r.exactScorePoints + r.multiplierBonusPoints)
+          .toBe(r.points);
+      }
+    }
+  });
+
+  it('multiplies a partial score too', () => {
+    expect(multiplied([2, 1], [3, 2], 2)).toMatchObject({ points: 4, multiplierBonusPoints: 2 });
+    expect(multiplied([2, 1], [3, 1], 2)).toMatchObject({ points: 2, multiplierBonusPoints: 1 });
+  });
+
+  it('leaves a wrong prediction at nothing however big the multiplier', () => {
+    expect(multiplied([2, 1], [1, 1], 10)).toMatchObject({ points: 0, multiplierBonusPoints: 0 });
+  });
+
+  it('adds no bonus for the default multiplier, or a fixture without one', () => {
+    for (const m of [1, null, undefined]) {
+      // A fixture row stored before the column existed, and a caller that omits it.
+      expect(multiplied([2, 1], [2, 1], m)).toMatchObject({
+        points: 4,
+        exactScorePoints: 2,
+        multiplierBonusPoints: 0,
+      });
+    }
+  });
+
+  it('refuses a multiplier that would take points away', () => {
+    // Below the minimum falls back to 1 rather than zeroing or negating a prediction
+    // somebody has already made — and a negative bonus is what that would look like.
+    expect(multiplied([2, 1], [2, 1], 0)).toMatchObject({ points: 4, multiplierBonusPoints: 0 });
+    expect(multiplied([2, 1], [2, 1], -3)).toMatchObject({ points: 4, multiplierBonusPoints: 0 });
+  });
+
+  it('caps a multiplier above the maximum rather than honouring it', () => {
+    expect(multiplied([2, 1], [2, 1], 99)).toMatchObject({ points: 40, multiplierBonusPoints: 36 });
   });
 });
 

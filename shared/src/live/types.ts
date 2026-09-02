@@ -41,6 +41,28 @@ export type LiveQualificationStatus = 'qualified' | 'pending' | 'eliminated';
  * The tiers are nested — an exact scoreline necessarily also has the right goal
  * difference and outcome — so the awarded values simply add. Max 4 points by default.
  */
+/**
+ * The provider's scorer feed folded into goals per nationality, stored on the tournament.
+ *
+ * A snapshot rather than a live query: it is rebuilt whole every time the shortlist's
+ * goals are refreshed, from the same payload, so it costs no extra provider request.
+ *
+ * `truncated` is the honest part. The feed is a *ranked* list capped at a limit, so a
+ * competition with more scorers than that limit returns its top N and omits the tail of
+ * one-goal players. When it is set, every total here is a floor rather than a total, and
+ * anything reading them has to say so.
+ */
+export interface LiveScorerNationalities {
+  /** ISO 8601, when the feed this was folded from was fetched. */
+  fetchedAt: string;
+  /** How many rows the feed returned. */
+  count: number;
+  /** The feed came back at the request limit, so the totals below are floors. */
+  truncated: boolean;
+  /** Keyed by the provider's own English country name, kept verbatim. */
+  byNationality: Record<string, { goals: number; players: number }>;
+}
+
 export interface LiveScoringConfig {
   correct_outcome: number;
   correct_goal_difference: number;
@@ -53,6 +75,11 @@ export interface LiveScoringConfig {
    * place is worth both — 3 points by default. Formats without bands never award this.
    */
   table_correct_band: number;
+  /**
+   * Per player placed in exactly the right position of the final top-scorer ranking.
+   * That ranking has no bands — a player is in the right place or is not.
+   */
+  scorer_exact_position: number;
 }
 
 export const DEFAULT_LIVE_SCORING_CONFIG: LiveScoringConfig = {
@@ -61,6 +88,7 @@ export const DEFAULT_LIVE_SCORING_CONFIG: LiveScoringConfig = {
   exact_score: 2,
   table_exact_position: 2,
   table_correct_band: 1,
+  scorer_exact_position: 2,
 };
 
 /**
@@ -76,12 +104,39 @@ export function withLiveScoringDefaults(
   return { ...DEFAULT_LIVE_SCORING_CONFIG, ...(config ?? {}) };
 }
 
+// ── Fixture point multipliers ─────────────────────────────────────────────────
+
+/**
+ * Bounds on a fixture's multiplier. Whole numbers only, and never below 1: a multiplier
+ * is there to make a match matter more, not to take points away from one.
+ */
+export const LIVE_MIN_MULTIPLIER = 1;
+export const LIVE_MAX_MULTIPLIER = 10;
+
+/**
+ * A fixture's multiplier as scoring should read it.
+ *
+ * A fixture stored before the column existed reads as null, and a value outside the
+ * bounds should never reach scoring at all — both fall back to 1 rather than wiping out
+ * or inflating everyone's points on a fixture that has already been predicted.
+ */
+export function liveFixtureMultiplier(value: number | null | undefined): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 1;
+  const whole = Math.trunc(value);
+  if (whole < LIVE_MIN_MULTIPLIER) return 1;
+  return Math.min(whole, LIVE_MAX_MULTIPLIER);
+}
+
 export interface LiveScoreBreakdown {
   correctOutcomePoints: number;
   correctGoalDifferencePoints: number;
   exactScorePoints: number;
+  /** Everything highlighted matches added on top of those three. */
+  multiplierBonusPoints: number;
   /** Combined exact-position and band points from the table prediction. */
   tablePoints: number;
+  /** Exact-position points from the top-scorer ranking. Awarded at completion. */
+  scorerPoints: number;
   /** Awarded only once the tournament is marked completed. */
   bonusPoints: number;
 }
@@ -141,6 +196,11 @@ export interface LiveFixture {
   /** Groups the two legs of a two-legged tie. Null for single-leg fixtures. */
   tieKey: string | null;
   legNumber: number | null;
+  /**
+   * Whole-number multiplier applied to every point this fixture awards, set by an admin.
+   * 1 — the default — leaves scoring exactly as the tiers describe it.
+   */
+  multiplier: number;
 
   /** End of normal time — the only score that awards points. */
   normalTimeHome: number | null;
@@ -201,6 +261,8 @@ export interface LivePrediction {
   correctOutcomePoints: number;
   correctGoalDifferencePoints: number;
   exactScorePoints: number;
+  /** What a highlighted (multiplied) fixture added on top of the tiers. */
+  multiplierBonusPoints: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -224,6 +286,72 @@ export interface LiveTablePrediction {
   bandPoints: number;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * A player in the tournament's top-scorer ranking.
+ *
+ * Tournament-scoped like a team, not competition-scoped: every league playing the
+ * tournament ranks the same shortlist, exactly as they all answer the same bonus
+ * questions.
+ *
+ * Goals and assists come from the provider where it serves them and from the admin where
+ * it does not — `providerPlayerId` is what tells the two apart. A hand-added player has
+ * none and is never overwritten by a sync.
+ */
+export interface LivePlayer {
+  id: string;
+  liveTournamentId: string;
+  /** The provider's own player id. Null for a player an admin added by hand. */
+  providerPlayerId: string | null;
+  name: string;
+  /** The club they are listed under. Null when nothing matched, or for a hand-added player. */
+  teamId: string | null;
+  /** The provider's own wording — "Centre-Forward". Shown next to the name. */
+  position: string | null;
+  imageUrl: string | null;
+  /**
+   * A hex colour the admin picked for this player, used as a glow on their row in the
+   * ranking. Null leaves the row plain.
+   */
+  glowColor: string | null;
+  goals: number;
+  /** Only used to break a tie on goals — see rankLiveScorers in the server's scorerScoring. */
+  assists: number;
+  /** Whether the player is in the shortlist users rank. Admin-chosen. */
+  isSelected: boolean;
+  providerLastUpdated: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * A user's predicted order for the tournament's top scorers.
+ *
+ * `orderedPlayerIds` is the whole shortlist, index 0 being the player they think finishes
+ * top. Stored as an array for the same reason the table prediction is: it is only ever
+ * read and written whole, and the ordering *is* the prediction.
+ */
+export interface LiveScorerPrediction {
+  id: string;
+  liveCompetitionId: string;
+  userId: string;
+  orderedPlayerIds: string[];
+  /** Null until the tournament is completed and the ranking is scored. */
+  points: number | null;
+  exactPositionPoints: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Per-player scoring detail, for showing a user how their ranking did. */
+export interface LiveScorerPredictionPlayerResult {
+  playerId: string;
+  predictedPosition: number;
+  /** Where the player actually finished. Null if they left the shortlist. */
+  actualPosition: number | null;
+  exactPosition: boolean;
+  points: number;
 }
 
 /**

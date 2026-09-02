@@ -11,12 +11,15 @@ import {
   liveCompetitionMembers,
   liveCompetitions,
   liveFixtures,
+  livePlayers,
   livePredictions,
+  liveScorerPredictions,
   liveStandings,
   liveTablePredictions,
   liveTournaments,
 } from '../db/liveSchema';
 import { calculateLivePoints } from './scoring';
+import { calculateScorerPoints, liveScorerPositions } from './scorerScoring';
 import { calculateTablePoints, isTableStageComplete } from './tableScoring';
 import { notifyLiveCompetitions } from './liveEvents';
 import { scoreAllLiveBonusQuestions } from './bonusScoring';
@@ -60,24 +63,30 @@ export async function recomputeLiveMemberTotals(competitionIds: string[]): Promi
   if (competitionIds.length === 0) return;
 
   await chunked(competitionIds, async chunk => {
-    // Three independent sources — per-fixture predictions, the table prediction and the
-    // bonus questions — so each is summed in its own subquery and joined. Doing it in one
-    // join would multiply the rows of each source by the rows of the others.
+    // Four independent sources — per-fixture predictions, the table prediction, the
+    // top-scorer ranking and the bonus questions — so each is summed in its own subquery
+    // and joined. Doing it in one join would multiply the rows of each source by the rows
+    // of the others.
     await db.execute(sql`
       UPDATE live_competition_members AS m
       SET correct_outcome_points = COALESCE(f.outcome, 0),
           correct_goal_difference_points = COALESCE(f.gd, 0),
           exact_score_points = COALESCE(f.exact, 0),
+          multiplier_bonus_points = COALESCE(f.multiplier_bonus, 0),
           table_points = COALESCE(tp.table_points, 0),
+          scorer_points = COALESCE(sp.scorer_points, 0),
           bonus_points = COALESCE(bq.bonus_points, 0),
           total_points = COALESCE(f.total, 0)
                        + COALESCE(tp.table_points, 0)
+                       + COALESCE(sp.scorer_points, 0)
                        + COALESCE(bq.bonus_points, 0)
       FROM live_competition_members m2
       LEFT JOIN LATERAL (
         SELECT SUM(p.correct_outcome_points)         AS outcome,
                SUM(p.correct_goal_difference_points) AS gd,
                SUM(p.exact_score_points)             AS exact,
+               SUM(p.multiplier_bonus_points)        AS multiplier_bonus,
+               -- Already includes the bonus, so the total needs no separate term for it.
                SUM(p.points)                         AS total
         FROM live_predictions p
         WHERE p.live_competition_id = m2.live_competition_id
@@ -91,6 +100,13 @@ export async function recomputeLiveMemberTotals(competitionIds: string[]): Promi
           AND tpr.user_id = m2.user_id
           AND tpr.points IS NOT NULL
       ) AS tp ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT SUM(spr.points) AS scorer_points
+        FROM live_scorer_predictions spr
+        WHERE spr.live_competition_id = m2.live_competition_id
+          AND spr.user_id = m2.user_id
+          AND spr.points IS NOT NULL
+      ) AS sp ON TRUE
       LEFT JOIN LATERAL (
         SELECT SUM(ba.points) AS bonus_points
         FROM live_bonus_answers ba
@@ -123,6 +139,7 @@ export async function scoreFixtures(fixtureIds: string[]): Promise<ScoreFixtures
       status: liveFixtures.status,
       normalTimeHome: liveFixtures.normalTimeHome,
       normalTimeAway: liveFixtures.normalTimeAway,
+      multiplier: liveFixtures.multiplier,
     })
     .from(liveFixtures)
     .where(inArray(liveFixtures.id, fixtureIds));
@@ -193,6 +210,7 @@ export async function scoreFixtures(fixtureIds: string[]): Promise<ScoreFixtures
           correctOutcomePoints: points.correctOutcomePoints,
           correctGoalDifferencePoints: points.correctGoalDifferencePoints,
           exactScorePoints: points.exactScorePoints,
+          multiplierBonusPoints: points.multiplierBonusPoints,
           updatedAt: new Date(),
         })
         .where(eq(livePredictions.id, prediction.id));
@@ -303,6 +321,91 @@ export async function scoreTablePredictions(tournamentId: string): Promise<Score
 }
 
 /**
+ * Score the top-scorer rankings for every competition on a tournament.
+ *
+ * Gated on the tournament being marked completed, for the same two reasons bonus
+ * questions are: nobody should be able to watch their ranking points move — and infer the
+ * final order — while the season runs, and the goal counts are only final once somebody
+ * says so. That makes the completion switch the single moment both are revealed.
+ *
+ * Not completed is not merely "do nothing": anything scored by an earlier run is cleared
+ * back to null, so moving a tournament out of `completed` takes the points away again.
+ */
+export async function scoreLiveScorerPredictions(
+  tournamentId: string,
+): Promise<ScoreFixturesResult> {
+  const result: ScoreFixturesResult = { scoredPredictions: 0, affectedCompetitionIds: [] };
+
+  const [tournament] = await db
+    .select({ id: liveTournaments.id, status: liveTournaments.status })
+    .from(liveTournaments)
+    .where(eq(liveTournaments.id, tournamentId));
+  if (!tournament) return result;
+
+  const competitions = await db
+    .select({ id: liveCompetitions.id, scoringConfig: liveCompetitions.scoringConfig })
+    .from(liveCompetitions)
+    .where(eq(liveCompetitions.liveTournamentId, tournament.id));
+  if (competitions.length === 0) return result;
+
+  const competitionIds = competitions.map(c => c.id);
+  result.affectedCompetitionIds = competitionIds;
+
+  if (tournament.status !== 'completed') {
+    await db
+      .update(liveScorerPredictions)
+      .set({ points: null, exactPositionPoints: 0, updatedAt: new Date() })
+      .where(inArray(liveScorerPredictions.liveCompetitionId, competitionIds));
+    await recomputeLiveMemberTotals(competitionIds);
+    return result;
+  }
+
+  // Only the shortlist is ranked, so only the shortlist decides the final positions: a
+  // player the admin never selected is not part of this ranking however many he scored.
+  const players = await db
+    .select({
+      id: livePlayers.id,
+      name: livePlayers.name,
+      goals: livePlayers.goals,
+      assists: livePlayers.assists,
+    })
+    .from(livePlayers)
+    .where(and(eq(livePlayers.liveTournamentId, tournament.id), eq(livePlayers.isSelected, true)));
+  if (players.length === 0) return result;
+
+  const actualPositions = liveScorerPositions(players);
+
+  for (const competition of competitions) {
+    const config = withLiveScoringDefaults(competition.scoringConfig);
+
+    const predictions = await db
+      .select()
+      .from(liveScorerPredictions)
+      .where(eq(liveScorerPredictions.liveCompetitionId, competition.id));
+
+    for (const prediction of predictions) {
+      const scored = calculateScorerPoints(
+        prediction.orderedPlayerIds ?? [],
+        actualPositions,
+        config,
+      );
+      await db
+        .update(liveScorerPredictions)
+        .set({
+          points: scored.points,
+          exactPositionPoints: scored.exactPositionPoints,
+          updatedAt: new Date(),
+        })
+        .where(eq(liveScorerPredictions.id, prediction.id));
+      result.scoredPredictions++;
+    }
+  }
+
+  await recomputeLiveMemberTotals(competitionIds);
+  return result;
+}
+
+/**
  * Rebuild one competition's scores from scratch.
  *
  * Needed whenever scoringConfig changes, since stored points were computed under the old
@@ -333,6 +436,7 @@ export async function recalculateLiveCompetition(competitionId: string): Promise
       status: liveFixtures.status,
       normalTimeHome: liveFixtures.normalTimeHome,
       normalTimeAway: liveFixtures.normalTimeAway,
+      multiplier: liveFixtures.multiplier,
     })
     .from(livePredictions)
     .innerJoin(liveFixtures, eq(livePredictions.liveFixtureId, liveFixtures.id))
@@ -347,7 +451,13 @@ export async function recalculateLiveCompetition(competitionId: string): Promise
     const selected = isLiveFixtureSelected(row, selections);
     const points = selected
       ? calculateLivePoints({ homeScore: row.homeScore, awayScore: row.awayScore }, row, config)
-      : { points: 0, correctOutcomePoints: 0, correctGoalDifferencePoints: 0, exactScorePoints: 0 };
+      : {
+          points: 0,
+          correctOutcomePoints: 0,
+          correctGoalDifferencePoints: 0,
+          exactScorePoints: 0,
+          multiplierBonusPoints: 0,
+        };
     // An unscorable fixture goes back to null rather than a stored zero, so the UI can
     // tell "not scored yet" apart from "scored, nothing earned". A deselected one is
     // treated the same way: it never scores, so it never shows a total.
@@ -360,6 +470,7 @@ export async function recalculateLiveCompetition(competitionId: string): Promise
         correctOutcomePoints: points.correctOutcomePoints,
         correctGoalDifferencePoints: points.correctGoalDifferencePoints,
         exactScorePoints: points.exactScorePoints,
+        multiplierBonusPoints: points.multiplierBonusPoints,
         updatedAt: new Date(),
       })
       .where(eq(livePredictions.id, row.predictionId));
@@ -384,12 +495,15 @@ export async function recalculateLiveTournament(tournamentId: string): Promise<S
     scored += result.scoredPredictions;
   }
 
-  // Table predictions and bonus questions are scored per tournament rather than per
-  // competition, since the final table and the correct answers are properties of the
-  // tournament. They run last so the member-total recompute sees the freshly rebuilt
-  // fixture points.
+  // Table predictions, the top-scorer ranking and bonus questions are scored per
+  // tournament rather than per competition, since the final table, the goal counts and
+  // the correct answers are all properties of the tournament. They run last so the
+  // member-total recompute sees the freshly rebuilt fixture points.
   const table = await scoreTablePredictions(tournamentId);
   scored += table.scoredPredictions;
+
+  const scorers = await scoreLiveScorerPredictions(tournamentId);
+  scored += scorers.scoredPredictions;
 
   const bonus = await scoreAllLiveBonusQuestions(tournamentId);
   scored += bonus.scoredAnswers;

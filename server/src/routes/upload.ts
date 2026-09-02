@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { requireAuth } from '../middleware/auth';
-import { uploadToR2 } from '../lib/r2';
+import { uploadToR2, type R2Folder } from '../lib/r2';
 
 export const uploadRouter = Router();
 
@@ -29,11 +29,14 @@ uploadRouter.post(
       }
 
       const type = req.body.type as string;
-      if (!['users', 'tournaments', 'teams', 'competitions'].includes(type)) {
-        return res.status(400).json({ error: 'Invalid type. Must be users, tournaments, teams, or competitions' });
+      // 'live-players' is here because a player's picture is uploaded by an admin through
+      // this form; 'live-teams' is not, because crests are mirrored server-side.
+      const allowedTypes = ['users', 'tournaments', 'teams', 'competitions', 'live-players'];
+      if (!allowedTypes.includes(type)) {
+        return res.status(400).json({ error: `Invalid type. Must be one of: ${allowedTypes.join(', ')}` });
       }
 
-      const url = await uploadToR2(req.file, type as 'users' | 'tournaments' | 'teams' | 'competitions');
+      const url = await uploadToR2(req.file, type as R2Folder);
       return res.json({ url });
     } catch (err: any) {
       console.error('Upload error:', err);

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, RefreshCw, Stethoscope } from 'lucide-react';
 import { ApiError } from '@/lib/api';
@@ -13,6 +13,7 @@ import {
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import LiveSelectedMatchesPanel from '@/components/live/LiveSelectedMatchesPanel';
 import AdminLiveBonusQuestionsPanel from '@/components/live/AdminLiveBonusQuestionsPanel';
+import AdminLiveScorersPanel from '@/components/live/AdminLiveScorersPanel';
 import { useT } from '@/lib/useT';
 
 // ── Admin: one live tournament ────────────────────────────────────────────────
@@ -22,9 +23,26 @@ import { useT } from '@/lib/useT';
 // provider rename has stranded fixtures, and an unscorable fixture means the provider
 // gave no normal-time score, so nobody can be awarded points for it.
 
+// ── Admin: one live tournament ────────────────────────────────────────────────
+//
+// Everything about a tournament an admin can inspect or change, split into tabs: the page
+// grew five substantial panels and scrolling past four of them to reach the fifth was the
+// whole experience of using it.
+//
+// Warnings stay above the tabs, because they are the reason somebody opens this page and
+// hiding one behind a tab nobody clicked would defeat the point of raising it. The tab
+// lives in ?tab=, so a reload — or a back button after a save — stays where it was.
+
+const TABS = ['overview', 'matches', 'scorers', 'bonus', 'settings'] as const;
+type AdminTabId = (typeof TABS)[number];
+
 export default function AdminLiveTournamentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { t } = useT();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab') as AdminTabId | null;
+  const activeTab: AdminTabId = tabParam && TABS.includes(tabParam) ? tabParam : 'overview';
+  const setTab = (tab: AdminTabId) => setSearchParams(tab === 'overview' ? {} : { tab });
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [message, setMessage] = useState('');
@@ -258,6 +276,32 @@ export default function AdminLiveTournamentDetailPage() {
         </div>
       )}
 
+      <div className="mb-6 flex flex-wrap gap-1 border-b">
+        {TABS.map(tab => (
+          <button
+            key={tab}
+            onClick={() => setTab(tab)}
+            className={`-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
+              activeTab === tab
+                ? 'border-primary text-foreground'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {t(`live.admin.tabs.${tab}`)}
+          </button>
+        ))}
+      </div>
+
+      {/* Above the tab content rather than inside the sync panel, because the actions that
+          write here are spread across tabs — a fixture-source save on Settings would
+          otherwise report its success onto a panel the admin cannot see. */}
+      {message && <p className="mb-4 text-sm text-green-600 dark:text-green-400">{message}</p>}
+      {error && (
+        <p className="mb-4 whitespace-pre-wrap break-words text-sm text-destructive">{error}</p>
+      )}
+
+      {activeTab === 'overview' && (
+        <>
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat label={t('live.admin.teams')} value={String(tournament.teamCount)} />
         <Stat
@@ -318,35 +362,7 @@ export default function AdminLiveTournamentDetailPage() {
           </button>
         </div>
 
-        {message && <p className="mt-3 text-sm text-green-600 dark:text-green-400">{message}</p>}
-        {error && <p className="mt-3 whitespace-pre-wrap break-words text-sm text-destructive">{error}</p>}
       </div>
-
-      <FixtureSourcePanel
-        tournament={tournament}
-        onSave={body => fixtureSourceMutation.mutate(body)}
-        isSaving={fixtureSourceMutation.isPending}
-      />
-
-      <div className="mb-6 rounded-lg border p-5">
-        <h2 className="mb-1 font-semibold">{t('live.admin.diagnoseTitle')}</h2>
-        <p className="mb-3 text-sm text-muted-foreground">{t('live.admin.diagnoseIntro')}</p>
-
-        <button
-          onClick={() => diagnoseMutation.mutate()}
-          disabled={diagnoseMutation.isPending}
-          className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50"
-        >
-          <Stethoscope size={14} />
-          {diagnoseMutation.isPending ? t('live.admin.diagnoseRunning') : t('live.admin.diagnose')}
-        </button>
-
-        {diagnoseMutation.data && <DiagnosisReport diagnosis={diagnoseMutation.data} />}
-      </div>
-
-      <LiveSelectedMatchesPanel tournamentId={tournament.id} />
-
-      <AdminLiveBonusQuestionsPanel tournamentId={tournament.id} />
 
       <div className="mb-6 rounded-lg border p-5">
         <h2 className="mb-3 font-semibold">{t('live.admin.teamsTitle')}</h2>
@@ -378,6 +394,40 @@ export default function AdminLiveTournamentDetailPage() {
           </ul>
         )}
       </div>
+        </>
+      )}
+
+      {activeTab === 'matches' && <LiveSelectedMatchesPanel tournamentId={tournament.id} />}
+
+      {activeTab === 'scorers' && (
+        <AdminLiveScorersPanel tournamentId={tournament.id} season={tournament.season} />
+      )}
+
+      {activeTab === 'bonus' && <AdminLiveBonusQuestionsPanel tournamentId={tournament.id} />}
+
+      {activeTab === 'settings' && (
+        <>
+      <FixtureSourcePanel
+        tournament={tournament}
+        onSave={body => fixtureSourceMutation.mutate(body)}
+        isSaving={fixtureSourceMutation.isPending}
+      />
+
+      <div className="mb-6 rounded-lg border p-5">
+        <h2 className="mb-1 font-semibold">{t('live.admin.diagnoseTitle')}</h2>
+        <p className="mb-3 text-sm text-muted-foreground">{t('live.admin.diagnoseIntro')}</p>
+
+        <button
+          onClick={() => diagnoseMutation.mutate()}
+          disabled={diagnoseMutation.isPending}
+          className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50"
+        >
+          <Stethoscope size={14} />
+          {diagnoseMutation.isPending ? t('live.admin.diagnoseRunning') : t('live.admin.diagnose')}
+        </button>
+
+        {diagnoseMutation.data && <DiagnosisReport diagnosis={diagnoseMutation.data} />}
+      </div>
 
       <div className="rounded-lg border border-destructive/40 p-5">
         <h2 className="mb-1 font-semibold text-destructive">{t('live.admin.dangerTitle')}</h2>
@@ -392,6 +442,8 @@ export default function AdminLiveTournamentDetailPage() {
           {t('common.delete')}
         </button>
       </div>
+        </>
+      )}
     </main>
   );
 }
