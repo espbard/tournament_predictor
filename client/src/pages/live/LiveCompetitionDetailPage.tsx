@@ -20,9 +20,9 @@ import LiveUpcomingChecklist, {
   type ChecklistItem,
   type ChecklistKey,
 } from '@/components/live/LiveUpcomingChecklist';
+import LiveUserStatCard from '@/components/live/LiveUserStatCard';
 import LiveTablePredictionGate from '@/components/live/LiveTablePredictionGate';
 import LiveBonusQuestionsGate from '@/components/live/LiveBonusQuestionsGate';
-import UserStatCard from '@/components/UserStatCard';
 import InviteButton from '@/components/InviteButton';
 import { useAuthStore } from '@/store/authStore';
 import type { Team } from '@tournament-predictor/shared';
@@ -770,7 +770,7 @@ export default function LiveCompetitionDetailPage() {
           ) : (
             userStats.map(stat => (
               <div key={stat.id} className="mb-6 break-inside-avoid">
-                <UserStatCard competitionId={id!} data={stat} />
+                <LiveUserStatCard data={stat} />
               </div>
             ))
           )}
