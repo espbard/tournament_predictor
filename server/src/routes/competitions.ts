@@ -54,16 +54,22 @@ function describeOutcome(
 router.get('/', requireAuth, async (_req, res) => {
   try {
     const user = res.locals.user;
+    // The tournament's status rides along so the competition list can put finished
+    // leagues last without fetching a tournament per row.
     if (user.isAdmin) {
-      const all = await db.select().from(competitions);
-      return res.json(all);
+      const all = await db
+        .select({ competition: competitions, tournamentStatus: tournaments.status })
+        .from(competitions)
+        .leftJoin(tournaments, eq(competitions.tournamentId, tournaments.id));
+      return res.json(all.map(r => ({ ...r.competition, tournamentStatus: r.tournamentStatus })));
     }
     const rows = await db
-      .select({ competition: competitions })
+      .select({ competition: competitions, tournamentStatus: tournaments.status })
       .from(competitionMembers)
       .innerJoin(competitions, eq(competitionMembers.competitionId, competitions.id))
+      .leftJoin(tournaments, eq(competitions.tournamentId, tournaments.id))
       .where(eq(competitionMembers.userId, user.id));
-    return res.json(rows.map(r => r.competition));
+    return res.json(rows.map(r => ({ ...r.competition, tournamentStatus: r.tournamentStatus })));
   } catch {
     res.status(500).json({ error: 'Failed to fetch competitions' });
   }

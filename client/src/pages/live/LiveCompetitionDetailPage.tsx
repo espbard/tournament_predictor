@@ -451,9 +451,6 @@ export default function LiveCompetitionDetailPage() {
           <p className="truncate text-sm text-muted-foreground">
             {competition.tournament?.name ?? ''}
           </p>
-          <p className="mt-0.5 font-mono text-xs tracking-wider text-muted-foreground">
-            {t('competitionDetail.inviteCodeLabel')}: {competition.inviteCode}
-          </p>
         </div>
         {/* Leave with Invite stacked underneath, same as the manual competition page. */}
         <div className="flex flex-col items-stretch gap-2 flex-shrink-0">

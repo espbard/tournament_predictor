@@ -95,6 +95,11 @@ export interface Competition {
   predictionDeadline: string | null;
   allowLateAdditions: boolean;
   createdAt: string;
+  /**
+   * The status of the tournament this competition plays, where the endpoint joined it in
+   * — the competition list does, so finished leagues can be sorted last. Absent elsewhere.
+   */
+  tournamentStatus?: 'upcoming' | 'active' | 'completed' | null;
 }
 
 export interface Prediction {

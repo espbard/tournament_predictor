@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
+import { ChevronRight } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { liveApi, liveKeys } from '@/lib/liveApi';
@@ -15,6 +16,8 @@ interface MyCompetition {
   createdAt: string;
   to: string;
   subtitle: string | null;
+  /** A finished league is still worth opening, but it is not what anybody came for. */
+  isCompleted: boolean;
 }
 
 export default function HomePage() {
@@ -56,6 +59,7 @@ function CompetitionsHome() {
           subtitle: c.predictionDeadline
             ? `${t('home.deadline')}: ${new Date(c.predictionDeadline).toLocaleDateString()}`
             : null,
+          isCompleted: c.tournamentStatus === 'completed',
         })),
         ...liveCompetitions.map(c => ({
           name: c.name,
@@ -63,8 +67,15 @@ function CompetitionsHome() {
           createdAt: c.createdAt,
           to: `/live/competitions/${c.id}`,
           subtitle: t('live.perFixtureDeadline'),
+          isCompleted: c.tournamentStatus === 'completed',
         })),
-      ].sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? '')),
+        // Finished leagues sink to the bottom whatever their age: the season somebody is
+        // playing is the reason they opened this page, and last year's is an archive.
+      ].sort(
+        (a, b) =>
+          Number(a.isCompleted) - Number(b.isCompleted) ||
+          (a.createdAt ?? '').localeCompare(b.createdAt ?? ''),
+      ),
     [competitions, liveCompetitions, t],
   );
 
@@ -110,9 +121,13 @@ function CompetitionsHome() {
         )}
         <div>
           <h1 className="text-2xl font-bold">{t('home.welcome', { name: user?.username ?? '' })}</h1>
-          <p className="text-sm text-muted-foreground">
-            {user?.isLeaderboardUser ? 'Leaderboard viewer — enter an invite code to view a competition leaderboard.' : t('home.subtitle')}
-          </p>
+          {/* Only the leaderboard viewer gets a line here, because theirs says what the
+              account can and cannot do rather than selling the app back to them. */}
+          {user?.isLeaderboardUser && (
+            <p className="text-sm text-muted-foreground">
+              Leaderboard viewer — enter an invite code to view a competition leaderboard.
+            </p>
+          )}
         </div>
       </div>
       <h2 className="mb-4 font-semibold">{t('home.myCompetitions')}</h2>
@@ -128,16 +143,45 @@ function CompetitionsHome() {
             <Link
               key={c.to}
               to={c.to}
-              className="flex items-center gap-4 rounded-lg border p-4 transition-colors hover:bg-muted"
+              // The picture is the card's left edge: no padding around it, and the card
+              // clips it to its own corners. `overflow-hidden` is what makes that work,
+              // and `group` lets the image answer a hover on the whole card.
+              className="group flex items-stretch overflow-hidden rounded-xl border bg-card transition-all hover:border-foreground/20 hover:shadow-md"
             >
               {c.imageUrl ? (
-                <img src={c.imageUrl} alt={c.name} className="h-12 w-12 rounded-lg object-cover flex-shrink-0" />
+                <img
+                  src={c.imageUrl}
+                  alt=""
+                  aria-hidden
+                  className="h-20 w-20 shrink-0 object-cover transition-transform duration-300 group-hover:scale-105 sm:h-24 sm:w-24"
+                />
               ) : (
-                <div className="h-12 w-12 rounded-lg bg-muted flex-shrink-0" />
+                // Not an empty grey square: the initial gives a competition without a
+                // picture something of its own, the way an avatar does for a person.
+                <div className="flex h-20 w-20 shrink-0 items-center justify-center bg-muted text-2xl font-semibold text-muted-foreground/60 sm:h-24 sm:w-24">
+                  {c.name.trim()[0]?.toUpperCase() ?? '?'}
+                </div>
               )}
-              <div className="flex-1 min-w-0 flex flex-col gap-0.5">
-                <h3 className="font-semibold">{c.name}</h3>
-                {c.subtitle && <span className="text-xs text-muted-foreground">{c.subtitle}</span>}
+
+              <div className="flex min-w-0 flex-1 items-center justify-between gap-3 px-4 py-3">
+                <div className="flex min-w-0 flex-col gap-1">
+                  <h3 className="truncate font-semibold leading-tight">{c.name}</h3>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {c.isCompleted && (
+                      <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                        {t('home.completed')}
+                      </span>
+                    )}
+                    {c.subtitle && (
+                      <span className="truncate text-xs text-muted-foreground">{c.subtitle}</span>
+                    )}
+                  </div>
+                </div>
+                <ChevronRight
+                  size={18}
+                  aria-hidden
+                  className="shrink-0 text-muted-foreground/40 transition-transform group-hover:translate-x-0.5 group-hover:text-muted-foreground"
+                />
               </div>
             </Link>
           ))}

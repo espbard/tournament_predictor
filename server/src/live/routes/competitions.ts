@@ -94,20 +94,24 @@ async function assertMember(
 liveCompetitionsRouter.get('/competitions', requireAuth, async (_req, res) => {
   try {
     const user = res.locals.user;
+    // The tournament's status rides along so the competition list can put finished
+    // leagues last without fetching a tournament per row.
     if (user.isAdmin) {
       const all = await db
-        .select()
+        .select({ competition: liveCompetitions, tournamentStatus: liveTournaments.status })
         .from(liveCompetitions)
+        .leftJoin(liveTournaments, eq(liveCompetitions.liveTournamentId, liveTournaments.id))
         .orderBy(asc(liveCompetitions.createdAt));
-      return res.json(all);
+      return res.json(all.map(r => ({ ...r.competition, tournamentStatus: r.tournamentStatus })));
     }
 
     const rows = await db
-      .select({ competition: liveCompetitions })
+      .select({ competition: liveCompetitions, tournamentStatus: liveTournaments.status })
       .from(liveCompetitionMembers)
       .innerJoin(liveCompetitions, eq(liveCompetitionMembers.liveCompetitionId, liveCompetitions.id))
+      .leftJoin(liveTournaments, eq(liveCompetitions.liveTournamentId, liveTournaments.id))
       .where(eq(liveCompetitionMembers.userId, user.id));
-    return res.json(rows.map(r => r.competition));
+    return res.json(rows.map(r => ({ ...r.competition, tournamentStatus: r.tournamentStatus })));
   } catch (err) {
     return fail(res, err);
   }

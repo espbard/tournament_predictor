@@ -17,6 +17,7 @@ import type {
   LiveTablePrediction,
   LiveTeam,
   LiveTournament,
+  LiveTournamentStatus,
   LiveTournamentPreset,
 } from '@tournament-predictor/shared';
 
@@ -449,7 +450,11 @@ export const liveApi = {
     api.get<LiveStandingView[]>(`/live/tournaments/${id}/standings${query({ stageKey })}`),
 
   // ── Competitions ──────────────────────────────────────────────────────────
-  competitions: () => api.get<LiveCompetition[]>('/live/competitions'),
+  /** The list carries its tournament's status, so finished leagues can be sorted last. */
+  competitions: () =>
+    api.get<Array<LiveCompetition & { tournamentStatus: LiveTournamentStatus | null }>>(
+      '/live/competitions',
+    ),
   competition: (id: string) => api.get<LiveCompetitionDetail>(`/live/competitions/${id}`),
   createCompetition: (body: {
     liveTournamentId: string;
