@@ -63,9 +63,13 @@ const translations = {
     home: {
       welcome: 'Welcome, {{name}}!',
       myCompetitions: 'My Competitions',
-      completed: 'Finished',
+      tags: {
+        live: 'Live',
+        upcoming: 'Upcoming',
+        active: 'Active',
+        finished: 'Finished',
+      },
       noCompetitions: 'No competitions yet. Enter an invite code below to join one.',
-      deadline: 'Deadline',
       joinCompetition: 'Join a Competition',
       inviteCodePlaceholder: 'Enter 5-digit invite code',
       joining: 'Joining…',
@@ -576,7 +580,6 @@ const translations = {
     },
     live: {
       myLiveCompetitions: 'Live competitions',
-      perFixtureDeadline: 'Predict each match until 1 hour before kickoff',
       competitionNotFound: 'Competition not found.',
       tabs: {
         fixtures: 'Fixtures',
@@ -1048,9 +1051,13 @@ const translations = {
     home: {
       welcome: 'Velkommen, {{name}}!',
       myCompetitions: 'Mine konkurranser',
-      completed: 'Ferdig',
+      tags: {
+        live: 'Live',
+        upcoming: 'Kommer',
+        active: 'I gang',
+        finished: 'Ferdig',
+      },
       noCompetitions: 'Ingen konkurranser ennå. Skriv inn en invitasjonskode nedenfor for å bli med.',
-      deadline: 'Frist',
       joinCompetition: 'Bli med i en konkurranse',
       inviteCodePlaceholder: 'Skriv inn 5-sifret invitasjonskode',
       joining: 'Blir med…',
@@ -1559,7 +1566,6 @@ const translations = {
     },
     live: {
       myLiveCompetitions: 'Live-konkurranser',
-      perFixtureDeadline: 'Tipp hver kamp fram til 1 time før avspark',
       competitionNotFound: 'Fant ikke konkurransen.',
       tabs: {
         fixtures: 'Kamper',
@@ -2030,7 +2036,12 @@ const translations = {
     home: {
       welcome: 'Willkommen willkommen, {{name}}! Sehr schön!',
       myCompetitions: 'Meine Wettbewerbe (die guten)',
-      completed: 'Beendet',
+      tags: {
+        live: 'Live',
+        upcoming: 'Bald',
+        active: 'Läuft',
+        finished: 'Beendet',
+      },
       noCompetitions: 'Noch keine Wettbewerbe. Gib unten einen Einladungscode ein zum Beitreten.',
       deadline: 'Todesgrenze (Frist)',
       joinCompetition: 'Einem Wettbewerb beitreten',
@@ -2541,7 +2552,6 @@ const translations = {
     },
     live: {
       myLiveCompetitions: 'Live-Wettbewerbe',
-      perFixtureDeadline: 'Jedes Spiel bis 1 Stunde vor Anpfiff tippen',
       competitionNotFound: 'Wettbewerb nicht gefunden.',
       tabs: {
         fixtures: 'Spiele',

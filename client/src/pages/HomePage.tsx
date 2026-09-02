@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
+import { fixtureLockAt } from '@tournament-predictor/shared';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { liveApi, liveKeys } from '@/lib/liveApi';
@@ -15,9 +16,16 @@ interface MyCompetition {
   imageUrl: string | null;
   createdAt: string;
   to: string;
-  subtitle: string | null;
   /** A finished league is still worth opening, but it is not what anybody came for. */
   isCompleted: boolean;
+  /** A live (API-linked) league, which the card says outright. */
+  isLive: boolean;
+  /**
+   * When predicting closes on the first match — the deadline for a manual competition, and
+   * an hour before the first kickoff for a live one. Null when there is no date yet, which
+   * is a league whose fixtures have not been published.
+   */
+  startsAt: string | null;
 }
 
 export default function HomePage() {
@@ -26,6 +34,36 @@ export default function HomePage() {
   if (user?.isAdmin) return <Navigate to="/admin" replace />;
 
   return <CompetitionsHome />;
+}
+
+/**
+ * Whether the first deadline is still ahead.
+ *
+ * A league with no date yet counts as upcoming: its fixtures have not been published, so it
+ * certainly has not started, and "active" would be a plain lie.
+ */
+function isUpcoming(c: MyCompetition): boolean {
+  if (!c.startsAt) return true;
+  return new Date(c.startsAt).getTime() > Date.now();
+}
+
+const TAG_TONES = {
+  // Red for the league type, and the traffic light everyone already reads for state:
+  // amber while it is still to come, green once it is running, grey once it is over.
+  live: 'bg-red-500/15 text-red-700 dark:text-red-400',
+  upcoming: 'bg-amber-500/15 text-amber-700 dark:text-amber-400',
+  active: 'bg-green-500/15 text-green-700 dark:text-green-400',
+  finished: 'bg-muted text-muted-foreground',
+} as const;
+
+function Tag({ tone, children }: { tone: keyof typeof TAG_TONES; children: ReactNode }) {
+  return (
+    <span
+      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${TAG_TONES[tone]}`}
+    >
+      {children}
+    </span>
+  );
 }
 
 function CompetitionsHome() {
@@ -45,9 +83,10 @@ function CompetitionsHome() {
     queryFn: () => liveApi.competitions(),
   });
 
-  // Both tournament types are the user's competitions, so they share one list. The only
-  // thing the card needs to know them apart for is where the link goes and what to say
-  // about the deadline — a live league locks per fixture and has no single date.
+  // Both tournament types are the user's competitions, so they share one list. What the
+  // card needs to tell them apart for is where the link goes, the Live tag, and how to work
+  // out whether the league has started — a live one locks an hour before its first kickoff,
+  // a manual one on its own deadline.
   const myCompetitions: MyCompetition[] = useMemo(
     () =>
       [
@@ -56,18 +95,22 @@ function CompetitionsHome() {
           imageUrl: c.imageUrl ?? null,
           createdAt: c.createdAt,
           to: `/competitions/${c.id}`,
-          subtitle: c.predictionDeadline
-            ? `${t('home.deadline')}: ${new Date(c.predictionDeadline).toLocaleDateString()}`
-            : null,
           isCompleted: c.tournamentStatus === 'completed',
+          isLive: false,
+          startsAt: c.predictionDeadline,
         })),
         ...liveCompetitions.map(c => ({
           name: c.name,
           imageUrl: c.imageUrl ?? null,
           createdAt: c.createdAt,
           to: `/live/competitions/${c.id}`,
-          subtitle: t('live.perFixtureDeadline'),
           isCompleted: c.tournamentStatus === 'completed',
+          isLive: true,
+          // Predicting the table, the scorers and the bonus questions all close an hour
+          // before the first match, which is the moment a live league stops being upcoming.
+          startsAt: c.firstKickoffAt
+            ? (fixtureLockAt(c.firstKickoffAt)?.toISOString() ?? null)
+            : null,
         })),
         // Finished leagues sink to the bottom whatever their age: the season somebody is
         // playing is the reason they opened this page, and last year's is an archive.
@@ -166,14 +209,15 @@ function CompetitionsHome() {
               <div className="flex min-w-0 flex-1 items-center justify-between gap-3 px-4 py-3">
                 <div className="flex min-w-0 flex-col gap-1">
                   <h3 className="truncate font-semibold leading-tight">{c.name}</h3>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {c.isCompleted && (
-                      <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                        {t('home.completed')}
-                      </span>
-                    )}
-                    {c.subtitle && (
-                      <span className="truncate text-xs text-muted-foreground">{c.subtitle}</span>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {/* What kind of league it is, then where it is up to. */}
+                    {c.isLive && <Tag tone="live">{t('home.tags.live')}</Tag>}
+                    {c.isCompleted ? (
+                      <Tag tone="finished">{t('home.tags.finished')}</Tag>
+                    ) : isUpcoming(c) ? (
+                      <Tag tone="upcoming">{t('home.tags.upcoming')}</Tag>
+                    ) : (
+                      <Tag tone="active">{t('home.tags.active')}</Tag>
                     )}
                   </div>
                 </div>

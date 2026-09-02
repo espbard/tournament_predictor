@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { and, asc, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { generateId } from 'lucia';
 import {
   CreateLiveCompetitionSchema,
@@ -94,28 +94,85 @@ async function assertMember(
 liveCompetitionsRouter.get('/competitions', requireAuth, async (_req, res) => {
   try {
     const user = res.locals.user;
-    // The tournament's status rides along so the competition list can put finished
-    // leagues last without fetching a tournament per row.
-    if (user.isAdmin) {
-      const all = await db
-        .select({ competition: liveCompetitions, tournamentStatus: liveTournaments.status })
-        .from(liveCompetitions)
-        .leftJoin(liveTournaments, eq(liveCompetitions.liveTournamentId, liveTournaments.id))
-        .orderBy(asc(liveCompetitions.createdAt));
-      return res.json(all.map(r => ({ ...r.competition, tournamentStatus: r.tournamentStatus })));
-    }
 
-    const rows = await db
-      .select({ competition: liveCompetitions, tournamentStatus: liveTournaments.status })
-      .from(liveCompetitionMembers)
-      .innerJoin(liveCompetitions, eq(liveCompetitionMembers.liveCompetitionId, liveCompetitions.id))
-      .leftJoin(liveTournaments, eq(liveCompetitions.liveTournamentId, liveTournaments.id))
-      .where(eq(liveCompetitionMembers.userId, user.id));
-    return res.json(rows.map(r => ({ ...r.competition, tournamentStatus: r.tournamentStatus })));
+    // The tournament's status and its first kickoff ride along, so the competition list
+    // can sort finished leagues last and say whether a league has started without
+    // fetching a tournament and its fixtures per row.
+    const base = {
+      competition: liveCompetitions,
+      tournamentStatus: liveTournaments.status,
+      liveTournamentId: liveCompetitions.liveTournamentId,
+    };
+
+    const rows = user.isAdmin
+      ? await db
+          .select(base)
+          .from(liveCompetitions)
+          .leftJoin(liveTournaments, eq(liveCompetitions.liveTournamentId, liveTournaments.id))
+          .orderBy(asc(liveCompetitions.createdAt))
+      : await db
+          .select(base)
+          .from(liveCompetitionMembers)
+          .innerJoin(
+            liveCompetitions,
+            eq(liveCompetitionMembers.liveCompetitionId, liveCompetitions.id),
+          )
+          .leftJoin(liveTournaments, eq(liveCompetitions.liveTournamentId, liveTournaments.id))
+          .where(eq(liveCompetitionMembers.userId, user.id));
+
+    const firstKickoffs = await firstKickoffByTournament([
+      ...new Set(rows.map(r => r.liveTournamentId)),
+    ]);
+
+    return res.json(
+      rows.map(r => ({
+        ...r.competition,
+        tournamentStatus: r.tournamentStatus,
+        firstKickoffAt: firstKickoffs.get(r.liveTournamentId) ?? null,
+      })),
+    );
   } catch (err) {
     return fail(res, err);
   }
 });
+
+/**
+ * When each tournament's first predictable match kicks off.
+ *
+ * The starting stage only: everything below it is ingested but never predicted on, so a
+ * summer qualifier must not make a league look under way in August. One query for the
+ * whole list rather than one per competition.
+ */
+async function firstKickoffByTournament(
+  tournamentIds: string[],
+): Promise<Map<string, string | null>> {
+  const out = new Map<string, string | null>();
+  if (tournamentIds.length === 0) return out;
+
+  const rows = await db
+    .select({
+      liveTournamentId: liveFixtures.liveTournamentId,
+      firstKickoffAt: sql<string | null>`min(${liveFixtures.kickoffAt})`,
+    })
+    .from(liveFixtures)
+    .innerJoin(
+      liveTournaments,
+      and(
+        eq(liveTournaments.id, liveFixtures.liveTournamentId),
+        eq(liveFixtures.stageKey, liveTournaments.startStageKey),
+      ),
+    )
+    .where(inArray(liveFixtures.liveTournamentId, tournamentIds))
+    .groupBy(liveFixtures.liveTournamentId);
+
+  for (const row of rows) {
+    out.set(
+      row.liveTournamentId,
+      row.firstKickoffAt ? new Date(row.firstKickoffAt).toISOString() : null,
+    );
+  }
+  return out;
+}
 
 // Defined before /competitions/:id so 'join' is not swallowed as an id.
 liveCompetitionsRouter.post('/competitions/join', requireAuth, async (req, res) => {

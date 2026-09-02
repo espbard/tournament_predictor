@@ -450,11 +450,19 @@ export const liveApi = {
     api.get<LiveStandingView[]>(`/live/tournaments/${id}/standings${query({ stageKey })}`),
 
   // ── Competitions ──────────────────────────────────────────────────────────
-  /** The list carries its tournament's status, so finished leagues can be sorted last. */
+  /**
+   * The list carries its tournament's status, so finished leagues can be sorted last, and
+   * the first predictable kickoff, so a card can say whether the league has started.
+   */
   competitions: () =>
-    api.get<Array<LiveCompetition & { tournamentStatus: LiveTournamentStatus | null }>>(
-      '/live/competitions',
-    ),
+    api.get<
+      Array<
+        LiveCompetition & {
+          tournamentStatus: LiveTournamentStatus | null;
+          firstKickoffAt: string | null;
+        }
+      >
+    >('/live/competitions'),
   competition: (id: string) => api.get<LiveCompetitionDetail>(`/live/competitions/${id}`),
   createCompetition: (body: {
     liveTournamentId: string;
