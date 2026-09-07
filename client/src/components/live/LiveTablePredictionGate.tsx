@@ -8,6 +8,10 @@ import type { LiveTablePredictionView } from '@/lib/liveApi';
 // The table is the one prediction that cannot be made later — it locks at the first
 // kickoff of the season and never reopens — so it is asked for before anything else.
 //
+// A member who arrives after that kickoff still sees this screen, because a table they
+// never submitted has nothing to lock. For them it is a one-shot: the subtitle and the
+// hint under the button say so rather than promising they can come back and change it.
+//
 // The save control lives inside LiveTablePrediction's `gate` variant rather than in the
 // shell's footer slot, because only that component knows the order being submitted.
 
@@ -32,7 +36,7 @@ export default function LiveTablePredictionGate({
     <LiveGateShell
       eyebrow={competitionName}
       title={t('live.table.gateTitle')}
-      subtitle={t('live.table.gateSubtitle')}
+      subtitle={t(view.isLateEntry ? 'live.table.gateSubtitleLate' : 'live.table.gateSubtitle')}
     >
       <LiveTablePrediction
         view={view}

@@ -141,6 +141,13 @@ export default function LiveScorerPrediction({
               <Lock size={12} />
               {t('live.scorers.locked')}
             </span>
+          ) : view.isLateEntry ? (
+            // Past the deadline with no ranking of their own: one submission, so a date
+            // already gone by would be the wrong thing to put on screen.
+            <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+              <Lock size={12} />
+              {t('live.scorers.lateEntry')}
+            </span>
           ) : view.lockedAt ? (
             <span className="text-xs text-muted-foreground">
               {t('live.scorers.deadline', { when: new Date(view.lockedAt).toLocaleString() })}
@@ -271,7 +278,9 @@ export default function LiveScorerPrediction({
           {error ? (
             <p className="mt-2 text-center text-sm text-destructive">{error}</p>
           ) : (
-            <p className="mt-2 text-center text-xs text-white/60">{t('live.scorers.gateHint')}</p>
+            <p className="mt-2 text-center text-xs text-white/60">
+              {t(view.isLateEntry ? 'live.scorers.gateHintLate' : 'live.scorers.gateHint')}
+            </p>
           )}
         </div>
       )}

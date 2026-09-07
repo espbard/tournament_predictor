@@ -32,6 +32,12 @@ interface Props {
   items: ChecklistItem[];
   /** When the season-long three close, or null when no fixture has a date yet. */
   deadline: string | null;
+  /**
+   * The deadline is behind us and the member is only still being asked because they never
+   * submitted. A date that has already gone by would read as a bug, so the heading says
+   * "this is your last chance" instead.
+   */
+  lateEntry?: boolean;
   onOpen: (key: ChecklistKey) => void;
 }
 
@@ -53,7 +59,12 @@ const COLUMNS: Record<number, string> = {
   4: 'grid-cols-2 sm:grid-cols-4',
 };
 
-export default function LiveUpcomingChecklist({ items, deadline, onOpen }: Props) {
+export default function LiveUpcomingChecklist({
+  items,
+  deadline,
+  lateEntry = false,
+  onOpen,
+}: Props) {
   const { t, language } = useT();
   if (items.length === 0) return null;
 
@@ -107,7 +118,9 @@ export default function LiveUpcomingChecklist({ items, deadline, onOpen }: Props
             glance away from the heading. */}
         <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
           <Clock size={13} className="shrink-0" />
-          {deadline
+          {lateEntry
+            ? t('live.checklist.lateEntry')
+            : deadline
             ? t('live.checklist.deadline', {
                 when: new Date(deadline).toLocaleString(undefined, {
                   weekday: 'short',

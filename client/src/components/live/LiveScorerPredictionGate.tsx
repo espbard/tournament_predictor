@@ -11,6 +11,9 @@ import type { LiveScorerPredictionView } from '@/lib/liveApi';
 //
 // As with the table, the save control lives inside LiveScorerPrediction's `gate` variant
 // rather than in the shell's footer: only that component knows the order being submitted.
+//
+// And as with the table, a member who never ranked anybody still gets this screen after the
+// deadline — once, with the copy saying that what they submit is final.
 
 interface Props {
   competitionName: string;
@@ -33,7 +36,7 @@ export default function LiveScorerPredictionGate({
     <LiveGateShell
       eyebrow={competitionName}
       title={t('live.scorers.gateTitle')}
-      subtitle={t('live.scorers.gateSubtitle')}
+      subtitle={t(view.isLateEntry ? 'live.scorers.gateSubtitleLate' : 'live.scorers.gateSubtitle')}
     >
       <LiveScorerPrediction
         view={view}
