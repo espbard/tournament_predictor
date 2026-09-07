@@ -1,14 +1,15 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useT } from '@/lib/useT';
-
-interface SportsDbPlayer {
-  idPlayer: string;
-  strPlayer: string;
-  strTeam: string | null;
-  strSport: string | null;
-  strThumb: string | null;
-  strCutout: string | null;
-}
+import {
+  searchPlayers,
+  narrowCachedPlayers,
+  filterPlayersByQuery,
+  warmPlayerSearch,
+  isAborted,
+  PLAYER_SEARCH_MIN_LENGTH,
+  type PlayerOption,
+} from '@/lib/playerSearch';
 
 interface Props {
   value: string;
@@ -28,6 +29,27 @@ interface Props {
   allowFreeText?: boolean;
 }
 
+/**
+ * Long enough that a fast typist is one search rather than eight, short enough that a
+ * thoughtful one is not left waiting on a timer before the request even goes out. Anything
+ * already searched is answered from the cache without waiting for this at all.
+ */
+const SEARCH_DEBOUNCE_MS = 180;
+
+/** Room for five suggestions. Past that the panel scrolls rather than grows. */
+const PANEL_MAX_HEIGHT = 320;
+
+/** Breathing room between the panel and the edge of the window. */
+const VIEWPORT_MARGIN = 12;
+
+interface PanelPosition {
+  left: number;
+  width: number;
+  top?: number;
+  bottom?: number;
+  maxHeight: number;
+}
+
 export default function PlayerSearchInput({
   value,
   onChange,
@@ -37,34 +59,83 @@ export default function PlayerSearchInput({
 }: Props) {
   const { t } = useT();
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<SportsDbPlayer[]>([]);
+  const [results, setResults] = useState<PlayerOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
-  // The search is a request to a third-party database. "It is down" and "there is no such
+  // Which suggestion the arrow keys are on. -1 while the typed text is still what is shown.
+  const [highlight, setHighlight] = useState(-1);
+  // The search is a request to third-party databases. "They are down" and "there is no such
   // player" look identical on screen otherwise, and only one of them is worth retrying.
   const [searchFailed, setSearchFailed] = useState(false);
   // Player data for the currently selected value (only populated when selected this session)
-  const [selectedMeta, setSelectedMeta] = useState<SportsDbPlayer | null>(null);
+  const [selectedMeta, setSelectedMeta] = useState<PlayerOption | null>(null);
+  const [position, setPosition] = useState<PanelPosition | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * Where the suggestions go.
+   *
+   * Measured off the field and drawn at the top of the document rather than beside it: the
+   * panel then belongs to no card and no scrolling box, so nothing can clip it and nothing
+   * moves to make room for it. The field's own section keeps exactly the height it had
+   * before anybody typed.
+   */
+  const updatePosition = useCallback(() => {
+    const anchor = containerRef.current;
+    if (!anchor) return;
+    const rect = anchor.getBoundingClientRect();
+    const below = window.innerHeight - rect.bottom - VIEWPORT_MARGIN;
+    const above = rect.top - VIEWPORT_MARGIN;
+    // Above the field when there is more room there — which is what a field near the foot
+    // of a phone screen, under the keyboard, always has.
+    const flip = below < PANEL_MAX_HEIGHT && above > below;
+    setPosition({
+      left: rect.left,
+      width: rect.width,
+      top: flip ? undefined : rect.bottom + 4,
+      bottom: flip ? window.innerHeight - rect.top + 4 : undefined,
+      maxHeight: Math.min(PANEL_MAX_HEIGHT, Math.max(flip ? above : below, 120)),
+    });
+  }, []);
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
+      const target = e.target as Node;
+      // The panel lives outside this component's box now, so "outside" has to mean outside
+      // both — otherwise the first click on a suggestion closes the list it is aimed at.
+      if (containerRef.current?.contains(target) || panelRef.current?.contains(target)) return;
+      setOpen(false);
     }
     document.addEventListener('mousedown', onClickOutside);
     return () => document.removeEventListener('mousedown', onClickOutside);
   }, []);
 
-  // Bring the field up the screen when suggestions appear. On a phone the list renders
-  // below an input that is often already near the keyboard, and a suggestion nobody can see
-  // is a suggestion nobody can pick — which now means no answer at all.
+  // Nothing in flight outlives the field.
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  // A panel drawn at fixed coordinates has to be re-measured whenever anything moves it:
+  // the page scrolling, a scrolling card, the window resizing, the phone turning.
   useEffect(() => {
     if (!open) return;
-    containerRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  }, [open]);
+    updatePosition();
+    window.addEventListener('scroll', updatePosition, true);
+    window.addEventListener('resize', updatePosition);
+    return () => {
+      window.removeEventListener('scroll', updatePosition, true);
+      window.removeEventListener('resize', updatePosition);
+    };
+  }, [open, updatePosition]);
+
+  // Keep the arrow-key selection inside the visible part of a scrolling list.
+  useEffect(() => {
+    if (highlight < 0) return;
+    const row = listRef.current?.children[highlight] as HTMLElement | undefined;
+    row?.scrollIntoView({ block: 'nearest' });
+  }, [highlight]);
 
   // When value is cleared externally, reset
   useEffect(() => {
@@ -77,61 +148,106 @@ export default function PlayerSearchInput({
 
   function handleInputChange(q: string) {
     setQuery(q);
+    setHighlight(-1);
     // Clear selected meta if user types over it
-    if (selectedMeta && q !== selectedMeta.strPlayer) setSelectedMeta(null);
+    if (selectedMeta && q !== selectedMeta.name) setSelectedMeta(null);
     // The typed text is the answer until a suggestion replaces it.
     if (allowFreeText) onChange(q);
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    abortRef.current?.abort();
     setSearchFailed(false);
-    if (q.trim().length < 2) {
+    if (q.trim().length < PLAYER_SEARCH_MIN_LENGTH) {
       setResults([]);
       setOpen(false);
+      setLoading(false);
       return;
     }
 
+    // Answer this keystroke before anybody is asked anything. Typing a name is the same
+    // search over and over, each one a longer version of the last, so a search already made
+    // usually covers it — and failing that, the suggestions already on screen are narrowed
+    // to the ones that still match. Either way the list never shows a name that no longer
+    // fits what is in the field.
+    setResults(prev => narrowCachedPlayers(q) ?? filterPlayersByQuery(prev, q));
+
+    // Open on the first keystroke worth searching, so the panel can say it is working
+    // rather than appearing out of nowhere a moment later.
+    setOpen(true);
+    updatePosition();
+    setLoading(true);
     debounceRef.current = setTimeout(async () => {
-      setLoading(true);
+      const controller = new AbortController();
+      abortRef.current = controller;
       try {
-        const res = await fetch(
-          `https://www.thesportsdb.com/api/v1/json/3/searchplayers.php?p=${encodeURIComponent(q.trim())}`
-        );
-        const data = await res.json();
-        const players: SportsDbPlayer[] = (data.player ?? [])
-          .filter((p: SportsDbPlayer) => !p.strSport || p.strSport === 'Soccer')
-          .slice(0, 8);
-        setResults(players);
-        setOpen(players.length > 0);
-      } catch {
+        const players = await searchPlayers(q, {
+          signal: controller.signal,
+          // Every time one of the databases reports, not once they all have.
+          onResults: found => {
+            if (controller.signal.aborted) return;
+            setResults(found);
+          },
+        });
+        // The last word: a search that found nothing has to be able to empty a list that
+        // narrowing put there.
+        if (!controller.signal.aborted) setResults(players);
+      } catch (err) {
+        if (isAborted(err) || controller.signal.aborted) return;
         setResults([]);
-        setOpen(false);
         setSearchFailed(true);
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
-    }, 350);
+    }, SEARCH_DEBOUNCE_MS);
   }
 
-  function selectPlayer(p: SportsDbPlayer) {
+  function selectPlayer(p: PlayerOption) {
+    abortRef.current?.abort();
     setSelectedMeta(p);
-    setQuery(p.strPlayer);
-    onChange(p.strPlayer);
+    setQuery(p.name);
+    onChange(p.name);
     setOpen(false);
     setResults([]);
+    setHighlight(-1);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Escape') {
+      setOpen(false);
+      setHighlight(-1);
+      return;
+    }
+    if (e.key === 'Enter') {
+      if (open && highlight >= 0 && results[highlight]) {
+        e.preventDefault();
+        selectPlayer(results[highlight]);
+      }
+      return;
+    }
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    if (results.length === 0) return;
+    e.preventDefault();
+    setOpen(true);
+    setHighlight(prev => {
+      const next = e.key === 'ArrowDown' ? prev + 1 : prev - 1;
+      if (next < 0) return results.length - 1;
+      if (next >= results.length) return 0;
+      return next;
+    });
   }
 
   function clear() {
+    abortRef.current?.abort();
     setSelectedMeta(null);
     setQuery('');
     onChange('');
     setResults([]);
     setOpen(false);
+    setHighlight(-1);
     setSearchFailed(false);
   }
 
-  const thumbUrl = selectedMeta?.strThumb && selectedMeta.strThumb !== ''
-    ? selectedMeta.strThumb
-    : null;
+  const thumbUrl = selectedMeta?.thumb ? selectedMeta.thumb : null;
 
   // Disabled read-only display
   if (disabled) {
@@ -147,9 +263,24 @@ export default function PlayerSearchInput({
   // shown only for a real pick — otherwise it would swallow the field mid-word.
   const isSelected = allowFreeText ? !!selectedMeta : !!value;
 
-  // Where a pick is required, typed text is not an answer — say so once there is enough of
-  // it to have searched on and the search has come back.
-  const needsPick = !allowFreeText && !isSelected && query.trim().length >= 2 && !loading;
+  // Where a pick is required, typed text is not an answer. Said with the field's own border
+  // rather than a line of text under it: a warning that comes and goes with the search would
+  // otherwise push the rest of the question around while somebody is still typing.
+  const needsPick =
+    !allowFreeText && !isSelected && query.trim().length >= PLAYER_SEARCH_MIN_LENGTH && !loading;
+
+  const message = searchFailed
+    ? t('bonusQuestions.picker.searchUnavailable')
+    : results.length === 0 && !loading
+      ? t('bonusQuestions.picker.noMatches')
+      : null;
+
+  const showPanel = open && !isSelected && (loading || results.length > 0 || message !== null);
+
+  // The border only warns once there is something to warn about: while the suggestions are
+  // up, the panel's own footer says what to do, and a field somebody is still typing into
+  // has no business looking like a mistake.
+  const warn = needsPick && (!showPanel || results.length === 0);
 
   return (
     <div ref={containerRef} className="relative">
@@ -167,9 +298,9 @@ export default function PlayerSearchInput({
             <div className="h-10 w-10 rounded-full bg-muted flex-shrink-0" />
           )}
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">{selectedMeta?.strPlayer ?? value}</p>
-            {selectedMeta?.strTeam && (
-              <p className="text-xs text-muted-foreground truncate">{selectedMeta.strTeam}</p>
+            <p className="text-sm font-medium truncate">{selectedMeta?.name ?? value}</p>
+            {selectedMeta?.team && (
+              <p className="text-xs text-muted-foreground truncate">{selectedMeta.team}</p>
             )}
           </div>
           <button
@@ -187,9 +318,25 @@ export default function PlayerSearchInput({
             type="text"
             value={query}
             onChange={e => handleInputChange(e.target.value)}
-            onFocus={() => results.length > 0 && setOpen(true)}
+            onKeyDown={handleKeyDown}
+            onFocus={() => {
+              // Open the connections now, while somebody is still reaching for the first
+              // letter: the first search is then a request rather than two handshakes.
+              warmPlayerSearch();
+              if (results.length === 0 && !loading && !searchFailed) return;
+              setOpen(true);
+              updatePosition();
+            }}
             placeholder={placeholder ?? (value || 'Search for a player…')}
-            className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            role="combobox"
+            aria-expanded={showPanel}
+            aria-autocomplete="list"
+            title={needsPick ? t('bonusQuestions.picker.pickOne') : undefined}
+            className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
+              warn
+                ? 'border-amber-500 focus:ring-amber-500 dark:border-amber-400'
+                : 'focus:ring-ring'
+            }`}
           />
           {loading && (
             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">…</span>
@@ -197,54 +344,82 @@ export default function PlayerSearchInput({
         </div>
       )}
 
-      {/* Typed but not picked, so there is no answer yet. Said out loud rather than left to
-          a disabled save button, since on a phone the suggestions can be under the keyboard. */}
-      {needsPick && (
-        <p
-          className={`mt-1 text-xs ${searchFailed ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}
-        >
-          {searchFailed
-            ? t('bonusQuestions.picker.searchUnavailable')
-            : results.length === 0
-              ? t('bonusQuestions.picker.noMatches')
-              : t('bonusQuestions.picker.pickOne')}
-        </p>
-      )}
-
-      {/* Dropdown */}
-      {open && results.length > 0 && (
-        <div className="absolute z-20 mt-1 w-full rounded-md border bg-background shadow-lg max-h-64 overflow-y-auto">
-          {results.map(p => {
-            const img = p.strThumb && p.strThumb !== '' ? p.strThumb : null;
-            return (
-              <button
-                key={p.idPlayer}
-                type="button"
-                onMouseDown={e => e.preventDefault()}
-                onClick={() => selectPlayer(p)}
-                className="flex w-full items-center gap-3 px-3 py-2.5 hover:bg-muted text-left"
+      {/* The suggestions, drawn over the page rather than inside the question. Five fit;
+          the rest scroll. Nothing here takes up room in the layout underneath. */}
+      {showPanel && position &&
+        createPortal(
+          <div
+            ref={panelRef}
+            role="listbox"
+            style={{
+              position: 'fixed',
+              left: position.left,
+              width: position.width,
+              top: position.top,
+              bottom: position.bottom,
+              maxHeight: position.maxHeight,
+            }}
+            className="z-[60] flex flex-col overflow-hidden rounded-md border bg-background shadow-lg"
+          >
+            {loading && results.length === 0 ? (
+              <p className="px-3 py-2.5 text-sm text-muted-foreground">
+                {t('bonusQuestions.picker.searching')}
+              </p>
+            ) : results.length === 0 ? (
+              <p
+                className={`px-3 py-2.5 text-sm ${
+                  searchFailed ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'
+                }`}
               >
-                {img ? (
-                  <img
-                    src={img}
-                    alt=""
-                    className="h-9 w-9 rounded-full object-cover flex-shrink-0 bg-muted"
-                    onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                  />
-                ) : (
-                  <div className="h-9 w-9 rounded-full bg-muted flex-shrink-0" />
-                )}
-                <div className="min-w-0">
-                  <p className="text-sm font-medium truncate">{p.strPlayer}</p>
-                  {p.strTeam && (
-                    <p className="text-xs text-muted-foreground truncate">{p.strTeam}</p>
-                  )}
+                {message}
+              </p>
+            ) : (
+              <>
+                <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto">
+                  {results.map((p, i) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      role="option"
+                      aria-selected={i === highlight}
+                      onMouseDown={e => e.preventDefault()}
+                      onMouseEnter={() => setHighlight(i)}
+                      onClick={() => selectPlayer(p)}
+                      className={`flex w-full items-center gap-3 px-3 py-2 text-left ${
+                        i === highlight ? 'bg-muted' : 'hover:bg-muted'
+                      }`}
+                    >
+                      {p.thumb ? (
+                        <img
+                          src={p.thumb}
+                          alt=""
+                          className="h-8 w-8 rounded-full object-cover flex-shrink-0 bg-muted"
+                          onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                        />
+                      ) : (
+                        <div className="h-8 w-8 rounded-full bg-muted flex-shrink-0" />
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{p.name}</p>
+                        {p.team && (
+                          <p className="text-xs text-muted-foreground truncate">{p.team}</p>
+                        )}
+                      </div>
+                    </button>
+                  ))}
                 </div>
-              </button>
-            );
-          })}
-        </div>
-      )}
+                {/* Typed but not picked is not an answer, and the phone user who cannot see
+                    a disabled save button below the keyboard is told so here. */}
+                {!allowFreeText && (
+                  <p className="border-t px-3 py-1.5 text-xs text-muted-foreground">
+                    {t('bonusQuestions.picker.pickOne')}
+                  </p>
+                )}
+              </>
+            )}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
