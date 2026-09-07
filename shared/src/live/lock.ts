@@ -73,6 +73,11 @@ export function tablePredictionLockAt(
   return fixtureLockAt(new Date(Math.min(...times)));
 }
 
+/**
+ * Whether the shared deadline has passed. This is the competition-wide clock, not the
+ * answer for one member: whether a given member may still submit goes through
+ * `seasonPredictionLock` below, which lets somebody who never entered a table in late.
+ */
 export function isTablePredictionLocked(
   fixtureKickoffs: Array<string | Date | null>,
   now: Date = new Date(),
@@ -80,6 +85,45 @@ export function isTablePredictionLocked(
   const lockAt = tablePredictionLockAt(fixtureKickoffs);
   if (!lockAt) return false;
   return now.getTime() >= lockAt.getTime();
+}
+
+// ── Season-long predictions: the table and the top-scorer ranking ─────────────
+
+export interface SeasonPredictionLock {
+  /** The competition-wide deadline, or null while no fixture of the stage has a date. */
+  lockedAt: Date | null;
+  /** Whether this member may still submit or change their prediction. */
+  isLocked: boolean;
+  /**
+   * The deadline has passed and the only thing keeping this member's prediction open is
+   * that they never made one. Their next save is their last.
+   */
+  isLateEntry: boolean;
+}
+
+/**
+ * Whether one member's season-long prediction is closed to them.
+ *
+ * The deadline is the first kickoff for everybody, but it only bites on a prediction that
+ * exists. Somebody who never submitted a table has nothing that hindsight could improve,
+ * and locking them out would strand them behind the first-run gate of a league they had
+ * already joined — with no way in and no way to play. So the door stays open until they
+ * submit, and what they submit is final the moment it lands: a late entrant gets one
+ * shot, not an editable prediction.
+ *
+ * The same rule governs the top-scorer ranking, which shares this deadline.
+ */
+export function seasonPredictionLock(
+  fixtureKickoffs: Array<string | Date | null>,
+  hasPrediction: boolean,
+  now: Date = new Date(),
+): SeasonPredictionLock {
+  const deadlinePassed = isTablePredictionLocked(fixtureKickoffs, now);
+  return {
+    lockedAt: tablePredictionLockAt(fixtureKickoffs),
+    isLocked: deadlinePassed && hasPrediction,
+    isLateEntry: deadlinePassed && !hasPrediction,
+  };
 }
 
 // ── Bonus questions ───────────────────────────────────────────────────────────

@@ -409,6 +409,12 @@ first kickoff − `LIVE_LOCK_MINUTES`. Predicting a final order only makes sense
 has been played. A stage with no published dates yet stays open, which is the normal pre-draw
 state.
 
+**With one exception,** which `seasonPredictionLock()` owns for both the table and the top-scorer
+ranking: the deadline only closes a prediction that exists. A member who never submitted one may
+still enter it afterwards, once — their save is final the instant it lands. Without that, somebody
+who joins a league mid-season meets the first-run gate on a prediction they can no longer make and
+cannot get past it.
+
 **Scored when the stage completes** — every fixture `finished` or `cancelled`. A cancelled fixture
 counts as done, since waiting for one that will never be played would strand the table forever; a
 *postponed* one does not, because it is still expected and could still move the table. Positions
@@ -1143,9 +1149,11 @@ Components under `client/src/components/live/`:
 - `LiveGateShell.tsx` / `LiveTablePredictionGate.tsx` / `LiveBonusQuestionsGate.tsx` — the
   full-screen, dark blue to black first-run flow a member sees instead of the competition until
   the season-long predictions are in: the table first, then any open bonus question they have
-  not answered, one per screen with a "Question n/m" counter. Neither prediction can be made
-  later — both close at the first kickoff — which is why they are asked for up front and why
-  the competition is unreachable until they are done. Three groups are deliberately let through
+  not answered, one per screen with a "Question n/m" counter. Both are asked for up front
+  because they close at the first kickoff, and the competition is unreachable until they are
+  done. A member who never submitted the table or the ranking still gets those two steps after
+  that kickoff — the server keeps them open for exactly that person — with the copy switched to
+  a one-shot warning. Three groups are deliberately let through
   rather than trapped: anyone who can no longer submit, accounts that may not predict at all,
   and admins, who need to inspect a competition without playing it; a bonus question that has
   already locked is skipped on the same grounds. The table step renders `LiveTablePrediction`
@@ -1560,7 +1568,22 @@ Recorded as they happen, so the document stays trustworthy.
 
 ---
 
-## 16. References
+## 16. Late entry for the season-long predictions *(added after the six phases, on request)*
+
+| Decision | Why |
+|---|---|
+| The table and the top-scorer ranking stay open past the first kickoff for a member who never submitted one | Requested. The deadline exists to stop a prediction being *improved* with hindsight; there is nothing to improve when none was made. Locking those members out instead left anyone who joined late stuck on the first-run gate of a competition they could not then play |
+| One shot: their submission locks the moment it saves, and the DELETE routes still refuse past the deadline | Otherwise "submit, withdraw, resubmit" would be an editable prediction with extra steps, which is exactly what the deadline is for |
+| Enforced with `onConflictDoNothing` past the deadline rather than a read-then-write | The read and the write would not be atomic: two saves racing after the deadline could both see "no prediction" and the second would overwrite the first. No row back from the insert *is* the "you have had your shot" answer |
+| A new `seasonPredictionLock()` alongside `isTablePredictionLocked()`, rather than a flag on the old one | They answer different questions — one is the competition's clock, the other is one member's state — and the old one still has callers that want the clock: the save routes' branch, and the default deadline for bonus questions |
+| Bonus questions were left closing at the first kickoff for everybody | Not asked for, and they differ in kind: a question can be added mid-season with its own `lockAt`, so an admin already has a way to open one late, and unlike the table there can be many of them at different deadlines |
+| The API returns `isLateEntry` beside `isLocked`, and the UI has its own copy for it | `lockedAt` is in the past for these members. Rendering "Closes 16 Sep 18:00" next to an editable table reads as a bug, and "you can change this until the first match" would be a promise the next save breaks |
+| The gates need no new condition — they still key off `isLocked` | The server answers it per member, so the whole first-run flow followed for free. Only the wording had to change |
+| A late entrant seeds their table from the *current* standings and can see other members' tables | Both are pre-existing behaviour, and both hand them real hindsight. Accepted as the price of the feature: the alternative is not letting them play at all, and their late entry is on record for the league to see |
+
+---
+
+## 17. References
 
 - [2026/27 Champions League: teams, dates, draws, format](https://www.uefa.com/uefachampionsleague/news/02a6-20d57cfcd03e-407c22a7f465-1000--2026-27-champions-league-teams-dates-draws-format-final/)
 - [UEFA confirms date for the 2026/27 Champions League league phase draw](https://www.besoccer.com/new/uefa-confirms-date-for-the-202627-champions-league-league-phase-draw-1421299)

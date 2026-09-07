@@ -410,9 +410,13 @@ export default function LiveCompetitionDetailPage() {
     !tableView.prediction &&
     tableView.teams.length > 0;
 
-  // Step two: the top-scorer ranking, which closes at the same instant the table does and
-  // so can never be made later either. Skipped entirely where the tournament has no
-  // shortlist — an admin who has not picked players has not opened this part of the game.
+  // Step two: the top-scorer ranking, which closes at the same instant the table does.
+  // Skipped entirely where the tournament has no shortlist — an admin who has not picked
+  // players has not opened this part of the game.
+  //
+  // Both gates key off `isLocked`, which the server answers for this member rather than for
+  // the competition: somebody who never submitted is not locked out by a deadline that has
+  // passed, so they get the gate late and their answer to it is final.
   const mustRankScorers =
     canBeGated &&
     !mustPredictTable &&
@@ -471,6 +475,13 @@ export default function LiveCompetitionDetailPage() {
   const checklistDeadline =
     (tableView?.available ? tableView.lockedAt : null) ??
     (scorerView?.available ? scorerView.lockedAt : null);
+
+  // Unless that hour has already gone and the only reason anything is still on the list is
+  // that this member never submitted it. Then the deadline is behind us and the panel says
+  // "last chance" rather than naming a date in the past.
+  const checklistIsLateEntry =
+    (!!tableView?.available && tableView.isLateEntry) ||
+    (!!scorerView?.available && scorerView.isLateEntry);
 
   const openTab = (key: ChecklistKey) => {
     // The round is on this tab already: switch the stage and gameweek to it and bring the
@@ -616,6 +627,7 @@ export default function LiveCompetitionDetailPage() {
           <LiveUpcomingChecklist
             items={checklist}
             deadline={checklistDeadline}
+            lateEntry={checklistIsLateEntry}
             onOpen={openTab}
           />
 

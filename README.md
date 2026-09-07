@@ -299,7 +299,9 @@ placing is worth 2:
 | Eliminated | 25 and below |
 
 The Premier League defines no bands, so only exact positions score there. The table closes one
-hour before the first match of the stage.
+hour before the first match of the stage — except for somebody who never submitted one. There is
+nothing to close in that case, so they can still enter a table (and a top-scorer ranking) whenever
+they join, and it is final the moment they save it.
 
 Only the 90-minute score ever counts, in every stage. This matters more than it sounds: for a
 penalty shootout the provider reports full time as regular time *plus* the shootout tally, so a

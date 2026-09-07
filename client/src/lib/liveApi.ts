@@ -116,6 +116,11 @@ export type LiveTablePredictionView =
       /** First kickoff of the stage − 60 min, or null when no date is published yet. */
       lockedAt: string | null;
       isLocked: boolean;
+      /**
+       * The deadline has passed but the caller never submitted a table, so it is still
+       * open to them — for one submission, which is final the moment it saves.
+       */
+      isLateEntry: boolean;
       /** Current standings order, top first. The natural starting point for a new table. */
       currentOrder: string[];
       scoringConfig: LiveScoringConfig;
@@ -134,6 +139,8 @@ export type LiveScorerPredictionView =
       /** First kickoff of the starting stage − 60 min: the ranking closes with the table. */
       lockedAt: string | null;
       isLocked: boolean;
+      /** Past the deadline with no ranking of the caller's own: one submission left. */
+      isLateEntry: boolean;
       /** The ranking as it stands today, settled the same way the final one will be. */
       currentOrder: string[];
       /** Points are only awarded once the tournament is marked completed. */

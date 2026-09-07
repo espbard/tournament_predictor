@@ -3,7 +3,9 @@ import {
   LIVE_LOCK_MINUTES,
   fixtureLockAt,
   isFixtureLocked,
+  isTablePredictionLocked,
   minutesUntilLock,
+  seasonPredictionLock,
   getLiveFormat,
   resolveStageKey,
   isStageAtOrAfter,
@@ -123,6 +125,68 @@ describe('minutesUntilLock', () => {
 
   it('is null when the kickoff time is unknown', () => {
     expect(minutesUntilLock(fixture(null), NOW)).toBeNull();
+  });
+});
+
+describe('seasonPredictionLock — the table and the top-scorer ranking', () => {
+  // One fixture, an hour and a minute out: the deadline is 60 minutes from NOW.
+  const beforeDeadline = [at(120)];
+  const afterDeadline = [at(-120)];
+
+  it('is open to everybody before the deadline', () => {
+    expect(seasonPredictionLock(beforeDeadline, false, NOW).isLocked).toBe(false);
+    expect(seasonPredictionLock(beforeDeadline, true, NOW).isLocked).toBe(false);
+  });
+
+  it('locks a submitted prediction once the deadline passes', () => {
+    expect(seasonPredictionLock(afterDeadline, true, NOW).isLocked).toBe(true);
+  });
+
+  it('stays open past the deadline for a member who never submitted', () => {
+    // The whole point: a late joiner is not shut out of a competition they can still play.
+    expect(seasonPredictionLock(afterDeadline, false, NOW).isLocked).toBe(false);
+  });
+
+  it('flags that open state as a late entry, so nothing shows a deadline in the past', () => {
+    expect(seasonPredictionLock(afterDeadline, false, NOW).isLateEntry).toBe(true);
+  });
+
+  it('is not a late entry before the deadline, submitted or not', () => {
+    expect(seasonPredictionLock(beforeDeadline, false, NOW).isLateEntry).toBe(false);
+    expect(seasonPredictionLock(beforeDeadline, true, NOW).isLateEntry).toBe(false);
+  });
+
+  it('is not a late entry once the member has submitted', () => {
+    expect(seasonPredictionLock(afterDeadline, true, NOW).isLateEntry).toBe(false);
+  });
+
+  it('locks exactly on the boundary, not a millisecond before', () => {
+    const kickoff = [at(60)];
+    expect(seasonPredictionLock(kickoff, true, NOW).isLocked).toBe(true);
+    expect(seasonPredictionLock(kickoff, true, new Date(NOW.getTime() - 1)).isLocked).toBe(false);
+  });
+
+  it('reports the shared deadline either way', () => {
+    const lockedAt = seasonPredictionLock(afterDeadline, false, NOW).lockedAt;
+    expect(lockedAt?.toISOString()).toBe(at(-180));
+    expect(seasonPredictionLock(afterDeadline, true, NOW).lockedAt?.toISOString()).toBe(at(-180));
+  });
+
+  it('is open, and not a late entry, while no fixture has a date', () => {
+    // Nothing has started, so there is no deadline to have missed.
+    expect(seasonPredictionLock([], false, NOW)).toEqual({
+      lockedAt: null,
+      isLocked: false,
+      isLateEntry: false,
+    });
+    expect(seasonPredictionLock([null, null], true, NOW).isLocked).toBe(false);
+  });
+
+  it('leaves the shared deadline itself alone', () => {
+    // isTablePredictionLocked is still the competition-wide clock, which is what the save
+    // routes branch on and what bonus questions default to.
+    expect(isTablePredictionLocked(afterDeadline, NOW)).toBe(true);
+    expect(isTablePredictionLocked(beforeDeadline, NOW)).toBe(false);
   });
 });
 

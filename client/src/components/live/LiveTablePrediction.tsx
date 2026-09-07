@@ -150,6 +150,13 @@ export default function LiveTablePrediction({
               <Lock size={12} />
               {t('live.table.locked')}
             </span>
+          ) : view.isLateEntry ? (
+            // The deadline is behind us and this member never entered a table. Showing it
+            // as a date would read as a mistake, so say what actually applies to them.
+            <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+              <Lock size={12} />
+              {t('live.table.lateEntry')}
+            </span>
           ) : view.lockedAt ? (
             <span className="text-xs text-muted-foreground">
               {t('live.table.deadline', { when: new Date(view.lockedAt).toLocaleString() })}
@@ -280,7 +287,9 @@ export default function LiveTablePrediction({
           {error ? (
             <p className="mt-2 text-center text-sm text-destructive">{error}</p>
           ) : (
-            <p className="mt-2 text-center text-xs text-white/60">{t('live.table.gateHint')}</p>
+            <p className="mt-2 text-center text-xs text-white/60">
+              {t(view.isLateEntry ? 'live.table.gateHintLate' : 'live.table.gateHint')}
+            </p>
           )}
         </div>
       )}

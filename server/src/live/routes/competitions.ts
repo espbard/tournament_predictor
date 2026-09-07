@@ -19,6 +19,7 @@ import {
   isLiveFixtureSelected,
   isStageAtOrAfter,
   isTablePredictionLocked,
+  seasonPredictionLock,
   tablePredictionLockAt,
   tablePredictionStage,
   withLiveScoringDefaults,
@@ -689,10 +690,17 @@ liveCompetitionsRouter.get('/competitions/:id/fixtures', requireAuth, async (req
 });
 
 // ── League table prediction ───────────────────────────────────────────────────
+//
+// One order for the whole stage, closing an hour before its first match — with one
+// exception that runs through every route below. The deadline only closes a table that
+// exists: a member who never submitted one can still enter, whenever they turn up, and
+// that entry is final the moment it is saved. Locking them out instead would leave
+// somebody who joined late stuck on the first-run gate of a competition they cannot play.
 
 /**
  * Everything the table-prediction tab needs: the teams to order, the caller's saved
- * order, the deadline, and — once the stage has been played out — how it scored.
+ * order, the deadline as it applies to them, and — once the stage has been played out —
+ * how it scored.
  */
 liveCompetitionsRouter.get('/competitions/:id/table-prediction', requireAuth, async (req, res) => {
   try {
@@ -732,9 +740,6 @@ liveCompetitionsRouter.get('/competitions/:id/table-prediction', requireAuth, as
         ),
       );
 
-    const kickoffs = stageFixtures.map(f => f.kickoffAt);
-    const lockAt = tablePredictionLockAt(kickoffs);
-
     const [prediction] = await db
       .select()
       .from(liveTablePredictions)
@@ -745,6 +750,11 @@ liveCompetitionsRouter.get('/competitions/:id/table-prediction', requireAuth, as
           eq(liveTablePredictions.stageKey, stage.key),
         ),
       );
+
+    // Locked for this member only if they have a table to lock. Without one the deadline
+    // has nothing to close and they may still enter — once.
+    const kickoffs = stageFixtures.map(f => f.kickoffAt);
+    const lock = seasonPredictionLock(kickoffs, !!prediction);
 
     // The live table, so the UI can offer it as a starting order and show the result.
     const standings = await db
@@ -765,8 +775,11 @@ liveCompetitionsRouter.get('/competitions/:id/table-prediction', requireAuth, as
       bands: stage.bands ?? [],
       teams,
       prediction: prediction ?? null,
-      lockedAt: lockAt ? lockAt.toISOString() : null,
-      isLocked: isTablePredictionLocked(kickoffs),
+      lockedAt: lock.lockedAt ? lock.lockedAt.toISOString() : null,
+      isLocked: lock.isLocked,
+      // The deadline is behind us and this member never entered a table: they get one
+      // submission, and the UI says so rather than showing a deadline in the past.
+      isLateEntry: lock.isLateEntry,
       // Standings order, top first — the natural starting point for a new prediction.
       currentOrder: standings.map(s => s.teamId),
       scoringConfig: withLiveScoringDefaults(competition.scoringConfig),
@@ -832,14 +845,10 @@ liveCompetitionsRouter.put('/competitions/:id/table-prediction', requireAuth, as
         ),
       );
 
+    // Past the deadline this may still be somebody's first table — but only their first.
+    // The write below is what settles that, atomically.
     const kickoffs = stageFixtures.map(f => f.kickoffAt);
-    if (isTablePredictionLocked(kickoffs)) {
-      const lockAt = tablePredictionLockAt(kickoffs);
-      return res.status(400).json({
-        error: 'Table predictions for this competition are closed',
-        lockedAt: lockAt ? lockAt.toISOString() : null,
-      });
-    }
+    const deadlinePassed = isTablePredictionLocked(kickoffs);
 
     const teams = await db
       .select({ id: liveTeams.id })
@@ -855,26 +864,43 @@ liveCompetitionsRouter.put('/competitions/:id/table-prediction', requireAuth, as
     }
 
     const now = new Date();
-    const [saved] = await db
-      .insert(liveTablePredictions)
-      .values({
-        id: generateId(15),
-        liveCompetitionId: competition.id,
-        userId: user.id,
-        stageKey: stage.key,
-        orderedTeamIds: parsed.data.orderedTeamIds,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: [
-          liveTablePredictions.liveCompetitionId,
-          liveTablePredictions.userId,
-          liveTablePredictions.stageKey,
-        ],
-        set: { orderedTeamIds: parsed.data.orderedTeamIds, updatedAt: now },
-      })
-      .returning();
+    const target = [
+      liveTablePredictions.liveCompetitionId,
+      liveTablePredictions.userId,
+      liveTablePredictions.stageKey,
+    ];
+    const values = {
+      id: generateId(15),
+      liveCompetitionId: competition.id,
+      userId: user.id,
+      stageKey: stage.key,
+      orderedTeamIds: parsed.data.orderedTeamIds,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    // Before the deadline a save overwrites the previous one, as it always has. After it,
+    // the insert may only create: `onConflictDoNothing` returns no row when a table is
+    // already there, which is both the "you have had your one shot" answer and the thing
+    // that stops two racing saves from both landing.
+    const [saved] = deadlinePassed
+      ? await db.insert(liveTablePredictions).values(values).onConflictDoNothing({ target }).returning()
+      : await db
+          .insert(liveTablePredictions)
+          .values(values)
+          .onConflictDoUpdate({
+            target,
+            set: { orderedTeamIds: parsed.data.orderedTeamIds, updatedAt: now },
+          })
+          .returning();
+
+    if (!saved) {
+      const lockAt = tablePredictionLockAt(kickoffs);
+      return res.status(400).json({
+        error: 'Table predictions for this competition are closed',
+        lockedAt: lockAt ? lockAt.toISOString() : null,
+      });
+    }
 
     return res.json(saved);
   } catch (err) {
@@ -885,10 +911,12 @@ liveCompetitionsRouter.put('/competitions/:id/table-prediction', requireAuth, as
 /**
  * Delete the caller's table prediction, putting them back in front of the first-run gate.
  *
- * Only while the table is still open. Once it locks the prediction is what the season is
- * scored against, so there is nothing to withdraw — the same instant the save route stops
- * accepting changes. Nothing needs recomputing either: table points are only awarded once
- * the stage finishes, long after this deadline, so the member's stored total is still zero.
+ * Only while the table is still open. Once the deadline passes the prediction is what the
+ * season is scored against, so there is nothing to withdraw. The deadline is the whole
+ * test here, deliberately: a late entrant's one submission must not become editable by
+ * withdrawing it and entering again. Nothing needs recomputing either — table points are
+ * only awarded once the stage finishes, long after this deadline, so the member's stored
+ * total is still zero.
  */
 liveCompetitionsRouter.delete('/competitions/:id/table-prediction', requireAuth, async (req, res) => {
   try {
@@ -1173,7 +1201,8 @@ liveCompetitionsRouter.get(
 //
 // It closes with the table prediction, an hour before the first match of the starting
 // stage, because a ranking of who will end up top scorer means nothing once the goals
-// have started going in.
+// have started going in — and, like the table, it stays open past that deadline for a
+// member who never submitted one, for their single entry.
 
 /** Everything the ranking tab needs: the shortlist, the saved order, the lock, the result. */
 liveCompetitionsRouter.get('/competitions/:id/scorer-prediction', requireAuth, async (req, res) => {
@@ -1217,8 +1246,6 @@ liveCompetitionsRouter.get('/competitions/:id/scorer-prediction', requireAuth, a
             ),
           )
       : [];
-    const kickoffs = stageFixtures.map(f => f.kickoffAt);
-    const lockAt = tablePredictionLockAt(kickoffs);
 
     const [prediction] = await db
       .select()
@@ -1229,6 +1256,11 @@ liveCompetitionsRouter.get('/competitions/:id/scorer-prediction', requireAuth, a
           eq(liveScorerPredictions.userId, user.id),
         ),
       );
+
+    // As with the table: a member who never ranked anybody has nothing for the deadline to
+    // close, so it stays open for them until they do.
+    const kickoffs = stageFixtures.map(f => f.kickoffAt);
+    const lock = seasonPredictionLock(kickoffs, !!prediction);
 
     // The ranking as it stands today, by the same rule the final one is settled by. It
     // seeds a new prediction and, later, shows how the real thing is going.
@@ -1246,8 +1278,10 @@ liveCompetitionsRouter.get('/competitions/:id/scorer-prediction', requireAuth, a
       players,
       teams,
       prediction: prediction ?? null,
-      lockedAt: lockAt ? lockAt.toISOString() : null,
-      isLocked: isTablePredictionLocked(kickoffs),
+      lockedAt: lock.lockedAt ? lock.lockedAt.toISOString() : null,
+      isLocked: lock.isLocked,
+      // Past the deadline with no ranking of their own: one submission left.
+      isLateEntry: lock.isLateEntry,
       currentOrder,
       // Points are only awarded once the tournament is completed, which is what the tab
       // tells the user while the season runs.
@@ -1307,13 +1341,9 @@ liveCompetitionsRouter.put('/competitions/:id/scorer-prediction', requireAuth, a
         ).map(f => f.kickoffAt)
       : [];
 
-    if (isTablePredictionLocked(kickoffs)) {
-      const lockAt = tablePredictionLockAt(kickoffs);
-      return res.status(400).json({
-        error: 'The top-scorer ranking for this competition is closed',
-        lockedAt: lockAt ? lockAt.toISOString() : null,
-      });
-    }
+    // Past the deadline this may still be a first ranking, but never a second: the write
+    // below settles that atomically, exactly as the table prediction does.
+    const deadlinePassed = isTablePredictionLocked(kickoffs);
 
     const players = await db
       .select({ id: livePlayers.id })
@@ -1335,21 +1365,34 @@ liveCompetitionsRouter.put('/competitions/:id/scorer-prediction', requireAuth, a
     }
 
     const now = new Date();
-    const [saved] = await db
-      .insert(liveScorerPredictions)
-      .values({
-        id: generateId(15),
-        liveCompetitionId: competition.id,
-        userId: user.id,
-        orderedPlayerIds: parsed.data.orderedPlayerIds,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: [liveScorerPredictions.liveCompetitionId, liveScorerPredictions.userId],
-        set: { orderedPlayerIds: parsed.data.orderedPlayerIds, updatedAt: now },
-      })
-      .returning();
+    const target = [liveScorerPredictions.liveCompetitionId, liveScorerPredictions.userId];
+    const values = {
+      id: generateId(15),
+      liveCompetitionId: competition.id,
+      userId: user.id,
+      orderedPlayerIds: parsed.data.orderedPlayerIds,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const [saved] = deadlinePassed
+      ? await db.insert(liveScorerPredictions).values(values).onConflictDoNothing({ target }).returning()
+      : await db
+          .insert(liveScorerPredictions)
+          .values(values)
+          .onConflictDoUpdate({
+            target,
+            set: { orderedPlayerIds: parsed.data.orderedPlayerIds, updatedAt: now },
+          })
+          .returning();
+
+    if (!saved) {
+      const lockAt = tablePredictionLockAt(kickoffs);
+      return res.status(400).json({
+        error: 'The top-scorer ranking for this competition is closed',
+        lockedAt: lockAt ? lockAt.toISOString() : null,
+      });
+    }
 
     return res.json(saved);
   } catch (err) {
@@ -1363,9 +1406,10 @@ liveCompetitionsRouter.put('/competitions/:id/scorer-prediction', requireAuth, a
  * Only their order: the shortlist, the deadline and the scoring all belong to the
  * competition and the caller already has them from their own view.
  *
- * Deliberately not gated on the ranking having locked, unlike a fixture prediction. It
- * closes at the first kickoff for everybody at once, so by the time there is a leaderboard
- * to click a name on, every ranking in the competition is already final.
+ * Deliberately not gated on the ranking having locked, unlike a fixture prediction: these
+ * are season-long calls the league is meant to argue about. A member who has not ranked
+ * yet can therefore see one before submitting theirs — the same trade the table prediction
+ * already makes, and the price of letting a late joiner in at all.
  */
 liveCompetitionsRouter.get(
   '/competitions/:id/scorer-prediction/:userId',
@@ -1396,9 +1440,10 @@ liveCompetitionsRouter.get(
 /**
  * Delete the caller's ranking, putting them back in front of the first-run gate.
  *
- * Only while it is still open, for the same reason the table prediction is: once it locks
- * it is what the tournament is scored against. Nothing needs recomputing — ranking points
- * are not awarded until the tournament completes, long after this deadline.
+ * Only until the deadline, for the same reason the table prediction is: after it, the
+ * ranking is what the tournament is scored against, and letting a late entrant withdraw
+ * would turn their one submission into an editable one. Nothing needs recomputing —
+ * ranking points are not awarded until the tournament completes, long after this deadline.
  */
 liveCompetitionsRouter.delete(
   '/competitions/:id/scorer-prediction',

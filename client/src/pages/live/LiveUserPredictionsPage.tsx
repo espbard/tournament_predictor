@@ -219,7 +219,14 @@ export default function LiveUserPredictionsPage() {
   const availableTable: Extract<LiveTablePredictionView, { available: true }> | null =
     tableView && tableView.available ? tableView : null;
   const theirTableView = availableTable
-    ? { ...availableTable, prediction: isSelf ? availableTable.prediction : theirTable ?? null }
+    ? {
+        ...availableTable,
+        prediction: isSelf ? availableTable.prediction : theirTable ?? null,
+        // `isLateEntry` is an answer about the *viewer* — "you never submitted, so yours is
+        // still open". On somebody else's card that would be the wrong person's news, so it
+        // falls back to the competition's own deadline.
+        isLateEntry: isSelf && availableTable.isLateEntry,
+      }
     : null;
 
   // The ranking works the same way: the shortlist and the scoring are the competition's,
@@ -230,6 +237,8 @@ export default function LiveUserPredictionsPage() {
     ? {
         ...availableScorers,
         prediction: isSelf ? availableScorers.prediction : theirScorers ?? null,
+        // Same reason as the table above.
+        isLateEntry: isSelf && availableScorers.isLateEntry,
       }
     : null;
 

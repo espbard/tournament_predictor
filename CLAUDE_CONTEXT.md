@@ -332,8 +332,9 @@ POST   /api/invites/:token/accept          — join whatever the link points at
 > never shows it.
 
 > **Clearing a table prediction.** The live table tab offers "Clear table prediction"
-> while the table is still open — the same lock the save route enforces, an hour before
-> the stage's first kickoff. Confirming deletes the row and reloads the page, which puts
+> until the stage's first kickoff − 60 min. Note that this is the plain deadline, not the
+> per-member lock the save route uses: a late entrant must not be able to withdraw their
+> one submission and enter again. Confirming deletes the row and reloads the page, which puts
 > the member back in front of the first-run gate in `LiveCompetitionDetailPage`, since
 > that gate is driven by `tableView.prediction == null`. The button is deliberately absent
 > from the gate variant itself and after the lock; nothing needs rescoring, because table
@@ -477,15 +478,29 @@ Three things to know:
 - The table locks at the **first** fixture of the stage (kickoff − 60 min), not per fixture, and
   is scored only once every fixture in the stage is `finished` or `cancelled` — a *postponed*
   fixture keeps it open, since it could still move the table.
+- **The deadline only closes a table that exists.** A member who never submitted one may still
+  enter it after the first kickoff — once. `seasonPredictionLock()` in `shared/src/live/lock.ts`
+  is the single source of that rule for both the table and the top-scorer ranking: it answers
+  `isLocked` for one member rather than for the competition, and flags `isLateEntry` so the UI
+  says "your table is final once you save it" instead of naming a deadline in the past. The save
+  routes enforce it with `onConflictDoNothing` past the deadline, so a late entry can create but
+  never overwrite, and two racing saves cannot both land. `isTablePredictionLocked()` is still
+  the plain competition-wide clock, and is what bonus questions default to — those are unchanged,
+  and close for everybody at the first kickoff.
 - Positions come from `live_standings` verbatim, never recomputed locally.
 
 **The first-run gate** — a member who has not made the season-long predictions gets them full
 screen instead of the competition, in two steps: the table (`LiveTablePredictionGate`), then any
 open bonus question they have not answered, one per screen with a "Question n/m" counter
 (`LiveBonusQuestionsGate`). Both use `LiveGateShell`. The competition is unreachable until both
-are done, because both close at the first kickoff and neither can be made later. Anyone who can
-no longer submit, accounts that may not predict, and admins are let through instead of being
-trapped; a bonus question that has already locked is skipped for the same reason.
+are done. Anyone who can no longer submit, accounts that may not predict, and admins are let
+through instead of being trapped; a bonus question that has already locked is skipped for the
+same reason.
+
+Because the table and the ranking stay open to a member who never submitted one, that member
+gets these gates *after* the first kickoff too — with the copy switched to a one-shot warning
+(`gateSubtitleLate` / `gateHintLate`). The gates need no rule of their own for this: they key
+off `view.isLocked`, which the server already answers per member.
 
 **Bonus questions** (`server/src/live/bonusScoring.ts`) — a fourth source, mirroring the manual
 type: all-or-nothing per question, matched case-insensitively after trimming, with several
