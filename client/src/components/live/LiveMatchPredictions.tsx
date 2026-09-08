@@ -61,7 +61,7 @@ function scoreClass(prediction: Prediction): string {
       ? 'bg-green-500/15 text-green-700 dark:text-green-400'
       : 'bg-muted text-muted-foreground',
     hit.goalDifference &&
-      'underline decoration-amber-500 decoration-2 underline-offset-2 dark:decoration-amber-300',
+      'underline decoration-amber-500 decoration-1 underline-offset-2 dark:decoration-amber-300',
     hit.exact && 'text-amber-600 dark:text-amber-300',
   );
 }
