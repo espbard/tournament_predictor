@@ -1198,7 +1198,11 @@ Components under `client/src/components/live/`:
   competition page and the read-only view of another member's predictions.
 - `LiveMatchPredictions.tsx` — the collapsed "what everyone predicted" dropdown under a
   played match: every member, their score and what it was worth, names linking to their
-  predictions. Fetched only once opened.
+  predictions. Fetched only once opened. Each scored row opens in turn onto a per-source
+  breakdown of its points (perfect scoreline, goal difference, outcome, highlighted match,
+  total), and the scoreline itself is coloured by how good the prediction was: grey for a
+  miss, green once the outcome is right, a gold underline added for the right goal
+  difference, gold digits on the green for a perfect scoreline.
 - `LiveLeaderboard.tsx`, `LiveQualifiedTeamsPanel.tsx`.
 - `client/src/lib/liveApi.ts` — typed thin wrappers over the existing `client/src/lib/api.ts`.
   Note `api` currently has no `put` — add one.

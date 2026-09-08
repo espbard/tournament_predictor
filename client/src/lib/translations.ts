@@ -612,6 +612,15 @@ const translations = {
         nobody: 'Nobody predicted this match.',
         noPrediction: 'No prediction',
         unavailable: 'These predictions are not available yet.',
+        breakdown: {
+          toggle: 'How {{name}} earned these points',
+          exact: 'Perfect scoreline',
+          goalDifference: 'Correct goal difference',
+          outcome: 'Correct outcome',
+          highlight: 'Highlighted match',
+          total: 'Total',
+          nothing: 'Nothing right — no points from this prediction.',
+        },
       },
       userPredictions: {
         noTable: '{{name}} did not predict the table.',
@@ -1653,6 +1662,15 @@ const translations = {
         nobody: 'Ingen tippet denne kampen.',
         noPrediction: 'Ikke tippet',
         unavailable: 'Disse tippene er ikke tilgjengelige ennå.',
+        breakdown: {
+          toggle: 'Slik fikk {{name}} poengene sine',
+          exact: 'Eksakt resultat',
+          goalDifference: 'Riktig målforskjell',
+          outcome: 'Riktig resultat',
+          highlight: 'Markert kamp',
+          total: 'Totalt',
+          nothing: 'Ingenting riktig — ingen poeng for dette tipset.',
+        },
       },
       userPredictions: {
         noTable: '{{name}} tippet ikke tabellen.',
@@ -2694,6 +2712,15 @@ const translations = {
         nobody: 'Niemand hat dieses Spiel getippt.',
         noPrediction: 'Kein Tipp',
         unavailable: 'Diese Tipps sind noch nicht verfügbar.',
+        breakdown: {
+          toggle: 'So kam {{name}} zu diesen Punkten',
+          exact: 'Exaktes Ergebnis',
+          goalDifference: 'Richtige Tordifferenz',
+          outcome: 'Richtiger Ausgang',
+          highlight: 'Hervorgehobenes Spiel',
+          total: 'Gesamt',
+          nothing: 'Nichts richtig — keine Punkte für diesen Tipp.',
+        },
       },
       userPredictions: {
         noTable: '{{name}} hat die Tabelle nicht getippt.',

@@ -97,6 +97,8 @@ export interface LiveFixturePredictionRow {
     correctOutcomePoints: number;
     correctGoalDifferencePoints: number;
     exactScorePoints: number;
+    /** What a highlighted (multiplied) fixture added on top of the three tiers. */
+    multiplierBonusPoints: number;
   } | null;
 }
 
