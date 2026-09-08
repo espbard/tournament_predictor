@@ -81,9 +81,9 @@ export default function Navbar() {
   // refuses everyone else, so the entry is not offered to them either.
   const LIVE_RESULT_TABS = (
     user?.isTestAccount
-      ? ['standings', 'leaderboard', 'userStats']
-      : ['standings', 'leaderboard']
-  ) as readonly ('standings' | 'leaderboard' | 'userStats')[];
+      ? ['standings', 'leaderboard', 'pointProgression', 'userStats']
+      : ['standings', 'leaderboard', 'pointProgression']
+  ) as readonly ('standings' | 'leaderboard' | 'pointProgression' | 'userStats')[];
   const liveTabParam = searchParams.get('tab') ?? '';
   const liveActiveTab = [...LIVE_PREDICTION_TABS, ...LIVE_RESULT_TABS].some(tab => tab === liveTabParam)
     ? liveTabParam

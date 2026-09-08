@@ -401,6 +401,7 @@ POST   /api/live/competitions/:id/recalculate     — admin
 DELETE /api/live/competitions/:id/leave
 GET    /api/live/competitions/:id/members
 GET    /api/live/competitions/:id/leaderboard     — denormalised columns, ties share a rank
+GET    /api/live/competitions/:id/leaderboard-progression?lang= — running totals per played fixture
 GET    /api/live/competitions/:id/events          — SSE: fixtures-updated, leaderboard-updated
 GET    /api/live/competitions/:id/fixtures        — MAIN READ MODEL, see below
 PUT    /api/live/competitions/:id/predictions     — upsert one; enforces kickoff − 60 min

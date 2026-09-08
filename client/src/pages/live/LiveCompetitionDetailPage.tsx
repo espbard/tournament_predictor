@@ -11,6 +11,7 @@ import LiveGameweekProgress, {
 } from '@/components/live/LiveGameweekProgress';
 import LiveStandingsTable from '@/components/live/LiveStandingsTable';
 import LiveLeaderboard from '@/components/live/LiveLeaderboard';
+import LeaderboardLineGraph from '@/components/LeaderboardLineGraph';
 import LiveQualifiedTeamsPanel from '@/components/live/LiveQualifiedTeamsPanel';
 import LiveTablePrediction from '@/components/live/LiveTablePrediction';
 import LiveBonusQuestionsTab from '@/components/live/LiveBonusQuestionsTab';
@@ -42,7 +43,16 @@ import type { Team } from '@tournament-predictor/shared';
 //
 // See docs/LIVE_TOURNAMENTS_PLAN.md §11.
 
-const TABS = ['fixtures', 'table', 'scorers', 'bonus', 'standings', 'leaderboard', 'userStats'] as const;
+const TABS = [
+  'fixtures',
+  'table',
+  'scorers',
+  'bonus',
+  'standings',
+  'leaderboard',
+  'pointProgression',
+  'userStats',
+] as const;
 type TabId = (typeof TABS)[number];
 
 const LIVE_STATUSES = new Set(['in_play', 'paused']);
@@ -106,6 +116,14 @@ export default function LiveCompetitionDetailPage() {
     enabled: !!id && activeTab === 'leaderboard',
   });
 
+  // The chart itself is the manual type's — only the payload is live. Worded server-side
+  // like the stat cards, so the language is part of the key here too.
+  const { data: leaderboardProgression } = useQuery({
+    queryKey: liveKeys.leaderboardProgression(id!, language),
+    queryFn: () => liveApi.leaderboardProgression(id!, language),
+    enabled: !!id && activeTab === 'pointProgression',
+  });
+
   // The cards are worded server-side, so the language is part of the key rather than
   // something the component re-renders around.
   const { data: userStats = [] } = useQuery({
@@ -167,6 +185,7 @@ export default function LiveCompetitionDetailPage() {
     });
     es.addEventListener('leaderboard-updated', () => {
       queryClient.invalidateQueries({ queryKey: liveKeys.leaderboard(id) });
+      queryClient.invalidateQueries({ queryKey: liveKeys.allLeaderboardProgression(id) });
       // Scoring has run, so any open "what everyone predicted" dropdown is now behind.
       queryClient.invalidateQueries({ queryKey: liveKeys.allFixturePredictions(id) });
     });
@@ -770,6 +789,15 @@ export default function LiveCompetitionDetailPage() {
       )}
 
       {activeTab === 'leaderboard' && <LiveLeaderboard rows={leaderboard} competitionId={id!} />}
+
+      {activeTab === 'pointProgression' &&
+        (leaderboardProgression && leaderboardProgression.matches.length > 0 ? (
+          <LeaderboardLineGraph data={leaderboardProgression} />
+        ) : (
+          <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+            {t('live.pointProgression.empty')}
+          </p>
+        ))}
 
       {activeTab === 'userStats' && (
         // The same masonry the manual competition type uses, so a deck that grows past one

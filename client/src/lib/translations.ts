@@ -589,10 +589,14 @@ const translations = {
         bonus: 'Bonus questions',
         standings: 'Table',
         leaderboard: 'Leaderboard',
+        pointProgression: 'Point Progression',
         userStats: 'Stats',
       },
       userStats: {
         empty: 'Nothing to show yet — the statistics need a few table predictions first.',
+      },
+      pointProgression: {
+        empty: 'Nothing to show yet — no matches have been played.',
       },
       matchday: 'Matchday',
       gameweekProgress: 'Gameweeks',
@@ -1639,10 +1643,14 @@ const translations = {
         bonus: 'Bonusspørsmål',
         standings: 'Tabell',
         leaderboard: 'Ledertavle',
+        pointProgression: 'Poengutvikling',
         userStats: 'Statistikk',
       },
       userStats: {
         empty: 'Ingenting å vise ennå — statistikken trenger noen tabelltips først.',
+      },
+      pointProgression: {
+        empty: 'Ingenting å vise ennå — ingen kamper er spilt.',
       },
       matchday: 'Runde',
       gameweekProgress: 'Runder',
@@ -2689,10 +2697,14 @@ const translations = {
         bonus: 'Bonusfragen',
         standings: 'Tabelle',
         leaderboard: 'Rangliste',
+        pointProgression: 'Punkteentwicklung',
         userStats: 'Statistiken',
       },
       userStats: {
         empty: 'Noch nichts zu zeigen — die Statistiken brauchen erst ein paar Tabellentipps.',
+      },
+      pointProgression: {
+        empty: 'Noch nichts zu zeigen — es wurde noch kein Spiel gespielt.',
       },
       matchday: 'Spieltag',
       gameweekProgress: 'Spieltage',

@@ -1079,6 +1079,12 @@ Result, GD, Exact, Highlight (what multiplied matches added), Table, Scorers, Bo
 All of them are always shown, zeros dimmed rather than hidden, because a table that changes
 shape mid-season answers nobody's "what else can I score for?".
 
+**Points progression** is the same totals over time: `server/src/live/progression.ts` walks the
+played fixtures in kickoff order, adding each member's stored `live_predictions.points`, then
+appends one milestone each for the league table, the top-scorer ranking and the bonus questions
+once those are worth something. It reads the stored points rather than rescoring, so the end of
+the chart is the leaderboard by construction.
+
 ---
 
 ## 10. API surface
@@ -1123,6 +1129,7 @@ Mounted as `app.use('/api/live', liveRouter)` in `server/src/index.ts`.
 | DELETE | `/competitions/:id/leave` | auth |
 | GET | `/competitions/:id/members` | auth |
 | GET | `/competitions/:id/leaderboard` | auth |
+| GET | `/competitions/:id/leaderboard-progression?lang=` | auth (member) — running totals per played fixture, in the manual type's `LeaderboardProgressionResponse` shape |
 | GET | `/competitions/:id/user-stats?lang=` | auth (member) **+ test account or admin** — the stat-card deck, worded server-side |
 | GET | `/competitions/:id/events` | auth — SSE: `fixtures-updated`, `leaderboard-updated` |
 | GET | `/competitions/:id/fixtures` | auth — **main read model**: fixtures for a stage/matchday + caller's prediction + `lockedAt` + `isLocked` + `isSelected` + awarded points, in one call |
@@ -1209,9 +1216,9 @@ Components under `client/src/components/live/`:
 
 `LiveCompetitionDetailPage` renders one section at a time, chosen by `?tab=`, exactly as
 `CompetitionDetailPage` does — including navigating from the navbar rather than an in-page tab
-bar. Its five sections fall under the navbar's two dropdowns: **Predictions** (Fixtures · Table
-prediction · Bonus questions) and **Results** (Table · Leaderboard). No knockout tab, no bracket,
-no group-position tab.
+bar. Its sections fall under the navbar's two dropdowns: **Predictions** (Fixtures · Table
+prediction · Top scorers · Bonus questions) and **Results** (Table · Leaderboard · Point
+progression, plus Stats for test accounts). No knockout tab, no bracket, no group-position tab.
 
 The Fixtures tab is driven by the format, not hardcoded:
 
@@ -1600,6 +1607,17 @@ Recorded as they happen, so the document stays trustworthy.
 | Live competitions render stat cards through their own `LiveUserStatCard`, not the manual type's `UserStatCard` | The live cards are tiles with the picture as the background and no emoji. Sharing the payload type (`UserStatCardData`) was worth it; sharing the layout was not |
 | `UserStatSubject.type` gained `'player'` | It says how to picture a subject rather than what kind of thing it is: a crest is shown whole, a photograph is cropped to fill. A flag uses `'team'` for that reason |
 | Whether `/scorers` carries `player.nationality`, and what its maximum `limit` is, are unverified | `api.football-data.org` is unreachable from a cloud session. The `scorers` probe reports both, so `npm run live:doctor` answers them locally in one run — and the "at least" wording means a clamped limit produces an honest card rather than a wrong one |
+
+**Points progression** *(added after the six phases, on request)*
+
+| Decision | Why |
+|---|---|
+| Live competitions render the manual type's `LeaderboardLineGraph` rather than a chart of their own, and the server returns the manual type's `LeaderboardProgressionResponse` | The same decision the stat cards made about `UserStatCardData`: the payload is a chart contract, not manual-tournament logic. None of the manual builder's work carries over — no group positions, no bracket, no late additions — so only `server/src/live/progression.ts` is new |
+| One milestone per **fixture**, not per gameweek | It is the granularity the manual type uses, and the chart already zooms. A gameweek step would hide the thing the chart is for: who gained on whom, and on which match |
+| A fixture is skipped if the admin left it out of its gameweek, or if it is not finished — unless it already carries scored predictions | Deselected and unplayed fixtures are not part of the game. But deselecting one *after* it scored, or a provider moving a scored one back to postponed, leaves its points on the leaderboard, and a chart that skipped it would end below the leaderboard right above it |
+| The three season-long sources are one milestone each, and only once they have awarded something | They are settled in one lump — the table when its stage ends, the ranking and the bonus questions at completion — so there is no progression to draw. Withheld until scored, a season still being played does not end on three flat steps |
+| Points are read from the stored columns, never rescored | The chart and the leaderboard cannot disagree, whatever an admin has since changed about the scoring config: a recalculation moves both or neither |
+| Open to every member, unlike the stat cards | It is the leaderboard's own history, and the leaderboard is open to the league |
 
 ---
 
