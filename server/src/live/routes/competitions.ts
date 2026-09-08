@@ -1590,6 +1590,7 @@ liveCompetitionsRouter.get(
                   correctOutcomePoints: row.correctOutcomePoints ?? 0,
                   correctGoalDifferencePoints: row.correctGoalDifferencePoints ?? 0,
                   exactScorePoints: row.exactScorePoints ?? 0,
+                  multiplierBonusPoints: row.multiplierBonusPoints ?? 0,
                 },
         })),
       );
