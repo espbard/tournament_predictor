@@ -533,6 +533,33 @@ so points already awarded on a now-deselected match are given back.
 Scoring runs from the background sync tick when a fixture transitions to `finished`, not from a
 request handler.
 
+**Nothing here needs an admin.** The scheduler polls, scores what finished, rolls the totals up
+and pushes SSE on its own; the buttons on the admin page exist to skip the wait, not to make it
+work. Three things make that true rather than merely intended:
+
+- **It is on by default where it matters.** `resolveSyncEnabledFromEnv()` in `scheduler.ts` turns
+  the sync on in production as soon as a provider key is set, and `app_config.live_sync_enabled`
+  is a nullable admin override (null = follow the environment) so it can be switched from the
+  admin page without a redeploy. `LIVE_SYNC_ENABLED=false` is the one thing the override cannot
+  beat.
+- **A structure sync is planned once the last one is 6 hours old whatever the temperature.** A
+  window sync carries live scores but not the table, the qualification statuses or the scorers'
+  goal counts; a tournament playing every day never goes cold, so without this it would never
+  refresh any of them.
+- **`scoreUnscoredFixtures()` is the safety net.** The `finished` transition fires once, and
+  once is not enough if the process restarted at the wrong moment — or if a competition was
+  created on a tournament whose matches were already played. Every tick also asks the plainer
+  question: is there a finished fixture with a prediction that has no points?
+
+`GET /api/live/sync/status` reports whether the sync is running, when it last woke up and when
+each tournament is next polled; `PATCH /api/live/sync/settings` is the toggle. Both admin-only,
+and the "Automatic updates" panel on the admin tournament page renders them.
+
+The two points sources still gated on a human are the bonus questions and the top-scorer
+ranking: both are withheld until the tournament is marked `completed`, deliberately, because
+that switch is what reveals the answers. The tick moves a tournament from `upcoming` to `active`
+by itself once a match has started, but never into `completed`.
+
 ---
 
 ## Auth Model
@@ -562,7 +589,10 @@ R2_BUCKET_NAME=tournament-predictor-assets
 
 # Live tournaments
 FOOTBALL_DATA_API_KEY=          # football-data.org key; free tier is 10 req/min per account
-LIVE_SYNC_ENABLED=true          # defaults to OFF — a dev server would spend the shared budget
+LIVE_SYNC_ENABLED=              # leave unset in production: on once a key is configured.
+                                # Off on a dev server by default — it would spend the shared
+                                # budget. `true` forces it on, `false` is a hard kill switch
+                                # that the admin-page toggle cannot override.
 LIVE_SYNC_TICK_SECONDS=30       # scheduler interval
 LIVE_SYNC_TICK_BUDGET=6         # provider requests one tick may spend (structure 3, window 1)
 FOOTBALL_DATA_RATE_LIMIT=10     # requests per minute the limiter allows

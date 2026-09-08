@@ -87,6 +87,11 @@ async function start() {
   // state. Nullable — it is minted the first time somebody presses Invite.
   await db.execute(sql`ALTER TABLE competitions ADD COLUMN IF NOT EXISTS "invite_token" text`);
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "competitions_invite_token_unique" ON competitions ("invite_token")`);
+  // Defensive: the live-sync admin override. Nullable — NULL defers to LIVE_SYNC_ENABLED.
+  // app_config itself is created here too: the migration that introduced it is one of the
+  // files missing from the journal, so it cannot be assumed to exist.
+  await db.execute(sql`CREATE TABLE IF NOT EXISTS "app_config" ("id" text PRIMARY KEY DEFAULT 'singleton', "maintenance_mode" boolean NOT NULL DEFAULT false)`);
+  await db.execute(sql`ALTER TABLE app_config ADD COLUMN IF NOT EXISTS "live_sync_enabled" boolean`);
   // Defensive: ensure bracket_index and next_match_id columns exist regardless of migration state
   await db.execute(sql`ALTER TABLE matches ADD COLUMN IF NOT EXISTS "bracket_index" integer`);
   await db.execute(sql`ALTER TABLE matches ADD COLUMN IF NOT EXISTS "next_match_id" text REFERENCES matches(id) ON DELETE SET NULL`);
@@ -266,8 +271,10 @@ async function start() {
     console.warn('Comparison user seed skipped:', err);
   }
 
-  // Poll the live tournament provider on an interval. No-op unless LIVE_SYNC_ENABLED=true,
-  // so a dev server does not quietly spend the shared provider request budget.
+  // Poll the live tournament provider on an interval — this is what keeps scores and
+  // points up to date without an admin pressing anything. On by default in production
+  // when a provider key is configured; off in development, so a dev server does not
+  // quietly spend the shared provider request budget. See live/scheduler.ts.
   startLiveScheduler();
 
   app.listen(PORT, () => {

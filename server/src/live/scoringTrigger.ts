@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import {
   getLiveFormat,
   isLiveFixtureSelected,
@@ -515,6 +515,36 @@ export async function recalculateLiveTournament(tournamentId: string): Promise<S
 }
 
 /**
+ * Score anything that finished but never got scored.
+ *
+ * The normal path is the `finished` transition the sync reports, which fires exactly
+ * once. That one shot is enough right up until it is not: the process restarts between
+ * the sync and the scoring, the scoring throws half way through, or — the one that
+ * actually bites — a competition is created on a tournament whose fixtures have already
+ * been played, so nobody was there to hear the transition.
+ *
+ * So every tick also asks the plainer question: is there a finished fixture with a
+ * prediction that has no points? Purely a database read, no provider request, and it
+ * finds nothing on the overwhelming majority of ticks.
+ */
+export async function scoreUnscoredFixtures(tournamentId: string): Promise<ScoreFixturesResult> {
+  const rows = await db
+    .selectDistinct({ id: liveFixtures.id })
+    .from(liveFixtures)
+    .innerJoin(livePredictions, eq(livePredictions.liveFixtureId, liveFixtures.id))
+    .where(
+      and(
+        eq(liveFixtures.liveTournamentId, tournamentId),
+        eq(liveFixtures.status, 'finished'),
+        isNotNull(liveFixtures.normalTimeHome),
+        isNull(livePredictions.points),
+      ),
+    );
+
+  return scoreFixtures(rows.map(r => r.id));
+}
+
+/**
  * The sync tick's hand-off: score what just finished, then tell watching clients.
  *
  * `changedFixtureIds` are fixtures whose score moved while in play — they award nothing
@@ -527,10 +557,19 @@ export async function applySyncResult(opts: {
 }): Promise<ScoreFixturesResult> {
   const result = await scoreFixtures(opts.newlyFinishedFixtureIds);
 
+  // The safety net above. Its ids overlap with the ones just scored only when something
+  // went wrong, and scoring is idempotent either way.
+  const caughtUp = await scoreUnscoredFixtures(opts.liveTournamentId);
+  result.scoredPredictions += caughtUp.scoredPredictions;
+  result.affectedCompetitionIds = [
+    ...new Set([...result.affectedCompetitionIds, ...caughtUp.affectedCompetitionIds]),
+  ];
+
   // A fixture finishing may have been the last one in the table stage, which is what
   // makes the table predictions scorable. Only worth checking when something just
-  // finished — nothing else can complete a stage.
-  if (opts.newlyFinishedFixtureIds.length > 0) {
+  // finished, or when the catch-up found a fixture nobody had scored yet — nothing else
+  // can complete a stage.
+  if (opts.newlyFinishedFixtureIds.length > 0 || caughtUp.scoredPredictions > 0) {
     const table = await scoreTablePredictions(opts.liveTournamentId);
     result.scoredPredictions += table.scoredPredictions;
     result.affectedCompetitionIds = [

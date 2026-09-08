@@ -14,6 +14,7 @@ import {
   SaveLiveGameweekSelectionSchema,
   SyncLiveTournamentSchema,
   UpdateLiveBonusQuestionSchema,
+  UpdateLiveSyncSettingsSchema,
   UpdateLivePlayerSchema,
   UpdateLiveTournamentSchema,
   getLiveFormat,
@@ -46,6 +47,7 @@ import { diagnoseTournamentFixtures } from '../diagnostics';
 import { loadSelectionIndex } from '../selections';
 import { refreshLivePlayerGoals, searchLivePlayers } from '../scorers';
 import { syncLiveWindow, syncTournamentStructure } from '../sync';
+import { getLiveSyncStatus, writeSyncOverride } from '../scheduler';
 
 // ── Live tournament API ───────────────────────────────────────────────────────
 //
@@ -84,6 +86,43 @@ async function rebuildAndNotify(tournamentId: string) {
 
   return recalculated;
 }
+
+// ── Background sync ───────────────────────────────────────────────────────────
+//
+// Scores and points update themselves: the scheduler polls the provider, scores what
+// finished and pushes the new leaderboard over SSE, with no admin in the loop. These two
+// routes exist because an automatic thing that cannot be seen or switched off is worse
+// than a manual one — the status answers "is it actually running, and when does this
+// tournament next get polled?", and the toggle turns it on or off without a redeploy.
+
+/** Scheduler state plus, per tournament, its temperature and when it is next due. */
+liveTournamentsRouter.get('/sync/status', requireAdmin, async (_req, res) => {
+  try {
+    return res.json(await getLiveSyncStatus());
+  } catch (err) {
+    return fail(res, err);
+  }
+});
+
+/**
+ * Turn the background sync on or off for the whole deployment.
+ *
+ * `enabled: null` clears the override and hands the decision back to the environment,
+ * which is not the same as `false` — worth keeping distinct, because that is what lets a
+ * deployment's own default stay in charge once an admin stops overriding it.
+ */
+liveTournamentsRouter.patch('/sync/settings', requireAdmin, async (req, res) => {
+  try {
+    const parsed = UpdateLiveSyncSettingsSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid body', details: parsed.error.flatten() });
+    }
+    await writeSyncOverride(parsed.data.enabled);
+    return res.json(await getLiveSyncStatus());
+  } catch (err) {
+    return fail(res, err);
+  }
+});
 
 // ── Static metadata ───────────────────────────────────────────────────────────
 
