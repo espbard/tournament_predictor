@@ -297,6 +297,43 @@ export interface LiveSyncResult {
   crestsMirrored: number;
 }
 
+/** One tournament's row in the automatic-sync status. */
+export interface LiveSyncTournamentStatus {
+  id: string;
+  name: string;
+  status: string;
+  /** How urgently the scheduler thinks this tournament needs data. */
+  temperature: 'hot' | 'warm' | 'cold';
+  lastStructureSyncAt: string | null;
+  lastFixtureSyncAt: string | null;
+  lastSyncError: string | null;
+  nextKickoffAt: string | null;
+  /** Null when nothing is due — the sync is off, or this tournament is paused. */
+  nextSyncDueAt: string | null;
+  syncEnabled: boolean;
+}
+
+export interface LiveSyncStatus {
+  enabled: boolean;
+  /** Why it is on or off, so the admin page can say something more useful than "off". */
+  reason:
+    | 'env-on'
+    | 'env-off'
+    | 'production-default'
+    | 'development-default'
+    | 'no-provider-key';
+  /** The stored admin override; null means the deployment's own default is in charge. */
+  override: boolean | null;
+  running: boolean;
+  tickSeconds: number;
+  tickBudget: number;
+  startedAt: string | null;
+  lastTickAt: string | null;
+  lastTickPlanned: number;
+  lastTickError: string | null;
+  tournaments: LiveSyncTournamentStatus[];
+}
+
 export interface LiveMember {
   userId: string;
   username: string;
@@ -361,6 +398,11 @@ export const liveApi = {
   /** Ask the provider directly what it has for this tournament. Admin-only. */
   diagnoseTournament: (id: string) =>
     api.post<LiveFixtureDiagnosis>(`/live/tournaments/${id}/diagnose`, {}),
+  /** Is the background sync running, and when is each tournament next polled? Admin-only. */
+  syncStatus: () => api.get<LiveSyncStatus>('/live/sync/status'),
+  /** Null hands the decision back to the deployment's own default. */
+  setSyncEnabled: (enabled: boolean | null) =>
+    api.patch<LiveSyncStatus>('/live/sync/settings', { enabled }),
   recalculateTournament: (id: string) =>
     api.post<{ scoredPredictions: number; affectedCompetitionIds: string[] }>(
       `/live/tournaments/${id}/recalculate`,
@@ -605,4 +647,5 @@ export const liveKeys = {
   bonusAnswers: (competitionId: string, userId?: string) =>
     ['live', 'bonus-answers', competitionId, userId ?? 'me'] as const,
   presets: ['live', 'presets'] as const,
+  syncStatus: ['live', 'sync-status'] as const,
 };

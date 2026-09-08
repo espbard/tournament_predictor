@@ -41,6 +41,16 @@ export const SyncLiveTournamentSchema = z.object({
   full: z.boolean().optional(),
 });
 
+/**
+ * The admin switch for the background sync.
+ *
+ * Null is a third, meaningful value rather than "unset": it hands the decision back to
+ * the deployment's `LIVE_SYNC_ENABLED`, which is not the same as forcing it off.
+ */
+export const UpdateLiveSyncSettingsSchema = z.object({
+  enabled: z.boolean().nullable(),
+});
+
 export const CreateLiveCompetitionSchema = z.object({
   liveTournamentId: z.string().min(1),
   name: z.string().min(1).max(100),
@@ -232,6 +242,7 @@ export type LiveScoringConfigInput = z.infer<typeof LiveScoringConfigSchema>;
 export type CreateLiveTournamentInput = z.infer<typeof CreateLiveTournamentSchema>;
 export type UpdateLiveTournamentInput = z.infer<typeof UpdateLiveTournamentSchema>;
 export type SyncLiveTournamentInput = z.infer<typeof SyncLiveTournamentSchema>;
+export type UpdateLiveSyncSettingsInput = z.infer<typeof UpdateLiveSyncSettingsSchema>;
 export type CreateLiveCompetitionInput = z.infer<typeof CreateLiveCompetitionSchema>;
 export type UpdateLiveCompetitionInput = z.infer<typeof UpdateLiveCompetitionSchema>;
 export type JoinLiveCompetitionInput = z.infer<typeof JoinLiveCompetitionSchema>;

@@ -958,7 +958,8 @@ in-process interval started from `start()` in `server/src/index.ts` is the right
 
 `tick()`:
 
-1. Bail if a previous tick is still running (module-level flag) or `LIVE_SYNC_ENABLED !== 'true'`.
+1. Bail if a previous tick is still running (module-level flag) or the sync is off — see
+   **Is it on?** below, which is re-read every tick rather than at boot.
 2. Take `pg_try_advisory_lock(<constant>)`, release in `finally` — cheap insurance if the service
    is ever scaled past one replica.
 3. Per enabled, non-completed tournament:
@@ -966,10 +967,35 @@ in-process interval started from `start()` in `server/src/index.ts` is the right
      `in_play`/`paused` → `syncLiveWindow` if `lastFixtureSyncAt` is older than 60 s.
    - **Warm** — a fixture kicks off in the next 24 h → `syncLiveWindow` every 15 min.
    - **Cold** → `syncTournamentStructure` every 6 h.
+   - **Any temperature** → `syncTournamentStructure` once the last one is 6 h old. A window sync
+     carries live scores but not the table, the qualification statuses or the scorers' goal
+     counts, and a tournament playing every day never goes cold.
 4. Budget-aware: with 10 req/min, at most one hot tournament is polled per minute. Candidates are
-   sorted by staleness and the tick stops when the minute's budget is spent.
+   sorted by urgency (live scores, then tomorrow's fixtures, then the structure refresh) and then
+   by staleness, and the tick stops when the minute's budget is spent.
+5. Move the tournament out of `upcoming` once a match has started. Never into `completed`: that
+   switch is what reveals the bonus answers and the top-scorer ranking, so it stays a person's.
+6. Hand off to `applySyncResult()`, which scores what just finished **and** runs
+   `scoreUnscoredFixtures()` — the plainer question "is there a finished fixture with a
+   prediction that has no points?". The `finished` transition fires exactly once, and once is
+   not enough if the process restarted at the wrong moment, or if a competition was created on a
+   tournament whose matches had already been played.
 
-`POST /api/live/tournaments/:id/sync` triggers either sync on demand.
+**Is it on?** Two switches, because they answer different questions.
+`resolveSyncEnabledFromEnv()` reads `LIVE_SYNC_ENABLED`: `true` and `false` are honoured, and
+*unset* means on in production once a provider key is configured, off in development. On top of
+that, `app_config.live_sync_enabled` is a nullable admin override — null defers to the
+environment, true and false force it — so the sync can be switched from the admin page without a
+redeploy. `LIVE_SYNC_ENABLED=false` is the one thing the override cannot beat; it is the kill
+switch a developer sets to be certain their machine spends nothing, and the admin page hides the
+toggle rather than offering one that would not work.
+
+`POST /api/live/tournaments/:id/sync` triggers either sync on demand — for skipping the wait,
+not because anything depends on it. `GET /api/live/sync/status` reports whether the sync is
+running, when it last woke up and when each tournament is next due; `PATCH /api/live/sync/settings`
+writes the override. Both admin-only, and both rendered by the "Automatic updates" panel on the
+admin tournament page: an automatic thing that cannot be seen or switched off is worse than a
+manual one.
 
 **Scale-out caveat:** the advisory lock protects the sync, but `server/src/live/liveEvents.ts`
 (like the existing `leaderboardEvents.ts`) holds SSE connections in process memory, so a second
@@ -1467,6 +1493,11 @@ Recorded as they happen, so the document stays trustworthy.
 | `syncTournamentStructure` tolerates a 404 from `/teams` and `/standings` independently | A season can have fixtures but no table yet, or vice versa. Only a total failure is an error |
 | Scheduler added a request *budget* (`LIVE_SYNC_TICK_BUDGET`, default 6) and a cost per sync kind | §7 said "at most one hot tournament per minute", which does not generalise. Costing structure syncs at 3 requests and window syncs at 1, then sorting by temperature and staleness, keeps the tick inside the free tier and stops a busy competition starving the others |
 | `LIVE_SYNC_ENABLED` defaults to off | Two developers running `npm run dev` would otherwise both spend the shared 10 req/min account budget without realising |
+| …later narrowed: unset means on in production with a key, off in development | "Off everywhere unless a variable is set" left production syncing only when an admin pressed a button, which is the opposite of what the scheduler is for. The reason the flag exists is the *dev* case, so that is the only case it still defaults off for |
+| The on/off decision moved into `tick()`, backed by a nullable `app_config.live_sync_enabled` | Read at boot, it could only be changed by a redeploy — and the person who notices that scores have stopped updating is an admin looking at the admin page, not someone with access to Railway's environment variables |
+| A structure sync is planned once the last one is 6 h old at any temperature, not only when cold | The cold branch alone assumed every tournament goes quiet for a day at a time. A World Cup group stage does not, and would have gone a fortnight without refreshing its table, its qualification statuses or its scorers' goal counts |
+| `scoreUnscoredFixtures()` runs on every sync, alongside the `finished` transition | The transition fires once. A competition created after its tournament's matches were played never hears it, and neither does a process that restarted between the sync and the scoring |
+| The tick advances `upcoming` → `active`, but never → `completed` | The first is bookkeeping. The second awards the withheld bonus and top-scorer points, and only a person knows the goal counts are final |
 
 **Phase 4**
 

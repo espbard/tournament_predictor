@@ -14,6 +14,7 @@ import { LoadingSpinner } from '@/components/LoadingSpinner';
 import LiveSelectedMatchesPanel from '@/components/live/LiveSelectedMatchesPanel';
 import AdminLiveBonusQuestionsPanel from '@/components/live/AdminLiveBonusQuestionsPanel';
 import AdminLiveScorersPanel from '@/components/live/AdminLiveScorersPanel';
+import AdminLiveAutoSyncPanel from '@/components/live/AdminLiveAutoSyncPanel';
 import { useT } from '@/lib/useT';
 
 // ── Admin: one live tournament ────────────────────────────────────────────────
@@ -66,6 +67,9 @@ export default function AdminLiveTournamentDetailPage() {
     // A sync can add fixtures to a gameweek, which changes what there is to select.
     queryClient.invalidateQueries({ queryKey: liveKeys.tournamentFixtures(id!) });
     queryClient.invalidateQueries({ queryKey: liveKeys.selectedMatches(id!) });
+    // Pausing this tournament, or syncing it by hand, changes when the scheduler next
+    // wants it — which is exactly what the automatic-sync panel above is reporting.
+    queryClient.invalidateQueries({ queryKey: liveKeys.syncStatus });
   }
 
   const syncMutation = useMutation({
@@ -316,8 +320,13 @@ export default function AdminLiveTournamentDetailPage() {
         <Stat label={t('live.admin.status')} value={t(`live.tournamentStatus.${tournament.status}`)} />
       </div>
 
+      <AdminLiveAutoSyncPanel tournamentId={tournament.id} />
+
       <div className="mb-6 rounded-lg border p-5">
-        <h2 className="mb-3 font-semibold">{t('live.admin.syncTitle')}</h2>
+        <h2 className="font-semibold">{t('live.admin.syncTitle')}</h2>
+        {/* The background sync does all of this on its own. These buttons are for not
+            waiting for it — a result wanted now, or a scoring change to apply at once. */}
+        <p className="mb-3 mt-1 text-sm text-muted-foreground">{t('live.admin.syncManualHint')}</p>
         <dl className="mb-4 grid gap-1 text-sm">
           <div className="flex justify-between gap-4">
             <dt className="text-muted-foreground">{t('live.admin.lastStructureSync')}</dt>

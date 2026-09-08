@@ -48,6 +48,14 @@ export const feedbackStatusEnum = pgEnum('feedback_status', ['pending', 'will_do
 export const appConfig = pgTable('app_config', {
   id: text('id').primaryKey().default('singleton'),
   maintenanceMode: boolean('maintenance_mode').notNull().default(false),
+  /**
+   * Admin override for the live-tournament background sync.
+   *
+   * Deliberately nullable, with three meanings rather than two: null defers to the
+   * environment (`LIVE_SYNC_ENABLED`, see server/src/live/scheduler.ts), true and false
+   * force it on or off without a redeploy.
+   */
+  liveSyncEnabled: boolean('live_sync_enabled'),
 });
 
 export const users = pgTable('users', {
