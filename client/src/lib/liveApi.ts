@@ -1,5 +1,6 @@
 import { api } from '@/lib/api';
 import type {
+  LeaderboardProgressionResponse,
   LiveBonusAnswer,
   LiveBonusAnswerType,
   LiveBonusQuestion,
@@ -532,6 +533,15 @@ export const liveApi = {
   leave: (id: string) => api.delete<{ ok: true }>(`/live/competitions/${id}/leave`),
   members: (id: string) => api.get<LiveMember[]>(`/live/competitions/${id}/members`),
   leaderboard: (id: string) => api.get<LiveLeaderboardRow[]>(`/live/competitions/${id}/leaderboard`),
+  /**
+   * Every member's running total after each played fixture, in the same shape the manual
+   * type returns — both render through LeaderboardLineGraph. Only the three season-long
+   * milestones are worded, which is what the language is for.
+   */
+  leaderboardProgression: (id: string, lang: string) =>
+    api.get<LeaderboardProgressionResponse>(
+      `/live/competitions/${id}/leaderboard-progression?lang=${lang}`,
+    ),
   /** Test accounts and admins only for now. Cards come pre-worded in the given language. */
   userStats: (id: string, lang: string) =>
     api.get<UserStatCardData[]>(`/live/competitions/${id}/user-stats?lang=${lang}`),
@@ -626,6 +636,11 @@ export const liveKeys = {
   userScorerPrediction: (competitionId: string, userId: string) =>
     ['live', 'user-scorer-prediction', competitionId, userId] as const,
   leaderboard: (competitionId: string) => ['live', 'leaderboard', competitionId] as const,
+  leaderboardProgression: (competitionId: string, lang: string) =>
+    ['live', 'leaderboard-progression', competitionId, lang] as const,
+  /** Prefix of the progression in every language — scoring moves all of them. */
+  allLeaderboardProgression: (competitionId: string) =>
+    ['live', 'leaderboard-progression', competitionId] as const,
   userStats: (competitionId: string, lang: string) =>
     ['live', 'user-stats', competitionId, lang] as const,
   tablePrediction: (competitionId: string) => ['live', 'table-prediction', competitionId] as const,

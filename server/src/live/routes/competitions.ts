@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { generateId } from 'lucia';
 import {
   CreateLiveCompetitionSchema,
@@ -47,6 +47,7 @@ import { loadLiveBonusAnswers } from '../bonusScoring';
 import { redactLiveBonusAnswerPoints, redactLiveBonusQuestions } from '../bonusVisibility';
 import { recalculateLiveCompetition } from '../scoringTrigger';
 import { loadSelectionIndex } from '../selections';
+import { buildLiveProgression, type LiveProgressionLang } from '../progression';
 import { rankLiveScorers } from '../scorerScoring';
 import { buildLiveUserStats, type LiveStatsLang } from '../userStats';
 import { validateTableOrder } from '../tableScoring';
@@ -453,6 +454,119 @@ liveCompetitionsRouter.get('/competitions/:id/leaderboard', requireAuth, async (
     return fail(res, err);
   }
 });
+
+/**
+ * The points progression — every member's running total after each played fixture.
+ *
+ * Reads the stored per-prediction points rather than rescoring, so the end of the chart
+ * always matches the leaderboard above it. The milestone rules live in
+ * server/src/live/progression.ts; this route is only the queries that feed them.
+ */
+liveCompetitionsRouter.get(
+  '/competitions/:id/leaderboard-progression',
+  requireAuth,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      if (!(await assertMember(id, res.locals.user))) {
+        return res.status(403).json({ error: 'Not a member of this competition' });
+      }
+
+      const [competition] = await db
+        .select({ id: liveCompetitions.id, liveTournamentId: liveCompetitions.liveTournamentId })
+        .from(liveCompetitions)
+        .where(eq(liveCompetitions.id, id));
+      if (!competition) return res.status(404).json({ error: 'Not found' });
+
+      // Only the three season-long milestones are worded, so the language costs nothing
+      // more than picking a label set — same convention as the user-stats route.
+      const lang: LiveProgressionLang =
+        req.query.lang === 'no' ? 'no' : req.query.lang === 'de' ? 'de' : 'en';
+
+      const [members, fixtures, teamRows, predictions, tablePoints, scorerPoints, bonusPoints, selections] =
+        await Promise.all([
+          db
+            .select({
+              userId: liveCompetitionMembers.userId,
+              username: users.username,
+              imageUrl: users.imageUrl,
+              iconColor: users.iconColor,
+            })
+            .from(liveCompetitionMembers)
+            .innerJoin(users, eq(liveCompetitionMembers.userId, users.id))
+            .where(eq(liveCompetitionMembers.liveCompetitionId, id))
+            .orderBy(asc(users.username)),
+          db
+            .select({
+              id: liveFixtures.id,
+              kickoffAt: liveFixtures.kickoffAt,
+              status: liveFixtures.status,
+              stageKey: liveFixtures.stageKey,
+              matchday: liveFixtures.matchday,
+              homeTeamId: liveFixtures.homeTeamId,
+              awayTeamId: liveFixtures.awayTeamId,
+            })
+            .from(liveFixtures)
+            // Every fixture, not just the finished ones: a scored fixture the provider has
+            // since moved back to postponed still holds points on the leaderboard, and
+            // buildLiveProgression is the one place that rule lives.
+            .where(eq(liveFixtures.liveTournamentId, competition.liveTournamentId)),
+          db
+            .select({
+              id: liveTeams.id,
+              name: liveTeams.name,
+              shortName: liveTeams.shortName,
+              tla: liveTeams.tla,
+            })
+            .from(liveTeams)
+            .where(eq(liveTeams.liveTournamentId, competition.liveTournamentId)),
+          db
+            .select({
+              userId: livePredictions.userId,
+              liveFixtureId: livePredictions.liveFixtureId,
+              points: livePredictions.points,
+            })
+            .from(livePredictions)
+            .where(
+              and(
+                eq(livePredictions.liveCompetitionId, id),
+                isNotNull(livePredictions.points),
+              ),
+            ),
+          db
+            .select({ userId: liveTablePredictions.userId, points: liveTablePredictions.points })
+            .from(liveTablePredictions)
+            .where(eq(liveTablePredictions.liveCompetitionId, id)),
+          db
+            .select({ userId: liveScorerPredictions.userId, points: liveScorerPredictions.points })
+            .from(liveScorerPredictions)
+            .where(eq(liveScorerPredictions.liveCompetitionId, id)),
+          db
+            .select({ userId: liveBonusAnswers.userId, points: liveBonusAnswers.points })
+            .from(liveBonusAnswers)
+            .where(eq(liveBonusAnswers.liveCompetitionId, id)),
+          loadSelectionIndex(competition.liveTournamentId),
+        ]);
+
+      return res.json(
+        buildLiveProgression(
+          {
+            members,
+            teams: teamRows,
+            fixtures: fixtures.map(f => ({ ...f, isSelected: isLiveFixtureSelected(f, selections) })),
+            predictions,
+            tablePoints,
+            scorerPoints,
+            bonusPoints,
+          },
+          lang,
+        ),
+      );
+    } catch (err) {
+      return fail(res, err);
+    }
+  },
+);
 
 /**
  * User statistics — the same card deck the manual competition type has, built from live
