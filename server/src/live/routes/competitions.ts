@@ -655,10 +655,14 @@ liveCompetitionsRouter.get('/competitions/:id/user-stats', requireAuth, async (r
         db
           .select({
             userId: liveScorerPredictions.userId,
+            username: users.username,
+            imageUrl: users.imageUrl,
+            iconColor: users.iconColor,
             orderedPlayerIds: liveScorerPredictions.orderedPlayerIds,
           })
           .from(liveScorerPredictions)
-          // Same membership join, for the same reason.
+          // Same membership join, for the same reason. The member themselves comes along
+          // too: the Haaland card names whoever ranked him lowest.
           .innerJoin(
             liveCompetitionMembers,
             and(
@@ -666,6 +670,7 @@ liveCompetitionsRouter.get('/competitions/:id/user-stats', requireAuth, async (r
               eq(liveCompetitionMembers.userId, liveScorerPredictions.userId),
             ),
           )
+          .innerJoin(users, eq(users.id, liveScorerPredictions.userId))
           .where(eq(liveScorerPredictions.liveCompetitionId, competition.id)),
         // Every player, not just the shortlist: a ranking saved before the admin deselected
         // someone still holds that id, and the card should be able to name them.

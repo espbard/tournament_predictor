@@ -1781,7 +1781,28 @@ treatment aside — no card changed what it counts.
 
 ---
 
-## 23. References
+## 23. "In Haaland we trust" *(added after the six phases, on request)*
+
+A card about one player and the league's faith in him: how many of them have Haaland winning
+the golden boot, and who has him lowest. `inHaalandWeTrustCard()` in
+`server/src/live/userStats.ts`.
+
+> **1** of **3** have Haaland finishing as top scorer! The one with the least faith in him:
+> **Chris**, who put him **3rd** on the top-scorer list.
+
+| Decision | Why |
+|---|---|
+| The title is `In Haaland we trust` in all three languages | Requested. It is a slogan, not a sentence, and the joke does not survive being translated |
+| He is found by **surname**, case-insensitively, rather than by an exact name or a stored id | The provider spells him "Erling Haaland" and has spelled him "Erling Braut Haaland". A Norwegian league will only ever have one Haaland, so the surname is the half that is safe to match; two spellings sort by name so the card cannot flicker between them. It is one constant to change to follow somebody else |
+| The denominator is the rankings that place him **at all**, not every ranking | A ranking saved before he joined the shortlist has no opinion about him to count, in either half of the sentence — the same rule `countEnd` uses for a team that has left |
+| Nobody backing him is still a card | "**0** of **7** have Haaland finishing as top scorer" is the funnier version of the same statistic, and unlike a zero on the counting cards it names a real thing the league did |
+| The second sentence goes when the lowest anybody has him is first place | With the whole league behind him there is no member with "least faith", only the same fact said twice — the rule the answer-key card already follows |
+| The subject is Haaland, though the sentence names members | It is his card. The doubters are the punchline, not the picture |
+| The scorer-ranking rows grew `username`, `imageUrl` and `iconColor`, via a join the query did not have | Naming the doubters needs them, and the two ranking cards above it are unaffected by the extra columns |
+
+---
+
+## 24. References
 
 - [2026/27 Champions League: teams, dates, draws, format](https://www.uefa.com/uefachampionsleague/news/02a6-20d57cfcd03e-407c22a7f465-1000--2026-27-champions-league-teams-dates-draws-format-final/)
 - [UEFA confirms date for the 2026/27 Champions League league phase draw](https://www.besoccer.com/new/uefa-confirms-date-for-the-202627-champions-league-league-phase-draw-1421299)

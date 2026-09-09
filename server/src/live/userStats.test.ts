@@ -9,6 +9,7 @@ import {
   nationalityGoalsCard,
   goalDroughtCard,
   goldenBootCard,
+  inHaalandWeTrustCard,
   peoplesFavouriteCard,
   spotOnCard,
   theClimberCard,
@@ -33,7 +34,13 @@ const players = [
   { id: 'p3', name: 'Mbappé', imageUrl: '/api/images/mbappe.png' },
 ];
 
-const rank = (userId: string, ...orderedPlayerIds: string[]) => ({ userId, orderedPlayerIds });
+const rank = (userId: string, ...orderedPlayerIds: string[]) => ({
+  userId,
+  username: userId === 'u1' ? 'Alice' : userId === 'u2' ? 'Bob' : 'Chris',
+  imageUrl: userId === 'u1' ? '/api/images/alice.png' : null,
+  iconColor: userId === 'u1' ? null : '#334155',
+  orderedPlayerIds,
+});
 
 /**
  * One scored prediction: who made it, what they said, what happened, and — where a test
@@ -1262,6 +1269,108 @@ describe('worstPredictionCard', () => {
   });
 });
 
+describe('inHaalandWeTrustCard', () => {
+  it('counts the believers, and names whoever has him lowest', () => {
+    const card = inHaalandWeTrustCard(
+      [
+        rank('u1', 'p1', 'p2', 'p3'),
+        rank('u2', 'p1', 'p3', 'p2'),
+        rank('u3', 'p2', 'p3', 'p1'),
+      ],
+      players,
+      'en',
+    );
+    expect(card?.title).toBe('In Haaland we trust');
+    expect(card?.statistic).toBe(
+      '**2** of **3** have Haaland finishing as top scorer! The one with the least faith in him: **Chris**, who put him **3rd** on the top-scorer list.',
+    );
+    expect(card?.subjects).toEqual([
+      { type: 'player', id: 'p1', name: 'Haaland', imageUrl: '/api/images/haaland.png' },
+    ]);
+  });
+
+  it('is the same title in every language', () => {
+    const rows = [rank('u1', 'p1', 'p2'), rank('u2', 'p2', 'p1')];
+    for (const lang of ['en', 'no', 'de'] as const) {
+      expect(inHaalandWeTrustCard(rows, players, lang)?.title).toBe('In Haaland we trust');
+    }
+  });
+
+  it('names every member level at the bottom of the faith', () => {
+    const card = inHaalandWeTrustCard(
+      [rank('u1', 'p1', 'p2', 'p3'), rank('u2', 'p2', 'p3', 'p1'), rank('u3', 'p3', 'p2', 'p1')],
+      players,
+      'en',
+    );
+    expect(card?.statistic).toContain('**Bob and Chris**');
+    expect(card?.statistic).toContain('**3rd**');
+  });
+
+  it('counts only the rankings that place him at all', () => {
+    const card = inHaalandWeTrustCard(
+      [rank('u1', 'p1', 'p2'), rank('u2', 'p2', 'p3'), rank('u3', 'p2', 'p1')],
+      players,
+      'en',
+    );
+    expect(card?.statistic).toBe(
+      '**1** of **2** have Haaland finishing as top scorer! The one with the least faith in him: **Chris**, who put him **2nd** on the top-scorer list.',
+    );
+  });
+
+  it('drops the second sentence when the whole league has him top', () => {
+    expect(
+      inHaalandWeTrustCard([rank('u1', 'p1', 'p2'), rank('u2', 'p1', 'p3')], players, 'en')
+        ?.statistic,
+    ).toBe('**2** of **2** have Haaland finishing as top scorer!');
+  });
+
+  it('still runs when nobody backs him, which is the joke', () => {
+    expect(
+      inHaalandWeTrustCard([rank('u1', 'p2', 'p1'), rank('u2', 'p3', 'p2', 'p1')], players, 'en')
+        ?.statistic,
+    ).toBe(
+      '**0** of **2** have Haaland finishing as top scorer! The one with the least faith in him: **Bob**, who put him **3rd** on the top-scorer list.',
+    );
+  });
+
+  it('finds him however the provider spells him', () => {
+    const brautHaaland = [
+      { id: 'p1', name: 'Erling Braut Haaland', imageUrl: '/api/images/haaland.png' },
+      { id: 'p2', name: 'Kane', imageUrl: null },
+    ];
+    expect(
+      inHaalandWeTrustCard([rank('u1', 'p1', 'p2')], brautHaaland, 'en')?.subjects[0].name,
+    ).toBe('Erling Braut Haaland');
+  });
+
+  it('is null where he is not playing, or where nobody has ranked him', () => {
+    const withoutHim = players.filter(p => p.name !== 'Haaland');
+    expect(inHaalandWeTrustCard([rank('u1', 'p2', 'p3')], withoutHim, 'en')).toBeNull();
+    expect(inHaalandWeTrustCard([], players, 'en')).toBeNull();
+    expect(inHaalandWeTrustCard([rank('u1', 'p2', 'p3')], players, 'en')).toBeNull();
+  });
+
+  it('translates the statistic, title aside', () => {
+    const rows = [rank('u1', 'p1', 'p2', 'p3'), rank('u2', 'p2', 'p3', 'p1')];
+    expect(inHaalandWeTrustCard(rows, players, 'no')?.statistic).toBe(
+      '**1** av **2** har tippet at Haaland blir toppscorer! Brukeren som har minst tro på Brauten er **Bob**, som tippet at Haaland ender på **3. plass** på toppscorerlisten.',
+    );
+    expect(inHaalandWeTrustCard(rows, players, 'de')?.statistic).toBe(
+      '**1** von **2** tippen Haaland als Torschützenkönig! Am wenigsten glaubt **Bob** an ihn — auf **Platz 3** der Torjägerliste.',
+    );
+  });
+
+  it('says "Brukerne" and "glauben" when several share the bottom', () => {
+    const rows = [rank('u1', 'p1', 'p2', 'p3'), rank('u2', 'p2', 'p3', 'p1'), rank('u3', 'p3', 'p2', 'p1')];
+    expect(inHaalandWeTrustCard(rows, players, 'no')?.statistic).toContain(
+      'Brukerne som har minst tro på Brauten er **Bob og Chris**',
+    );
+    expect(inHaalandWeTrustCard(rows, players, 'de')?.statistic).toContain(
+      'Am wenigsten glauben **Bob und Chris** an ihn',
+    );
+  });
+});
+
 describe('buildLiveUserStats', () => {
   const all = {
     tablePredictions: [pick('u1', 't1', 't3')],
@@ -1298,13 +1407,14 @@ describe('buildLiveUserStats', () => {
       'woodenSpoon',
       'goldenBoot',
       'goalDrought',
+      'inHaalandWeTrust',
     ]);
   });
 
   it('shows the scorer pair on its own when nobody has predicted a table', () => {
     expect(
       buildLiveUserStats({ ...all, tablePredictions: [] }, 'en').map(c => c.id),
-    ).toEqual(['goldenBoot', 'goalDrought']);
+    ).toEqual(['goldenBoot', 'goalDrought', 'inHaalandWeTrust']);
   });
 
   it('shows the table pair on its own when nobody has ranked the scorers', () => {
@@ -1335,6 +1445,7 @@ describe('buildLiveUserStats', () => {
       'woodenSpoon',
       'goldenBoot',
       'goalDrought',
+      'inHaalandWeTrust',
       'spotOn',
       'almost',
       'bestPrediction',
@@ -1349,7 +1460,14 @@ describe('buildLiveUserStats', () => {
       buildLiveUserStats({ ...all, scoredPredictions: [scored('u1', [1, 0], [2, 1])] }, 'en').map(
         c => c.id,
       ),
-    ).toEqual(['peoplesFavourite', 'woodenSpoon', 'goldenBoot', 'goalDrought', 'almost']);
+    ).toEqual([
+      'peoplesFavourite',
+      'woodenSpoon',
+      'goldenBoot',
+      'goalDrought',
+      'inHaalandWeTrust',
+      'almost',
+    ]);
   });
 
   it('carries no emoji or icon field for the live card to key off', () => {
@@ -1436,13 +1554,21 @@ describe('nationalityGoalsCard', () => {
       'woodenSpoon',
       'goldenBoot',
       'goalDrought',
+      'inHaalandWeTrust',
     ]);
     expect(
       buildLiveUserStats(
         { ...base, scorerNationalities: snapshot({ Norway: { goals: 3, players: 2 } }) },
         'en',
       ).map(c => c.id),
-    ).toEqual(['peoplesFavourite', 'woodenSpoon', 'goldenBoot', 'goalDrought', 'norwegianGoals']);
+    ).toEqual([
+      'peoplesFavourite',
+      'woodenSpoon',
+      'goldenBoot',
+      'goalDrought',
+      'inHaalandWeTrust',
+      'norwegianGoals',
+    ]);
   });
 
   it('shows on its own when nobody has predicted anything yet', () => {

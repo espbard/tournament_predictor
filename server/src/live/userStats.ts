@@ -52,6 +52,10 @@ export interface LiveStatsTablePrediction {
 
 export interface LiveStatsScorerPrediction {
   userId: string;
+  /** Carried for the Haaland card, which names the members behind a ranking. */
+  username: string;
+  imageUrl: string | null;
+  iconColor: string | null;
   orderedPlayerIds: string[];
 }
 
@@ -680,6 +684,90 @@ export function goalDroughtCard(
   return card('goalDrought', title, statistic, winners, 'player');
 }
 
+
+// ── In Haaland we trust ───────────────────────────────────────────────────────
+
+/**
+ * Who the card is about, matched on surname alone.
+ *
+ * The provider spells him "Erling Haaland" and has spelled him "Erling Braut Haaland";
+ * a Norwegian league will only ever have one of him, so the surname is the safe half to
+ * look for. One line to change to follow somebody else around.
+ */
+const TRUSTED_SURNAME = 'haaland';
+
+function findTrusted(players: LiveStatsPlayer[]): LiveStatsPlayer | null {
+  return (
+    players
+      .filter(p => p.name.toLowerCase().includes(TRUSTED_SURNAME))
+      // Sorted so two spellings of the same man cannot make the card flicker between them.
+      .sort((a, b) => a.name.localeCompare(b.name))[0] ?? null
+  );
+}
+
+/** 1st, 2nd, 3rd, 4th … 11th, 21st. English is the only one of the three that needs this. */
+function ordinal(n: number): string {
+  const teens = n % 100;
+  if (teens >= 11 && teens <= 13) return `${n}th`;
+  return `${n}${['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`;
+}
+
+/**
+ * How much of the league is backing Haaland for the golden boot, and who is not.
+ *
+ * The denominator is the rankings that place him at all: one saved before he joined the
+ * shortlist has no opinion about him to count, in either half of the sentence.
+ *
+ * The second sentence goes when the lowest anybody has him is first place — with the
+ * whole league behind him there is nobody with "least faith", only the same fact said
+ * twice.
+ *
+ * Null where he is not in the tournament, or where nobody has ranked him: the card is a
+ * running joke about one player, not a slot that has to be filled.
+ */
+export function inHaalandWeTrustCard(
+  predictions: LiveStatsScorerPrediction[],
+  players: LiveStatsPlayer[],
+  lang: LiveStatsLang,
+): UserStatCardData | null {
+  const haaland = findTrusted(players);
+  if (!haaland) return null;
+
+  const ranked = predictions
+    .map(p => ({ prediction: p, place: p.orderedPlayerIds.indexOf(haaland.id) + 1 }))
+    .filter(r => r.place > 0);
+  if (ranked.length === 0) return null;
+
+  const total = ranked.length;
+  const believers = ranked.filter(r => r.place === 1).length;
+  const lowest = Math.max(...ranked.map(r => r.place));
+  const doubters = dedupeByUser(
+    ranked.filter(r => r.place === lowest).map(r => r.prediction),
+  );
+  const names = joinNames(doubters.map(d => d.username), lang);
+  const one = doubters.length === 1;
+
+  const doubt =
+    lowest === 1
+      ? ''
+      : lang === 'no'
+        ? ` ${one ? 'Brukeren' : 'Brukerne'} som har minst tro på Brauten er **${names}**, som tippet at Haaland ender på **${lowest}. plass** på toppscorerlisten.`
+        : lang === 'de'
+          ? ` Am wenigsten ${one ? 'glaubt' : 'glauben'} **${names}** an ihn — auf **Platz ${lowest}** der Torjägerliste.`
+          : ` The ${one ? 'one' : 'ones'} with the least faith in him: **${names}**, who put him **${ordinal(lowest)}** on the top-scorer list.`;
+
+  const statistic =
+    (lang === 'no'
+      ? `**${believers}** av **${total}** har tippet at Haaland blir toppscorer!`
+      : lang === 'de'
+        ? `**${believers}** von **${total}** tippen Haaland als Torschützenkönig!`
+        : `**${believers}** of **${total}** have Haaland finishing as top scorer!`) + doubt;
+
+  // The same title everywhere, because it is a slogan rather than a sentence.
+  return card('inHaalandWeTrust', 'In Haaland we trust', statistic, [
+    { id: haaland.id, name: haaland.name, imageUrl: haaland.imageUrl },
+  ], 'player');
+}
 
 // ── The member pair ───────────────────────────────────────────────────────────
 //
@@ -1446,6 +1534,7 @@ export function buildLiveUserStats(
     woodenSpoonCard(tablePredictions, teams, lang),
     goldenBootCard(scorerPredictions, players, lang),
     goalDroughtCard(scorerPredictions, players, lang),
+    inHaalandWeTrustCard(scorerPredictions, players, lang),
     spotOnCard(scoredPredictions, lang),
     almostCard(scoredPredictions, lang),
     bestPredictionCard(scoredPredictions, teams, lang),
