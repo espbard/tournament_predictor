@@ -6,6 +6,7 @@ import {
   goalDroughtCard,
   goldenBootCard,
   peoplesFavouriteCard,
+  spotOnCard,
   woodenSpoonCard,
 } from './userStats';
 
@@ -248,6 +249,88 @@ describe('goalDroughtCard', () => {
   });
 });
 
+describe('spotOnCard', () => {
+  it('names the member with the most exact scorelines, and counts what they made', () => {
+    const card = spotOnCard(
+      [
+        scored('u1', [2, 1], [2, 1]),
+        scored('u1', [1, 1], [1, 1]),
+        scored('u1', [0, 2], [3, 0]),
+        scored('u2', [1, 0], [1, 0]),
+        scored('u2', [3, 1], [1, 0]),
+      ],
+      'en',
+    );
+    expect(card?.title).toBe('Spot on');
+    expect(card?.statistic).toBe(
+      '**Alice** has called **2** scorelines exactly, from **3** scored predictions.',
+    );
+    expect(card?.subjects).toEqual([
+      { type: 'user', id: 'u1', name: 'Alice', imageUrl: '/api/images/alice.png', iconColor: null },
+    ]);
+    expect(card?.linkType).toBeNull();
+  });
+
+  it('uses the singular for one scoreline and one prediction', () => {
+    expect(spotOnCard([scored('u1', [2, 1], [2, 1])], 'en')?.statistic).toBe(
+      '**Alice** has called **1** scoreline exactly, from **1** scored prediction.',
+    );
+  });
+
+  it('shows a tie in full, and drops a denominator that would belong to neither', () => {
+    const card = spotOnCard(
+      [
+        scored('u1', [2, 1], [2, 1]),
+        scored('u1', [0, 0], [1, 2]),
+        scored('u2', [1, 0], [1, 0]),
+      ],
+      'en',
+    );
+    expect(card?.statistic).toBe('**Alice and Bob** have each called **1** scoreline exactly.');
+    expect(card?.subjects.map(s => s.id)).toEqual(['u1', 'u2']);
+  });
+
+  it('carries the member colour so a member with no picture still has a tile', () => {
+    const card = spotOnCard([scored('u2', [1, 1], [1, 1])], 'en');
+    expect(card?.subjects).toEqual([
+      { type: 'user', id: 'u2', name: 'Bob', imageUrl: null, iconColor: '#334155' },
+    ]);
+  });
+
+  it('is null with no scored predictions, or none of them exact', () => {
+    expect(spotOnCard([], 'en')).toBeNull();
+    expect(spotOnCard([scored('u1', [2, 1], [3, 2]), scored('u2', [1, 1], [0, 3])], 'en')).toBeNull();
+  });
+
+  it('translates the title and the statistic', () => {
+    const rows = [scored('u1', [2, 1], [2, 1]), scored('u1', [1, 1], [1, 1]), scored('u1', [0, 2], [3, 0])];
+    expect(spotOnCard(rows, 'no')).toMatchObject({
+      title: 'Blink',
+      statistic: '**Alice** har **2** eksakte resultater, av **3** tips med resultat.',
+    });
+    expect(spotOnCard(rows, 'de')).toMatchObject({
+      title: 'Volltreffer',
+      statistic: '**Alice** hat **2** exakte Ergebnisse getippt, aus **3** gewerteten Tipps.',
+    });
+  });
+
+  it('has singulars and a tie in the other two locales too', () => {
+    const one = [scored('u1', [2, 1], [2, 1])];
+    expect(spotOnCard(one, 'no')?.statistic).toBe(
+      '**Alice** har **1** eksakt resultat, av **1** tips med resultat.',
+    );
+    expect(spotOnCard(one, 'de')?.statistic).toBe(
+      '**Alice** hat **1** exaktes Ergebnis getippt, aus **1** gewerteten Tipp.',
+    );
+
+    const tie = [scored('u1', [2, 1], [2, 1]), scored('u2', [1, 0], [1, 0])];
+    expect(spotOnCard(tie, 'no')?.statistic).toBe('**Alice og Bob** har **1** eksakt resultat hver.');
+    expect(spotOnCard(tie, 'de')?.statistic).toBe(
+      '**Alice und Bob** haben je **1** exaktes Ergebnis getippt.',
+    );
+  });
+});
+
 describe('almostCard', () => {
   it('names the member with the most right margins and the fewest right scorelines', () => {
     const card = almostCard(
@@ -433,12 +516,12 @@ describe('buildLiveUserStats', () => {
     ).toEqual(['peoplesFavourite', 'woodenSpoon']);
   });
 
-  it('puts the member card after the two pairs and before the nationality one', () => {
+  it('puts the member pair after the other two and before the nationality card', () => {
     expect(
       buildLiveUserStats(
         {
           ...all,
-          scoredPredictions: [scored('u1', [1, 0], [2, 1])],
+          scoredPredictions: [scored('u1', [1, 0], [1, 0]), scored('u1', [2, 0], [3, 1])],
           scorerNationalities: snapshot({ Norway: { goals: 3, players: 2 } }),
         },
         'en',
@@ -448,9 +531,18 @@ describe('buildLiveUserStats', () => {
       'woodenSpoon',
       'goldenBoot',
       'goalDrought',
+      'spotOn',
       'almost',
       'norwegianGoals',
     ]);
+  });
+
+  it('shows the near-miss card alone when nobody has called a scoreline', () => {
+    expect(
+      buildLiveUserStats({ ...all, scoredPredictions: [scored('u1', [1, 0], [2, 1])] }, 'en').map(
+        c => c.id,
+      ),
+    ).toEqual(['peoplesFavourite', 'woodenSpoon', 'goldenBoot', 'goalDrought', 'almost']);
   });
 
   it('carries no emoji or icon field for the live card to key off', () => {

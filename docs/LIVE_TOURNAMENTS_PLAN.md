@@ -1666,20 +1666,28 @@ season's squads, plus an admin warning when the deadline is close and the shortl
 
 ---
 
-## 18. The "Almost" card *(added after the six phases, on request)*
+## 18. The member pair: "Spot on" and "Almost" *(added after the six phases, on request)*
 
-A sixth stat card, and the first about the members rather than what they predicted: who has
-the goal difference right in the most matches, and — among those level on that — the fewest
-exact scorelines. `almostCard()` in `server/src/live/userStats.ts`.
+Two more stat cards, and the first about the members rather than what they predicted:
+
+- **Spot on** — who has called the most scorelines outright.
+- **Almost** — who has the goal difference right in the most matches, and, among those level
+  on that, the fewest exact scorelines.
+
+`spotOnCard()` and `almostCard()` in `server/src/live/userStats.ts`, both read off one
+`tallyMembers()` pass so a member is counted the same way by each.
 
 | Decision | Why |
 |---|---|
-| Two keys in that order — most goal differences first, fewest exact scorelines only as the separator — rather than the widest gap between them, which is what the manual type's "Close but no cigar" uses | It is the statistic that was asked for, and the one the sentence prints. The cost is that a prolific predictor who also hits a few scorelines outranks a quieter one who hits none; both numbers are in the sentence, so the card can be read either way |
+| One tally, two cards, in the same file as the rest of the deck | They ask the same two questions of the same rows — how often the margin was right, how often the scoreline was — and splitting them would give the pair two chances to disagree about what counts |
+| "Spot on" prints the denominator ("from **38** scored predictions") only when a single member wins | Tied members have made different numbers of predictions, so one number behind both names would belong to neither. Breaking the tie on that number instead would quietly make it a hit-rate card, which is not what was asked for |
+| Almost: two keys in that order — most goal differences first, fewest exact scorelines only as the separator — rather than the widest gap between them, which is what the manual type's "Close but no cigar" uses | It is the statistic that was asked for, and the one the sentence prints. The cost is that a prolific predictor who also hits a few scorelines outranks a quieter one who hits none; both numbers are in the sentence, so the card can be read either way |
 | Exact scorelines are counted **inside** the goal-difference total, not against it | That is how the tiers stack: an exact scoreline necessarily has the right margin too, and `calculateLivePoints` awards both. Subtracting them would make the headline number disagree with the leaderboard's goal-difference column |
-| The card is built from the predicted and actual **scores**, not from the stored `correct_goal_difference_points` / `exact_score_points` columns | Those hold points, and a competition may configure a tier at zero. The card would then silently become "got the margin right in a competition that pays for it". The two comparisons it makes are the ones in `server/src/live/scoring.ts` |
-| …but the rows it reads are still selected by `points IS NOT NULL` | That is the leaderboard's and the progression chart's own test for "counts in the game", written by the scoring trigger: a fixture the admin left out of its gameweek is already excluded, and one that scored before being moved back to postponed still counts. Re-deriving that rule here is how the card would eventually disagree with the leaderboard above it |
-| `UserStatSubject.type` gained no new value — the card uses the existing `'user'` | It already means "a photograph, cropped to fill", which is what a member is. `LiveUserStatCard` only had to learn that `'user'` takes the photograph branch, and to fall back to `UserAvatar` — the initial on `iconColor` — for a member with no picture |
-| Ties are shown rather than broken, and members who have never had a margin right are simply absent | Both match the cards already in the deck: `countEnd` shows a tie, and a card that can name nobody returns null instead of printing a zero |
+| The tally is built from the predicted and actual **scores**, not from the stored `correct_goal_difference_points` / `exact_score_points` columns | Those hold points, and a competition may configure a tier at zero. The cards would then silently become "got it right in a competition that pays for it". The two comparisons they make are the ones in `server/src/live/scoring.ts` |
+| …but the rows they read are still selected by `points IS NOT NULL` | That is the leaderboard's and the progression chart's own test for "counts in the game", written by the scoring trigger: a fixture the admin left out of its gameweek is already excluded, and one that scored before being moved back to postponed still counts. Re-deriving that rule here is how the cards would eventually disagree with the leaderboard above them |
+| `UserStatSubject.type` gained no new value — both cards use the existing `'user'` | It already means "a photograph, cropped to fill", which is what a member is. `LiveUserStatCard` only had to learn that `'user'` takes the photograph branch, and to fall back to `UserAvatar` — the initial on `iconColor` — for a member with no picture |
+| Ties are shown rather than broken, and a member with nothing to their name is simply absent — no exact scoreline for "Spot on", no right margin for "Almost" | Both match the cards already in the deck: `countEnd` shows a tie, and a card that can name nobody returns null instead of printing a zero |
+| Both cards live behind the same test-account gate as the rest of `/user-stats`, and cost the route one shared query | The deck is still a preview, and the pair reads the same rows — there is no second query to add when a third member card follows |
 
 ---
 
