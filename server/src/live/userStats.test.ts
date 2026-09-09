@@ -1196,9 +1196,9 @@ describe('worstPredictionCard', () => {
       teams,
       'en',
     );
-    expect(card?.title).toBe('Worst prediction');
+    expect(card?.title).toBe('Close enough!');
     expect(card?.statistic).toBe(
-      '**Alice** predicted **0-4** in **Arsenal vs Bayern**, which finished **3-0** — **7** goals off on the goal difference.',
+      '**Alice** predicted **0-4** in **Arsenal vs Bayern**, which finished **3-0**. Nobody else has missed a match by that much!',
     );
     expect(card?.subjects).toEqual([
       { type: 'user', id: 'u1', name: 'Alice', imageUrl: '/api/images/alice.png', iconColor: null },
@@ -1212,7 +1212,7 @@ describe('worstPredictionCard', () => {
       'en',
     );
     expect(card?.subjects.map(s => s.id)).toEqual(['u1']);
-    expect(card?.statistic).toContain('**3** goals off');
+    expect(card?.statistic).toContain('predicted **0-2**');
   });
 
   it('shows every member level on the same miss', () => {
@@ -1221,7 +1221,9 @@ describe('worstPredictionCard', () => {
       teams,
       'en',
     );
-    expect(card?.statistic).toBe('**Alice and Bob** were each **7** goals off on the goal difference.');
+    expect(card?.statistic).toBe(
+      '**Alice and Bob** have each missed a match by just as much. Nobody else has missed one by more!',
+    );
     expect(card?.subjects.map(s => s.id)).toEqual(['u1', 'u2']);
   });
 
@@ -1232,14 +1234,14 @@ describe('worstPredictionCard', () => {
       'en',
     );
     expect(card?.statistic).toBe(
-      '**Alice** has **2** predictions **7** goals off on the goal difference.',
+      '**Alice** has **2** predictions that missed by just as much. Nobody else has missed a match by that much!',
     );
     expect(card?.subjects.map(s => s.id)).toEqual(['u1']);
   });
 
   it('names the scoreline alone when the fixture has no teams yet', () => {
     expect(worstPredictionCard([scored('u1', [0, 4], [3, 0], 'f9')], teams, 'en')?.statistic).toBe(
-      '**Alice** predicted **0-4** in a match that finished **3-0** — **7** goals off on the goal difference.',
+      '**Alice** predicted **0-4** in a match that finished **3-0**. Nobody else has missed a match by that much!',
     );
   });
 
@@ -1257,14 +1259,14 @@ describe('worstPredictionCard', () => {
   it('translates the title and the statistic', () => {
     const rows = [scored('u1', [0, 4], [3, 0], 'f1'), scored('u2', [2, 0], [3, 0], 'f1')];
     expect(worstPredictionCard(rows, teams, 'no')).toMatchObject({
-      title: 'Skivebom',
+      title: 'Det var nesten da!',
       statistic:
-        '**Alice** tippet **0-4** på **Arsenal mot Bayern**, som endte **3-0** — **7** mål feil på målforskjellen.',
+        '**Alice** tippet **0-4** på **Arsenal mot Bayern**, som endte **3-0**. Ingen andre har bommet så stort på en kamp!',
     });
     expect(worstPredictionCard(rows, teams, 'de')).toMatchObject({
-      title: 'Katastrophentipp',
+      title: 'Knapp daneben!',
       statistic:
-        '**Alice** hat **0-4** bei **Arsenal gegen Bayern** getippt, das **3-0** endete — **7** Tore neben der Tordifferenz.',
+        '**Alice** hat **0-4** bei **Arsenal gegen Bayern** getippt, das **3-0** endete. Niemand sonst hat bei einem Spiel so danebengelegen!',
     });
   });
 });

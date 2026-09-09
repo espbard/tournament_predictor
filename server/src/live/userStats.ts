@@ -1157,10 +1157,13 @@ export function worstPredictionCard(
   const winners = dedupeByUser(tie);
   const names = joinNames(winners.map(w => w.username), lang);
 
-  const title = lang === 'no' ? 'Skivebom' : lang === 'de' ? 'Katastrophentipp' : 'Worst prediction';
+  const title =
+    lang === 'no' ? 'Det var nesten da!' : lang === 'de' ? 'Knapp daneben!' : 'Close enough!';
 
-  // One prediction is the story; several tied are only the number they share. A tie held
-  // by one member alone is neither, so it says how many of them there were.
+  // One prediction is the story; a tie can only say that they are level, and a tie held by
+  // one member alone says how many of theirs it took. The number of goals is what the card
+  // ranks on rather than what it prints: "nobody has missed by more" is the claim, and it
+  // is the one a tie has to soften, since the others in it missed by exactly as much.
   const alone = tie.length === 1;
   const worst = tie[0];
   const named = alone ? teamNames(worst, indexTeams(teams)) : null;
@@ -1172,25 +1175,25 @@ export function worstPredictionCard(
       ? alone
         ? `**${names}** tippet **${predicted}** ${
             named ? `på **${named.home} mot ${named.away}**, som` : 'på en kamp som'
-          } endte **${actual}** — **${gap}** mål feil på målforskjellen.`
+          } endte **${actual}**. Ingen andre har bommet så stort på en kamp!`
         : winners.length === 1
-          ? `**${names}** har **${tie.length}** tips som bommer med **${gap}** mål på målforskjellen.`
-          : `**${names}** bommet med **${gap}** mål på målforskjellen hver.`
+          ? `**${names}** har **${tie.length}** tips som bommer like stort. Ingen andre har bommet så stort på en kamp!`
+          : `**${names}** har bommet like stort hver sin gang. Ingen andre har bommet mer på en kamp!`
       : lang === 'de'
         ? alone
           ? `**${names}** hat **${predicted}** ${
               named ? `bei **${named.home} gegen ${named.away}**` : 'bei einem Spiel'
-            } getippt, das **${actual}** endete — **${gap}** Tore neben der Tordifferenz.`
+            } getippt, das **${actual}** endete. Niemand sonst hat bei einem Spiel so danebengelegen!`
           : winners.length === 1
-            ? `**${names}** hat **${tie.length}** Tipps, die **${gap}** Tore neben der Tordifferenz liegen.`
-            : `**${names}** lagen jeweils **${gap}** Tore neben der Tordifferenz.`
+            ? `**${names}** hat **${tie.length}** Tipps, die genauso weit danebenliegen. Niemand sonst hat bei einem Spiel so danebengelegen!`
+            : `**${names}** haben jeweils genauso weit danebengelegen. Niemand sonst hat bei einem Spiel weiter danebengelegen!`
         : alone
           ? `**${names}** predicted **${predicted}** ${
               named ? `in **${named.home} vs ${named.away}**, which` : 'in a match that'
-            } finished **${actual}** — **${gap}** goals off on the goal difference.`
+            } finished **${actual}**. Nobody else has missed a match by that much!`
           : winners.length === 1
-            ? `**${names}** has **${tie.length}** predictions **${gap}** goals off on the goal difference.`
-            : `**${names}** were each **${gap}** goals off on the goal difference.`;
+            ? `**${names}** has **${tie.length}** predictions that missed by just as much. Nobody else has missed a match by that much!`
+            : `**${names}** have each missed a match by just as much. Nobody else has missed one by more!`;
 
   return memberCard('worstPrediction', title, statistic, winners);
 }

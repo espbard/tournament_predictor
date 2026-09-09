@@ -1700,7 +1700,9 @@ Two cards about a single prediction rather than a member's season, `bestPredicti
   others managed even the goal difference; level on that, where fewest of them so much as
   picked the winner.
 - **Worst prediction** — the prediction furthest from the goal difference that happened. 0-4
-  on a match that finished 3-0 is seven goals out.
+  on a match that finished 3-0 is seven goals out. Titled **Det var nesten da!** / *Close
+  enough!* / *Knapp daneben!*, and it prints the miss rather than the number of goals it was
+  out by — see §25.
 
 | Decision | Why |
 |---|---|
@@ -1828,7 +1830,23 @@ and the average guess — above what they have actually scored.
 
 ---
 
-## 25. References
+## 25. The worst prediction stops counting goals *(added after the six phases, on request)*
+
+`worstPrediction` renamed to **Det var nesten da!** / *Close enough!* / *Knapp daneben!*, and
+its sentence now ends on the claim rather than on the arithmetic:
+
+> **Alice** tippet **0-4** på **Arsenal mot Bayern**, som endte **3-0**. Ingen andre har bommet
+> så stort på en kamp!
+
+| Decision | Why |
+|---|---|
+| The goal-difference distance is still what the card ranks on; it just stopped printing it | It is the only honest way to order the misses, but "seven goals out on the goal difference" was arithmetic where the card wanted a punchline. Nothing about which prediction wins changed |
+| The two tie sentences had to be reworded rather than just re-ended | "Nobody else has missed by that much" is false when somebody else missed by exactly that much. A tie between members now says they are level and that nobody has missed by *more*; a tie one member holds alone keeps the stronger claim, since there genuinely is no other member in it |
+| The English title avoids "Almost" and the German avoids "Fast" | Both are already the `almost` card's titles, and two cards in one deck answering to the same word is a card nobody can refer to |
+
+---
+
+## 26. References
 
 - [2026/27 Champions League: teams, dates, draws, format](https://www.uefa.com/uefachampionsleague/news/02a6-20d57cfcd03e-407c22a7f465-1000--2026-27-champions-league-teams-dates-draws-format-final/)
 - [UEFA confirms date for the 2026/27 Champions League league phase draw](https://www.besoccer.com/new/uefa-confirms-date-for-the-202627-champions-league-league-phase-draw-1421299)
