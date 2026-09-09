@@ -1439,51 +1439,139 @@ const NATIONALITY = 'Norway';
 const NATIONALITY_FLAG = '/stat-flag-no.webp';
 
 /**
- * How many goals players of one country have scored in the tournament.
+ * The bonus question this card reads, matched on two words rather than on its exact text.
  *
- * Not a prediction card: this is what happened. It reads the snapshot
- * refreshLivePlayerGoals folds out of the provider's scorer feed, so it is as fresh as the
- * last structure sync and costs nothing to show.
+ * It is typed in by an admin — "Hvor mange mål blir scoret av norske spillere?" today,
+ * possibly with a different wording next season — so an exact match would leave the card
+ * silently half-empty. A number question that mentions Norwegians and goals is the one.
+ */
+const NORWEGIAN_GOALS_QUESTION = ['norsk', 'mål'];
+
+/** One member's answer to a number bonus question, with the member attached. */
+export interface LiveStatsBonusAnswer extends CardMember {
+  /** The question as the admin typed it — this card picks its own out by the words in it. */
+  question: string;
+  answer: string;
+}
+
+interface Guess extends CardMember {
+  goals: number;
+}
+
+function norwegianGoalGuesses(answers: LiveStatsBonusAnswer[]): Guess[] {
+  const guesses: Guess[] = [];
+  for (const answer of answers) {
+    const question = answer.question.toLowerCase();
+    if (!NORWEGIAN_GOALS_QUESTION.every(word => question.includes(word))) continue;
+    const goals = Number(answer.answer);
+    // An answer that is not a number belongs to a question this card has misread, or to
+    // one whose type an admin has since changed. Either way it cannot be averaged.
+    if (!Number.isFinite(goals)) continue;
+    guesses.push({
+      userId: answer.userId,
+      username: answer.username,
+      imageUrl: answer.imageUrl,
+      iconColor: answer.iconColor,
+      goals,
+    });
+  }
+  return guesses;
+}
+
+/**
+ * What the league expects of the Norwegians, and what the Norwegians have managed.
  *
- * Null when there is no snapshot yet or the country has not scored — a card that would
- * read "0 goals" is not a statistic, it is a tournament that has not started.
+ * Two halves, and either can stand alone. The first is the bonus question — who backs
+ * them hardest, who backs them least, and what the league guesses on average. The second
+ * is what has actually been scored, read off the snapshot refreshLivePlayerGoals folds
+ * out of the provider's scorer feed, so it is as fresh as the last sync and costs no
+ * request of its own.
  *
- * When the feed came back truncated the totals are floors rather than totals, so the
+ * Null only when neither half has anything: no answers to that question, and no goals.
+ * A tournament where they have not scored yet still has a league arguing about it.
+ *
+ * When the feed came back truncated the total is a floor rather than a total, so the
  * sentence says "at least" instead of printing a number that reads as exact.
  */
 export function nationalityGoalsCard(
   snapshot: LiveScorerNationalities | null,
+  bonusAnswers: LiveStatsBonusAnswer[],
   lang: LiveStatsLang,
 ): UserStatCardData | null {
-  if (!snapshot) return null;
-
   // The provider spells its own country names and could reasonably change the casing, so
   // the key is matched case-insensitively rather than looked up directly.
-  const entry = Object.entries(snapshot.byNationality).find(
-    ([name]) => name.toLowerCase() === NATIONALITY.toLowerCase(),
-  )?.[1];
-  if (!entry || entry.goals === 0) return null;
+  const entry = snapshot
+    ? Object.entries(snapshot.byNationality).find(
+        ([name]) => name.toLowerCase() === NATIONALITY.toLowerCase(),
+      )?.[1]
+    : undefined;
+  const scored = entry && entry.goals > 0 ? entry : null;
 
-  const { goals, players } = entry;
-  const floor = snapshot.truncated;
+  const guesses = norwegianGoalGuesses(bonusAnswers);
+  if (guesses.length === 0 && !scored) return null;
 
   const title = lang === 'no' ? 'Heia Norge!' : lang === 'de' ? 'Los, Norwegen!' : 'Go Norway!';
 
-  const statistic =
-    lang === 'no'
-      ? (floor
-          ? `Nordmenn har scoret **minst ${goals}** mål i turneringen`
-          : `**${goals}** mål i turneringen er scoret av nordmenn`) +
-        (players === 1 ? ', av **1** spiller.' : `, fordelt på **${players}** spillere.`)
-      : lang === 'de'
-        ? (floor
-            ? `Norweger haben in diesem Wettbewerb **mindestens ${goals}** Tore erzielt`
-            : `**${goals}** Tore in diesem Wettbewerb gehen auf das Konto von Norwegern`) +
-          (players === 1 ? ' — **1** Spieler.' : ` — **${players}** verschiedene Spieler.`)
-        : (floor
-            ? `Norwegians have scored **at least ${goals}** goals in this tournament`
-            : `**${goals}** goals in this tournament have been scored by Norwegians`) +
-          (players === 1 ? ' — **1** player.' : ` — **${players}** different players.`);
+  let statistic = '';
+
+  if (guesses.length > 0) {
+    const most = Math.max(...guesses.map(g => g.goals));
+    const least = Math.min(...guesses.map(g => g.goals));
+    const average = (guesses.reduce((sum, g) => sum + g.goals, 0) / guesses.length).toFixed(1);
+    const believers = dedupeByUser(guesses.filter(g => g.goals === most));
+    const doubters = dedupeByUser(guesses.filter(g => g.goals === least));
+    const believerNames = joinNames(believers.map(b => b.username), lang);
+    const doubterNames = joinNames(doubters.map(d => d.username), lang);
+    // With one answer, or a league that all guessed the same, the two ends are the same
+    // people saying the same number: there is no "meanwhile" to draw.
+    const split = most !== least;
+
+    statistic =
+      lang === 'no'
+        ? `**${believerNames}** har mest trua på de norske spillerne! De har tippet at de scorer totalt **${most}** mål i turneringen!` +
+          (split
+            ? ` Det er flest av samtlige! **${doubterNames}**, imidlertid, har tippet at det kun blir **${least}** norske mål i turneringen.`
+            : '') +
+          ` I gjennomsnitt er det tippet at norske spillere scorer til sammen **${average}** mål.`
+        : lang === 'de'
+          ? `**${believerNames}** glaubt am meisten an die norwegischen Spieler! Getippt sind insgesamt **${most}** Tore in diesem Wettbewerb!` +
+            (split
+              ? ` Mehr als alle anderen! **${doubterNames}** hingegen tippt nur **${least}** norwegische Tore.`
+              : '') +
+            ` Im Schnitt werden **${average}** norwegische Tore getippt.`
+          : `**${believerNames}** ${believers.length === 1 ? 'has' : 'have'} the most faith in the Norwegian players! They have them scoring **${most}** goals in total this tournament!` +
+            (split
+              ? ` More than anybody else! **${doubterNames}**, meanwhile, ${doubters.length === 1 ? 'has' : 'have'} them managing only **${least}** Norwegian goals.`
+              : '') +
+            ` The average guess is **${average}** goals between them.`;
+  }
+
+  if (scored) {
+    const { goals, players } = scored;
+    const floor = snapshot!.truncated;
+    // A blank line, so the two halves read as the two paragraphs they are. See
+    // LiveUserStatCard, which keeps the break rather than collapsing it.
+    const gap = statistic === '' ? '' : '\n\n';
+
+    statistic +=
+      lang === 'no'
+        ? gap +
+          `Så langt har norske spillere scoret **${floor ? `minst ${goals}` : goals}** mål seg imellom!` +
+          (players === 1
+            ? ' Alt sammen av **1** norsk målscorer.'
+            : ` Fordelt på **${players}** forskjellige norske målscorere.`)
+        : lang === 'de'
+          ? gap +
+            `Bisher haben Norweger **${floor ? `mindestens ${goals}` : goals}** Tore untereinander erzielt!` +
+            (players === 1
+              ? ' Alle von **1** norwegischen Torschützen.'
+              : ` Verteilt auf **${players}** verschiedene norwegische Torschützen.`)
+          : gap +
+            `So far Norwegians have scored **${floor ? `at least ${goals}` : goals}** goals between them!` +
+            (players === 1
+              ? ' All of them by **1** Norwegian scorer.'
+              : ` Spread across **${players}** different Norwegian scorers.`);
+  }
 
   // The flag is the tile rather than a picture on it: a rectangle of solid colour fills a
   // card better than anything cropping could do to it, and there is no crest or face here
@@ -1511,6 +1599,8 @@ export function buildLiveUserStats(
     /** What this competition pays per tier — the expected-result card ranks on it. */
     scoringConfig: LiveScoringConfig;
     scorerNationalities: LiveScorerNationalities | null;
+    /** Answers to the number bonus questions — the nationality card reads one of them. */
+    bonusAnswers: LiveStatsBonusAnswer[];
   },
   lang: LiveStatsLang,
 ): UserStatCardData[] {
@@ -1523,6 +1613,7 @@ export function buildLiveUserStats(
     progression,
     scoringConfig,
     scorerNationalities,
+    bonusAnswers,
   } = input;
   return [
     theLeaderCard(progression, lang),
@@ -1541,6 +1632,6 @@ export function buildLiveUserStats(
     worstPredictionCard(scoredPredictions, teams, lang),
     mostExpectedResultCard(scoredPredictions, teams, progression, scoringConfig, lang),
     mostUnexpectedResultCard(scoredPredictions, teams, progression, lang),
-    nationalityGoalsCard(scorerNationalities, lang),
+    nationalityGoalsCard(scorerNationalities, bonusAnswers, lang),
   ].filter((c): c is UserStatCardData => c !== null);
 }

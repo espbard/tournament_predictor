@@ -51,7 +51,11 @@ function Caption({ data }: Props) {
       <h3 className="text-center text-sm font-bold uppercase tracking-wide text-white">
         {data.title}
       </h3>
-      <p className="mt-1.5 text-sm leading-snug text-white/85">{renderStatistic(data.statistic)}</p>
+      {/* pre-line, because a card may hand over two paragraphs with a blank line between
+          them — the nationality card's predictions and what was actually scored. */}
+      <p className="mt-1.5 whitespace-pre-line text-sm leading-snug text-white/85">
+        {renderStatistic(data.statistic)}
+      </p>
     </div>
   );
 }

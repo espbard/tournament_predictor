@@ -1381,6 +1381,7 @@ describe('buildLiveUserStats', () => {
     progression: null,
     scoringConfig,
     scorerNationalities: null,
+    bonusAnswers: [],
   };
 
   it('drops cards that have nothing to say', () => {
@@ -1395,6 +1396,7 @@ describe('buildLiveUserStats', () => {
           progression: null,
           scoringConfig,
           scorerNationalities: null,
+          bonusAnswers: [],
         },
         'en',
       ),
@@ -1479,64 +1481,118 @@ describe('buildLiveUserStats', () => {
 });
 
 describe('nationalityGoalsCard', () => {
-  it('counts the goals and the players behind them', () => {
+  /** An answer to the Norwegian-goals bonus question, from one member. */
+  const guess = (userId: string, answer: string, question = 'Hvor mange mål blir scoret av norske spillere?') => ({
+    userId,
+    username: userId === 'u1' ? 'Alice' : userId === 'u2' ? 'Bob' : 'Chris',
+    imageUrl: userId === 'u1' ? '/api/images/alice.png' : null,
+    iconColor: userId === 'u1' ? null : '#334155',
+    question,
+    answer,
+  });
+
+  const guesses = [guess('u1', '12'), guess('u2', '3'), guess('u3', '6')];
+
+  it('reads the bonus question and the goals actually scored', () => {
     const card = nationalityGoalsCard(
-      snapshot({ Norway: { goals: 23, players: 7 }, Spain: { goals: 40, players: 12 } }),
+      snapshot({ Norway: { goals: 5, players: 3 }, Spain: { goals: 40, players: 12 } }),
+      guesses,
       'en',
     );
     expect(card?.title).toBe('Go Norway!');
     expect(card?.statistic).toBe(
-      '**23** goals in this tournament have been scored by Norwegians — **7** different players.',
+      '**Alice** has the most faith in the Norwegian players! They have them scoring **12** goals in total this tournament!' +
+        ' More than anybody else! **Bob**, meanwhile, has them managing only **3** Norwegian goals.' +
+        ' The average guess is **7.0** goals between them.' +
+        '\n\nSo far Norwegians have scored **5** goals between them! Spread across **3** different Norwegian scorers.',
     );
     // The flag is the tile's own background rather than a subject on it.
     expect(card?.subjects).toEqual([]);
     expect(card?.backgroundImageUrl).toBe('/stat-flag-no.webp');
   });
 
+  it('stands on the predictions alone before anybody has scored', () => {
+    expect(nationalityGoalsCard(null, guesses, 'en')?.statistic).toBe(
+      '**Alice** has the most faith in the Norwegian players! They have them scoring **12** goals in total this tournament!' +
+        ' More than anybody else! **Bob**, meanwhile, has them managing only **3** Norwegian goals.' +
+        ' The average guess is **7.0** goals between them.',
+    );
+    expect(nationalityGoalsCard(snapshot({ Norway: { goals: 0, players: 0 } }), guesses, 'en')?.statistic).not.toContain(
+      'So far',
+    );
+  });
+
+  it('stands on the goals alone when nobody answered the question', () => {
+    expect(
+      nationalityGoalsCard(snapshot({ Norway: { goals: 9, players: 1 } }), [], 'en')?.statistic,
+    ).toBe('So far Norwegians have scored **9** goals between them! All of them by **1** Norwegian scorer.');
+  });
+
+  it('names everyone level at either end, and drops the contrast when all guessed alike', () => {
+    const tie = nationalityGoalsCard(null, [guess('u1', '9'), guess('u3', '9'), guess('u2', '2')], 'en');
+    expect(tie?.statistic).toContain('**Alice and Chris** have the most faith');
+    expect(tie?.statistic).toContain('**Bob**, meanwhile, has');
+
+    const level = nationalityGoalsCard(null, [guess('u1', '7'), guess('u2', '7')], 'en');
+    expect(level?.statistic).toBe(
+      '**Alice and Bob** have the most faith in the Norwegian players! They have them scoring **7** goals in total this tournament! The average guess is **7.0** goals between them.',
+    );
+  });
+
+  it('ignores answers to other questions, and answers that are not numbers', () => {
+    const card = nationalityGoalsCard(
+      null,
+      [
+        guess('u1', '12'),
+        guess('u2', '40', 'Hvor mange mål blir scoret totalt?'),
+        guess('u3', 'mange'),
+      ],
+      'en',
+    );
+    expect(card?.statistic).toBe(
+      '**Alice** has the most faith in the Norwegian players! They have them scoring **12** goals in total this tournament! The average guess is **12.0** goals between them.',
+    );
+  });
+
   it('matches the country key whatever case the provider sends', () => {
-    expect(nationalityGoalsCard(snapshot({ NORWAY: { goals: 5, players: 2 } }), 'en')).not.toBeNull();
-    expect(nationalityGoalsCard(snapshot({ norway: { goals: 5, players: 2 } }), 'en')).not.toBeNull();
+    expect(nationalityGoalsCard(snapshot({ NORWAY: { goals: 5, players: 2 } }), [], 'en')).not.toBeNull();
+    expect(nationalityGoalsCard(snapshot({ norway: { goals: 5, players: 2 } }), [], 'en')).not.toBeNull();
   });
 
   it('says "at least" when the feed was truncated, because the total is a floor', () => {
     const rows = { Norway: { goals: 23, players: 7 } };
-    expect(nationalityGoalsCard(snapshot(rows, true), 'en')?.statistic).toBe(
-      'Norwegians have scored **at least 23** goals in this tournament — **7** different players.',
+    expect(nationalityGoalsCard(snapshot(rows, true), [], 'en')?.statistic).toBe(
+      'So far Norwegians have scored **at least 23** goals between them! Spread across **7** different Norwegian scorers.',
     );
-    expect(nationalityGoalsCard(snapshot(rows, true), 'no')?.statistic).toBe(
-      'Nordmenn har scoret **minst 23** mål i turneringen, fordelt på **7** spillere.',
-    );
-    expect(nationalityGoalsCard(snapshot(rows, true), 'de')?.statistic).toContain('**mindestens 23**');
+    expect(nationalityGoalsCard(snapshot(rows, true), [], 'no')?.statistic).toContain('**minst 23**');
+    expect(nationalityGoalsCard(snapshot(rows, true), [], 'de')?.statistic).toContain('**mindestens 23**');
   });
 
-  it('uses the singular for one player', () => {
-    const one = snapshot({ Norway: { goals: 9, players: 1 } });
-    expect(nationalityGoalsCard(one, 'en')?.statistic).toBe(
-      '**9** goals in this tournament have been scored by Norwegians — **1** player.',
-    );
-    expect(nationalityGoalsCard(one, 'no')?.statistic).toBe(
-      '**9** mål i turneringen er scoret av nordmenn, av **1** spiller.',
-    );
+  it('is null only when neither half has anything to say', () => {
+    expect(nationalityGoalsCard(null, [], 'en')).toBeNull();
+    expect(nationalityGoalsCard(snapshot({}), [], 'en')).toBeNull();
+    expect(nationalityGoalsCard(snapshot({ Spain: { goals: 40, players: 12 } }), [], 'en')).toBeNull();
+    expect(nationalityGoalsCard(snapshot({ Norway: { goals: 0, players: 3 } }), [], 'en')).toBeNull();
   });
 
-  it('translates the title and the statistic', () => {
-    const rows = snapshot({ Norway: { goals: 23, players: 7 } });
-    expect(nationalityGoalsCard(rows, 'no')).toMatchObject({
+  it('translates both halves', () => {
+    const card = nationalityGoalsCard(snapshot({ Norway: { goals: 5, players: 3 } }), guesses, 'no');
+    expect(card).toMatchObject({
       title: 'Heia Norge!',
-      statistic: '**23** mål i turneringen er scoret av nordmenn, fordelt på **7** spillere.',
+      statistic:
+        '**Alice** har mest trua på de norske spillerne! De har tippet at de scorer totalt **12** mål i turneringen!' +
+        ' Det er flest av samtlige! **Bob**, imidlertid, har tippet at det kun blir **3** norske mål i turneringen.' +
+        ' I gjennomsnitt er det tippet at norske spillere scorer til sammen **7.0** mål.' +
+        '\n\nSå langt har norske spillere scoret **5** mål seg imellom! Fordelt på **3** forskjellige norske målscorere.',
     });
-    expect(nationalityGoalsCard(rows, 'de')).toMatchObject({
+    expect(nationalityGoalsCard(snapshot({ Norway: { goals: 5, players: 3 } }), guesses, 'de')).toMatchObject({
       title: 'Los, Norwegen!',
       statistic:
-        '**23** Tore in diesem Wettbewerb gehen auf das Konto von Norwegern — **7** verschiedene Spieler.',
+        '**Alice** glaubt am meisten an die norwegischen Spieler! Getippt sind insgesamt **12** Tore in diesem Wettbewerb!' +
+        ' Mehr als alle anderen! **Bob** hingegen tippt nur **3** norwegische Tore.' +
+        ' Im Schnitt werden **7.0** norwegische Tore getippt.' +
+        '\n\nBisher haben Norweger **5** Tore untereinander erzielt! Verteilt auf **3** verschiedene norwegische Torschützen.',
     });
-  });
-
-  it('is null without a snapshot, without Norway, or on nothing scored', () => {
-    expect(nationalityGoalsCard(null, 'en')).toBeNull();
-    expect(nationalityGoalsCard(snapshot({}), 'en')).toBeNull();
-    expect(nationalityGoalsCard(snapshot({ Spain: { goals: 40, players: 12 } }), 'en')).toBeNull();
-    expect(nationalityGoalsCard(snapshot({ Norway: { goals: 0, players: 3 } }), 'en')).toBeNull();
   });
 
   it('joins the deck last, and only when it has something to say', () => {
@@ -1548,6 +1604,7 @@ describe('nationalityGoalsCard', () => {
       scoredPredictions: [],
       progression: null,
       scoringConfig,
+      bonusAnswers: [],
     };
     expect(buildLiveUserStats({ ...base, scorerNationalities: null }, 'en').map(c => c.id)).toEqual([
       'peoplesFavourite',
@@ -1583,6 +1640,7 @@ describe('nationalityGoalsCard', () => {
           progression: null,
           scoringConfig,
           scorerNationalities: snapshot({ Norway: { goals: 3, players: 2 } }),
+          bonusAnswers: [],
         },
         'en',
       ).map(c => c.id),
