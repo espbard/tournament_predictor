@@ -1715,7 +1715,25 @@ Two cards about a single prediction rather than a member's season, `bestPredicti
 
 ---
 
-## 20. References
+## 20. "The Leader", borrowed from the manual type *(added after the six phases, on request)*
+
+The manual competition type's leader card, in the live deck and opening it: who is top of the
+leaderboard, and how many matches they have been top for. `theLeaderCard()` in
+`server/src/live/userStats.ts`.
+
+| Decision | Why |
+|---|---|
+| The sentence is the manual type's, word for word — `The Leader` / `Kongen på haugen` / `Der Platzhirsch`, and the three statistics that go with them | Requested. The league already reads those words as "who is winning"; the same fact worded differently in the other tournament type would be two cards, not one |
+| Which meant copying `formatUserList` rather than using this file's `joinNames` | The manual list bolds each name and puts a comma before the "and"; `joinNames` does neither. Printing the same sentence means punctuating it the same way, so the helper is duplicated deliberately, with a note pointing at the original |
+| The run is walked over the **points progression**, not recomputed from predictions | `buildLiveProgression` already owns what a played fixture is, which ones are excluded, and how the season-long lumps land. Walking its milestones is what makes the card, the chart and the leaderboard agree about who is top — a second implementation is how they would drift apart |
+| The progression queries moved into a `loadLiveProgression()` helper shared by the two routes that now need it | The user-stats route would otherwise repeat seven queries and the `isLiveFixtureSelected` mapping. It is one function call from each route, and the rules stay in `progression.ts` |
+| Only fixture milestones count towards the run | The table, the top-scorer ranking and the bonus questions are settled in one lump at the end of the season. They move the totals — so they can change who is leading — but they are not matches anybody led through, and the sentence counts games |
+| The one deviation: no leader while every total is still zero | The manual card would name the entire league at 0-0-0. The rest of this deck returns null instead of printing a zero, and a card that says everybody is winning is not a statistic |
+| `linkType` stays null, where the manual card links to the leaderboard | `LiveUserStatCard` renders no links, the same as for every other card in this deck |
+
+---
+
+## 21. References
 
 - [2026/27 Champions League: teams, dates, draws, format](https://www.uefa.com/uefachampionsleague/news/02a6-20d57cfcd03e-407c22a7f465-1000--2026-27-champions-league-teams-dates-draws-format-final/)
 - [UEFA confirms date for the 2026/27 Champions League league phase draw](https://www.besoccer.com/new/uefa-confirms-date-for-the-202627-champions-league-league-phase-draw-1421299)

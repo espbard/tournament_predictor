@@ -8,6 +8,7 @@ import {
   goldenBootCard,
   peoplesFavouriteCard,
   spotOnCard,
+  theLeaderCard,
   woodenSpoonCard,
   worstPredictionCard,
 } from './userStats';
@@ -59,10 +60,135 @@ const scored = (
   actualAway,
 });
 
+/**
+ * A points progression: one entry per milestone, each the running totals after it. The
+ * ids match the members `scored` invents, so the two helpers name the same people.
+ */
+const progression = (
+  milestones: Array<Record<string, number>>,
+  ids: string[] = ['u1', 'u2', 'u3'],
+) => ({
+  matches: milestones.map((cumulativePoints, i) => ({
+    matchId: `m${i + 1}`,
+    label: `MD ${i + 1}`,
+    stage: 'league',
+    cumulativePoints,
+  })),
+  users: ids.map(userId => ({
+    userId,
+    username: userId === 'u1' ? 'Alice' : userId === 'u2' ? 'Bob' : 'Chris',
+    imageUrl: userId === 'u1' ? '/api/images/alice.png' : null,
+    iconColor: userId === 'u1' ? null : '#334155',
+  })),
+});
+
+/** The season-long lumps, which are milestones on the chart but not matches. */
+const seasonMilestone = (matchId: string, cumulativePoints: Record<string, number>) => ({
+  matchId,
+  label: matchId,
+  stage: matchId,
+  cumulativePoints,
+});
+
 const snapshot = (
   byNationality: Record<string, { goals: number; players: number }>,
   truncated = false,
 ) => ({ fetchedAt: '2026-09-02T10:00:00.000Z', count: 400, truncated, byNationality });
+
+describe('theLeaderCard', () => {
+  it('names who is top, and how many matches they have been top for', () => {
+    const card = theLeaderCard(
+      progression([
+        { u1: 4, u2: 1, u3: 0 },
+        { u1: 4, u2: 8, u3: 3 },
+        { u1: 6, u2: 11, u3: 5 },
+        { u1: 9, u2: 13, u3: 7 },
+      ]),
+      'en',
+    );
+    expect(card?.title).toBe('The Leader');
+    expect(card?.statistic).toBe('**Bob** has reigned supreme for the last 3 games!');
+    expect(card?.subjects).toEqual([
+      { type: 'user', id: 'u2', name: 'Bob', imageUrl: null, iconColor: '#334155' },
+    ]);
+    expect(card?.linkType).toBeNull();
+  });
+
+  it('uses the singular for a lead one match old', () => {
+    expect(
+      theLeaderCard(progression([{ u1: 5, u2: 2 }, { u1: 5, u2: 9 }]), 'en')?.statistic,
+    ).toBe('**Bob** has reigned supreme for the last 1 game!');
+  });
+
+  it('gives the card to whoever of the current leaders has been there longest', () => {
+    const card = theLeaderCard(
+      progression([
+        { u1: 3, u2: 0, u3: 0 },
+        { u1: 6, u2: 2, u3: 0 },
+        { u1: 8, u2: 8, u3: 1 },
+      ]),
+      'en',
+    );
+    expect(card?.statistic).toBe('**Alice** has reigned supreme for the last 3 games!');
+    expect(card?.subjects.map(s => s.id)).toEqual(['u1']);
+  });
+
+  it('shows both when they have led together the whole way', () => {
+    const card = theLeaderCard(
+      progression([
+        { u1: 3, u2: 3, u3: 1 },
+        { u1: 7, u2: 7, u3: 4 },
+      ]),
+      'en',
+    );
+    expect(card?.statistic).toBe('**Alice** and **Bob** have reigned supreme for the last 2 games!');
+    expect(card?.subjects.map(s => s.id)).toEqual(['u1', 'u2']);
+  });
+
+  it('joins three names the way the manual card does, with the comma', () => {
+    const card = theLeaderCard(progression([{ u1: 5, u2: 5, u3: 5 }]), 'en');
+    expect(card?.statistic).toBe(
+      '**Alice**, **Bob**, and **Chris** have reigned supreme for the last 1 game!',
+    );
+  });
+
+  it('walks past the season-long milestones, which are no part of a run of matches', () => {
+    const chart = progression([
+      { u1: 4, u2: 2 },
+      { u1: 9, u2: 6 },
+    ]);
+    const card = theLeaderCard(
+      { ...chart, matches: [...chart.matches, seasonMilestone('table', { u1: 12, u2: 20 })] },
+      'en',
+    );
+    expect(card?.statistic).toBe('**Alice** has reigned supreme for the last 2 games!');
+  });
+
+  it('is null with no chart, no matches on it, or nobody on any points', () => {
+    expect(theLeaderCard(null, 'en')).toBeNull();
+    expect(theLeaderCard(progression([]), 'en')).toBeNull();
+    expect(theLeaderCard(progression([{ u1: 0, u2: 0 }]), 'en')).toBeNull();
+  });
+
+  it('translates the title and the statistic', () => {
+    const chart = progression([{ u1: 3, u2: 1 }, { u1: 6, u2: 2 }]);
+    expect(theLeaderCard(chart, 'no')).toMatchObject({
+      title: 'Kongen på haugen',
+      statistic: '**Alice** har regjert på toppen i 2 kamper!',
+    });
+    expect(theLeaderCard(chart, 'de')).toMatchObject({
+      title: 'Der Platzhirsch',
+      statistic:
+        '**Alice** thront seit 2 Spielen an der Spitze wie eine sehr wackelige Krone!',
+    });
+    expect(theLeaderCard(progression([{ u1: 3, u2: 1 }]), 'no')?.statistic).toBe(
+      '**Alice** har regjert på toppen i 1 kamp!',
+    );
+    expect(theLeaderCard(progression([{ u1: 3, u2: 1 }]), 'de')?.statistic).toContain(
+      'seit 1 Spiel an der Spitze',
+    );
+  });
+});
 
 describe('peoplesFavouriteCard', () => {
   it('counts only the team in first place', () => {
@@ -724,6 +850,7 @@ describe('buildLiveUserStats', () => {
     scorerPredictions: [rank('u1', 'p1', 'p3')],
     players,
     scoredPredictions: [],
+    progression: null,
     scorerNationalities: null,
   };
 
@@ -736,6 +863,7 @@ describe('buildLiveUserStats', () => {
           scorerPredictions: [],
           players,
           scoredPredictions: [],
+          progression: null,
           scorerNationalities: null,
         },
         'en',
@@ -764,11 +892,12 @@ describe('buildLiveUserStats', () => {
     ).toEqual(['peoplesFavourite', 'woodenSpoon']);
   });
 
-  it('puts the member pair, then the prediction pair, before the nationality card', () => {
+  it('opens with the leader, then the member pair, then the prediction pair', () => {
     expect(
       buildLiveUserStats(
         {
           ...all,
+          progression: progression([{ u1: 3, u2: 1 }]),
           scoredPredictions: [
             scored('u1', [1, 0], [1, 0], 'f1'),
             scored('u1', [2, 0], [3, 1], 'f2'),
@@ -779,6 +908,7 @@ describe('buildLiveUserStats', () => {
         'en',
       ).map(c => c.id),
     ).toEqual([
+      'theLeader',
       'peoplesFavourite',
       'woodenSpoon',
       'goldenBoot',
@@ -875,6 +1005,7 @@ describe('nationalityGoalsCard', () => {
       scorerPredictions: [rank('u1', 'p1', 'p3')],
       players,
       scoredPredictions: [],
+      progression: null,
     };
     expect(buildLiveUserStats({ ...base, scorerNationalities: null }, 'en').map(c => c.id)).toEqual([
       'peoplesFavourite',
@@ -899,6 +1030,7 @@ describe('nationalityGoalsCard', () => {
           scorerPredictions: [],
           players,
           scoredPredictions: [],
+          progression: null,
           scorerNationalities: snapshot({ Norway: { goals: 3, players: 2 } }),
         },
         'en',

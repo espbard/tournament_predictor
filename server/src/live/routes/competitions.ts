@@ -24,7 +24,10 @@ import {
   tablePredictionStage,
   withLiveScoringDefaults,
 } from '@tournament-predictor/shared';
-import type { CompetitionInvite } from '@tournament-predictor/shared';
+import type {
+  CompetitionInvite,
+  LeaderboardProgressionResponse,
+} from '@tournament-predictor/shared';
 import { db } from '../../db/client';
 import {
   liveBonusAnswers,
@@ -456,6 +459,98 @@ liveCompetitionsRouter.get('/competitions/:id/leaderboard', requireAuth, async (
 });
 
 /**
+ * Everything the points progression is made of, for one competition.
+ *
+ * Two routes want it: the progression endpoint returns it as the chart's payload, and the
+ * user-stats deck's leader card walks the same milestones to find who has been top and
+ * for how long. Loading it once, here, is what keeps the card, the chart and the
+ * leaderboard telling the same story about who is winning.
+ */
+async function loadLiveProgression(
+  competitionId: string,
+  liveTournamentId: string,
+  lang: LiveProgressionLang,
+): Promise<LeaderboardProgressionResponse> {
+  const [members, fixtures, teamRows, predictions, tablePoints, scorerPoints, bonusPoints, selections] =
+    await Promise.all([
+      db
+        .select({
+          userId: liveCompetitionMembers.userId,
+          username: users.username,
+          imageUrl: users.imageUrl,
+          iconColor: users.iconColor,
+        })
+        .from(liveCompetitionMembers)
+        .innerJoin(users, eq(liveCompetitionMembers.userId, users.id))
+        .where(eq(liveCompetitionMembers.liveCompetitionId, competitionId))
+        .orderBy(asc(users.username)),
+      db
+        .select({
+          id: liveFixtures.id,
+          kickoffAt: liveFixtures.kickoffAt,
+          status: liveFixtures.status,
+          stageKey: liveFixtures.stageKey,
+          matchday: liveFixtures.matchday,
+          homeTeamId: liveFixtures.homeTeamId,
+          awayTeamId: liveFixtures.awayTeamId,
+        })
+        .from(liveFixtures)
+        // Every fixture, not just the finished ones: a scored fixture the provider has
+        // since moved back to postponed still holds points on the leaderboard, and
+        // buildLiveProgression is the one place that rule lives.
+        .where(eq(liveFixtures.liveTournamentId, liveTournamentId)),
+      db
+        .select({
+          id: liveTeams.id,
+          name: liveTeams.name,
+          shortName: liveTeams.shortName,
+          tla: liveTeams.tla,
+        })
+        .from(liveTeams)
+        .where(eq(liveTeams.liveTournamentId, liveTournamentId)),
+      db
+        .select({
+          userId: livePredictions.userId,
+          liveFixtureId: livePredictions.liveFixtureId,
+          points: livePredictions.points,
+        })
+        .from(livePredictions)
+        .where(
+          and(
+            eq(livePredictions.liveCompetitionId, competitionId),
+            isNotNull(livePredictions.points),
+          ),
+        ),
+      db
+        .select({ userId: liveTablePredictions.userId, points: liveTablePredictions.points })
+        .from(liveTablePredictions)
+        .where(eq(liveTablePredictions.liveCompetitionId, competitionId)),
+      db
+        .select({ userId: liveScorerPredictions.userId, points: liveScorerPredictions.points })
+        .from(liveScorerPredictions)
+        .where(eq(liveScorerPredictions.liveCompetitionId, competitionId)),
+      db
+        .select({ userId: liveBonusAnswers.userId, points: liveBonusAnswers.points })
+        .from(liveBonusAnswers)
+        .where(eq(liveBonusAnswers.liveCompetitionId, competitionId)),
+      loadSelectionIndex(liveTournamentId),
+    ]);
+
+  return buildLiveProgression(
+    {
+      members,
+      teams: teamRows,
+      fixtures: fixtures.map(f => ({ ...f, isSelected: isLiveFixtureSelected(f, selections) })),
+      predictions,
+      tablePoints,
+      scorerPoints,
+      bonusPoints,
+    },
+    lang,
+  );
+}
+
+/**
  * The points progression — every member's running total after each played fixture.
  *
  * Reads the stored per-prediction points rather than rescoring, so the end of the chart
@@ -483,85 +578,7 @@ liveCompetitionsRouter.get(
       const lang: LiveProgressionLang =
         req.query.lang === 'no' ? 'no' : req.query.lang === 'de' ? 'de' : 'en';
 
-      const [members, fixtures, teamRows, predictions, tablePoints, scorerPoints, bonusPoints, selections] =
-        await Promise.all([
-          db
-            .select({
-              userId: liveCompetitionMembers.userId,
-              username: users.username,
-              imageUrl: users.imageUrl,
-              iconColor: users.iconColor,
-            })
-            .from(liveCompetitionMembers)
-            .innerJoin(users, eq(liveCompetitionMembers.userId, users.id))
-            .where(eq(liveCompetitionMembers.liveCompetitionId, id))
-            .orderBy(asc(users.username)),
-          db
-            .select({
-              id: liveFixtures.id,
-              kickoffAt: liveFixtures.kickoffAt,
-              status: liveFixtures.status,
-              stageKey: liveFixtures.stageKey,
-              matchday: liveFixtures.matchday,
-              homeTeamId: liveFixtures.homeTeamId,
-              awayTeamId: liveFixtures.awayTeamId,
-            })
-            .from(liveFixtures)
-            // Every fixture, not just the finished ones: a scored fixture the provider has
-            // since moved back to postponed still holds points on the leaderboard, and
-            // buildLiveProgression is the one place that rule lives.
-            .where(eq(liveFixtures.liveTournamentId, competition.liveTournamentId)),
-          db
-            .select({
-              id: liveTeams.id,
-              name: liveTeams.name,
-              shortName: liveTeams.shortName,
-              tla: liveTeams.tla,
-            })
-            .from(liveTeams)
-            .where(eq(liveTeams.liveTournamentId, competition.liveTournamentId)),
-          db
-            .select({
-              userId: livePredictions.userId,
-              liveFixtureId: livePredictions.liveFixtureId,
-              points: livePredictions.points,
-            })
-            .from(livePredictions)
-            .where(
-              and(
-                eq(livePredictions.liveCompetitionId, id),
-                isNotNull(livePredictions.points),
-              ),
-            ),
-          db
-            .select({ userId: liveTablePredictions.userId, points: liveTablePredictions.points })
-            .from(liveTablePredictions)
-            .where(eq(liveTablePredictions.liveCompetitionId, id)),
-          db
-            .select({ userId: liveScorerPredictions.userId, points: liveScorerPredictions.points })
-            .from(liveScorerPredictions)
-            .where(eq(liveScorerPredictions.liveCompetitionId, id)),
-          db
-            .select({ userId: liveBonusAnswers.userId, points: liveBonusAnswers.points })
-            .from(liveBonusAnswers)
-            .where(eq(liveBonusAnswers.liveCompetitionId, id)),
-          loadSelectionIndex(competition.liveTournamentId),
-        ]);
-
-      return res.json(
-        buildLiveProgression(
-          {
-            members,
-            teams: teamRows,
-            fixtures: fixtures.map(f => ({ ...f, isSelected: isLiveFixtureSelected(f, selections) })),
-            predictions,
-            tablePoints,
-            scorerPoints,
-            bonusPoints,
-          },
-          lang,
-        ),
-      );
+      return res.json(await loadLiveProgression(id, competition.liveTournamentId, lang));
     } catch (err) {
       return fail(res, err);
     }
@@ -602,98 +619,102 @@ liveCompetitionsRouter.get('/competitions/:id/user-stats', requireAuth, async (r
     // the table half rather than ending the whole request.
     const stage = tablePredictionStage(getLiveFormat(tournament.format), tournament.startStageKey);
 
-    const [tablePredictions, teams, scorerPredictions, players, scoredPredictions] = await Promise.all([
-      stage
-        ? db
-            .select({
-              userId: liveTablePredictions.userId,
-              orderedTeamIds: liveTablePredictions.orderedTeamIds,
-            })
-            .from(liveTablePredictions)
-            // Read through the membership table rather than straight off the prediction
-            // table: leaving a competition removes the membership row and leaves the
-            // prediction behind, and someone who has left should not still get a vote.
-            .innerJoin(
-              liveCompetitionMembers,
-              and(
-                eq(
-                  liveCompetitionMembers.liveCompetitionId,
-                  liveTablePredictions.liveCompetitionId,
+    const [tablePredictions, teams, scorerPredictions, players, scoredPredictions, progression] =
+      await Promise.all([
+        stage
+          ? db
+              .select({
+                userId: liveTablePredictions.userId,
+                orderedTeamIds: liveTablePredictions.orderedTeamIds,
+              })
+              .from(liveTablePredictions)
+              // Read through the membership table rather than straight off the prediction
+              // table: leaving a competition removes the membership row and leaves the
+              // prediction behind, and someone who has left should not still get a vote.
+              .innerJoin(
+                liveCompetitionMembers,
+                and(
+                  eq(
+                    liveCompetitionMembers.liveCompetitionId,
+                    liveTablePredictions.liveCompetitionId,
+                  ),
+                  eq(liveCompetitionMembers.userId, liveTablePredictions.userId),
                 ),
-                eq(liveCompetitionMembers.userId, liveTablePredictions.userId),
-              ),
-            )
-            .where(
-              and(
-                eq(liveTablePredictions.liveCompetitionId, competition.id),
-                eq(liveTablePredictions.stageKey, stage.key),
-              ),
-            )
-        : [],
-      db
-        .select({ id: liveTeams.id, name: liveTeams.name, crestUrl: liveTeams.crestUrl })
-        .from(liveTeams)
-        .where(eq(liveTeams.liveTournamentId, tournament.id)),
-      db
-        .select({
-          userId: liveScorerPredictions.userId,
-          orderedPlayerIds: liveScorerPredictions.orderedPlayerIds,
-        })
-        .from(liveScorerPredictions)
-        // Same membership join, for the same reason.
-        .innerJoin(
-          liveCompetitionMembers,
-          and(
-            eq(liveCompetitionMembers.liveCompetitionId, liveScorerPredictions.liveCompetitionId),
-            eq(liveCompetitionMembers.userId, liveScorerPredictions.userId),
+              )
+              .where(
+                and(
+                  eq(liveTablePredictions.liveCompetitionId, competition.id),
+                  eq(liveTablePredictions.stageKey, stage.key),
+                ),
+              )
+          : [],
+        db
+          .select({ id: liveTeams.id, name: liveTeams.name, crestUrl: liveTeams.crestUrl })
+          .from(liveTeams)
+          .where(eq(liveTeams.liveTournamentId, tournament.id)),
+        db
+          .select({
+            userId: liveScorerPredictions.userId,
+            orderedPlayerIds: liveScorerPredictions.orderedPlayerIds,
+          })
+          .from(liveScorerPredictions)
+          // Same membership join, for the same reason.
+          .innerJoin(
+            liveCompetitionMembers,
+            and(
+              eq(liveCompetitionMembers.liveCompetitionId, liveScorerPredictions.liveCompetitionId),
+              eq(liveCompetitionMembers.userId, liveScorerPredictions.userId),
+            ),
+          )
+          .where(eq(liveScorerPredictions.liveCompetitionId, competition.id)),
+        // Every player, not just the shortlist: a ranking saved before the admin deselected
+        // someone still holds that id, and the card should be able to name them.
+        db
+          .select({ id: livePlayers.id, name: livePlayers.name, imageUrl: livePlayers.imageUrl })
+          .from(livePlayers)
+          .where(eq(livePlayers.liveTournamentId, tournament.id)),
+        // Every prediction that has been scored, with the result it was scored against.
+        // `points IS NOT NULL` is the same "counts in the game" test the leaderboard and the
+        // progression chart use — it is what the scoring trigger writes, so a fixture the
+        // admin left out of its gameweek is already excluded, while one that scored and was
+        // later moved back to postponed still counts, exactly as it does on the leaderboard.
+        db
+          .select({
+            userId: livePredictions.userId,
+            username: users.username,
+            imageUrl: users.imageUrl,
+            iconColor: users.iconColor,
+            fixtureId: livePredictions.liveFixtureId,
+            homeTeamId: liveFixtures.homeTeamId,
+            awayTeamId: liveFixtures.awayTeamId,
+            predictedHome: livePredictions.homeScore,
+            predictedAway: livePredictions.awayScore,
+            actualHome: liveFixtures.normalTimeHome,
+            actualAway: liveFixtures.normalTimeAway,
+          })
+          .from(livePredictions)
+          .innerJoin(liveFixtures, eq(liveFixtures.id, livePredictions.liveFixtureId))
+          .innerJoin(users, eq(users.id, livePredictions.userId))
+          // The same membership join the two rankings above use, for the same reason.
+          .innerJoin(
+            liveCompetitionMembers,
+            and(
+              eq(liveCompetitionMembers.liveCompetitionId, livePredictions.liveCompetitionId),
+              eq(liveCompetitionMembers.userId, livePredictions.userId),
+            ),
+          )
+          .where(
+            and(
+              eq(livePredictions.liveCompetitionId, competition.id),
+              isNotNull(livePredictions.points),
+              isNotNull(liveFixtures.normalTimeHome),
+              isNotNull(liveFixtures.normalTimeAway),
+            ),
           ),
-        )
-        .where(eq(liveScorerPredictions.liveCompetitionId, competition.id)),
-      // Every player, not just the shortlist: a ranking saved before the admin deselected
-      // someone still holds that id, and the card should be able to name them.
-      db
-        .select({ id: livePlayers.id, name: livePlayers.name, imageUrl: livePlayers.imageUrl })
-        .from(livePlayers)
-        .where(eq(livePlayers.liveTournamentId, tournament.id)),
-      // Every prediction that has been scored, with the result it was scored against.
-      // `points IS NOT NULL` is the same "counts in the game" test the leaderboard and the
-      // progression chart use — it is what the scoring trigger writes, so a fixture the
-      // admin left out of its gameweek is already excluded, while one that scored and was
-      // later moved back to postponed still counts, exactly as it does on the leaderboard.
-      db
-        .select({
-          userId: livePredictions.userId,
-          username: users.username,
-          imageUrl: users.imageUrl,
-          iconColor: users.iconColor,
-          fixtureId: livePredictions.liveFixtureId,
-          homeTeamId: liveFixtures.homeTeamId,
-          awayTeamId: liveFixtures.awayTeamId,
-          predictedHome: livePredictions.homeScore,
-          predictedAway: livePredictions.awayScore,
-          actualHome: liveFixtures.normalTimeHome,
-          actualAway: liveFixtures.normalTimeAway,
-        })
-        .from(livePredictions)
-        .innerJoin(liveFixtures, eq(liveFixtures.id, livePredictions.liveFixtureId))
-        .innerJoin(users, eq(users.id, livePredictions.userId))
-        // The same membership join the two rankings above use, for the same reason.
-        .innerJoin(
-          liveCompetitionMembers,
-          and(
-            eq(liveCompetitionMembers.liveCompetitionId, livePredictions.liveCompetitionId),
-            eq(liveCompetitionMembers.userId, livePredictions.userId),
-          ),
-        )
-        .where(
-          and(
-            eq(livePredictions.liveCompetitionId, competition.id),
-            isNotNull(livePredictions.points),
-            isNotNull(liveFixtures.normalTimeHome),
-            isNotNull(liveFixtures.normalTimeAway),
-          ),
-        ),
-    ]);
+        // The leader card walks the same milestones the chart is drawn from, so the card
+        // and the leaderboard can never disagree about who is top.
+        loadLiveProgression(competition.id, tournament.id, lang),
+      ]);
 
     return res.json(
       buildLiveUserStats(
@@ -709,6 +730,7 @@ liveCompetitionsRouter.get('/competitions/:id/user-stats', requireAuth, async (r
             actualHome: p.actualHome!,
             actualAway: p.actualAway!,
           })),
+          progression,
           // Already on the row this route loaded, so the nationality card costs no query.
           scorerNationalities: tournament.scorerNationalities ?? null,
         },

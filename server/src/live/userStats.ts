@@ -1,8 +1,16 @@
-import type { LiveScorerNationalities, UserStatCardData } from '@tournament-predictor/shared';
+import type {
+  LeaderboardProgressionMatch,
+  LeaderboardProgressionResponse,
+  LiveScorerNationalities,
+  UserStatCardData,
+} from '@tournament-predictor/shared';
+import { LIVE_SEASON_MILESTONE_IDS } from './progression';
 
 // ── User statistics for live competitions ─────────────────────────────────────
 //
-// The same cards the manual competition type shows, built from live data. The manual
+// The same cards the manual competition type shows, built from live data. One of them —
+// the leader — is that type's card outright, sentence and all, because the league already
+// reads those words; the rest are this type's own. The manual
 // version composes them inline in its route (server/src/routes/competitions.ts) from a
 // pile of already-loaded query results; this one keeps the composing pure and takes the
 // rows as arguments, so each card can be pinned by a unit test without a database.
@@ -127,11 +135,163 @@ function card(
   };
 }
 
+/** What any row needs to become a card subject: a member, however they were counted. */
+interface CardMember {
+  userId: string;
+  username: string;
+  imageUrl: string | null;
+  iconColor: string | null;
+}
+
+/**
+ * A member is the one subject that can have no picture at all, so these carry the colour
+ * the live card draws their initial on. Built here rather than through `card()`, which
+ * has only ever had a picture to pass on.
+ */
+/** Sorted by name so a tie reads the same on every request — same rule as countEnd. */
+const byUsername = (a: CardMember, b: CardMember) => a.username.localeCompare(b.username);
+
+/**
+ * One entry per member, name-sorted. The prediction pair below ranks predictions rather
+ * than members, so the same member can hold two of the rows that tie; they are one
+ * subject and one name in the sentence either way.
+ */
+function dedupeByUser<T extends CardMember>(rows: T[]): T[] {
+  const byUser = new Map<string, T>();
+  for (const row of rows) if (!byUser.has(row.userId)) byUser.set(row.userId, row);
+  return [...byUser.values()].sort(byUsername);
+}
+
+function memberCard(
+  id: string,
+  title: string,
+  statistic: string,
+  winners: CardMember[],
+): UserStatCardData {
+  return {
+    id,
+    title,
+    statistic,
+    subjects: winners.map(w => ({
+      type: 'user' as const,
+      id: w.userId,
+      name: w.username,
+      imageUrl: w.imageUrl,
+      iconColor: w.iconColor,
+    })),
+    linkType: null,
+  };
+}
+
 const indexTeams = (teams: LiveStatsTeam[]): Map<string, Entrant> =>
   new Map(teams.map(t => [t.id, { id: t.id, name: t.name, imageUrl: t.crestUrl }]));
 
 const indexPlayers = (players: LiveStatsPlayer[]): Map<string, Entrant> =>
   new Map(players.map(p => [p.id, { id: p.id, name: p.name, imageUrl: p.imageUrl }]));
+
+// ── The leader ────────────────────────────────────────────────────────────────
+
+/**
+ * Names, bolded and joined the way the manual competition type's formatUserList does —
+ * with the comma before the "and" that joinNames above leaves out.
+ *
+ * The duplication is the point: this card prints the manual type's sentence word for
+ * word, so it has to punctuate it the same way too. See formatUserList in
+ * server/src/routes/competitions.ts.
+ */
+function formatUserList(names: string[], lang: LiveStatsLang): string {
+  const bolded = names.map(n => `**${n}**`);
+  const and = lang === 'no' ? 'og' : lang === 'de' ? 'und' : 'and';
+  if (bolded.length === 1) return bolded[0];
+  if (bolded.length === 2) return `${bolded[0]} ${and} ${bolded[1]}`;
+  return `${bolded.slice(0, -1).join(', ')}, ${and} ${bolded[bolded.length - 1]}`;
+}
+
+const SEASON_MILESTONES = new Set<string>(LIVE_SEASON_MILESTONE_IDS);
+
+/** Everyone level on the most points at one milestone. Empty while nobody has any. */
+function leadersAt(milestone: LeaderboardProgressionMatch): Set<string> {
+  const totals = Object.entries(milestone.cumulativePoints);
+  const most = Math.max(0, ...totals.map(([, points]) => points));
+  // A leaderboard of nothing but zeroes has no leader. The manual type would name the
+  // whole league here; a card that says everybody is winning is not a statistic.
+  if (most === 0) return new Set();
+  return new Set(totals.filter(([, points]) => points === most).map(([userId]) => userId));
+}
+
+/**
+ * Who is top of the leaderboard, and how many matches they have been top for.
+ *
+ * The manual competition type's card, wording and all — the league already reads that
+ * sentence, and this tournament type having a different one for the same fact would be
+ * two cards, not one. What differs is underneath: the run is walked over the points
+ * progression, so "leading" here means exactly what the leaderboard and the chart mean
+ * by it, including the multiplier bonuses and the deselected-fixture rules.
+ *
+ * Only fixture milestones count. The table, the top-scorer ranking and the bonus
+ * questions are settled in one lump at the end of a season and are no part of a run of
+ * matches — see LIVE_SEASON_MILESTONE_IDS.
+ *
+ * Where several members are level at the top, the one who has been there longest wins
+ * the card, and a tie on that is shown in full: both are the manual card's rules.
+ */
+export function theLeaderCard(
+  progression: LeaderboardProgressionResponse | null,
+  lang: LiveStatsLang,
+): UserStatCardData | null {
+  if (!progression) return null;
+
+  const games = progression.matches.filter(m => !SEASON_MILESTONES.has(m.matchId));
+  if (games.length === 0) return null;
+
+  const leading = games.map(leadersAt);
+  const current = leading[leading.length - 1];
+  if (current.size === 0) return null;
+
+  const streakFor = (userId: string): number => {
+    let streak = 0;
+    for (let i = leading.length - 1; i >= 0; i--) {
+      if (!leading[i].has(userId)) break;
+      streak += 1;
+    }
+    return streak;
+  };
+
+  const byUser = new Map(progression.users.map(u => [u.userId, u]));
+  const streaks = [...current]
+    .filter(userId => byUser.has(userId))
+    .map(userId => ({ userId, streak: streakFor(userId) }));
+  if (streaks.length === 0) return null;
+
+  const longest = Math.max(...streaks.map(s => s.streak));
+  const kings: CardMember[] = streaks
+    .filter(s => s.streak === longest)
+    .map(s => {
+      const user = byUser.get(s.userId)!;
+      return {
+        userId: user.userId,
+        username: user.username,
+        imageUrl: user.imageUrl ?? null,
+        iconColor: user.iconColor ?? null,
+      };
+    })
+    .sort(byUsername);
+
+  const names = formatUserList(kings.map(k => k.username), lang);
+  const gameCount = longest;
+
+  const title = lang === 'no' ? 'Kongen på haugen' : lang === 'de' ? 'Der Platzhirsch' : 'The Leader';
+
+  const statistic =
+    lang === 'no'
+      ? `${names} har regjert på toppen i ${gameCount} kamp${gameCount === 1 ? '' : 'er'}!`
+      : lang === 'de'
+        ? `${names} thront seit ${gameCount} Spiel${gameCount === 1 ? '' : 'en'} an der Spitze wie eine sehr wackelige Krone!`
+        : `${names} ${kings.length === 1 ? 'has' : 'have'} reigned supreme for the last ${gameCount} game${gameCount === 1 ? '' : 's'}!`;
+
+  return memberCard('theLeader', title, statistic, kings);
+}
+
 
 // ── The league table pair ─────────────────────────────────────────────────────
 
@@ -310,14 +470,6 @@ const rightScore = (p: LiveStatsScoredPrediction): boolean =>
 const goalDifferenceGap = (p: LiveStatsScoredPrediction): number =>
   Math.abs(p.predictedHome - p.predictedAway - (p.actualHome - p.actualAway));
 
-/** What any row needs to become a card subject: a member, however they were counted. */
-interface CardMember {
-  userId: string;
-  username: string;
-  imageUrl: string | null;
-  iconColor: string | null;
-}
-
 /** What one member's scored predictions add up to. */
 interface MemberTally extends CardMember {
   /** Every scored prediction they have made, right or wrong. */
@@ -350,46 +502,6 @@ function tallyMembers(predictions: LiveStatsScoredPrediction[]): MemberTally[] {
     tallies.set(p.userId, tally);
   }
   return [...tallies.values()];
-}
-
-/** Sorted by name so a tie reads the same on every request — same rule as countEnd. */
-const byUsername = (a: CardMember, b: CardMember) => a.username.localeCompare(b.username);
-
-/**
- * One entry per member, name-sorted. The prediction pair below ranks predictions rather
- * than members, so the same member can hold two of the rows that tie; they are one
- * subject and one name in the sentence either way.
- */
-function dedupeByUser<T extends CardMember>(rows: T[]): T[] {
-  const byUser = new Map<string, T>();
-  for (const row of rows) if (!byUser.has(row.userId)) byUser.set(row.userId, row);
-  return [...byUser.values()].sort(byUsername);
-}
-
-/**
- * A member is the one subject that can have no picture at all, so these carry the colour
- * the live card draws their initial on. Built here rather than through `card()`, which
- * has only ever had a picture to pass on.
- */
-function memberCard(
-  id: string,
-  title: string,
-  statistic: string,
-  winners: CardMember[],
-): UserStatCardData {
-  return {
-    id,
-    title,
-    statistic,
-    subjects: winners.map(w => ({
-      type: 'user' as const,
-      id: w.userId,
-      name: w.username,
-      imageUrl: w.imageUrl,
-      iconColor: w.iconColor,
-    })),
-    linkType: null,
-  };
 }
 
 /**
@@ -780,6 +892,7 @@ export function buildLiveUserStats(
     scorerPredictions: LiveStatsScorerPrediction[];
     players: LiveStatsPlayer[];
     scoredPredictions: LiveStatsScoredPrediction[];
+    progression: LeaderboardProgressionResponse | null;
     scorerNationalities: LiveScorerNationalities | null;
   },
   lang: LiveStatsLang,
@@ -790,9 +903,11 @@ export function buildLiveUserStats(
     scorerPredictions,
     players,
     scoredPredictions,
+    progression,
     scorerNationalities,
   } = input;
   return [
+    theLeaderCard(progression, lang),
     peoplesFavouriteCard(tablePredictions, teams, lang),
     woodenSpoonCard(tablePredictions, teams, lang),
     goldenBootCard(scorerPredictions, players, lang),
