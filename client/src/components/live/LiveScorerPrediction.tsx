@@ -11,6 +11,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { ChevronDown, ChevronUp, GripVertical, Lock } from 'lucide-react';
 import type { LivePlayer, LiveTeam } from '@tournament-predictor/shared';
 import { useT } from '@/lib/useT';
+import LiveScorerComparison from '@/components/live/LiveScorerComparison';
 import { initialOrder, moveItem } from '@/lib/liveTableOrder';
 import type { LiveScorerPredictionView } from '@/lib/liveApi';
 
@@ -22,6 +23,10 @@ import type { LiveScorerPredictionView } from '@/lib/liveApi';
 //
 // Reordering works three ways for the same reason the table prediction does: drag, the
 // up/down buttons, and a keyboard through those buttons.
+//
+// Once the ranking closes there is nothing left to reorder, and the question changes from
+// "what order?" to "how is it going?" — so the single list gives way to the submitted
+// ranking and the live one side by side. See LiveScorerComparison.
 //
 // Goals and assists are shown on every row, because assists are what break a tie on goals —
 // a ranking that reordered itself on a number the user could not see would look arbitrary.
@@ -87,6 +92,20 @@ export default function LiveScorerPrediction({
 
   const editable = !readOnly && !view.isLocked;
   const isGate = variant === 'gate';
+
+  // Side by side once the ranking has closed and somebody has scored, which takes both:
+  //
+  // Closed, because until then a prediction is seeded from the live order, so the two
+  // columns would be the same list printed twice. Scored, because with every tally on zero
+  // the tie-break falls all the way through to name order — an alphabetical list where a
+  // player landing on the position somebody guessed means nothing, and marking that a hit
+  // would be a lie. From the first goal on it holds for the rest of the tournament, the
+  // completed one included, where the right-hand column is simply the finishing order.
+  //
+  // Not in the gate, which is played before any of this and has no second list to show.
+  const anyGoals = view.players.some(player => (player.goals ?? 0) > 0);
+  const closed = !isGate && view.isLocked;
+  const showComparison = closed && anyGoals;
 
   // Points are withheld until the tournament is completed, so a stored `points` is what
   // says this has been scored — the same test the table prediction uses.
@@ -221,50 +240,66 @@ export default function LiveScorerPrediction({
         </div>
       )}
 
-      <DndContext
-        onDragStart={(e: DragStartEvent) => setDragging(String(e.active.id))}
-        onDragEnd={handleDragEnd}
-        onDragCancel={() => setDragging(null)}
-      >
-        <ol className="grid gap-1">
-          {order.map((playerId, index) => (
-            <ScorerRow
-              key={playerId}
-              playerId={playerId}
-              player={playerById.get(playerId) ?? null}
-              team={teamById.get(playerById.get(playerId)?.teamId ?? '') ?? null}
-              // The gate is played before the season starts, so there is nothing to show.
-              showTally={!isGate}
-              position={index + 1}
-              editable={editable}
-              isFirst={index === 0}
-              isLast={index === order.length - 1}
-              onMoveUp={() => reorder(index, index - 1)}
-              onMoveDown={() => reorder(index, index + 1)}
-              actualPosition={scored ? (actualPositionById.get(playerId) ?? null) : null}
-              scored={scored}
-            />
-          ))}
-        </ol>
+      {/* Why there is only one list here, for the short window between the deadline and
+          the tournament's first goal. */}
+      {closed && !anyGoals && (
+        <p className="mb-2 text-xs text-muted-foreground">{t('live.scorers.compare.noGoalsYet')}</p>
+      )}
 
-        <DragOverlay>
-          {dragging ? (
-            <div
-              className="rounded-md border bg-background px-3 py-2 text-sm font-medium shadow-lg"
-              style={
-                playerById.get(dragging)?.glowColor
-                  ? {
-                      borderColor: `${playerById.get(dragging)!.glowColor}99`,
-                      boxShadow: `0 0 14px -2px ${playerById.get(dragging)!.glowColor}80`,
-                    }
-                  : undefined
-              }
-            >
-              {playerById.get(dragging)?.name ?? ''}
-            </div>
-          ) : null}
-        </DragOverlay>
-      </DndContext>
+      {showComparison ? (
+        <LiveScorerComparison
+          players={view.players}
+          teams={view.teams}
+          predictedOrder={order}
+          actualOrder={view.currentOrder}
+          scored={scored}
+        />
+      ) : (
+        <DndContext
+          onDragStart={(e: DragStartEvent) => setDragging(String(e.active.id))}
+          onDragEnd={handleDragEnd}
+          onDragCancel={() => setDragging(null)}
+        >
+          <ol className="grid gap-1">
+            {order.map((playerId, index) => (
+              <ScorerRow
+                key={playerId}
+                playerId={playerId}
+                player={playerById.get(playerId) ?? null}
+                team={teamById.get(playerById.get(playerId)?.teamId ?? '') ?? null}
+                // The gate is played before the season starts, so there is nothing to show.
+                showTally={!isGate}
+                position={index + 1}
+                editable={editable}
+                isFirst={index === 0}
+                isLast={index === order.length - 1}
+                onMoveUp={() => reorder(index, index - 1)}
+                onMoveDown={() => reorder(index, index + 1)}
+                actualPosition={scored ? (actualPositionById.get(playerId) ?? null) : null}
+                scored={scored}
+              />
+            ))}
+          </ol>
+
+          <DragOverlay>
+            {dragging ? (
+              <div
+                className="rounded-md border bg-background px-3 py-2 text-sm font-medium shadow-lg"
+                style={
+                  playerById.get(dragging)?.glowColor
+                    ? {
+                        borderColor: `${playerById.get(dragging)!.glowColor}99`,
+                        boxShadow: `0 0 14px -2px ${playerById.get(dragging)!.glowColor}80`,
+                      }
+                    : undefined
+                }
+              >
+                {playerById.get(dragging)?.name ?? ''}
+              </div>
+            ) : null}
+          </DragOverlay>
+        </DndContext>
+      )}
 
       {editable && isGate && (
         <div className="sticky bottom-0 z-10 -mx-4 mt-4 border-t border-white/10 bg-black/70 px-4 py-3 backdrop-blur">
