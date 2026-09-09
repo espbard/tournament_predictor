@@ -7,9 +7,12 @@ import type { LiveFixtureView } from '@/lib/liveApi';
 
 // ── One fixture ───────────────────────────────────────────────────────────────
 //
-// Crests, names, kickoff, live minute and score, score inputs or a locked read-only
-// state, points once finished, and an AET / pens annotation showing how a tie actually
-// ended alongside the normal-time score that did the scoring.
+// Crests, names, kickoff, live minute, the actual score above the prediction, points once
+// finished, and an AET / pens annotation showing how a tie actually ended alongside the
+// normal-time score that did the scoring.
+//
+// The two scores share one box and one centre line, so what was tipped and what actually
+// happened can be read off each other without hunting for either.
 //
 // Once the match is played it also carries the dropdown of what the whole league
 // predicted — which needs the competition, so `competitionId` is what switches it on.
@@ -43,6 +46,16 @@ function TeamBadge({ crestUrl }: { crestUrl: string | null }) {
 }
 
 const LIVE_STATUSES = new Set(['in_play', 'paused']);
+
+// The predicted and the actual score are read against each other, so they share one box —
+// same size, same border, same centring — and differ only in weight: the actual score is
+// the fact, the prediction is a guess.
+const SCORE_BOX = 'h-9 w-12 rounded-md border text-center text-sm tabular-nums';
+const SCORE_LABEL = 'text-[10px] font-medium uppercase tracking-wide text-muted-foreground';
+// Equal outer thirds keep the middle pair on the card's centre line whatever sits beside
+// it, so the actual score and the prediction below it stay aligned once a points badge
+// or a save button appears.
+const SCORE_ROW = 'grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-end gap-2';
 
 /**
  * Which wording explains a multiplied match.
@@ -114,6 +127,11 @@ export default function LiveFixtureCard({
         ? t('live.afterExtraTime')
         : null;
 
+  // A match that has started has a score worth showing; before kickoff there is none.
+  const hasActualScore = isLive || isFinished;
+  const actualHome = fixture.normalTimeHome ?? fixture.finalHome ?? 0;
+  const actualAway = fixture.normalTimeAway ?? fixture.finalAway ?? 0;
+
   const kickoff = fixture.kickoffAt ? new Date(fixture.kickoffAt) : null;
 
   return (
@@ -157,7 +175,15 @@ export default function LiveFixtureCard({
           <span className="text-xs font-medium text-amber-600 dark:text-amber-400">
             {t(`live.status.${fixture.status}`)}
           </span>
-        ) : !isFinished && inPredictionGame ? (
+        ) : isFinished ? (
+          // The slot a running match fills with its pulsing minute, and an upcoming one
+          // with its countdown, goes blank the moment a match ends — which is exactly
+          // when a played card starts looking like one that has not kicked off. A static
+          // chip in the same place says it is over without competing with the live tint.
+          <span className="inline-flex items-center rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            {t('live.fullTime')}
+          </span>
+        ) : inPredictionGame ? (
           <LiveCountdown kickoffAt={fixture.kickoffAt} status={fixture.status} />
         ) : null}
       </div>
@@ -168,20 +194,32 @@ export default function LiveFixtureCard({
           <span className="truncate text-sm font-medium">{homeName}</span>
         </div>
 
-        {/* Actual score, once there is one */}
-        {(isLive || isFinished) && (
-          <span className="shrink-0 rounded bg-muted px-2 py-0.5 text-sm font-semibold tabular-nums">
-            {fixture.normalTimeHome ?? fixture.finalHome ?? 0}–
-            {fixture.normalTimeAway ?? fixture.finalAway ?? 0}
-          </span>
-        )}
-
         <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
           <span className="truncate text-right text-sm font-medium">{awayName}</span>
           <TeamBadge crestUrl={fixture.awayTeam?.crestUrl ?? null} />
         </div>
       </div>
 
+      {/* Actual score */}
+      {hasActualScore && (
+        <div className={`mt-3 ${SCORE_ROW}`}>
+          <div className="col-start-2 flex flex-col items-center gap-1">
+            <span className={SCORE_LABEL}>{t('live.actualScoreLabel')}</span>
+            <div className="flex items-center gap-2">
+              <span className={`${SCORE_BOX} inline-flex items-center justify-center font-semibold`}>
+                {actualHome}
+              </span>
+              <span className="text-muted-foreground">–</span>
+              <span className={`${SCORE_BOX} inline-flex items-center justify-center font-semibold`}>
+                {actualAway}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sits under the score it qualifies: this is why the box above is not the score the
+          match ended on. */}
       {decidedBeyond90 && (
         <p className="mt-1 text-center text-xs text-muted-foreground">{decidedBeyond90}</p>
       )}
@@ -192,70 +230,79 @@ export default function LiveFixtureCard({
           {fixture.isPredictable ? t('live.notSelected') : t('live.notPredictable')}
         </p>
       ) : (
-        <div className="mt-3 flex items-center justify-center gap-2">
-          <input
-            type="number"
-            min={0}
-            max={30}
-            inputMode="numeric"
-            value={home}
-            disabled={!editable || isSaving}
-            onChange={e => setHome(e.target.value)}
-            aria-label={t('live.predictedHomeScore', { team: homeName })}
-            className="h-9 w-12 rounded-md border text-center text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
-          />
-          <span className="text-muted-foreground">–</span>
-          <input
-            type="number"
-            min={0}
-            max={30}
-            inputMode="numeric"
-            value={away}
-            disabled={!editable || isSaving}
-            onChange={e => setAway(e.target.value)}
-            aria-label={t('live.predictedAwayScore', { team: awayName })}
-            className="h-9 w-12 rounded-md border text-center text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
-          />
+        <div className={`mt-3 ${SCORE_ROW}`}>
+          <div className="col-start-2 flex flex-col items-center gap-1">
+            <span className={SCORE_LABEL}>{t('live.predictedScoreLabel')}</span>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={0}
+                max={30}
+                inputMode="numeric"
+                value={home}
+                disabled={!editable || isSaving}
+                onChange={e => setHome(e.target.value)}
+                aria-label={t('live.predictedHomeScore', { team: homeName })}
+                className={`${SCORE_BOX} focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-60`}
+              />
+              <span className="text-muted-foreground">–</span>
+              <input
+                type="number"
+                min={0}
+                max={30}
+                inputMode="numeric"
+                value={away}
+                disabled={!editable || isSaving}
+                onChange={e => setAway(e.target.value)}
+                aria-label={t('live.predictedAwayScore', { team: awayName })}
+                className={`${SCORE_BOX} focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-60`}
+              />
+            </div>
+          </div>
 
-          {editable && (
-            <button
-              onClick={handleSave}
-              disabled={!dirty || isSaving}
-              className="ml-1 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
-            >
-              {isSaving ? t('common.saving') : t('common.save')}
-            </button>
-          )}
+          {/* Save and the points badge sit off the centre line, so the boxes stay lined up
+              with the actual score above them however wide these get. */}
+          <div className="col-start-3 flex min-w-0 items-center gap-2">
+            {editable && (
+              <button
+                onClick={handleSave}
+                disabled={!dirty || isSaving}
+                className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+              >
+                {isSaving ? t('common.saving') : t('common.save')}
+              </button>
+            )}
 
-          {/* Points awarded, once the fixture has been scored */}
-          {fixture.prediction?.points != null && (
-            <span
-              className={`ml-1 rounded px-2 py-1 text-xs font-semibold tabular-nums ${
-                fixture.prediction.points > 0
-                  ? 'bg-green-500/15 text-green-700 dark:text-green-400'
-                  : 'bg-muted text-muted-foreground'
-              }`}
-              // The three tiers hold what the prediction earned at face value, so on a
-              // highlighted match they no longer add up to the badge without saying what
-              // the multiplier put on top.
-              title={
-                fixture.prediction.multiplierBonusPoints > 0
-                  ? t('live.pointsBreakdownWithHighlight', {
-                      outcome: fixture.prediction.correctOutcomePoints,
-                      gd: fixture.prediction.correctGoalDifferencePoints,
-                      exact: fixture.prediction.exactScorePoints,
-                      highlight: fixture.prediction.multiplierBonusPoints,
-                    })
-                  : t('live.pointsBreakdown', {
-                      outcome: fixture.prediction.correctOutcomePoints,
-                      gd: fixture.prediction.correctGoalDifferencePoints,
-                      exact: fixture.prediction.exactScorePoints,
-                    })
-              }
-            >
-              {t('live.pointsShort', { points: fixture.prediction.points })}
-            </span>
-          )}
+            {/* Points awarded, once the fixture has been scored */}
+            {fixture.prediction?.points != null && (
+              <span
+                className={`rounded px-2 py-1 text-xs font-semibold tabular-nums ${
+                  fixture.prediction.points > 0
+                    ? 'bg-green-500/15 text-green-700 dark:text-green-400'
+                    : 'bg-muted text-muted-foreground'
+                }`}
+                // The three tiers hold what the prediction earned at face value, so on a
+                // highlighted match they no longer add up to the badge without saying what
+                // the multiplier put on top.
+                title={
+                  fixture.prediction.multiplierBonusPoints > 0
+                    ? t('live.pointsBreakdownWithHighlight', {
+                        outcome: fixture.prediction.correctOutcomePoints,
+                        gd: fixture.prediction.correctGoalDifferencePoints,
+                        exact: fixture.prediction.exactScorePoints,
+                        highlight: fixture.prediction.multiplierBonusPoints,
+                      })
+                    : t('live.pointsBreakdown', {
+                        outcome: fixture.prediction.correctOutcomePoints,
+                        gd: fixture.prediction.correctGoalDifferencePoints,
+                        exact: fixture.prediction.exactScorePoints,
+                      })
+                }
+              >
+                {t('live.pointsShort', { points: fixture.prediction.points })}
+              </span>
+            )}
+          </div>
         </div>
       )}
 
