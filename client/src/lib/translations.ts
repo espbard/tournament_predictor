@@ -771,7 +771,6 @@ const translations = {
         explainer: 'Put the players in the order you think they will finish on goals. Each player in exactly the right position is worth {{exact}} points.',
         tieBreak: 'Players level on goals are separated by assists, and then by name.',
         tally: '{{goals}}g · {{assists}}a',
-        tallyShort: '{{goals}}·{{assists}}',
         compare: {
           predicted: 'Predicted',
           actual: 'As it stands',
@@ -1840,7 +1839,6 @@ const translations = {
         explainer: 'Sett spillerne i den rekkefølgen du tror de ender opp på antall mål. Hver spiller på nøyaktig riktig plass gir {{exact}} poeng.',
         tieBreak: 'Spillere med like mange mål skilles på målgivende, deretter på navn.',
         tally: '{{goals}}m · {{assists}}mg',
-        tallyShort: '{{goals}}·{{assists}}',
         compare: {
           predicted: 'Tippet',
           actual: 'Slik det står',
@@ -2909,7 +2907,6 @@ const translations = {
         explainer: 'Bringe die Spieler in die Reihenfolge, in der sie deiner Meinung nach bei den Toren landen. Jeder Spieler auf genau dem richtigen Platz bringt {{exact}} Punkte.',
         tieBreak: 'Spieler mit gleich vielen Toren werden über Vorlagen getrennt, dann über den Namen.',
         tally: '{{goals}}T · {{assists}}V',
-        tallyShort: '{{goals}}·{{assists}}',
         compare: {
           predicted: 'Getippt',
           actual: 'Aktueller Stand',

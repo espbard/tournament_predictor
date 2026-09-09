@@ -4,21 +4,19 @@ import { useT } from '@/lib/useT';
 
 // ── Actual against predicted ──────────────────────────────────────────────────
 //
-// Two rankings of the same shortlist, side by side: the order the goals have actually put
-// the players in, and beside it the order the member submitted. Shown once the ranking has
-// closed and somebody has scored — see LiveScorerPrediction for why it takes both.
+// Two rankings of the same shortlist: the order the goals have actually put the players
+// in, and beside it — under it, on a narrow screen, where a full-width row is worth more
+// than the side-by-side — the order the member submitted. Shown once the ranking has
+// closed and somebody has scored: see LiveScorerPrediction for why it takes both.
+//
+// Goals and assists belong to where a player actually is, so they are on the real ranking
+// alone. Against the guess the same number would only be the same number again.
 //
 // The columns hold the same players in different orders, so the comparison is carried by
 // the rows themselves rather than by lines drawn between them: a player in exactly the
 // position the member gave them is green on both sides, and every other row carries the
 // position it holds in the other column. Reading across a row therefore always answers
 // "and where is this one on the other list?".
-//
-// Both columns are on screen at every width, phones included, which is what the row is
-// built around. It is why goals and assists appear on the real ranking only — the number
-// belongs to where a player actually is, and repeating it against the guess would cost the
-// width two names need — why the tally is the bare pair with the words in its tooltip, and
-// why the crest and the face wait for a screen wide enough to spare them.
 //
 // The glow an admin gave a player is drawn here as it is in the ranking, and gives way to
 // green for the same reason: two glows on one row fight, and the exact hit is what the
@@ -32,11 +30,11 @@ interface Props {
   predictedOrder: string[];
   /** The ranking as the goals stand, settled the same way the final one will be. */
   actualOrder: string[];
-  /** Points have been awarded, so the real column is a finishing order, not a snapshot. */
+  /** Points have been awarded, so the right-hand column is a finishing order, not a snapshot. */
   scored: boolean;
 }
 
-const COLUMN_HEADING = 'mb-1.5 truncate text-[11px] font-semibold uppercase tracking-wide text-muted-foreground';
+const COLUMN_HEADING = 'mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground';
 
 export default function LiveScorerComparison({
   players,
@@ -72,8 +70,8 @@ export default function LiveScorerComparison({
         {t('live.scorers.compare.exactCount', { count: exactCount, total: predictedOrder.length })}
       </p>
 
-      <div className="grid grid-cols-2 gap-x-2 sm:gap-x-4">
-        <section className="min-w-0">
+      <div className="grid gap-x-4 gap-y-4 md:grid-cols-2">
+        <section>
           <h3 className={COLUMN_HEADING}>
             {t(scored ? 'live.scorers.compare.actualFinal' : 'live.scorers.compare.actual')}
           </h3>
@@ -101,7 +99,7 @@ export default function LiveScorerComparison({
           </ol>
         </section>
 
-        <section className="min-w-0">
+        <section>
           <h3 className={COLUMN_HEADING}>{t('live.scorers.compare.predicted')}</h3>
           <ol className="grid grid-cols-1 gap-1">
             {predictedOrder.map((playerId, index) => {
@@ -167,15 +165,9 @@ function ComparisonRow({
   const name = player?.name ?? playerId;
   const glow = !exact ? (player?.glowColor ?? null) : null;
 
-  const goals = player?.goals ?? 0;
-  const assists = player?.assists ?? 0;
-  // The words the pair of numbers stands for: a tooltip on a pointer, and the only thing a
-  // screen reader is given, since "9 · 2" read aloud is not worth hearing.
-  const tallyLabel = t('live.scorers.tally', { goals, assists });
-
   return (
     <li
-      className={`flex items-center gap-1 rounded-md border bg-background px-1 py-1 sm:gap-2 sm:px-2 sm:py-1.5 ${
+      className={`flex items-center gap-2 rounded-md border bg-background px-2 py-1.5 ${
         exact ? 'border-green-500/60 bg-green-500/5' : ''
       }`}
       // Inline because the colour is per player and arbitrary — the same glow the ranking
@@ -189,44 +181,32 @@ function ComparisonRow({
           : undefined
       }
     >
-      <span className="w-3.5 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground sm:w-5 sm:text-sm">
+      <span className="w-6 shrink-0 text-right text-sm tabular-nums text-muted-foreground">
         {position}
       </span>
 
-      {/* Decoration, and the first thing to go when the two columns have to share a phone. */}
       {player?.imageUrl ? (
         <img
           src={player.imageUrl}
           alt=""
           aria-hidden
-          className="hidden h-6 w-6 shrink-0 rounded-full object-cover sm:block"
+          className="h-7 w-7 shrink-0 rounded-full object-cover"
         />
       ) : (
-        <span className="hidden h-6 w-6 shrink-0 rounded-full bg-muted sm:block" aria-hidden />
+        <span className="h-7 w-7 shrink-0 rounded-full bg-muted" aria-hidden />
       )}
 
       {team?.crestUrl ? (
-        <img
-          src={team.crestUrl}
-          alt=""
-          aria-hidden
-          className="hidden h-4 w-4 shrink-0 object-contain sm:block"
-        />
+        <img src={team.crestUrl} alt="" aria-hidden className="h-5 w-5 shrink-0 object-contain" />
       ) : (
-        <span className="hidden h-4 w-4 shrink-0 sm:block" aria-hidden />
+        <span className="h-5 w-5 shrink-0" aria-hidden />
       )}
 
-      <span className="min-w-0 flex-1 truncate text-xs sm:text-sm" title={name}>
-        {name}
-      </span>
+      <span className="min-w-0 flex-1 truncate text-sm">{name}</span>
 
       {showTally && (
-        <span
-          className="shrink-0 text-[10px] tabular-nums text-muted-foreground sm:text-xs"
-          title={tallyLabel}
-        >
-          <span aria-hidden>{t('live.scorers.tallyShort', { goals, assists })}</span>
-          <span className="sr-only">{tallyLabel}</span>
+        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+          {t('live.scorers.tally', { goals: player?.goals ?? 0, assists: player?.assists ?? 0 })}
         </span>
       )}
 
@@ -234,15 +214,13 @@ function ComparisonRow({
           across a row worth doing. A row already green is in both places at once, so it
           gets the tick instead of a number it would only repeat. */}
       <span
-        className={`w-5 shrink-0 text-right text-[10px] tabular-nums sm:w-8 sm:text-xs ${
+        className={`w-8 shrink-0 text-right text-xs tabular-nums ${
           exact ? 'font-semibold text-green-700 dark:text-green-400' : 'text-muted-foreground'
         }`}
         title={counterpartLabel}
       >
-        <span aria-hidden>
-          {exact ? '✓' : counterpartPosition !== null ? `#${counterpartPosition}` : '–'}
-        </span>
-        <span className="sr-only">{counterpartLabel}</span>
+        {exact ? '✓' : counterpartPosition !== null ? `#${counterpartPosition}` : '–'}
+        <span className="sr-only"> {counterpartLabel}</span>
       </span>
     </li>
   );
