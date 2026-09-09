@@ -4,12 +4,30 @@ import type { LeaderboardEntry } from '@tournament-predictor/shared';
 import { useT } from '@/lib/useT';
 import { UserAvatar } from '@/components/UserAvatar';
 
+/**
+ * Everything the podium reads off a leaderboard row. Declared here rather than taking a
+ * whole LeaderboardEntry so a live competition's rows — the same identity and standing,
+ * a different points breakdown — can be handed to it unchanged.
+ */
+export type PodiumEntry = Pick<
+  LeaderboardEntry,
+  'userId' | 'username' | 'imageUrl' | 'iconColor' | 'totalPoints' | 'rank'
+>;
+
 interface Props {
-  leaderboard: LeaderboardEntry[];
+  leaderboard: PodiumEntry[];
   large?: boolean;
   competitionId?: string;
   tournamentStatus?: string;
+  /**
+   * Where an avatar links, minus the competition id: a live competition's predictions
+   * live under /live/competitions rather than /competitions.
+   */
+  basePath?: string;
 }
+
+/** Resolves an entry's predictions page, or null when the podium is not linked at all. */
+type Href = (entry: PodiumEntry) => string | null;
 
 // Three size tiers: 'sm' is the default (mobile/tablet) look, 'lg' is used on wider
 // desktop/laptop viewports for the regular leaderboard page, and 'tv' is the dedicated
@@ -107,7 +125,7 @@ function glowClass(rank: number): string {
   return 'glow-bronze';
 }
 
-function avatarImg(entry: LeaderboardEntry, rank: number, sizeClass: string) {
+function avatarImg(entry: PodiumEntry, rank: number, sizeClass: string) {
   return (
     <UserAvatar
       username={entry.username}
@@ -119,17 +137,15 @@ function avatarImg(entry: LeaderboardEntry, rank: number, sizeClass: string) {
 }
 
 function linkedAvatar(
-  entry: LeaderboardEntry,
+  entry: PodiumEntry,
   rank: number,
   sizeClass: string,
-  competitionId: string | undefined,
+  href: Href,
 ) {
-  if (competitionId) {
+  const to = href(entry);
+  if (to) {
     return (
-      <Link
-        to={`/competitions/${competitionId}/predictions/${entry.userId}`}
-        className="hover:opacity-80 transition-opacity"
-      >
+      <Link to={to} className="hover:opacity-80 transition-opacity">
         {avatarImg(entry, rank, sizeClass)}
       </Link>
     );
@@ -137,11 +153,7 @@ function linkedAvatar(
   return avatarImg(entry, rank, sizeClass);
 }
 
-function renderWinnerFigure(
-  entry: LeaderboardEntry,
-  tier: Tier,
-  competitionId: string | undefined,
-) {
+function renderWinnerFigure(entry: PodiumEntry, tier: Tier, href: Href) {
   const s = SIZES[tier];
   const nameClass = `font-medium text-center break-words w-full leading-tight ${s.nameClass}`;
   const wrapperClass = `flex flex-col items-center ${s.wrapperMargin}`;
@@ -161,12 +173,10 @@ function renderWinnerFigure(
     </div>
   );
 
-  if (competitionId) {
+  const winnerTo = href(entry);
+  if (winnerTo) {
     return (
-      <Link
-        to={`/competitions/${competitionId}/predictions/${entry.userId}`}
-        className={`${wrapperClass} hover:opacity-80 transition-opacity`}
-      >
+      <Link to={winnerTo} className={`${wrapperClass} hover:opacity-80 transition-opacity`}>
         {figure}
         <p className={nameClass}>{entry.username}</p>
       </Link>
@@ -181,10 +191,10 @@ function renderWinnerFigure(
 }
 
 function renderSlotAboveBar(
-  group: LeaderboardEntry[],
+  group: PodiumEntry[],
   rank: number,
   tier: Tier,
-  competitionId: string | undefined,
+  href: Href,
   tournamentStatus?: string,
 ) {
   const s = SIZES[tier];
@@ -196,7 +206,7 @@ function renderSlotAboveBar(
   const smallNameClass = `font-medium text-center break-words w-full leading-tight ${s.smallNameClass}`;
 
   if (rank === 1 && count === 1 && tournamentStatus === 'completed') {
-    return renderWinnerFigure(group[0], tier, competitionId);
+    return renderWinnerFigure(group[0], tier, href);
   }
 
   const crown = rank === 1 ? (
@@ -211,10 +221,11 @@ function renderSlotAboveBar(
 
   if (count === 1) {
     const entry = group[0];
-    if (competitionId) {
+    const to = href(entry);
+    if (to) {
       return (
         <Link
-          to={`/competitions/${competitionId}/predictions/${entry.userId}`}
+          to={to}
           className={`flex flex-col items-center hover:opacity-80 transition-opacity ${wrapperMargin}`}
         >
           <div className="relative">
@@ -244,7 +255,7 @@ function renderSlotAboveBar(
           <div className={`flex items-center ${s.pairGap}`}>
             {group.map((entry) => (
               <div key={entry.userId}>
-                {linkedAvatar(entry, rank, singleSize, competitionId)}
+                {linkedAvatar(entry, rank, singleSize, href)}
               </div>
             ))}
           </div>
@@ -260,11 +271,11 @@ function renderSlotAboveBar(
         <div className="relative flex flex-col items-center gap-0.5">
           {crown}
           <div className="flex justify-center">
-            {linkedAvatar(group[0], rank, triSize, competitionId)}
+            {linkedAvatar(group[0], rank, triSize, href)}
           </div>
           <div className={`flex justify-center ${s.triGap}`}>
-            {linkedAvatar(group[1], rank, triSize, competitionId)}
-            {linkedAvatar(group[2], rank, triSize, competitionId)}
+            {linkedAvatar(group[1], rank, triSize, href)}
+            {linkedAvatar(group[2], rank, triSize, href)}
           </div>
         </div>
         <p className={smallNameClass}>{group[0].username}, {group[1].username} and {group[2].username}</p>
@@ -280,6 +291,7 @@ function renderSlotAboveBar(
         <div className="flex items-center">
           {group.slice(0, 3).map((entry, i) => {
             const img = avatarImg(entry, rank, singleSize);
+            const to = href(entry);
             return (
               <div
                 key={entry.userId}
@@ -289,11 +301,8 @@ function renderSlotAboveBar(
                   position: 'relative',
                 }}
               >
-                {i === 0 && competitionId ? (
-                  <Link
-                    to={`/competitions/${competitionId}/predictions/${entry.userId}`}
-                    className="hover:opacity-80 transition-opacity"
-                  >
+                {i === 0 && to ? (
+                  <Link to={to} className="hover:opacity-80 transition-opacity">
                     {img}
                   </Link>
                 ) : img}
@@ -307,8 +316,16 @@ function renderSlotAboveBar(
   );
 }
 
-export default function PlayerPodium({ leaderboard, large = false, competitionId, tournamentStatus }: Props) {
+export default function PlayerPodium({
+  leaderboard,
+  large = false,
+  competitionId,
+  tournamentStatus,
+  basePath = '/competitions',
+}: Props) {
   const { t } = useT();
+  const href: Href = (entry) =>
+    competitionId ? `${basePath}/${competitionId}/predictions/${entry.userId}` : null;
 
   const [isDesktop, setIsDesktop] = useState(() => window.matchMedia('(min-width: 1024px)').matches);
   useEffect(() => {
@@ -321,7 +338,7 @@ export default function PlayerPodium({ leaderboard, large = false, competitionId
   const tier: Tier = large ? 'tv' : isDesktop ? 'lg' : 'sm';
   const s = SIZES[tier];
 
-  const byRank = new Map<number, LeaderboardEntry[]>();
+  const byRank = new Map<number, PodiumEntry[]>();
   for (const entry of leaderboard) {
     const group = byRank.get(entry.rank) ?? [];
     group.push(entry);
@@ -335,8 +352,8 @@ export default function PlayerPodium({ leaderboard, large = false, competitionId
 
   if (rank1Group.length + rank2Group.length < 2) return null;
 
-  let leftSlot: LeaderboardEntry[] | null;
-  let rightSlot: LeaderboardEntry[] | null;
+  let leftSlot: PodiumEntry[] | null;
+  let rightSlot: PodiumEntry[] | null;
   const centerSlot = rank1Group;
 
   if (rank1Group.length >= 3) {
@@ -355,7 +372,7 @@ export default function PlayerPodium({ leaderboard, large = false, competitionId
 
   const barHeights = s.barHeights;
 
-  const slotDefs: Array<{ group: LeaderboardEntry[] | null; fallbackRank: 1 | 2 | 3 }> = [
+  const slotDefs: Array<{ group: PodiumEntry[] | null; fallbackRank: 1 | 2 | 3 }> = [
     { group: leftSlot, fallbackRank: 2 },
     { group: centerSlot, fallbackRank: 1 },
     { group: rightSlot, fallbackRank: 3 },
@@ -370,7 +387,7 @@ export default function PlayerPodium({ leaderboard, large = false, competitionId
         if (!group) return <div key={idx} className={colWidth} style={{ height }} />;
         return (
           <div key={`${rank}-${group.map(e => e.userId).join('-')}`} className={`flex flex-col items-center ${colWidth}`}>
-            {renderSlotAboveBar(group, rank, tier, competitionId, tournamentStatus)}
+            {renderSlotAboveBar(group, rank, tier, href, tournamentStatus)}
             <div className="w-full rounded-t-sm bg-blue-500 flex flex-col items-center justify-center gap-1" style={{ height }}>
               <span className={`text-white font-bold leading-none ${s.ordinalClass}`}>{ordinal(rank)}</span>
               <span className={`text-white/80 leading-none ${s.pointsClass}`}>{group[0].totalPoints} {t('competitionDetail.leaderboard.points')}</span>

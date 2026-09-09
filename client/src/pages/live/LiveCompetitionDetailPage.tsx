@@ -12,6 +12,7 @@ import LiveGameweekProgress, {
 import LiveStandingsTable from '@/components/live/LiveStandingsTable';
 import LiveLeaderboard from '@/components/live/LiveLeaderboard';
 import LeaderboardLineGraph from '@/components/LeaderboardLineGraph';
+import PlayerPodium from '@/components/PlayerPodium';
 import LiveQualifiedTeamsPanel from '@/components/live/LiveQualifiedTeamsPanel';
 import LiveTablePrediction from '@/components/live/LiveTablePrediction';
 import LiveBonusQuestionsTab from '@/components/live/LiveBonusQuestionsTab';
@@ -788,7 +789,25 @@ export default function LiveCompetitionDetailPage() {
         />
       )}
 
-      {activeTab === 'leaderboard' && <LiveLeaderboard rows={leaderboard} competitionId={id!} />}
+      {activeTab === 'leaderboard' && (
+        <>
+          {/* The same podium the manual competition type puts above its leaderboard. It
+              has nothing to show before a ball is kicked, so it waits for the tournament
+              to start; the trophy figure it draws for a lone winner waits for the
+              tournament to be marked completed, which the podium decides itself. */}
+          {competition.tournament?.status !== 'upcoming' && (
+            <PlayerPodium
+              leaderboard={leaderboard}
+              competitionId={id!}
+              basePath="/live/competitions"
+              tournamentStatus={competition.tournament?.status}
+            />
+          )}
+          <div className="mt-4">
+            <LiveLeaderboard rows={leaderboard} competitionId={id!} />
+          </div>
+        </>
+      )}
 
       {activeTab === 'pointProgression' &&
         (leaderboardProgression && leaderboardProgression.matches.length > 0 ? (
