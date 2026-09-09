@@ -1691,7 +1691,31 @@ Two more stat cards, and the first about the members rather than what they predi
 
 ---
 
-## 19. References
+## 19. The prediction pair: best and worst *(added after the six phases, on request)*
+
+Two cards about a single prediction rather than a member's season, `bestPredictionCard()` and
+`worstPredictionCard()` in `server/src/live/userStats.ts`:
+
+- **Best prediction** — the fixture exactly one member called outright, where fewest of the
+  others managed even the goal difference; level on that, where fewest of them so much as
+  picked the winner.
+- **Worst prediction** — the prediction furthest from the goal difference that happened. 0-4
+  on a match that finished 3-0 is seven goals out.
+
+| Decision | Why |
+|---|---|
+| "Others" excludes the member who called it, on both counts | They necessarily have the goal difference and the outcome too, so counting them would put a floor of one under every fixture and the "nobody else even had the goal difference" case — the one the card is looking for — could never occur |
+| A fixture two members both called exactly is not a candidate at all | The card is about a prediction nobody else made. The moment two people made it, it is neither theirs alone nor an interesting tie between them |
+| The second key is the outcome count, not the fixture's date or its odds | It is the same question one rung down: how alone were they? Anything else would be a different card wearing this one's name |
+| "Worst" ranks on the distance between predicted and actual **goal difference**, not between the scorelines | It is what was asked for, and it is the honest measure: a wild 6-5 on a 1-0 read the match correctly and would otherwise outrank a backwards 0-4 on a 3-0 |
+| A tie names no fixture — and a tie held by one member alone says how many predictions it was | Two fixtures level on the ranking are two different stories, so the sentence keeps only what they share. "Each" describes two members, not one member twice, so that case counts the predictions instead |
+| Both cards keep the manual type's titles (`Best prediction` / `Synsk` / `Wahrsager`, `Worst prediction` / `Skivebom` / `Katastrophentipp`) even though the criteria differ | The league already reads those words as "the standout call" and "the howler". The manual type's rules are its own — it has stages, bonus sources and a bracket — but the thing being named is the same |
+| The subject is the member, not the match, and `linkType` stays null | `LiveUserStatCard` renders subjects as the tile's picture and has no match view to link to. The fixture is in the sentence, where the teams can be named without a route |
+| The route's one prediction query grew `fixtureId`, `homeTeamId` and `awayTeamId`; nothing else was added | The pair reads the same rows the member pair does. Naming the teams costs two ids on a query that was already running, and the team names are already loaded for the table cards |
+
+---
+
+## 20. References
 
 - [2026/27 Champions League: teams, dates, draws, format](https://www.uefa.com/uefachampionsleague/news/02a6-20d57cfcd03e-407c22a7f465-1000--2026-27-champions-league-teams-dates-draws-format-final/)
 - [UEFA confirms date for the 2026/27 Champions League league phase draw](https://www.besoccer.com/new/uefa-confirms-date-for-the-202627-champions-league-league-phase-draw-1421299)

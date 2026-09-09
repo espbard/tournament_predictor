@@ -14,7 +14,8 @@ import type { LiveScorerNationalities, UserStatCardData } from '@tournament-pred
 //
 // Then a pair about the members themselves rather than what they predicted: who calls the
 // scoreline outright most often, and who keeps landing on the right margin and the wrong
-// scoreline.
+// scoreline. And a pair about one prediction rather than a season of them: the one nobody
+// else saw coming, and the one that missed by the most goals.
 //
 // Plus one card that is not about predictions at all: how many goals Norwegians have
 // actually scored. It reads the snapshot the scorer sync leaves on the tournament, so it
@@ -283,6 +284,11 @@ export interface LiveStatsScoredPrediction {
   username: string;
   imageUrl: string | null;
   iconColor: string | null;
+  /** Which fixture it was made on — the prediction pair below groups by it. */
+  fixtureId: string;
+  /** Null only where the provider has not named the teams yet; see liveFixtures. */
+  homeTeamId: string | null;
+  awayTeamId: string | null;
   predictedHome: number;
   predictedAway: number;
   /** End of normal time — the score the tiers are judged against. */
@@ -290,12 +296,30 @@ export interface LiveStatsScoredPrediction {
   actualAway: number;
 }
 
-/** What one member's scored predictions add up to. */
-interface MemberTally {
+/** The three tiers, asked of one prediction. Nested, exactly as calculateLivePoints has them. */
+const rightOutcome = (p: LiveStatsScoredPrediction): boolean =>
+  Math.sign(p.actualHome - p.actualAway) === Math.sign(p.predictedHome - p.predictedAway);
+
+const rightGoalDifference = (p: LiveStatsScoredPrediction): boolean =>
+  p.actualHome - p.actualAway === p.predictedHome - p.predictedAway;
+
+const rightScore = (p: LiveStatsScoredPrediction): boolean =>
+  p.predictedHome === p.actualHome && p.predictedAway === p.actualAway;
+
+/** How far the predicted margin was from the real one: 0-4 on a 3-0 is seven goals out. */
+const goalDifferenceGap = (p: LiveStatsScoredPrediction): number =>
+  Math.abs(p.predictedHome - p.predictedAway - (p.actualHome - p.actualAway));
+
+/** What any row needs to become a card subject: a member, however they were counted. */
+interface CardMember {
   userId: string;
   username: string;
   imageUrl: string | null;
   iconColor: string | null;
+}
+
+/** What one member's scored predictions add up to. */
+interface MemberTally extends CardMember {
   /** Every scored prediction they have made, right or wrong. */
   predictions: number;
   goalDifferences: number;
@@ -319,11 +343,9 @@ function tallyMembers(predictions: LiveStatsScoredPrediction[]): MemberTally[] {
       exactScores: 0,
     };
     tally.predictions += 1;
-    if (p.actualHome - p.actualAway === p.predictedHome - p.predictedAway) {
+    if (rightGoalDifference(p)) {
       tally.goalDifferences += 1;
-      if (p.predictedHome === p.actualHome && p.predictedAway === p.actualAway) {
-        tally.exactScores += 1;
-      }
+      if (rightScore(p)) tally.exactScores += 1;
     }
     tallies.set(p.userId, tally);
   }
@@ -331,7 +353,18 @@ function tallyMembers(predictions: LiveStatsScoredPrediction[]): MemberTally[] {
 }
 
 /** Sorted by name so a tie reads the same on every request — same rule as countEnd. */
-const byUsername = (a: MemberTally, b: MemberTally) => a.username.localeCompare(b.username);
+const byUsername = (a: CardMember, b: CardMember) => a.username.localeCompare(b.username);
+
+/**
+ * One entry per member, name-sorted. The prediction pair below ranks predictions rather
+ * than members, so the same member can hold two of the rows that tie; they are one
+ * subject and one name in the sentence either way.
+ */
+function dedupeByUser<T extends CardMember>(rows: T[]): T[] {
+  const byUser = new Map<string, T>();
+  for (const row of rows) if (!byUser.has(row.userId)) byUser.set(row.userId, row);
+  return [...byUser.values()].sort(byUsername);
+}
 
 /**
  * A member is the one subject that can have no picture at all, so these carry the colour
@@ -342,7 +375,7 @@ function memberCard(
   id: string,
   title: string,
   statistic: string,
-  winners: MemberTally[],
+  winners: CardMember[],
 ): UserStatCardData {
   return {
     id,
@@ -477,6 +510,206 @@ export function almostCard(
 }
 
 
+// ── The prediction pair ───────────────────────────────────────────────────────
+//
+// The two cards about a single prediction rather than a member's season: the one nobody
+// else saw coming, and the one that missed by the most goals. Both name the member who
+// made it, because that is whose story it is; the fixture is in the sentence.
+
+/** "Arsenal 3-1 Bayern" for the best card, "Arsenal vs Bayern" for the worst. */
+function teamNames(
+  p: LiveStatsScoredPrediction,
+  byId: Map<string, Entrant>,
+): { home: string; away: string } | null {
+  const home = p.homeTeamId ? byId.get(p.homeTeamId) : null;
+  const away = p.awayTeamId ? byId.get(p.awayTeamId) : null;
+  // A fixture whose teams are not both known is still eligible — it was played and
+  // scored like any other — but the sentence names the scoreline alone rather than
+  // printing a placeholder where a club should be.
+  return home && away ? { home: home.name, away: away.name } : null;
+}
+
+interface BestPrediction {
+  winner: LiveStatsScoredPrediction;
+  /** Members other than the winner who had the margin right, and who had the winner right. */
+  othersWithGoalDifference: number;
+  othersWithOutcome: number;
+}
+
+/**
+ * The prediction only one member saw: the fixture where exactly one of them called the
+ * scoreline, and fewest of the others managed even the goal difference. Where several
+ * fixtures are level on that, the one where fewest of the others so much as picked the
+ * winner — which is the question the second tier asks, one rung further down.
+ *
+ * "Others" excludes the member who called it, on both counts. They necessarily have the
+ * goal difference and the outcome too, and counting themselves would mean no fixture
+ * could ever reach the zero the card is looking for.
+ *
+ * A fixture two members both called exactly is not a candidate at all: the card is about
+ * a prediction nobody else made, and the moment two people made it, it is neither
+ * theirs alone nor a tie between them.
+ *
+ * Null when no fixture has exactly one exact scoreline on it.
+ */
+export function bestPredictionCard(
+  predictions: LiveStatsScoredPrediction[],
+  teams: LiveStatsTeam[],
+  lang: LiveStatsLang,
+): UserStatCardData | null {
+  const byFixture = new Map<string, LiveStatsScoredPrediction[]>();
+  for (const p of predictions) {
+    const madeOnFixture = byFixture.get(p.fixtureId);
+    if (madeOnFixture) madeOnFixture.push(p);
+    else byFixture.set(p.fixtureId, [p]);
+  }
+
+  const candidates: BestPrediction[] = [];
+  for (const madeOnFixture of byFixture.values()) {
+    const exact = madeOnFixture.filter(rightScore);
+    if (exact.length !== 1) continue;
+    const winner = exact[0];
+    const others = madeOnFixture.filter(p => p !== winner);
+    candidates.push({
+      winner,
+      othersWithGoalDifference: others.filter(rightGoalDifference).length,
+      othersWithOutcome: others.filter(rightOutcome).length,
+    });
+  }
+  if (candidates.length === 0) return null;
+
+  // Fewest others on the goal difference first; where that is level, fewest others on
+  // the outcome. Negative when the first argument is the better story.
+  const rank = (a: BestPrediction, b: BestPrediction): number =>
+    a.othersWithGoalDifference !== b.othersWithGoalDifference
+      ? a.othersWithGoalDifference - b.othersWithGoalDifference
+      : a.othersWithOutcome - b.othersWithOutcome;
+  const best = candidates.reduce((a, b) => (rank(b, a) < 0 ? b : a));
+  const tie = candidates.filter(
+    c =>
+      c.othersWithGoalDifference === best.othersWithGoalDifference &&
+      c.othersWithOutcome === best.othersWithOutcome,
+  );
+
+  const winners = dedupeByUser(tie.map(c => c.winner));
+  const names = joinNames(winners.map(w => w.username), lang);
+  const { othersWithGoalDifference: gd, othersWithOutcome: outcome } = best;
+
+  const title = lang === 'no' ? 'Synsk' : lang === 'de' ? 'Wahrsager' : 'Best prediction';
+
+  // Two fixtures level on both counts are two different stories, so a tie names no
+  // fixture: only what every one of them has in common. And a tie can be one member
+  // twice over, which "each" would not describe — hence three openings, not two.
+  const alone = tie.length === 1;
+  const named = alone ? teamNames(best.winner, indexTeams(teams)) : null;
+  const score = `${best.winner.predictedHome}-${best.winner.predictedAway}`;
+  const what = named ? `**${named.home} ${score} ${named.away}**` : `**${score}**`;
+
+  const statistic =
+    lang === 'no'
+      ? (alone
+          ? `**${names}** var den eneste som tippet ${what}`
+          : winners.length === 1
+            ? `**${names}** tippet **${tie.length}** stillinger ingen andre traff`
+            : `**${names}** tippet hver en stilling ingen andre traff`) +
+        (gd > 0
+          ? `, og bare **${gd}** ${gd === 1 ? 'annen' : 'andre'} hadde riktig målforskjell.`
+          : outcome > 0
+            ? `. Ingen andre hadde riktig målforskjell, og bare **${outcome}** ${
+                outcome === 1 ? 'annen' : 'andre'
+              } traff på vinneren.`
+            : ', og ingen andre traff engang på vinneren.')
+      : lang === 'de'
+        ? (alone
+            ? `**${names}** hat als einzige Person ${what} getippt`
+            : winners.length === 1
+              ? `**${names}** hat **${tie.length}** Ergebnisse getippt, die sonst niemand hatte`
+              : `**${names}** haben jeweils ein Ergebnis getippt, das sonst niemand hatte`) +
+          (gd > 0
+            ? `, und nur **${gd}** ${gd === 1 ? 'andere Person hatte' : 'andere hatten'} die Tordifferenz.`
+            : outcome > 0
+              ? `. Niemand sonst hatte die Tordifferenz, und nur **${outcome}** ${
+                  outcome === 1 ? 'andere Person lag' : 'andere lagen'
+                } beim Sieger richtig.`
+              : ', und niemand sonst lag auch nur beim Sieger richtig.')
+        : (alone
+            ? `**${names}** was the only one to predict ${what}`
+            : winners.length === 1
+              ? `**${names}** predicted **${tie.length}** scorelines nobody else got`
+              : `**${names}** each predicted a scoreline nobody else got`) +
+          (gd > 0
+            ? `, and only **${gd}** ${gd === 1 ? 'other' : 'others'} had the goal difference.`
+            : outcome > 0
+              ? `. Nobody else had the goal difference, and only **${outcome}** ${
+                  outcome === 1 ? 'other' : 'others'
+                } picked the winner.`
+              : ', and nobody else so much as picked the winner.');
+
+  return memberCard('bestPrediction', title, statistic, winners);
+}
+
+/**
+ * The mirror: the prediction furthest from the goal difference that actually happened.
+ * 0-4 on a match that finished 3-0 is seven goals out, and seven is the number the card
+ * ranks on — not how many goals the scoreline missed by, which would make a wild 6-5 on
+ * a 1-0 look worse than a backwards 0-4.
+ *
+ * Null when nobody was out at all, which is a league that has predicted every margin
+ * correctly rather than a card worth showing.
+ */
+export function worstPredictionCard(
+  predictions: LiveStatsScoredPrediction[],
+  teams: LiveStatsTeam[],
+  lang: LiveStatsLang,
+): UserStatCardData | null {
+  if (predictions.length === 0) return null;
+
+  const gap = Math.max(...predictions.map(goalDifferenceGap));
+  if (gap === 0) return null;
+
+  const tie = predictions.filter(p => goalDifferenceGap(p) === gap);
+  const winners = dedupeByUser(tie);
+  const names = joinNames(winners.map(w => w.username), lang);
+
+  const title = lang === 'no' ? 'Skivebom' : lang === 'de' ? 'Katastrophentipp' : 'Worst prediction';
+
+  // One prediction is the story; several tied are only the number they share. A tie held
+  // by one member alone is neither, so it says how many of them there were.
+  const alone = tie.length === 1;
+  const worst = tie[0];
+  const named = alone ? teamNames(worst, indexTeams(teams)) : null;
+  const predicted = `${worst.predictedHome}-${worst.predictedAway}`;
+  const actual = `${worst.actualHome}-${worst.actualAway}`;
+
+  const statistic =
+    lang === 'no'
+      ? alone
+        ? `**${names}** tippet **${predicted}** ${
+            named ? `på **${named.home} mot ${named.away}**, som` : 'på en kamp som'
+          } endte **${actual}** — **${gap}** mål feil på målforskjellen.`
+        : winners.length === 1
+          ? `**${names}** har **${tie.length}** tips som bommer med **${gap}** mål på målforskjellen.`
+          : `**${names}** bommet med **${gap}** mål på målforskjellen hver.`
+      : lang === 'de'
+        ? alone
+          ? `**${names}** hat **${predicted}** ${
+              named ? `bei **${named.home} gegen ${named.away}**` : 'bei einem Spiel'
+            } getippt, das **${actual}** endete — **${gap}** Tore neben der Tordifferenz.`
+          : winners.length === 1
+            ? `**${names}** hat **${tie.length}** Tipps, die **${gap}** Tore neben der Tordifferenz liegen.`
+            : `**${names}** lagen jeweils **${gap}** Tore neben der Tordifferenz.`
+        : alone
+          ? `**${names}** predicted **${predicted}** ${
+              named ? `in **${named.home} vs ${named.away}**, which` : 'in a match that'
+            } finished **${actual}** — **${gap}** goals off on the goal difference.`
+          : winners.length === 1
+            ? `**${names}** has **${tie.length}** predictions **${gap}** goals off on the goal difference.`
+            : `**${names}** were each **${gap}** goals off on the goal difference.`;
+
+  return memberCard('worstPrediction', title, statistic, winners);
+}
+
+
 // ── Goals by nationality ──────────────────────────────────────────────────────
 
 /** The country counted, and the flag shown for it. One line to change to count another. */
@@ -566,6 +799,8 @@ export function buildLiveUserStats(
     goalDroughtCard(scorerPredictions, players, lang),
     spotOnCard(scoredPredictions, lang),
     almostCard(scoredPredictions, lang),
+    bestPredictionCard(scoredPredictions, teams, lang),
+    worstPredictionCard(scoredPredictions, teams, lang),
     nationalityGoalsCard(scorerNationalities, lang),
   ].filter((c): c is UserStatCardData => c !== null);
 }

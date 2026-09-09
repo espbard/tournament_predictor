@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   almostCard,
+  bestPredictionCard,
   buildLiveUserStats,
   nationalityGoalsCard,
   goalDroughtCard,
@@ -8,6 +9,7 @@ import {
   peoplesFavouriteCard,
   spotOnCard,
   woodenSpoonCard,
+  worstPredictionCard,
 } from './userStats';
 
 const teams = [
@@ -27,18 +29,30 @@ const players = [
 const rank = (userId: string, ...orderedPlayerIds: string[]) => ({ userId, orderedPlayerIds });
 
 /**
- * One scored prediction: who made it, what they said and what happened. `scored` is
- * shorthand for "predicted 2-1, actual 3-1" — the two pairs a tally is made from.
+ * One scored prediction: who made it, what they said, what happened, and — where a test
+ * needs more than one match — which fixture it was on. `scored` is shorthand for
+ * "predicted 2-1, actual 3-1" on fixture f1.
  */
+/** Which teams each test fixture is between. A fixture id not listed here has none yet. */
+const fixtureTeams: Record<string, [string, string]> = {
+  f1: ['t2', 't1'], // Arsenal vs Bayern
+  f2: ['t1', 't3'], // Bayern vs Barcelona
+  f3: ['t3', 't2'], // Barcelona vs Arsenal
+};
+
 const scored = (
   userId: string,
   [predictedHome, predictedAway]: [number, number],
   [actualHome, actualAway]: [number, number],
+  fixtureId = 'f1',
 ) => ({
   userId,
   username: userId === 'u1' ? 'Alice' : userId === 'u2' ? 'Bob' : 'Chris',
   imageUrl: userId === 'u1' ? '/api/images/alice.png' : null,
   iconColor: userId === 'u1' ? null : '#334155',
+  fixtureId,
+  homeTeamId: fixtureTeams[fixtureId]?.[0] ?? null,
+  awayTeamId: fixtureTeams[fixtureId]?.[1] ?? null,
   predictedHome,
   predictedAway,
   actualHome,
@@ -469,6 +483,240 @@ describe('almostCard', () => {
   });
 });
 
+describe('bestPredictionCard', () => {
+  it('picks the lone exact scoreline that fewest others came near', () => {
+    const card = bestPredictionCard(
+      [
+        // f1 — Alice alone on the scoreline, and nobody else even on the margin.
+        scored('u1', [2, 1], [2, 1], 'f1'),
+        scored('u2', [2, 0], [2, 1], 'f1'),
+        scored('u3', [0, 1], [2, 1], 'f1'),
+        // f2 — Bob alone on the scoreline, but Chris had the margin as well.
+        scored('u2', [1, 0], [1, 0], 'f2'),
+        scored('u3', [2, 1], [1, 0], 'f2'),
+      ],
+      teams,
+      'en',
+    );
+    expect(card?.title).toBe('Best prediction');
+    expect(card?.statistic).toBe(
+      '**Alice** was the only one to predict **Arsenal 2-1 Bayern**. Nobody else had the goal difference, and only **1** other picked the winner.',
+    );
+    expect(card?.subjects).toEqual([
+      { type: 'user', id: 'u1', name: 'Alice', imageUrl: '/api/images/alice.png', iconColor: null },
+    ]);
+  });
+
+  it('counts the others only, so a lone caller can reach nobody at all', () => {
+    const card = bestPredictionCard(
+      [scored('u1', [2, 1], [2, 1], 'f1'), scored('u2', [0, 2], [2, 1], 'f1')],
+      teams,
+      'en',
+    );
+    expect(card?.statistic).toBe(
+      '**Alice** was the only one to predict **Arsenal 2-1 Bayern**, and nobody else so much as picked the winner.',
+    );
+  });
+
+  it('says how many others had the margin when somebody did', () => {
+    const single = [
+      scored('u1', [2, 1], [2, 1], 'f1'),
+      scored('u2', [3, 2], [2, 1], 'f1'),
+    ];
+    expect(bestPredictionCard(single, teams, 'en')?.statistic).toBe(
+      '**Alice** was the only one to predict **Arsenal 2-1 Bayern**, and only **1** other had the goal difference.',
+    );
+    expect(
+      bestPredictionCard([...single, scored('u3', [1, 0], [2, 1], 'f1')], teams, 'en')?.statistic,
+    ).toBe(
+      '**Alice** was the only one to predict **Arsenal 2-1 Bayern**, and only **2** others had the goal difference.',
+    );
+  });
+
+  it('falls to the fewest correct outcomes when no others had the margin either', () => {
+    const card = bestPredictionCard(
+      [
+        // f1 — nobody else on the margin, but two of them picked the winner.
+        scored('u1', [2, 1], [2, 1], 'f1'),
+        scored('u2', [3, 0], [2, 1], 'f1'),
+        scored('u3', [4, 0], [2, 1], 'f1'),
+        // f2 — nobody else on the margin, and nobody else on the winner either.
+        scored('u2', [1, 0], [1, 0], 'f2'),
+        scored('u3', [0, 2], [1, 0], 'f2'),
+      ],
+      teams,
+      'en',
+    );
+    expect(card?.statistic).toBe(
+      '**Bob** was the only one to predict **Bayern 1-0 Barcelona**, and nobody else so much as picked the winner.',
+    );
+  });
+
+  it('ignores a fixture two members both called exactly', () => {
+    const card = bestPredictionCard(
+      [
+        scored('u1', [2, 1], [2, 1], 'f1'),
+        scored('u2', [2, 1], [2, 1], 'f1'),
+        scored('u3', [1, 0], [1, 0], 'f2'),
+      ],
+      teams,
+      'en',
+    );
+    expect(card?.subjects.map(s => s.id)).toEqual(['u3']);
+  });
+
+  it('names the scoreline alone when the fixture has no teams yet', () => {
+    expect(
+      bestPredictionCard([scored('u1', [2, 1], [2, 1], 'f9')], teams, 'en')?.statistic,
+    ).toBe('**Alice** was the only one to predict **2-1**, and nobody else so much as picked the winner.');
+  });
+
+  it('names no fixture when two of them are level, and counts one member twice', () => {
+    const tie = bestPredictionCard(
+      [
+        scored('u1', [2, 1], [2, 1], 'f1'),
+        scored('u2', [0, 2], [2, 1], 'f1'),
+        scored('u2', [1, 0], [1, 0], 'f2'),
+        scored('u1', [0, 3], [1, 0], 'f2'),
+      ],
+      teams,
+      'en',
+    );
+    expect(tie?.statistic).toBe(
+      '**Alice and Bob** each predicted a scoreline nobody else got, and nobody else so much as picked the winner.',
+    );
+    expect(tie?.subjects.map(s => s.id)).toEqual(['u1', 'u2']);
+
+    const sameMember = bestPredictionCard(
+      [
+        scored('u1', [2, 1], [2, 1], 'f1'),
+        scored('u2', [0, 2], [2, 1], 'f1'),
+        scored('u1', [1, 0], [1, 0], 'f2'),
+        scored('u2', [0, 3], [1, 0], 'f2'),
+      ],
+      teams,
+      'en',
+    );
+    expect(sameMember?.statistic).toBe(
+      '**Alice** predicted **2** scorelines nobody else got, and nobody else so much as picked the winner.',
+    );
+    expect(sameMember?.subjects.map(s => s.id)).toEqual(['u1']);
+  });
+
+  it('is null without predictions, or without a scoreline exactly one member called', () => {
+    expect(bestPredictionCard([], teams, 'en')).toBeNull();
+    expect(bestPredictionCard([scored('u1', [2, 1], [3, 1], 'f1')], teams, 'en')).toBeNull();
+    expect(
+      bestPredictionCard(
+        [scored('u1', [2, 1], [2, 1], 'f1'), scored('u2', [2, 1], [2, 1], 'f1')],
+        teams,
+        'en',
+      ),
+    ).toBeNull();
+  });
+
+  it('translates the title and the statistic', () => {
+    const rows = [
+      scored('u1', [2, 1], [2, 1], 'f1'),
+      scored('u2', [2, 0], [2, 1], 'f1'),
+    ];
+    expect(bestPredictionCard(rows, teams, 'no')).toMatchObject({
+      title: 'Synsk',
+      statistic:
+        '**Alice** var den eneste som tippet **Arsenal 2-1 Bayern**. Ingen andre hadde riktig målforskjell, og bare **1** annen traff på vinneren.',
+    });
+    expect(bestPredictionCard(rows, teams, 'de')).toMatchObject({
+      title: 'Wahrsager',
+      statistic:
+        '**Alice** hat als einzige Person **Arsenal 2-1 Bayern** getippt. Niemand sonst hatte die Tordifferenz, und nur **1** andere Person lag beim Sieger richtig.',
+    });
+  });
+});
+
+describe('worstPredictionCard', () => {
+  it('names the prediction furthest from the real goal difference', () => {
+    const card = worstPredictionCard(
+      [
+        scored('u1', [0, 4], [3, 0], 'f1'),
+        scored('u2', [1, 2], [3, 0], 'f1'),
+        scored('u3', [2, 0], [3, 0], 'f1'),
+      ],
+      teams,
+      'en',
+    );
+    expect(card?.title).toBe('Worst prediction');
+    expect(card?.statistic).toBe(
+      '**Alice** predicted **0-4** in **Arsenal vs Bayern**, which finished **3-0** — **7** goals off on the goal difference.',
+    );
+    expect(card?.subjects).toEqual([
+      { type: 'user', id: 'u1', name: 'Alice', imageUrl: '/api/images/alice.png', iconColor: null },
+    ]);
+  });
+
+  it('measures the margin, not the scoreline: a wild 6-5 on a 1-0 is not out at all', () => {
+    const card = worstPredictionCard(
+      [scored('u2', [6, 5], [1, 0], 'f2'), scored('u1', [0, 2], [1, 0], 'f1')],
+      teams,
+      'en',
+    );
+    expect(card?.subjects.map(s => s.id)).toEqual(['u1']);
+    expect(card?.statistic).toContain('**3** goals off');
+  });
+
+  it('shows every member level on the same miss', () => {
+    const card = worstPredictionCard(
+      [scored('u1', [0, 4], [3, 0], 'f1'), scored('u2', [4, 0], [0, 3], 'f2')],
+      teams,
+      'en',
+    );
+    expect(card?.statistic).toBe('**Alice and Bob** were each **7** goals off on the goal difference.');
+    expect(card?.subjects.map(s => s.id)).toEqual(['u1', 'u2']);
+  });
+
+  it('counts them instead when one member holds the whole tie', () => {
+    const card = worstPredictionCard(
+      [scored('u1', [0, 4], [3, 0], 'f1'), scored('u1', [4, 0], [0, 3], 'f2')],
+      teams,
+      'en',
+    );
+    expect(card?.statistic).toBe(
+      '**Alice** has **2** predictions **7** goals off on the goal difference.',
+    );
+    expect(card?.subjects.map(s => s.id)).toEqual(['u1']);
+  });
+
+  it('names the scoreline alone when the fixture has no teams yet', () => {
+    expect(worstPredictionCard([scored('u1', [0, 4], [3, 0], 'f9')], teams, 'en')?.statistic).toBe(
+      '**Alice** predicted **0-4** in a match that finished **3-0** — **7** goals off on the goal difference.',
+    );
+  });
+
+  it('is null without predictions, or when every margin was right', () => {
+    expect(worstPredictionCard([], teams, 'en')).toBeNull();
+    expect(
+      worstPredictionCard(
+        [scored('u1', [2, 1], [3, 2], 'f1'), scored('u2', [1, 0], [3, 2], 'f1')],
+        teams,
+        'en',
+      ),
+    ).toBeNull();
+  });
+
+  it('translates the title and the statistic', () => {
+    const rows = [scored('u1', [0, 4], [3, 0], 'f1'), scored('u2', [2, 0], [3, 0], 'f1')];
+    expect(worstPredictionCard(rows, teams, 'no')).toMatchObject({
+      title: 'Skivebom',
+      statistic:
+        '**Alice** tippet **0-4** på **Arsenal mot Bayern**, som endte **3-0** — **7** mål feil på målforskjellen.',
+    });
+    expect(worstPredictionCard(rows, teams, 'de')).toMatchObject({
+      title: 'Katastrophentipp',
+      statistic:
+        '**Alice** hat **0-4** bei **Arsenal gegen Bayern** getippt, das **3-0** endete — **7** Tore neben der Tordifferenz.',
+    });
+  });
+});
+
 describe('buildLiveUserStats', () => {
   const all = {
     tablePredictions: [pick('u1', 't1', 't3')],
@@ -516,12 +764,16 @@ describe('buildLiveUserStats', () => {
     ).toEqual(['peoplesFavourite', 'woodenSpoon']);
   });
 
-  it('puts the member pair after the other two and before the nationality card', () => {
+  it('puts the member pair, then the prediction pair, before the nationality card', () => {
     expect(
       buildLiveUserStats(
         {
           ...all,
-          scoredPredictions: [scored('u1', [1, 0], [1, 0]), scored('u1', [2, 0], [3, 1])],
+          scoredPredictions: [
+            scored('u1', [1, 0], [1, 0], 'f1'),
+            scored('u1', [2, 0], [3, 1], 'f2'),
+            scored('u2', [0, 3], [1, 0], 'f1'),
+          ],
           scorerNationalities: snapshot({ Norway: { goals: 3, players: 2 } }),
         },
         'en',
@@ -533,6 +785,8 @@ describe('buildLiveUserStats', () => {
       'goalDrought',
       'spotOn',
       'almost',
+      'bestPrediction',
+      'worstPrediction',
       'norwegianGoals',
     ]);
   });
