@@ -1838,7 +1838,7 @@ const translations = {
         title: 'Tipp toppscorerlisten',
         explainer: 'Sett spillerne i den rekkefølgen du tror de ender opp på antall mål. Hver spiller på nøyaktig riktig plass gir {{exact}} poeng.',
         tieBreak: 'Spillere med like mange mål skilles på målgivende, deretter på navn.',
-        tally: '{{goals}}m · {{assists}}mg',
+        tally: '{{goals}}m · {{assists}}a',
         compare: {
           predicted: 'Tippet',
           actual: 'Slik det står',

@@ -2,12 +2,13 @@ import { useMemo } from 'react';
 import type { LivePlayer, LiveTeam } from '@tournament-predictor/shared';
 import { useT } from '@/lib/useT';
 
-// ── Actual against predicted ──────────────────────────────────────────────────
+// ── Predicted against actual ──────────────────────────────────────────────────
 //
-// Two rankings of the same shortlist: the order the goals have actually put the players
-// in, and beside it — under it, on a narrow screen, where a full-width row is worth more
-// than the side-by-side — the order the member submitted. Shown once the ranking has
-// closed and somebody has scored: see LiveScorerPrediction for why it takes both.
+// Two rankings of the same shortlist: the order the member submitted, and beside it —
+// under it, on a narrow screen, where a full-width row is worth more than the
+// side-by-side — the order the goals have actually put the players in. Shown once the
+// ranking has closed and somebody has scored: see LiveScorerPrediction for why it takes
+// both.
 //
 // Goals and assists belong to where a player actually is, so they are on the real ranking
 // alone. Against the guess the same number would only be the same number again.
@@ -72,34 +73,6 @@ export default function LiveScorerComparison({
 
       <div className="grid gap-x-4 gap-y-4 md:grid-cols-2">
         <section>
-          <h3 className={COLUMN_HEADING}>
-            {t(scored ? 'live.scorers.compare.actualFinal' : 'live.scorers.compare.actual')}
-          </h3>
-          <ol className="grid grid-cols-1 gap-1">
-            {actualOrder.map((playerId, index) => {
-              const predictedPosition = predictedPositionById.get(playerId) ?? null;
-              return (
-                <ComparisonRow
-                  key={playerId}
-                  playerId={playerId}
-                  player={playerById.get(playerId) ?? null}
-                  team={teamById.get(playerById.get(playerId)?.teamId ?? '') ?? null}
-                  position={index + 1}
-                  showTally
-                  counterpartPosition={predictedPosition}
-                  counterpartLabel={
-                    predictedPosition === null
-                      ? t('live.scorers.compare.notPredicted')
-                      : t('live.scorers.compare.predictedAt', { position: predictedPosition })
-                  }
-                  exact={predictedPosition === index + 1}
-                />
-              );
-            })}
-          </ol>
-        </section>
-
-        <section>
           <h3 className={COLUMN_HEADING}>{t('live.scorers.compare.predicted')}</h3>
           <ol className="grid grid-cols-1 gap-1">
             {predictedOrder.map((playerId, index) => {
@@ -124,6 +97,34 @@ export default function LiveScorerComparison({
                         )
                   }
                   exact={actualPosition === index + 1}
+                />
+              );
+            })}
+          </ol>
+        </section>
+
+        <section>
+          <h3 className={COLUMN_HEADING}>
+            {t(scored ? 'live.scorers.compare.actualFinal' : 'live.scorers.compare.actual')}
+          </h3>
+          <ol className="grid grid-cols-1 gap-1">
+            {actualOrder.map((playerId, index) => {
+              const predictedPosition = predictedPositionById.get(playerId) ?? null;
+              return (
+                <ComparisonRow
+                  key={playerId}
+                  playerId={playerId}
+                  player={playerById.get(playerId) ?? null}
+                  team={teamById.get(playerById.get(playerId)?.teamId ?? '') ?? null}
+                  position={index + 1}
+                  showTally
+                  counterpartPosition={predictedPosition}
+                  counterpartLabel={
+                    predictedPosition === null
+                      ? t('live.scorers.compare.notPredicted')
+                      : t('live.scorers.compare.predictedAt', { position: predictedPosition })
+                  }
+                  exact={predictedPosition === index + 1}
                 />
               );
             })}
