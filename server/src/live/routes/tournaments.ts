@@ -39,6 +39,7 @@ import { notifyLiveCompetitions } from '../liveEvents';
 import { scoreAllLiveBonusQuestions, scoreLiveBonusQuestion } from '../bonusScoring';
 import { redactLiveBonusQuestions } from '../bonusVisibility';
 import {
+  applyScorerRefresh,
   recalculateLiveTournament,
   recomputeLiveMemberTotals,
   scoreLiveScorerPredictions,
@@ -82,6 +83,9 @@ async function rebuildAndNotify(tournamentId: string) {
     const ids = competitions.map(c => c.id);
     notifyLiveCompetitions(ids, 'fixtures-updated');
     notifyLiveCompetitions(ids, 'leaderboard-updated');
+    // A full rebuild re-ranks the top scorers as well, and a shortlist edit is one of the
+    // things that gets us here — so the ranking on an open page is behind until it is told.
+    notifyLiveCompetitions(ids, 'scorers-updated');
   }
 
   return recalculated;
@@ -380,6 +384,9 @@ liveTournamentsRouter.patch('/tournaments/:id', requireAdmin, async (req, res) =
       if (affected.length > 0) {
         await recomputeLiveMemberTotals(affected);
         notifyLiveCompetitions(affected, 'leaderboard-updated');
+        // This switch is the moment the ranking stops saying "points are awarded when the
+        // tournament finishes" and starts showing them, so the tab itself has changed.
+        notifyLiveCompetitions(affected, 'scorers-updated');
       }
     }
 
@@ -1008,9 +1015,14 @@ liveTournamentsRouter.post('/tournaments/:id/players/refresh', requireAdmin, asy
 
     const result = await refreshLivePlayerGoals(tournament.id, parsed.data);
     // Refreshed goal counts can change the final ranking for a tournament already marked
-    // completed, so rebuild rather than leave stored points stale.
+    // completed, so re-score rather than leave stored points stale — and push, so a member
+    // with the ranking open sees the new order without reloading.
+    //
+    // The same hand-off the sync tick uses, rather than the full rebuild this used to do:
+    // a goal count can move the top-scorer ranking and nothing else, so recomputing every
+    // fixture, table and bonus answer was work whose result could not differ.
     if (result.updated + result.adopted > 0) {
-      await rebuildAndNotify(tournament.id);
+      await applyScorerRefresh(tournament.id);
     }
     return res.json(result);
   } catch (err) {

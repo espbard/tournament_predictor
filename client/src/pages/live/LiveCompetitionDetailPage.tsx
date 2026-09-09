@@ -190,6 +190,14 @@ export default function LiveCompetitionDetailPage() {
       // Scoring has run, so any open "what everyone predicted" dropdown is now behind.
       queryClient.invalidateQueries({ queryKey: liveKeys.allFixturePredictions(id) });
     });
+    // Somebody has scored. The ranking on the top-scorer tab is the live order of the
+    // shortlist, so it moves without anybody's points moving — which is why this is its
+    // own event rather than part of the two above.
+    es.addEventListener('scorers-updated', () => {
+      queryClient.invalidateQueries({ queryKey: liveKeys.scorerPrediction(id) });
+      // The nationality card is the same scorer feed, folded by country.
+      queryClient.invalidateQueries({ queryKey: liveKeys.allUserStats(id) });
+    });
     return () => es.close();
   }, [id, queryClient]);
 

@@ -364,7 +364,8 @@ scored*, so it is empty before a competition starts and useless for building a l
 they are cached in memory for ten minutes, so a burst of typing is one provider request
 rather than one per keystroke.
 
-Goals and assists then come from the scorers endpoint, on every cold sync and on demand.
+Goals and assists then come from the scorers endpoint, on the full-time whistle of any
+fixture the sync sees finish, on every structure sync as a backstop, and on demand — see §17.
 That refresh **never creates a row**: a hundred scorers nobody picked have no business in
 the list. A player the provider does not list at all can still be added by name, and is
 adopted — given the provider's id, and kept current from then on — the first time a refresh
@@ -980,6 +981,9 @@ in-process interval started from `start()` in `server/src/index.ts` is the right
    prediction that has no points?". The `finished` transition fires exactly once, and once is
    not enough if the process restarted at the wrong moment, or if a competition was created on a
    tournament whose matches had already been played.
+7. If that sync finished a fixture (`shouldRefreshScorers()`), ask the provider for the scorer
+   feed and hand off to `applyScorerRefresh()`. One request, outside the budget, spent only on
+   the ticks where a match actually ended — see §17.
 
 **Is it on?** Two switches, because they answer different questions.
 `resolveSyncEnabledFromEnv()` reads `LIVE_SYNC_ENABLED`: `true` and `false` are honoured, and
@@ -1131,7 +1135,7 @@ Mounted as `app.use('/api/live', liveRouter)` in `server/src/index.ts`.
 | GET | `/competitions/:id/leaderboard` | auth |
 | GET | `/competitions/:id/leaderboard-progression?lang=` | auth (member) — running totals per played fixture, in the manual type's `LeaderboardProgressionResponse` shape |
 | GET | `/competitions/:id/user-stats?lang=` | auth (member) **+ test account or admin** — the stat-card deck, worded server-side |
-| GET | `/competitions/:id/events` | auth — SSE: `fixtures-updated`, `leaderboard-updated` |
+| GET | `/competitions/:id/events` | auth — SSE: `fixtures-updated`, `leaderboard-updated`, `scorers-updated` |
 | GET | `/competitions/:id/fixtures` | auth — **main read model**: fixtures for a stage/matchday + caller's prediction + `lockedAt` + `isLocked` + `isSelected` + awarded points, in one call |
 | PUT | `/competitions/:id/predictions` | auth — upsert one `{fixtureId, homeScore, awayScore}`; rejects a fixture left out of its gameweek's selected matches |
 | GET | `/competitions/:id/predictions/:userId` | auth — another member's, **only for already-locked fixtures** |
@@ -1636,7 +1640,33 @@ Recorded as they happen, so the document stays trustworthy.
 
 ---
 
-## 17. References
+## 17. Automatic top-scorer sync *(added after the six phases, on request)*
+
+The goal counts were already refreshed without an admin — `syncTournamentStructure` has always
+called `refreshLivePlayerGoals` — but three gaps between that call and the page made the feature
+feel hand-cranked, and the fix for each is small and separate.
+
+| Decision | Why |
+|---|---|
+| The scorer feed is fetched when a sync reports a **newly finished fixture**, not on a shorter interval | Goals cannot move except by being scored, so the full-time whistle is the signal. Polling for them would spend a request from a ten-a-minute budget to be told nothing changed; this spends one only on the ticks where a match ended |
+| The structure sync keeps its own refresh, as the backstop | It is what guarantees a tournament's tallies are never more than six hours old whatever the fixtures did — a provider correction days after a match, a hand-added player adopted by name. `shouldRefreshScorers()` excludes structure jobs so the two never both fire |
+| That request is **outside** `LIVE_SYNC_TICK_BUDGET` | It is one request, conditional on an event that happens a handful of times a matchday, and it displaces the 3-request structure sync that was previously the only way to learn the same thing. Costing it in `planTick()` would mean predicting a full-time whistle before the sync that discovers it |
+| …and uncapped, though the worst case is one extra request per planned job | That worst case needs every tournament in one 30-second tick to finish a fixture at the same moment, and the budget already permits 6 requests per 30 s against a 10/min tier. A cap would be paid for in the failure that matters more: the `finished` transition fires once, so a tournament skipped by it waits six hours for the backstop. An overspend is a 429 that `syncLiveScorers()` swallows and the next whistle corrects |
+| A third SSE event, `scorers-updated`, rather than folding it into the other two | Goal counts move the ranking every user is watching without moving anybody's points, and they move on a different event from a scoreline. Folding them into `leaderboard-updated` would refetch every leaderboard for an identical answer; into `fixtures-updated`, refetch the ranking on every score change |
+| `applyScorerRefresh()` re-scores unconditionally instead of checking the tournament is completed first | `scoreLiveScorerPredictions()` already owns that rule — before completion it is the branch that clears points back to null. A second status check in the caller is how the two would eventually disagree |
+| The admin's refresh button now calls `applyScorerRefresh()` instead of `rebuildAndNotify()` | A goal count can move the top-scorer ranking and nothing else, so recomputing every fixture, table and bonus answer was work whose result could not differ |
+| `rebuildAndNotify()` and the completion switch also push `scorers-updated` | Both change what the ranking shows — a shortlist edit, and the moment points stop being withheld — and neither was reaching an open page |
+
+**Still manual, deliberately:** the shortlist itself. Players get in by an admin searching the
+squads and picking them, which is the model the ranking is built on; nothing here adds a row.
+The gap that leaves — a tournament reaching its first kickoff with no shortlist, where
+`/scorer-prediction` answers `{available:false}` for good — is a separate piece of work, and
+worth doing: seeding candidates from the *previous* season's scorer feed intersected with this
+season's squads, plus an admin warning when the deadline is close and the shortlist is empty.
+
+---
+
+## 18. References
 
 - [2026/27 Champions League: teams, dates, draws, format](https://www.uefa.com/uefachampionsleague/news/02a6-20d57cfcd03e-407c22a7f465-1000--2026-27-champions-league-teams-dates-draws-format-final/)
 - [UEFA confirms date for the 2026/27 Champions League league phase draw](https://www.besoccer.com/new/uefa-confirms-date-for-the-202627-champions-league-league-phase-draw-1421299)
