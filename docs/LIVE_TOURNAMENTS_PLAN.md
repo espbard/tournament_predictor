@@ -1733,7 +1733,29 @@ leaderboard, and how many matches they have been top for. `theLeaderCard()` in
 
 ---
 
-## 21. References
+## 21. Six more borrowed cards *(added after the six phases, on request)*
+
+The rest of the manual competition type's leaderboard and result cards, in the live deck with
+their sentences intact: **Best form**, **Worst form**, **The Climber**, **I'm falling!**, **The
+most expected result** and **Most unexpected result**. All six live in
+`server/src/live/userStats.ts`.
+
+| Decision | Why |
+|---|---|
+| Everything that says "the last 5 matches" or "the last 10 games" counts fixtures off the **points progression**, via one `playedFixtures()` walk the leader card shares | It is already the definition of a played fixture for this tournament type — deselected gameweek matches out, scored-then-postponed ones in — and it puts the fixtures in kickoff order, which is also the manual cards' tie-break. A second definition is how the cards would start disagreeing with the chart |
+| Form and drought are read from the per-prediction `points` the scoring trigger wrote, not recomputed | Same reason the chart reads them: they carry the multiplier bonus, so "gained 12 points" is the number that member actually gained |
+| Worst form still requires a prediction on **every** played fixture, as the manual card does | Otherwise the longest drought always belongs to whoever stopped playing, which is a sadder statistic than the one the card is telling |
+| The climber and the faller keep the manual card's ranking — joint totals share a place, and both need a move of at least two | 1, 2, 2, 4 means a shared second is not a climb, and one place is the table breathing rather than a story |
+| "The most expected result" ranks on the **tier** points a fixture paid — outcome, goal difference and exact score at this competition's configured rates — not on the points actually awarded | A fixture the admin marked as worth triple would otherwise win every time on the multiplier alone, which says nothing about how obvious it was. The average in the sentence is still the real points, multiplier included: that is what people took home |
+| Its live wording keeps saying "the correct result", which here means the correct **outcome** | It is the manual sentence, and the live tier it names is the same fact: home win, draw or away win |
+| A fixture whose teams the provider has not named is not a candidate for either result card | Both sentences are about who beat whom. A fixture with a hole where a club should be cannot be described, and the two cards are the only borrowed ones whose subjects are crests rather than a person |
+| The manual cards' `backgroundImageUrl` decorations (`/climber.png`, `/arrow-down.png`) are dropped | `LiveUserStatCard` renders the subject as the tile and reads none of those fields; carrying them would be dead payload |
+| The deviations from the manual behaviour are the deck's usual one: a card with nothing to say is dropped rather than shown empty | Best form withholds itself before anything is played and when the best haul is zero, where the manual card would print "No matches have been completed yet!" or name half the league on 0 points |
+| No new queries: the prediction query grew `points`, and the progression was already being loaded for the leader card | The whole borrowed set rides on rows the route had reasons to load anyway |
+
+---
+
+## 22. References
 
 - [2026/27 Champions League: teams, dates, draws, format](https://www.uefa.com/uefachampionsleague/news/02a6-20d57cfcd03e-407c22a7f465-1000--2026-27-champions-league-teams-dates-draws-format-final/)
 - [UEFA confirms date for the 2026/27 Champions League league phase draw](https://www.besoccer.com/new/uefa-confirms-date-for-the-202627-champions-league-league-phase-draw-1421299)

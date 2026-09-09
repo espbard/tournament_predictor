@@ -2,15 +2,17 @@ import type {
   LeaderboardProgressionMatch,
   LeaderboardProgressionResponse,
   LiveScorerNationalities,
+  LiveScoringConfig,
   UserStatCardData,
 } from '@tournament-predictor/shared';
 import { LIVE_SEASON_MILESTONE_IDS } from './progression';
 
 // ── User statistics for live competitions ─────────────────────────────────────
 //
-// The same cards the manual competition type shows, built from live data. One of them —
-// the leader — is that type's card outright, sentence and all, because the league already
-// reads those words; the rest are this type's own. The manual
+// The same cards the manual competition type shows, built from live data. Seven of them —
+// the leader, the form pair, the two table movers and the result pair — are that type's
+// cards outright, sentence and all, because the league already reads those words; the
+// rest are this type's own. The manual
 // version composes them inline in its route (server/src/routes/competitions.ts) from a
 // pile of already-loaded query results; this one keeps the composing pure and takes the
 // rows as arguments, so each card can be pinned by a unit test without a database.
@@ -209,6 +211,16 @@ function formatUserList(names: string[], lang: LiveStatsLang): string {
 
 const SEASON_MILESTONES = new Set<string>(LIVE_SEASON_MILESTONE_IDS);
 
+/**
+ * The played fixtures off the points progression, oldest first.
+ *
+ * The season-long lumps are dropped: they move the totals, but they are settled once at
+ * the end rather than played, and every card below counts matches.
+ */
+function playedFixtures(progression: LeaderboardProgressionResponse): LeaderboardProgressionMatch[] {
+  return progression.matches.filter(m => !SEASON_MILESTONES.has(m.matchId));
+}
+
 /** Everyone level on the most points at one milestone. Empty while nobody has any. */
 function leadersAt(milestone: LeaderboardProgressionMatch): Set<string> {
   const totals = Object.entries(milestone.cumulativePoints);
@@ -241,7 +253,7 @@ export function theLeaderCard(
 ): UserStatCardData | null {
   if (!progression) return null;
 
-  const games = progression.matches.filter(m => !SEASON_MILESTONES.has(m.matchId));
+  const games = playedFixtures(progression);
   if (games.length === 0) return null;
 
   const leading = games.map(leadersAt);
@@ -290,6 +302,252 @@ export function theLeaderCard(
         : `${names} ${kings.length === 1 ? 'has' : 'have'} reigned supreme for the last ${gameCount} game${gameCount === 1 ? '' : 's'}!`;
 
   return memberCard('theLeader', title, statistic, kings);
+}
+
+
+// ── Form and movement ─────────────────────────────────────────────────────────
+//
+// Four more of the manual competition type's cards, wording and all, for the same reason
+// the leader card is here: the league reads these sentences already. What they are made
+// of is this type's own — the run of played fixtures comes off the points progression, so
+// "the last 5 matches" and "the last 10 games" mean the same fixtures the chart plots.
+
+/** One member's points on one fixture, keyed fixture then member. */
+function pointsByFixture(
+  predictions: LiveStatsScoredPrediction[],
+): Map<string, Map<string, number>> {
+  const byFixture = new Map<string, Map<string, number>>();
+  for (const p of predictions) {
+    let forFixture = byFixture.get(p.fixtureId);
+    if (!forFixture) {
+      forFixture = new Map();
+      byFixture.set(p.fixtureId, forFixture);
+    }
+    forFixture.set(p.userId, p.points);
+  }
+  return byFixture;
+}
+
+/** Members as card subjects, by id, so a card can name whoever a walk turns up. */
+function membersById(progression: LeaderboardProgressionResponse): Map<string, CardMember> {
+  return new Map(
+    progression.users.map(u => [
+      u.userId,
+      {
+        userId: u.userId,
+        username: u.username,
+        imageUrl: u.imageUrl ?? null,
+        iconColor: u.iconColor ?? null,
+      },
+    ]),
+  );
+}
+
+/** How many matches "recent form" is measured over, and over how many the table moves. */
+const FORM_WINDOW = 5;
+const MOVEMENT_WINDOW = 10;
+
+/**
+ * Who has taken the most points from the last five matches.
+ *
+ * Only members who predicted at least one of them are in the running — the manual card's
+ * behaviour, since a member with nothing in the window never enters its tally either.
+ *
+ * Null before anything has been played, and null when the best of them took nothing:
+ * "gained 0 points" naming half the league is the zero the rest of this deck refuses.
+ */
+export function bestFormCard(
+  predictions: LiveStatsScoredPrediction[],
+  progression: LeaderboardProgressionResponse | null,
+  lang: LiveStatsLang,
+): UserStatCardData | null {
+  if (!progression) return null;
+  const played = playedFixtures(progression);
+  if (played.length === 0) return null;
+
+  const window = played.slice(-FORM_WINDOW).map(m => m.matchId);
+  const byFixture = pointsByFixture(predictions);
+  const members = membersById(progression);
+
+  const recent = new Map<string, number>();
+  for (const fixtureId of window) {
+    for (const [userId, points] of byFixture.get(fixtureId) ?? []) {
+      if (!members.has(userId)) continue;
+      recent.set(userId, (recent.get(userId) ?? 0) + points);
+    }
+  }
+  if (recent.size === 0) return null;
+
+  const most = Math.max(...recent.values());
+  if (most === 0) return null;
+
+  const inForm = [...recent.entries()]
+    .filter(([, points]) => points === most)
+    .map(([userId]) => members.get(userId)!)
+    .sort(byUsername);
+
+  const names = formatUserList(inForm.map(m => m.username), lang);
+  const title = lang === 'no' ? 'I fyr og flamme 🔥' : lang === 'de' ? 'Formrakete 🔥' : 'Best form';
+
+  const statistic =
+    lang === 'no'
+      ? `${names} har sanket ${most} poeng de siste 5 kampene!`
+      : lang === 'de'
+        ? `${names} hat in den letzten 5 Spielen ${most} Punkte eingesammelt! Heiß wie eine Bratwurst auf dem Grill.`
+        : `${names} ${inForm.length === 1 ? 'has' : 'have'} gained ${most} points in the last 5 matches!`;
+
+  return memberCard('bestForm', title, statistic, inForm);
+}
+
+/**
+ * The mirror: the longest run of played matches ending now with no points at all.
+ *
+ * Only members who predicted every played fixture are eligible, as in the manual card —
+ * otherwise the longest drought would always belong to whoever stopped playing, which is
+ * a different and much sadder statistic. A drought of one is a bad afternoon rather than
+ * a run, so the card starts at two.
+ */
+export function worstFormCard(
+  predictions: LiveStatsScoredPrediction[],
+  progression: LeaderboardProgressionResponse | null,
+  lang: LiveStatsLang,
+): UserStatCardData | null {
+  if (!progression) return null;
+  const played = playedFixtures(progression);
+  if (played.length === 0) return null;
+
+  const byFixture = pointsByFixture(predictions);
+  const members = membersById(progression);
+
+  const droughts = new Map<string, number>();
+  for (const [userId, member] of members) {
+    if (!played.every(m => byFixture.get(m.matchId)?.has(userId))) continue;
+    let drought = 0;
+    for (let i = played.length - 1; i >= 0; i--) {
+      if ((byFixture.get(played[i].matchId)?.get(userId) ?? 0) > 0) break;
+      drought += 1;
+    }
+    droughts.set(member.userId, drought);
+  }
+  if (droughts.size === 0) return null;
+
+  const longest = Math.max(...droughts.values());
+  if (longest <= 1) return null;
+
+  const outOfForm = [...droughts.entries()]
+    .filter(([, drought]) => drought === longest)
+    .map(([userId]) => members.get(userId)!)
+    .sort(byUsername);
+
+  const names = formatUserList(outOfForm.map(m => m.username), lang);
+  const title = lang === 'no' ? 'Send Hjelp' : lang === 'de' ? 'Hilfe senden' : 'Worst form';
+
+  const statistic =
+    lang === 'no'
+      ? `${names} har gått ${longest} kamper på rad uten å sanke et eneste poeng!`
+      : lang === 'de'
+        ? `${names} hat ${longest} Spiele in Folge keinen einzigen Punkt geholt! Bitte ruft professionelle Hilfe!`
+        : `${names} ${outOfForm.length === 1 ? 'has' : 'have'} gone ${longest} matches without gaining a single point!`;
+
+  return memberCard('worstForm', title, statistic, outOfForm);
+}
+
+/**
+ * Standings at one milestone: joint totals share a place, and the next one down is left
+ * empty — 1, 2, 2, 4. The manual card's ranking, so a shared second is not a climb.
+ */
+function rankAt(milestone: LeaderboardProgressionMatch): Map<string, number> {
+  const sorted = Object.entries(milestone.cumulativePoints).sort((a, b) => b[1] - a[1]);
+  const ranks = new Map<string, number>();
+  for (let i = 0; i < sorted.length; i++) {
+    const [userId, points] = sorted[i];
+    const tiedWithPrevious = i > 0 && points === sorted[i - 1][1];
+    ranks.set(userId, tiedWithPrevious ? ranks.get(sorted[i - 1][0])! : i + 1);
+  }
+  return ranks;
+}
+
+/** How many places each member has moved over the last ten played fixtures. */
+function movementOverWindow(
+  progression: LeaderboardProgressionResponse | null,
+): Array<{ member: CardMember; climbed: number }> {
+  if (!progression) return [];
+  const played = playedFixtures(progression);
+  // Eleven milestones, because the move is measured from the one before the ten.
+  if (played.length < MOVEMENT_WINDOW + 1) return [];
+
+  const before = rankAt(played[played.length - MOVEMENT_WINDOW - 1]);
+  const now = rankAt(played[played.length - 1]);
+  const members = membersById(progression);
+
+  const moves: Array<{ member: CardMember; climbed: number }> = [];
+  for (const [userId, rank] of now) {
+    const previous = before.get(userId);
+    const member = members.get(userId);
+    if (previous === undefined || !member) continue;
+    moves.push({ member, climbed: previous - rank });
+  }
+  return moves;
+}
+
+/** How many places the biggest mover has moved, and who moved that far. */
+function movers(
+  moves: Array<{ member: CardMember; climbed: number }>,
+  direction: 'up' | 'down',
+): { places: number; members: CardMember[] } | null {
+  if (moves.length === 0) return null;
+  const moved = (m: { climbed: number }) => (direction === 'up' ? m.climbed : -m.climbed);
+  const places = Math.max(...moves.map(moved));
+  // One place is the table breathing; the manual card starts at two, and so does this.
+  if (places < 2) return null;
+  return {
+    places,
+    members: moves.filter(m => moved(m) === places).map(m => m.member).sort(byUsername),
+  };
+}
+
+/** Who has climbed the most places over the last ten matches. */
+export function theClimberCard(
+  progression: LeaderboardProgressionResponse | null,
+  lang: LiveStatsLang,
+): UserStatCardData | null {
+  const climbed = movers(movementOverWindow(progression), 'up');
+  if (!climbed) return null;
+
+  const { places, members } = climbed;
+  const names = formatUserList(members.map(m => m.username), lang);
+  const title = lang === 'no' ? 'Det klatres!' : lang === 'de' ? 'Der Aufsteiger' : 'The Climber';
+
+  const statistic =
+    lang === 'no'
+      ? `${names} har klatret ${places} ${places === 1 ? 'plass' : 'plasser'} på tabellen de siste 10 kampene!`
+      : lang === 'de'
+        ? `${names} ist in den letzten 10 Spielen um ${places} ${places === 1 ? 'Platz' : 'Plätze'} aufgestiegen!`
+        : `${names} ${members.length === 1 ? 'has' : 'have'} climbed ${places} ${places === 1 ? 'spot' : 'spots'} on the leaderboard over the last 10 games!`;
+
+  return memberCard('theClimber', title, statistic, members);
+}
+
+/** The mirror: who has dropped the most places over the same ten. */
+export function theFallerCard(
+  progression: LeaderboardProgressionResponse | null,
+  lang: LiveStatsLang,
+): UserStatCardData | null {
+  const fell = movers(movementOverWindow(progression), 'down');
+  if (!fell) return null;
+
+  const { places, members } = fell;
+  const names = formatUserList(members.map(m => m.username), lang);
+  const title = lang === 'no' ? 'Rett åt skogen' : lang === 'de' ? 'Tabellenabsteiger' : "I'm falling!";
+
+  const statistic =
+    lang === 'no'
+      ? `${names} har falt ${places} ${places === 1 ? 'plass' : 'plasser'} på tabellen de siste 10 kampene!`
+      : lang === 'de'
+        ? `${names} ist in den letzten 10 Spielen um ${places} ${places === 1 ? 'Platz' : 'Plätze'} abgefallen!`
+        : `${names} ${members.length === 1 ? 'has' : 'have'} dropped ${places} ${places === 1 ? 'spot' : 'spots'} on the leaderboard over the last 10 games!`;
+
+  return memberCard('theFaller', title, statistic, members);
 }
 
 
@@ -454,6 +712,8 @@ export interface LiveStatsScoredPrediction {
   /** End of normal time — the score the tiers are judged against. */
   actualHome: number;
   actualAway: number;
+  /** What it was awarded, multiplier bonus included: the leaderboard's own number. */
+  points: number;
 }
 
 /** The three tiers, asked of one prediction. Nested, exactly as calculateLivePoints has them. */
@@ -822,6 +1082,242 @@ export function worstPredictionCard(
 }
 
 
+// ── The result pair ───────────────────────────────────────────────────────────
+//
+// The manual type's two cards about a fixture rather than a member: the one the league
+// called between them, and the one nobody saw coming. Their subjects are the two crests,
+// so these are the only borrowed cards that do not picture a person.
+
+/** "Arsenal to beat Bayern", "a draw" — the manual type's describeOutcome, word for word. */
+function describeOutcome(
+  home: string,
+  away: string,
+  homeScore: number,
+  awayScore: number,
+  lang: LiveStatsLang,
+): string {
+  if (lang === 'no') {
+    if (homeScore > awayScore) return `at ${home} slo ${away}`;
+    if (awayScore > homeScore) return `at ${away} slo ${home}`;
+    return `uavgjort mellom ${home} og ${away}`;
+  }
+  if (lang === 'de') {
+    if (homeScore > awayScore) return `dass ${home} gegen ${away} gewinnt`;
+    if (awayScore > homeScore) return `dass ${away} gegen ${home} gewinnt`;
+    return `ein Unentschieden zwischen ${home} und ${away}`;
+  }
+  if (homeScore > awayScore) return `${home} to beat ${away}`;
+  if (awayScore > homeScore) return `${away} to beat ${home}`;
+  return `${home} to draw against ${away}`;
+}
+
+/** One played fixture with everything predicted on it, in the order they were played. */
+interface FixtureRound {
+  fixtureId: string;
+  home: string;
+  away: string;
+  homeTeamId: string;
+  awayTeamId: string;
+  actualHome: number;
+  actualAway: number;
+  predictions: LiveStatsScoredPrediction[];
+}
+
+/**
+ * Every fixture that has been played and named, oldest first, with its predictions.
+ *
+ * A fixture whose teams the provider has not named cannot be described by either card —
+ * both sentences are about who beat whom — so it is left out rather than printed with a
+ * hole in it. Kickoff order comes from the progression, which is also the manual cards'
+ * tie-break: where two fixtures are level, the earlier one is the story.
+ */
+function fixtureRounds(
+  predictions: LiveStatsScoredPrediction[],
+  teams: LiveStatsTeam[],
+  progression: LeaderboardProgressionResponse | null,
+): FixtureRound[] {
+  if (!progression) return [];
+  const byId = indexTeams(teams);
+  const byFixture = new Map<string, LiveStatsScoredPrediction[]>();
+  for (const p of predictions) {
+    const madeOnFixture = byFixture.get(p.fixtureId);
+    if (madeOnFixture) madeOnFixture.push(p);
+    else byFixture.set(p.fixtureId, [p]);
+  }
+
+  const rounds: FixtureRound[] = [];
+  for (const milestone of playedFixtures(progression)) {
+    const madeOnFixture = byFixture.get(milestone.matchId);
+    if (!madeOnFixture || madeOnFixture.length === 0) continue;
+    const [first] = madeOnFixture;
+    const names = teamNames(first, byId);
+    if (!names || !first.homeTeamId || !first.awayTeamId) continue;
+    rounds.push({
+      fixtureId: milestone.matchId,
+      home: names.home,
+      away: names.away,
+      homeTeamId: first.homeTeamId,
+      awayTeamId: first.awayTeamId,
+      actualHome: first.actualHome,
+      actualAway: first.actualAway,
+      predictions: madeOnFixture,
+    });
+  }
+  return rounds;
+}
+
+/** The two crests, in kickoff order, as the card's subjects. */
+function crests(round: FixtureRound, teams: LiveStatsTeam[]): UserStatCardData['subjects'] {
+  const byId = indexTeams(teams);
+  return [round.homeTeamId, round.awayTeamId]
+    .map(id => byId.get(id))
+    .filter((team): team is Entrant => !!team)
+    .map(team => ({ type: 'team' as const, id: team.id, name: team.name, imageUrl: team.imageUrl }));
+}
+
+/**
+ * The result nobody had: the fixture where not one member picked the winner, and where
+ * somebody's prediction was furthest from the margin. The names on it are the biggest
+ * group who made the same worst prediction — being wrong together is the funnier fact.
+ *
+ * Null while every played fixture has at least one member on the right outcome, which is
+ * most of a season: this card is meant to be rare.
+ */
+export function mostUnexpectedResultCard(
+  predictions: LiveStatsScoredPrediction[],
+  teams: LiveStatsTeam[],
+  progression: LeaderboardProgressionResponse | null,
+  lang: LiveStatsLang,
+): UserStatCardData | null {
+  let shock: { round: FixtureRound; deviation: number } | null = null;
+  for (const round of fixtureRounds(predictions, teams, progression)) {
+    if (round.predictions.some(rightOutcome)) continue;
+    const deviation = Math.max(...round.predictions.map(goalDifferenceGap));
+    // Strictly greater, so the earliest of several level fixtures keeps the card.
+    if (!shock || deviation > shock.deviation) shock = { round, deviation };
+  }
+  if (!shock) return null;
+
+  const { round, deviation } = shock;
+  const furthest = round.predictions.filter(p => goalDifferenceGap(p) === deviation);
+
+  // Grouped by what they said, and the biggest group wins: one scoreline has to be named,
+  // and the one the most of them agreed on is the one worth naming.
+  const byScoreline = new Map<string, LiveStatsScoredPrediction[]>();
+  for (const p of furthest) {
+    const key = `${p.predictedHome}-${p.predictedAway}`;
+    const group = byScoreline.get(key);
+    if (group) group.push(p);
+    else byScoreline.set(key, [p]);
+  }
+  const worst = [...byScoreline.values()].reduce((a, b) => (b.length > a.length ? b : a));
+  const wrong = dedupeByUser(worst);
+
+  const actual = describeOutcome(round.home, round.away, round.actualHome, round.actualAway, lang);
+  const predicted = describeOutcome(
+    round.home,
+    round.away,
+    worst[0].predictedHome,
+    worst[0].predictedAway,
+    lang,
+  );
+  const names = formatUserList(wrong.map(w => w.username), lang);
+  const { predictedHome, predictedAway } = worst[0];
+
+  const title =
+    lang === 'no' ? 'Sjokkresultat' : lang === 'de' ? 'Schockresultat' : 'Most unexpected result';
+
+  const statistic =
+    lang === 'no'
+      ? `Ingen tippet ${actual}! ${names} tippet til og med ${predicted} (${predictedHome}-${predictedAway})!`
+      : lang === 'de'
+        ? `Niemand hat ${actual} vorhergesagt! ${names} hat sogar ${predicted} (${predictedHome}-${predictedAway}) getippt!`
+        : `No one predicted ${actual}! ${names} even predicted ${predicted} (${predictedHome} - ${predictedAway})!`;
+
+  return {
+    id: 'mostUnexpectedResult',
+    title,
+    statistic,
+    subjects: crests(round, teams),
+    linkType: null,
+  };
+}
+
+/**
+ * The result the league saw coming: the fixture whose predictions earned the most tier
+ * points — outcomes, margins and scorelines at what this competition pays for them.
+ *
+ * The tiers rather than the points actually awarded, because a fixture the admin marked
+ * as worth triple would otherwise win every time on the multiplier alone, which says
+ * nothing about how obvious it was. The average in the sentence is the real points,
+ * multiplier and all: that is what people took home.
+ */
+export function mostExpectedResultCard(
+  predictions: LiveStatsScoredPrediction[],
+  teams: LiveStatsTeam[],
+  progression: LeaderboardProgressionResponse | null,
+  config: LiveScoringConfig,
+  lang: LiveStatsLang,
+): UserStatCardData | null {
+  let obvious: { round: FixtureRound; tierPoints: number } | null = null;
+  for (const round of fixtureRounds(predictions, teams, progression)) {
+    const outcomes = round.predictions.filter(rightOutcome).length;
+    if (outcomes === 0) continue;
+    const tierPoints =
+      outcomes * config.correct_outcome +
+      round.predictions.filter(rightGoalDifference).length * config.correct_goal_difference +
+      round.predictions.filter(rightScore).length * config.exact_score;
+    if (!obvious || tierPoints > obvious.tierPoints) obvious = { round, tierPoints };
+  }
+  if (!obvious) return null;
+
+  const { round } = obvious;
+  const outcomes = round.predictions.filter(rightOutcome).length;
+  const exact = round.predictions.filter(rightScore).length;
+  const average = (
+    round.predictions.reduce((sum, p) => sum + p.points, 0) / round.predictions.length
+  ).toFixed(2);
+
+  // Whoever managed to come away with nothing from the most obvious result of the season
+  // is the joke the manual card tells, and one point is the next-best punchline.
+  const withNothing = dedupeByUser(round.predictions.filter(p => p.points === 0));
+  const withOne = dedupeByUser(round.predictions.filter(p => p.points === 1));
+  const appendix =
+    withNothing.length > 0
+      ? lang === 'no'
+        ? ` Likevel sanket ${formatUserList(withNothing.map(u => u.username), lang)} 0 poeng.`
+        : lang === 'de'
+          ? ` Und trotzdem hat ${formatUserList(withNothing.map(u => u.username), lang)} 0 Punkte geholt. Wie?`
+          : ` Still ${formatUserList(withNothing.map(u => u.username), lang)} earned 0 points.`
+      : withOne.length >= 1 && withOne.length <= 4
+        ? lang === 'no'
+          ? ` Likevel sanket ${formatUserList(withOne.map(u => u.username), lang)} bare 1 poeng.`
+          : lang === 'de'
+            ? ` Und trotzdem hat ${formatUserList(withOne.map(u => u.username), lang)} nur 1 Punkt geholt. Traurig.`
+            : ` Still ${formatUserList(withOne.map(u => u.username), lang)} earned only 1 point.`
+        : '';
+
+  const title =
+    lang === 'no' ? 'Forventet resultat' : lang === 'de' ? 'Na klar!' : 'The most expected result';
+
+  const statistic =
+    (lang === 'no'
+      ? `${round.home} mot ${round.away} (${round.actualHome}-${round.actualAway}) var det mest forutsigbare resultatet! Totalt tippet ${outcomes} ${outcomes === 1 ? 'spiller' : 'spillere'} riktig resultat, og ${exact} av dem tippet eksakt resultat! Hver spiller sanket i snitt ${average} poeng.`
+      : lang === 'de'
+        ? `${round.home} gegen ${round.away} (${round.actualHome}-${round.actualAway}) — so offensichtlich, dass sogar ein Blindgänger es hätte tippen können! ${outcomes} Leute lagen richtig, ${exact} davon sogar mit exaktem Ergebnis. Im Schnitt ${average} Punkte pro Person.`
+        : `${round.home} vs ${round.away} (${round.actualHome} - ${round.actualAway}) was the most predictable outcome! A total of ${outcomes} ${outcomes === 1 ? 'user' : 'users'} predicted the correct result, and ${exact} of those predicted the exact score! Each user scored on average ${average} points.`) +
+    appendix;
+
+  return {
+    id: 'mostPredictableResult',
+    title,
+    statistic,
+    subjects: crests(round, teams),
+    linkType: null,
+  };
+}
+
+
 // ── Goals by nationality ──────────────────────────────────────────────────────
 
 /** The country counted, and the flag shown for it. One line to change to count another. */
@@ -893,6 +1389,8 @@ export function buildLiveUserStats(
     players: LiveStatsPlayer[];
     scoredPredictions: LiveStatsScoredPrediction[];
     progression: LeaderboardProgressionResponse | null;
+    /** What this competition pays per tier — the expected-result card ranks on it. */
+    scoringConfig: LiveScoringConfig;
     scorerNationalities: LiveScorerNationalities | null;
   },
   lang: LiveStatsLang,
@@ -904,10 +1402,15 @@ export function buildLiveUserStats(
     players,
     scoredPredictions,
     progression,
+    scoringConfig,
     scorerNationalities,
   } = input;
   return [
     theLeaderCard(progression, lang),
+    bestFormCard(scoredPredictions, progression, lang),
+    worstFormCard(scoredPredictions, progression, lang),
+    theClimberCard(progression, lang),
+    theFallerCard(progression, lang),
     peoplesFavouriteCard(tablePredictions, teams, lang),
     woodenSpoonCard(tablePredictions, teams, lang),
     goldenBootCard(scorerPredictions, players, lang),
@@ -916,6 +1419,8 @@ export function buildLiveUserStats(
     almostCard(scoredPredictions, lang),
     bestPredictionCard(scoredPredictions, teams, lang),
     worstPredictionCard(scoredPredictions, teams, lang),
+    mostExpectedResultCard(scoredPredictions, teams, progression, scoringConfig, lang),
+    mostUnexpectedResultCard(scoredPredictions, teams, progression, lang),
     nationalityGoalsCard(scorerNationalities, lang),
   ].filter((c): c is UserStatCardData => c !== null);
 }

@@ -1,15 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import {
   almostCard,
+  bestFormCard,
   bestPredictionCard,
   buildLiveUserStats,
+  mostExpectedResultCard,
+  mostUnexpectedResultCard,
   nationalityGoalsCard,
   goalDroughtCard,
   goldenBootCard,
   peoplesFavouriteCard,
   spotOnCard,
+  theClimberCard,
+  theFallerCard,
   theLeaderCard,
   woodenSpoonCard,
+  worstFormCard,
   worstPredictionCard,
 } from './userStats';
 
@@ -34,6 +40,16 @@ const rank = (userId: string, ...orderedPlayerIds: string[]) => ({ userId, order
  * needs more than one match — which fixture it was on. `scored` is shorthand for
  * "predicted 2-1, actual 3-1" on fixture f1.
  */
+/** The default tiers, which `tierPoints` above also assumes. */
+const scoringConfig = {
+  correct_outcome: 1,
+  correct_goal_difference: 1,
+  exact_score: 2,
+  table_exact_position: 3,
+  table_correct_band: 1,
+  scorer_exact_position: 3,
+};
+
 /** Which teams each test fixture is between. A fixture id not listed here has none yet. */
 const fixtureTeams: Record<string, [string, string]> = {
   f1: ['t2', 't1'], // Arsenal vs Bayern
@@ -41,11 +57,26 @@ const fixtureTeams: Record<string, [string, string]> = {
   f3: ['t3', 't2'], // Barcelona vs Arsenal
 };
 
+/**
+ * What a prediction earned, on the default 1 / 1 / 2 tiers: enough for the cards that
+ * read `points` without every test having to state it.
+ */
+const tierPoints = (
+  [predictedHome, predictedAway]: [number, number],
+  [actualHome, actualAway]: [number, number],
+): number => {
+  const outcome = Math.sign(actualHome - actualAway) === Math.sign(predictedHome - predictedAway);
+  const goalDifference = actualHome - actualAway === predictedHome - predictedAway;
+  const exact = predictedHome === actualHome && predictedAway === actualAway;
+  return (outcome ? 1 : 0) + (goalDifference ? 1 : 0) + (exact ? 2 : 0);
+};
+
 const scored = (
   userId: string,
   [predictedHome, predictedAway]: [number, number],
   [actualHome, actualAway]: [number, number],
   fixtureId = 'f1',
+  points = tierPoints([predictedHome, predictedAway], [actualHome, actualAway]),
 ) => ({
   userId,
   username: userId === 'u1' ? 'Alice' : userId === 'u2' ? 'Bob' : 'Chris',
@@ -58,18 +89,20 @@ const scored = (
   predictedAway,
   actualHome,
   actualAway,
+  points,
 });
 
 /**
  * A points progression: one entry per milestone, each the running totals after it. The
- * ids match the members `scored` invents, so the two helpers name the same people.
+ * member ids match the ones `scored` invents, and the milestones are named f1, f2, … for
+ * the same reason — a card that walks the chart looks its predictions up by fixture.
  */
 const progression = (
   milestones: Array<Record<string, number>>,
   ids: string[] = ['u1', 'u2', 'u3'],
 ) => ({
   matches: milestones.map((cumulativePoints, i) => ({
-    matchId: `m${i + 1}`,
+    matchId: `f${i + 1}`,
     label: `MD ${i + 1}`,
     stage: 'league',
     cumulativePoints,
@@ -187,6 +220,341 @@ describe('theLeaderCard', () => {
     expect(theLeaderCard(progression([{ u1: 3, u2: 1 }]), 'de')?.statistic).toContain(
       'seit 1 Spiel an der Spitze',
     );
+  });
+});
+
+describe('bestFormCard', () => {
+  /** Six played fixtures; only the totals' shape matters, not the numbers on them. */
+  const sixPlayed = progression([{}, {}, {}, {}, {}, {}]);
+
+  it('adds up the last five matches only', () => {
+    const card = bestFormCard(
+      [
+        // Alice's haul is on the fixture that has just dropped out of the window.
+        scored('u1', [1, 0], [1, 0], 'f1', 9),
+        scored('u1', [1, 0], [2, 1], 'f6', 1),
+        scored('u2', [1, 0], [1, 0], 'f5', 4),
+        scored('u2', [2, 1], [2, 1], 'f6', 2),
+      ],
+      sixPlayed,
+      'en',
+    );
+    expect(card?.title).toBe('Best form');
+    expect(card?.statistic).toBe('**Bob** has gained 6 points in the last 5 matches!');
+    expect(card?.subjects.map(s => s.id)).toEqual(['u2']);
+  });
+
+  it('shows everyone level on the same haul', () => {
+    const card = bestFormCard(
+      [scored('u1', [1, 0], [1, 0], 'f6', 4), scored('u2', [2, 1], [2, 1], 'f5', 4)],
+      sixPlayed,
+      'en',
+    );
+    expect(card?.statistic).toBe('**Alice** and **Bob** have gained 4 points in the last 5 matches!');
+    expect(card?.subjects.map(s => s.id)).toEqual(['u1', 'u2']);
+  });
+
+  it('is null with no chart, nothing played, or nobody scoring in the window', () => {
+    expect(bestFormCard([], null, 'en')).toBeNull();
+    expect(bestFormCard([], progression([]), 'en')).toBeNull();
+    expect(bestFormCard([], sixPlayed, 'en')).toBeNull();
+    expect(bestFormCard([scored('u1', [0, 2], [3, 0], 'f6', 0)], sixPlayed, 'en')).toBeNull();
+  });
+
+  it('translates the title and the statistic', () => {
+    const rows = [scored('u1', [1, 0], [1, 0], 'f6', 4)];
+    expect(bestFormCard(rows, sixPlayed, 'no')).toMatchObject({
+      title: 'I fyr og flamme 🔥',
+      statistic: '**Alice** har sanket 4 poeng de siste 5 kampene!',
+    });
+    expect(bestFormCard(rows, sixPlayed, 'de')).toMatchObject({
+      title: 'Formrakete 🔥',
+      statistic:
+        '**Alice** hat in den letzten 5 Spielen 4 Punkte eingesammelt! Heiß wie eine Bratwurst auf dem Grill.',
+    });
+  });
+});
+
+describe('worstFormCard', () => {
+  const threePlayed = progression([{}, {}, {}]);
+
+  /** A prediction on every fixture, scoring only where `points` says so. */
+  const everyFixture = (userId: string, points: [number, number, number]) =>
+    points.map((p, i) => scored(userId, [1, 0], [2, 1], `f${i + 1}`, p));
+
+  it('counts the run of pointless matches ending now', () => {
+    const card = worstFormCard(
+      [...everyFixture('u1', [2, 0, 0]), ...everyFixture('u2', [0, 0, 1])],
+      threePlayed,
+      'en',
+    );
+    expect(card?.title).toBe('Worst form');
+    expect(card?.statistic).toBe('**Alice** has gone 2 matches without gaining a single point!');
+    expect(card?.subjects.map(s => s.id)).toEqual(['u1']);
+  });
+
+  it('leaves out a member who did not predict every match', () => {
+    const card = worstFormCard(
+      [
+        ...everyFixture('u1', [2, 0, 0]),
+        // Chris has three pointless matches, but only predicted two of them.
+        scored('u3', [1, 0], [2, 1], 'f2', 0),
+        scored('u3', [1, 0], [2, 1], 'f3', 0),
+      ],
+      threePlayed,
+      'en',
+    );
+    expect(card?.subjects.map(s => s.id)).toEqual(['u1']);
+  });
+
+  it('is null on a drought of one, which is an afternoon rather than a run', () => {
+    expect(worstFormCard(everyFixture('u1', [1, 1, 0]), threePlayed, 'en')).toBeNull();
+    expect(worstFormCard([], null, 'en')).toBeNull();
+    expect(worstFormCard([], progression([]), 'en')).toBeNull();
+  });
+
+  it('translates the title and the statistic', () => {
+    const rows = everyFixture('u1', [1, 0, 0]);
+    expect(worstFormCard(rows, threePlayed, 'no')).toMatchObject({
+      title: 'Send Hjelp',
+      statistic: '**Alice** har gått 2 kamper på rad uten å sanke et eneste poeng!',
+    });
+    expect(worstFormCard(rows, threePlayed, 'de')).toMatchObject({
+      title: 'Hilfe senden',
+      statistic:
+        '**Alice** hat 2 Spiele in Folge keinen einzigen Punkt geholt! Bitte ruft professionelle Hilfe!',
+    });
+  });
+});
+
+describe('theClimberCard and theFallerCard', () => {
+  /** Eleven milestones: Chris comes from bottom to top, Alice goes the other way. */
+  const turnaround = progression([
+    { u1: 10, u2: 5, u3: 1 },
+    ...Array.from({ length: 9 }, () => ({ u1: 10, u2: 5, u3: 1 })),
+    { u1: 5, u2: 15, u3: 20 },
+  ]);
+
+  it('names who has climbed the most places over the last ten', () => {
+    const card = theClimberCard(turnaround, 'en');
+    expect(card?.title).toBe('The Climber');
+    expect(card?.statistic).toBe(
+      '**Chris** has climbed 2 spots on the leaderboard over the last 10 games!',
+    );
+    expect(card?.subjects.map(s => s.id)).toEqual(['u3']);
+  });
+
+  it('names who has dropped the most over the same ten', () => {
+    const card = theFallerCard(turnaround, 'en');
+    expect(card?.title).toBe("I'm falling!");
+    expect(card?.statistic).toBe(
+      '**Alice** has dropped 2 spots on the leaderboard over the last 10 games!',
+    );
+    expect(card?.subjects.map(s => s.id)).toEqual(['u1']);
+  });
+
+  it('needs eleven milestones, and a move of at least two places', () => {
+    const tooShort = progression(Array.from({ length: 10 }, () => ({ u1: 10, u2: 5, u3: 1 })));
+    expect(theClimberCard(tooShort, 'en')).toBeNull();
+    expect(theFallerCard(tooShort, 'en')).toBeNull();
+
+    const oneSpot = progression([
+      { u1: 10, u2: 5, u3: 1 },
+      ...Array.from({ length: 9 }, () => ({ u1: 10, u2: 5, u3: 1 })),
+      { u1: 10, u2: 12, u3: 1 },
+    ]);
+    expect(theClimberCard(oneSpot, 'en')).toBeNull();
+    expect(theFallerCard(oneSpot, 'en')).toBeNull();
+
+    expect(theClimberCard(null, 'en')).toBeNull();
+    expect(theFallerCard(null, 'en')).toBeNull();
+  });
+
+  it('translates the titles and the statistics', () => {
+    expect(theClimberCard(turnaround, 'no')).toMatchObject({
+      title: 'Det klatres!',
+      statistic: '**Chris** har klatret 2 plasser på tabellen de siste 10 kampene!',
+    });
+    expect(theClimberCard(turnaround, 'de')).toMatchObject({
+      title: 'Der Aufsteiger',
+      statistic: '**Chris** ist in den letzten 10 Spielen um 2 Plätze aufgestiegen!',
+    });
+    expect(theFallerCard(turnaround, 'no')).toMatchObject({
+      title: 'Rett åt skogen',
+      statistic: '**Alice** har falt 2 plasser på tabellen de siste 10 kampene!',
+    });
+    expect(theFallerCard(turnaround, 'de')).toMatchObject({
+      title: 'Tabellenabsteiger',
+      statistic: '**Alice** ist in den letzten 10 Spielen um 2 Plätze abgefallen!',
+    });
+  });
+});
+
+describe('mostUnexpectedResultCard', () => {
+  const twoPlayed = progression([{}, {}]);
+
+  it('names the result nobody had, and the worst of the predictions against it', () => {
+    const card = mostUnexpectedResultCard(
+      [
+        // f1 — Arsenal beat Bayern 3-0 and both of them backed Bayern.
+        scored('u1', [0, 4], [3, 0], 'f1'),
+        scored('u2', [1, 2], [3, 0], 'f1'),
+        // f2 — also unforeseen, but by less.
+        scored('u1', [2, 0], [1, 1], 'f2'),
+        scored('u2', [0, 3], [1, 1], 'f2'),
+      ],
+      teams,
+      twoPlayed,
+      'en',
+    );
+    expect(card?.title).toBe('Most unexpected result');
+    expect(card?.statistic).toBe(
+      'No one predicted Arsenal to beat Bayern! **Alice** even predicted Bayern to beat Arsenal (0 - 4)!',
+    );
+    expect(card?.subjects).toEqual([
+      { type: 'team', id: 't2', name: 'Arsenal', imageUrl: '/api/images/arsenal.png' },
+      { type: 'team', id: 't1', name: 'Bayern', imageUrl: '/api/images/bayern.png' },
+    ]);
+  });
+
+  it('skips a fixture somebody called the winner of', () => {
+    const card = mostUnexpectedResultCard(
+      [
+        scored('u1', [0, 4], [3, 0], 'f1'),
+        scored('u2', [1, 0], [3, 0], 'f1'),
+        scored('u1', [0, 3], [1, 1], 'f2'),
+        scored('u2', [2, 0], [1, 1], 'f2'),
+      ],
+      teams,
+      twoPlayed,
+      'en',
+    );
+    expect(card?.statistic).toContain('Bayern');
+    expect(card?.statistic).toContain('draw');
+  });
+
+  it('names the biggest group who made the same wrong call', () => {
+    const card = mostUnexpectedResultCard(
+      [
+        scored('u1', [1, 5], [3, 0], 'f1'),
+        scored('u2', [0, 4], [3, 0], 'f1'),
+        scored('u3', [0, 4], [3, 0], 'f1'),
+      ],
+      teams,
+      twoPlayed,
+      'en',
+    );
+    expect(card?.statistic).toBe(
+      'No one predicted Arsenal to beat Bayern! **Bob** and **Chris** even predicted Bayern to beat Arsenal (0 - 4)!',
+    );
+  });
+
+  it('keeps the earlier fixture when two are level', () => {
+    const card = mostUnexpectedResultCard(
+      [scored('u1', [0, 4], [3, 0], 'f1'), scored('u2', [4, 0], [0, 3], 'f2')],
+      teams,
+      twoPlayed,
+      'en',
+    );
+    expect(card?.subjects.map(s => s.id)).toEqual(['t2', 't1']);
+  });
+
+  it('is null without a chart, or while every result was foreseen', () => {
+    expect(mostUnexpectedResultCard([], teams, null, 'en')).toBeNull();
+    expect(
+      mostUnexpectedResultCard([scored('u1', [1, 0], [3, 0], 'f1')], teams, twoPlayed, 'en'),
+    ).toBeNull();
+  });
+
+  it('translates the title and the statistic', () => {
+    const rows = [scored('u1', [0, 4], [3, 0], 'f1')];
+    expect(mostUnexpectedResultCard(rows, teams, twoPlayed, 'no')).toMatchObject({
+      title: 'Sjokkresultat',
+      statistic:
+        'Ingen tippet at Arsenal slo Bayern! **Alice** tippet til og med at Bayern slo Arsenal (0-4)!',
+    });
+    expect(mostUnexpectedResultCard(rows, teams, twoPlayed, 'de')).toMatchObject({
+      title: 'Schockresultat',
+      statistic:
+        'Niemand hat dass Arsenal gegen Bayern gewinnt vorhergesagt! **Alice** hat sogar dass Bayern gegen Arsenal gewinnt (0-4) getippt!',
+    });
+  });
+});
+
+describe('mostExpectedResultCard', () => {
+  const twoPlayed = progression([{}, {}]);
+
+  const obvious = [
+    // f1 — Arsenal 2-1 Bayern, and all three of them had the winner.
+    scored('u1', [2, 1], [2, 1], 'f1'),
+    scored('u2', [1, 0], [2, 1], 'f1'),
+    scored('u3', [3, 0], [2, 1], 'f1'),
+    // f2 — a draw one of them saw.
+    scored('u1', [0, 0], [1, 1], 'f2'),
+    scored('u2', [2, 0], [1, 1], 'f2'),
+  ];
+
+  it('names the fixture the league saw coming, and what it paid', () => {
+    const card = mostExpectedResultCard(obvious, teams, twoPlayed, scoringConfig, 'en');
+    expect(card?.title).toBe('The most expected result');
+    expect(card?.statistic).toBe(
+      'Arsenal vs Bayern (2 - 1) was the most predictable outcome! A total of 3 users predicted the correct result, and 1 of those predicted the exact score! Each user scored on average 2.33 points.' +
+        ' Still **Chris** earned only 1 point.',
+    );
+    expect(card?.subjects.map(s => s.id)).toEqual(['t2', 't1']);
+  });
+
+  it('points out whoever came away with nothing, ahead of whoever got one', () => {
+    const card = mostExpectedResultCard(
+      [...obvious, scored('u2', [0, 3], [2, 1], 'f1')],
+      teams,
+      twoPlayed,
+      scoringConfig,
+      'en',
+    );
+    expect(card?.statistic).toContain(' Still **Bob** earned 0 points.');
+    expect(card?.statistic).not.toContain('only 1 point');
+  });
+
+  it('ranks on the tiers, so a multiplied fixture cannot buy the card', () => {
+    const card = mostExpectedResultCard(
+      [
+        ...obvious,
+        // One member, one correct outcome, but a x3 fixture paying nine points.
+        scored('u1', [1, 0], [2, 0], 'f3', 9),
+      ],
+      teams,
+      twoPlayed,
+      scoringConfig,
+      'en',
+    );
+    expect(card?.statistic).toContain('Arsenal vs Bayern (2 - 1)');
+  });
+
+  it('is null without a chart, or while nobody has called a winner', () => {
+    expect(mostExpectedResultCard([], teams, null, scoringConfig, 'en')).toBeNull();
+    expect(
+      mostExpectedResultCard(
+        [scored('u1', [0, 4], [3, 0], 'f1')],
+        teams,
+        twoPlayed,
+        scoringConfig,
+        'en',
+      ),
+    ).toBeNull();
+  });
+
+  it('translates the title and the statistic', () => {
+    expect(mostExpectedResultCard(obvious, teams, twoPlayed, scoringConfig, 'no')).toMatchObject({
+      title: 'Forventet resultat',
+      statistic:
+        'Arsenal mot Bayern (2-1) var det mest forutsigbare resultatet! Totalt tippet 3 spillere riktig resultat, og 1 av dem tippet eksakt resultat! Hver spiller sanket i snitt 2.33 poeng. Likevel sanket **Chris** bare 1 poeng.',
+    });
+    expect(mostExpectedResultCard(obvious, teams, twoPlayed, scoringConfig, 'de')).toMatchObject({
+      title: 'Na klar!',
+      statistic:
+        'Arsenal gegen Bayern (2-1) — so offensichtlich, dass sogar ein Blindgänger es hätte tippen können! 3 Leute lagen richtig, 1 davon sogar mit exaktem Ergebnis. Im Schnitt 2.33 Punkte pro Person. Und trotzdem hat **Chris** nur 1 Punkt geholt. Traurig.',
+    });
   });
 });
 
@@ -851,6 +1219,7 @@ describe('buildLiveUserStats', () => {
     players,
     scoredPredictions: [],
     progression: null,
+    scoringConfig,
     scorerNationalities: null,
   };
 
@@ -864,6 +1233,7 @@ describe('buildLiveUserStats', () => {
           players,
           scoredPredictions: [],
           progression: null,
+          scoringConfig,
           scorerNationalities: null,
         },
         'en',
@@ -892,23 +1262,24 @@ describe('buildLiveUserStats', () => {
     ).toEqual(['peoplesFavourite', 'woodenSpoon']);
   });
 
-  it('opens with the leader, then the member pair, then the prediction pair', () => {
+  it('runs leaderboard cards first, then the rankings, then the predictions', () => {
     expect(
       buildLiveUserStats(
         {
           ...all,
-          progression: progression([{ u1: 3, u2: 1 }]),
           scoredPredictions: [
             scored('u1', [1, 0], [1, 0], 'f1'),
             scored('u1', [2, 0], [3, 1], 'f2'),
             scored('u2', [0, 3], [1, 0], 'f1'),
           ],
+          progression: progression([{ u1: 3, u2: 1 }]),
           scorerNationalities: snapshot({ Norway: { goals: 3, players: 2 } }),
         },
         'en',
       ).map(c => c.id),
     ).toEqual([
       'theLeader',
+      'bestForm',
       'peoplesFavourite',
       'woodenSpoon',
       'goldenBoot',
@@ -917,6 +1288,7 @@ describe('buildLiveUserStats', () => {
       'almost',
       'bestPrediction',
       'worstPrediction',
+      'mostPredictableResult',
       'norwegianGoals',
     ]);
   });
@@ -1006,6 +1378,7 @@ describe('nationalityGoalsCard', () => {
       players,
       scoredPredictions: [],
       progression: null,
+      scoringConfig,
     };
     expect(buildLiveUserStats({ ...base, scorerNationalities: null }, 'en').map(c => c.id)).toEqual([
       'peoplesFavourite',
@@ -1031,6 +1404,7 @@ describe('nationalityGoalsCard', () => {
           players,
           scoredPredictions: [],
           progression: null,
+          scoringConfig,
           scorerNationalities: snapshot({ Norway: { goals: 3, players: 2 } }),
         },
         'en',

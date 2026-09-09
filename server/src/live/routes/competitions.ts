@@ -691,6 +691,7 @@ liveCompetitionsRouter.get('/competitions/:id/user-stats', requireAuth, async (r
             predictedAway: livePredictions.awayScore,
             actualHome: liveFixtures.normalTimeHome,
             actualAway: liveFixtures.normalTimeAway,
+            points: livePredictions.points,
           })
           .from(livePredictions)
           .innerJoin(liveFixtures, eq(liveFixtures.id, livePredictions.liveFixtureId))
@@ -723,14 +724,16 @@ liveCompetitionsRouter.get('/competitions/:id/user-stats', requireAuth, async (r
           teams,
           scorerPredictions,
           players,
-          // The two isNotNull filters above are what make these assertions safe: Drizzle
-          // types a joined nullable column as nullable whatever the WHERE clause says.
+          // The three isNotNull filters above are what make these assertions safe:
+          // Drizzle types a nullable column as nullable whatever the WHERE clause says.
           scoredPredictions: scoredPredictions.map(p => ({
             ...p,
             actualHome: p.actualHome!,
             actualAway: p.actualAway!,
+            points: p.points!,
           })),
           progression,
+          scoringConfig: withLiveScoringDefaults(competition.scoringConfig),
           // Already on the row this route loaded, so the nationality card costs no query.
           scorerNationalities: tournament.scorerNationalities ?? null,
         },
