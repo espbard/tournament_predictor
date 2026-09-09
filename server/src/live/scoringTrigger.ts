@@ -406,6 +406,34 @@ export async function scoreLiveScorerPredictions(
 }
 
 /**
+ * The sync tick's hand-off for goal counts: re-score the rankings, then tell watchers.
+ *
+ * The companion to applySyncResult, and deliberately a separate one — goals move on a
+ * different event from scores. A fixture reaching full time is what makes a *prediction*
+ * scorable; it is also what moves a striker's tally, but those two land in different
+ * tables and reach the page through different queries.
+ *
+ * Re-scoring is unconditional rather than gated on the tournament being completed, because
+ * scoreLiveScorerPredictions already owns that rule — checking the status here as well is
+ * how the two would eventually disagree. Before completion the call is the cheap clearing
+ * branch, and `scorers-updated` is still pushed: the ranking every user is watching has
+ * moved even though nobody's points have.
+ */
+export async function applyScorerRefresh(tournamentId: string): Promise<ScoreFixturesResult> {
+  const result = await scoreLiveScorerPredictions(tournamentId);
+  if (result.affectedCompetitionIds.length === 0) return result;
+
+  notifyLiveCompetitions(result.affectedCompetitionIds, 'scorers-updated');
+  // Only once points actually moved — which is only ever after completion. A goal counted
+  // during the season changes nobody's total, and refetching every leaderboard for it
+  // would be a request per client per goal for an identical answer.
+  if (result.scoredPredictions > 0) {
+    notifyLiveCompetitions(result.affectedCompetitionIds, 'leaderboard-updated');
+  }
+  return result;
+}
+
+/**
  * Rebuild one competition's scores from scratch.
  *
  * Needed whenever scoringConfig changes, since stored points were computed under the old

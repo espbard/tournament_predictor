@@ -551,6 +551,11 @@ work. Three things make that true rather than merely intended:
   once is not enough if the process restarted at the wrong moment — or if a competition was
   created on a tournament whose matches were already played. Every tick also asks the plainer
   question: is there a finished fixture with a prediction that has no points?
+- **Goal counts follow the full-time whistle, not the six-hourly structure sync.** A fixture
+  finishing is the only thing that can move a striker's tally, so `shouldRefreshScorers()` asks
+  the provider for the scorer feed exactly then, and `applyScorerRefresh()` re-scores the ranking
+  and pushes `scorers-updated`. The structure sync's own refresh stays as the backstop. See
+  §17 of the plan.
 
 `GET /api/live/sync/status` reports whether the sync is running, when it last woke up and when
 each tournament is next polled; `PATCH /api/live/sync/settings` is the toggle. Both admin-only,

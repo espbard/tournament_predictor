@@ -982,21 +982,9 @@ export async function syncTournamentStructure(tournamentId: string): Promise<Syn
       );
     }
 
-    // Also best-effort: the scorer list is a separate resource that a provider may not
-    // serve at all, and the top-scorer ranking falls back to hand-entered goals when it
-    // does not. Losing the fixtures and standings over it would be absurd.
-    //
-    // Refresh only. The shortlist is built by an admin searching for players, so a sync
-    // has no business adding anybody to it.
-    try {
-      const players = await refreshLivePlayerGoals(tournament.id);
-      result.scorersSynced = players.updated + players.adopted;
-    } catch (err) {
-      console.warn(
-        `[live-sync] ${tournament.id}: scorer list skipped:`,
-        err instanceof Error ? err.message : err,
-      );
-    }
+    // Last, and best-effort — see syncLiveScorers. This is the backstop: whatever else
+    // happens, a tournament's goal counts are never more than one structure sync old.
+    result.scorersSynced = await syncLiveScorers(tournament.id);
 
     await recordSyncOutcome(tournament.id, 'structure', null);
     return result;
@@ -1006,6 +994,35 @@ export async function syncTournamentStructure(tournamentId: string): Promise<Syn
     if (!seasonUnavailable) throw err;
     result.seasonUnavailable = true;
     return result;
+  }
+}
+
+/**
+ * Refresh the shortlisted players' goals and assists from the provider's scorer feed, and
+ * report how many rows moved.
+ *
+ * One provider request, and best-effort by design: the scorer list is a separate resource
+ * that a provider may not serve at all, and the top-scorer ranking falls back to
+ * hand-entered goals when it does not. Losing the fixtures and standings over it would be
+ * absurd, so a failure is logged and reported as zero rather than thrown.
+ *
+ * Refresh only. The shortlist is built by an admin searching for players, so a sync has no
+ * business adding anybody to it.
+ *
+ * Its own function, and exported, because the structure sync is no longer the only caller:
+ * the scheduler also asks for a refresh the moment a fixture reaches full time, which is
+ * the only event that can actually move a goal count. See scheduler.ts.
+ */
+export async function syncLiveScorers(tournamentId: string): Promise<number> {
+  try {
+    const players = await refreshLivePlayerGoals(tournamentId);
+    return players.updated + players.adopted;
+  } catch (err) {
+    console.warn(
+      `[live-sync] ${tournamentId}: scorer list skipped:`,
+      err instanceof Error ? err.message : err,
+    );
+    return 0;
   }
 }
 

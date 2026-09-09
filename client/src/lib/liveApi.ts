@@ -643,6 +643,8 @@ export const liveKeys = {
     ['live', 'leaderboard-progression', competitionId] as const,
   userStats: (competitionId: string, lang: string) =>
     ['live', 'user-stats', competitionId, lang] as const,
+  /** Prefix of the stat cards in every language — a goal refresh moves all of them. */
+  allUserStats: (competitionId: string) => ['live', 'user-stats', competitionId] as const,
   tablePrediction: (competitionId: string) => ['live', 'table-prediction', competitionId] as const,
   scorerPrediction: (competitionId: string) =>
     ['live', 'scorer-prediction', competitionId] as const,

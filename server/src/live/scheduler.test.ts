@@ -5,6 +5,7 @@ import {
   planTick,
   resolveSyncEnabled,
   resolveSyncEnabledFromEnv,
+  shouldRefreshScorers,
   type SchedulableTournament,
 } from './scheduler';
 
@@ -316,5 +317,34 @@ describe('resolveSyncEnabled', () => {
       reason: 'env-off',
       override: true,
     });
+  });
+});
+
+describe('shouldRefreshScorers', () => {
+  const quiet = { newlyFinishedFixtureIds: [], seasonUnavailable: false };
+  const finished = { newlyFinishedFixtureIds: ['f1'], seasonUnavailable: false };
+
+  // The whole point: a goal count now follows the full-time whistle rather than the
+  // six-hourly structure sync that is also the lowest-priority job in the plan.
+  it('refreshes after a window sync that finished a fixture', () => {
+    expect(shouldRefreshScorers('window', finished)).toBe(true);
+  });
+
+  // Goals cannot move except by being scored, so asking at any other moment spends a
+  // request from a ten-a-minute budget to be told nothing changed.
+  it('does not refresh on a window sync where nothing finished', () => {
+    expect(shouldRefreshScorers('window', quiet)).toBe(false);
+  });
+
+  // A structure sync has already refreshed the goals itself — see syncLiveScorers.
+  it('never refreshes after a structure sync, which has done it already', () => {
+    expect(shouldRefreshScorers('structure', finished)).toBe(false);
+    expect(shouldRefreshScorers('structure', quiet)).toBe(false);
+  });
+
+  it('does not refresh from a season the provider has not published', () => {
+    expect(
+      shouldRefreshScorers('window', { newlyFinishedFixtureIds: ['f1'], seasonUnavailable: true }),
+    ).toBe(false);
   });
 });

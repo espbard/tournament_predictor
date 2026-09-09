@@ -2,8 +2,8 @@ import { and, eq, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client';
 import { appConfig } from '../db/schema';
 import { liveFixtures, liveTournaments } from '../db/liveSchema';
-import { applySyncResult } from './scoringTrigger';
-import { syncLiveWindow, syncTournamentStructure } from './sync';
+import { applyScorerRefresh, applySyncResult } from './scoringTrigger';
+import { syncLiveScorers, syncLiveWindow, syncTournamentStructure, type SyncResult } from './sync';
 
 // ── Sync scheduler ────────────────────────────────────────────────────────────
 //
@@ -268,6 +268,28 @@ export function planTick(
 }
 
 /**
+ * Whether this finished job should be followed by a scorer refresh.
+ *
+ * Goal counts used to ride along with the structure sync alone, which is planned once its
+ * last one is six hours old and is ranked *below* every job with a match in it — so on a
+ * busy weekend the top-scorer tab could sit half a day behind a scoreline the same page
+ * was updating every minute.
+ *
+ * Polling harder would be the obvious fix and the wrong one: goals cannot move except by
+ * being scored, so the full-time whistle is the signal, and asking at any other moment
+ * spends a request from a ten-a-minute budget to be told nothing changed. A structure job
+ * is excluded because it has already refreshed the goals itself, and a season the provider
+ * has not published has nothing to refresh from.
+ */
+export function shouldRefreshScorers(
+  kind: PlannedSync['kind'],
+  result: Pick<SyncResult, 'newlyFinishedFixtureIds' | 'seasonUnavailable'>,
+): boolean {
+  if (kind === 'structure' || result.seasonUnavailable) return false;
+  return result.newlyFinishedFixtureIds.length > 0;
+}
+
+/**
  * When this tournament is next due a sync, for the admin page.
  *
  * Never in the past: a tournament that is due now reads as "now" rather than as a
@@ -529,6 +551,26 @@ export async function tick(): Promise<PlannedSync[]> {
               `[live-sync] ${job.tournamentId}: scored ${scored.scoredPredictions} prediction(s) ` +
                 `across ${scored.affectedCompetitionIds.length} competition(s)`,
             );
+          }
+
+          // A fixture just reached full time, so somebody's tally may have moved.
+          //
+          // One request, deliberately outside the tick budget — planTick() would have to
+          // predict a full-time whistle before the sync that discovers it. The worst case
+          // is one extra request per planned job, i.e. every tournament in a tick finishing
+          // a fixture in the same 30 seconds; uncapped on purpose, because a cap would defer
+          // those goals to the six-hourly structure sync, and the transition that would have
+          // asked for them fires exactly once. The overspend degrades into a 429 that
+          // syncLiveScorers swallows, which the next whistle or that backstop then corrects.
+          const scorersMoved = shouldRefreshScorers(job.kind, result)
+            ? await syncLiveScorers(job.tournamentId)
+            : result.scorersSynced;
+
+          if (scorersMoved > 0) {
+            // Re-score and push. Before the tournament is completed this awards nothing —
+            // it moves the ranking users are watching, which is its own SSE event.
+            await applyScorerRefresh(job.tournamentId);
+            console.log(`[live-sync] ${job.tournamentId}: ${scorersMoved} player tally(s) updated`);
           }
         } catch (err) {
           // One tournament failing must not stop the others. The message is already

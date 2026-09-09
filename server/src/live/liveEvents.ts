@@ -7,11 +7,18 @@ import type { Response } from 'express';
 // free to grow apart, and the live type pushes fixture updates as well as leaderboard
 // ones because scores arrive on their own rather than when an admin types them in.
 //
+// `scorers-updated` is the third because goal counts move on their own clock: they change
+// when a match reaches full time rather than when a prediction is scored, and until the
+// tournament is completed they move the *ranking* every user is watching without moving
+// anybody's points. Folding them into `leaderboard-updated` would have made every goal
+// refetch the leaderboard for nothing, and folding them into `fixtures-updated` would have
+// refetched them on every scoreline change.
+//
 // Connections live in process memory, so a second replica would only reach its own
 // clients. That is the same limitation the manual type already has, and it is acceptable
 // while this deploys as a single Railway service.
 
-export type LiveEventName = 'fixtures-updated' | 'leaderboard-updated';
+export type LiveEventName = 'fixtures-updated' | 'leaderboard-updated' | 'scorers-updated';
 
 const connections = new Map<string, Set<Response>>();
 
