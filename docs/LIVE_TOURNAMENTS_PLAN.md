@@ -1134,7 +1134,7 @@ Mounted as `app.use('/api/live', liveRouter)` in `server/src/index.ts`.
 | GET | `/competitions/:id/members` | auth |
 | GET | `/competitions/:id/leaderboard` | auth |
 | GET | `/competitions/:id/leaderboard-progression?lang=` | auth (member) — running totals per played fixture, in the manual type's `LeaderboardProgressionResponse` shape |
-| GET | `/competitions/:id/user-stats?lang=` | auth (member) **+ test account or admin** — the stat-card deck, worded server-side |
+| GET | `/competitions/:id/user-stats?lang=` | auth (member) — the stat-card deck, worded server-side |
 | GET | `/competitions/:id/events` | auth — SSE: `fixtures-updated`, `leaderboard-updated`, `scorers-updated` |
 | GET | `/competitions/:id/fixtures` | auth — **main read model**: fixtures for a stage/matchday + caller's prediction + `lockedAt` + `isLocked` + `isSelected` + awarded points, in one call |
 | PUT | `/competitions/:id/predictions` | auth — upsert one `{fixtureId, homeScore, awayScore}`; rejects a fixture left out of its gameweek's selected matches |
@@ -1222,7 +1222,7 @@ Components under `client/src/components/live/`:
 `CompetitionDetailPage` does — including navigating from the navbar rather than an in-page tab
 bar. Its sections fall under the navbar's two dropdowns: **Predictions** (Fixtures · Table
 prediction · Top scorers · Bonus questions) and **Results** (Table · Leaderboard · Point
-progression, plus Stats for test accounts). No knockout tab, no bracket, no group-position tab.
+progression, plus Stats). No knockout tab, no bracket, no group-position tab.
 
 The Fixtures tab is driven by the format, not hardcoded:
 
@@ -1687,7 +1687,7 @@ Two more stat cards, and the first about the members rather than what they predi
 | …but the rows they read are still selected by `points IS NOT NULL` | That is the leaderboard's and the progression chart's own test for "counts in the game", written by the scoring trigger: a fixture the admin left out of its gameweek is already excluded, and one that scored before being moved back to postponed still counts. Re-deriving that rule here is how the cards would eventually disagree with the leaderboard above them |
 | `UserStatSubject.type` gained no new value — both cards use the existing `'user'` | It already means "a photograph, cropped to fill", which is what a member is. `LiveUserStatCard` only had to learn that `'user'` takes the photograph branch, and to fall back to `UserAvatar` — the initial on `iconColor` — for a member with no picture |
 | Ties are shown rather than broken, and a member with nothing to their name is simply absent — no exact scoreline for "Spot on", no right margin for "Almost" | Both match the cards already in the deck: `countEnd` shows a tie, and a card that can name nobody returns null instead of printing a zero |
-| Both cards live behind the same test-account gate as the rest of `/user-stats`, and cost the route one shared query | The deck is still a preview, and the pair reads the same rows — there is no second query to add when a third member card follows |
+| Both cards read the same rows and cost the route one shared query | There is no second query to add when a third member card follows |
 
 ---
 
@@ -1846,7 +1846,20 @@ its sentence now ends on the claim rather than on the arithmetic:
 
 ---
 
-## 26. References
+## 26. The deck opens to the league *(added after the six phases, on request)*
+
+`/competitions/:id/user-stats` no longer refuses everyone but admins and test accounts, and
+the Stats entry is offered to every member.
+
+| Decision | Why |
+|---|---|
+| Membership is still checked | It is somebody's league, and every card is about that competition |
+| Nothing in the deck had to be redacted first | Each card is built from what the other views already show a member: the leaderboard and its progression, the table and top-scorer rankings, each other's predictions and bonus answers. Bonus **points** are the one thing withheld until a tournament completes, and no card prints them |
+| Three gates came out, not one | The route's check, the page's redirect back to the fixtures, and the navbar entry — a client that offered a tab the server refused was the reason the last two existed |
+
+---
+
+## 27. References
 
 - [2026/27 Champions League: teams, dates, draws, format](https://www.uefa.com/uefachampionsleague/news/02a6-20d57cfcd03e-407c22a7f465-1000--2026-27-champions-league-teams-dates-draws-format-final/)
 - [UEFA confirms date for the 2026/27 Champions League league phase draw](https://www.besoccer.com/new/uefa-confirms-date-for-the-202627-champions-league-league-phase-draw-1421299)

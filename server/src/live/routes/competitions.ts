@@ -589,14 +589,14 @@ liveCompetitionsRouter.get(
  * User statistics — the same card deck the manual competition type has, built from live
  * data.
  *
- * Test accounts and admins only while the deck is shallow.
+ * Open to the league. Every card is about the competition the caller is a member of, and
+ * none of them prints anything the other views do not: the leaderboard, the rankings and
+ * each other's predictions are already open, and the bonus points that are not stay out
+ * of the deck.
  */
 liveCompetitionsRouter.get('/competitions/:id/user-stats', requireAuth, async (req, res) => {
   try {
     const user = res.locals.user;
-    if (!user.isAdmin && !user.isTestAccount) {
-      return res.status(403).json({ error: 'Not available' });
-    }
     if (!(await assertMember(req.params.id, user))) {
       return res.status(403).json({ error: 'Not a member of this competition' });
     }
