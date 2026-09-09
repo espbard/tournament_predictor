@@ -565,7 +565,9 @@ describe('peoplesFavouriteCard', () => {
       teams,
       'en',
     );
-    expect(card?.statistic).toBe('**Bayern** tops the table in **2** of **3** predictions.');
+    expect(card?.statistic).toBe(
+      "**Bayern** are the people's favourite! **2** of **3** have them top of their table prediction.",
+    );
     expect(card?.subjects).toEqual([
       { type: 'team', id: 't1', name: 'Bayern', imageUrl: '/api/images/bayern.png' },
     ]);
@@ -573,7 +575,9 @@ describe('peoplesFavouriteCard', () => {
 
   it('shows every team of a tie, by name, and drops the icon', () => {
     const card = peoplesFavouriteCard([pick('u1', 't1'), pick('u2', 't2')], teams, 'en');
-    expect(card?.statistic).toBe('**Arsenal and Bayern** each top the table in **1** of **2** predictions.');
+    expect(card?.statistic).toBe(
+      "**Arsenal and Bayern** are the people's favourites! **1** of **2** have each of them top of their table prediction.",
+    );
     expect(card?.subjects.map(s => s.id)).toEqual(['t2', 't1']);
   });
 
@@ -592,7 +596,9 @@ describe('peoplesFavouriteCard', () => {
       teams,
       'en',
     );
-    expect(card?.statistic).toBe('**Bayern** tops the table in **2** of **2** predictions.');
+    expect(card?.statistic).toBe(
+      "**Bayern** are the people's favourite! **2** of **2** have them top of their table prediction.",
+    );
   });
 
   it('is null with no predictions, an empty order, or only dropped teams', () => {
@@ -605,11 +611,13 @@ describe('peoplesFavouriteCard', () => {
     const rows = [pick('u1', 't1'), pick('u2', 't1')];
     expect(peoplesFavouriteCard(rows, teams, 'no')).toMatchObject({
       title: 'Folkefavoritten',
-      statistic: '**Bayern** er tippet øverst på tabellen i **2** av **2** tabelltips.',
+      statistic:
+        '**Bayern** er folkets favoritt! **2** av **2** har tippet dem øverst på tabelltipset.',
     });
     expect(peoplesFavouriteCard(rows, teams, 'de')).toMatchObject({
       title: 'Der Publikumsliebling',
-      statistic: '**Bayern** steht in **2** von **2** Tabellentipps ganz oben.',
+      statistic:
+        '**Bayern** ist der Publikumsliebling! **2** von **2** haben sie ganz oben im Tabellentipp.',
     });
     expect(peoplesFavouriteCard(rows, teams, 'en')?.title).toBe("The people's favourite");
   });
@@ -628,13 +636,17 @@ describe('woodenSpoonCard', () => {
       teams,
       'en',
     );
-    expect(card?.statistic).toBe('**Barcelona** finishes bottom in **2** of **3** predictions.');
+    expect(card?.statistic).toBe(
+      'Nobody believes in **Barcelona**! **2** of **3** have them finishing dead last.',
+    );
     expect(card?.subjects.map(s => s.id)).toEqual(['t3']);
   });
 
   it('shows every team of a tie', () => {
     const card = woodenSpoonCard([pick('u1', 't1', 't3'), pick('u2', 't3', 't2')], teams, 'en');
-    expect(card?.statistic).toBe('**Arsenal and Barcelona** each finish bottom in **1** of **2** predictions.');
+    expect(card?.statistic).toBe(
+      'Nobody believes in **Arsenal and Barcelona**! **1** of **2** have each of them finishing dead last.',
+    );
   });
 
   it('counts the same team at both ends of a one-team order', () => {
@@ -648,7 +660,9 @@ describe('woodenSpoonCard', () => {
       teams,
       'en',
     );
-    expect(card?.statistic).toBe('**Barcelona** finishes bottom in **2** of **2** predictions.');
+    expect(card?.statistic).toBe(
+      'Nobody believes in **Barcelona**! **2** of **2** have them finishing dead last.',
+    );
   });
 
   it('is null with no predictions or only dropped teams', () => {
@@ -660,14 +674,16 @@ describe('woodenSpoonCard', () => {
   it('translates the title and the statistic', () => {
     const rows = [pick('u1', 't1', 't3'), pick('u2', 't2', 't3')];
     expect(woodenSpoonCard(rows, teams, 'no')).toMatchObject({
-      title: 'Bunnfavoritten',
-      statistic: '**Barcelona** er tippet sist i **2** av **2** tabelltips.',
+      title: 'Bunnslammet',
+      statistic:
+        'Ingen har trua på **Barcelona**! **2** av **2** har tippet at de ender helt sist på tabellen.',
     });
     expect(woodenSpoonCard(rows, teams, 'de')).toMatchObject({
-      title: 'Das Schlusslicht',
-      statistic: '**Barcelona** steht in **2** von **2** Tabellentipps ganz unten.',
+      title: 'Der Bodensatz',
+      statistic:
+        'Niemand glaubt an **Barcelona**! **2** von **2** tippen sie auf den letzten Tabellenplatz.',
     });
-    expect(woodenSpoonCard(rows, teams, 'en')?.title).toBe('The wooden spoon');
+    expect(woodenSpoonCard(rows, teams, 'en')?.title).toBe('The bottom of the barrel');
   });
 });
 
@@ -724,7 +740,7 @@ describe('goalDroughtCard', () => {
       'en',
     );
     expect(card?.statistic).toBe(
-      '**Mbappé** finishes last on the scorer list in **2** of **3** rankings.',
+      'Expectations are low for **Mbappé**. **2** of **3** have him scoring the fewest goals on the top-scorer list.',
     );
   });
 
@@ -735,21 +751,23 @@ describe('goalDroughtCard', () => {
       'en',
     );
     expect(card?.statistic).toBe(
-      '**Mbappé** finishes last on the scorer list in **2** of **2** rankings.',
+      'Expectations are low for **Mbappé**. **2** of **2** have him scoring the fewest goals on the top-scorer list.',
     );
   });
 
   it('translates the title and the statistic', () => {
     const rows = [rank('u1', 'p1', 'p3'), rank('u2', 'p2', 'p3')];
     expect(goalDroughtCard(rows, players, 'no')).toMatchObject({
-      title: 'Måltørken',
-      statistic: '**Mbappé** er tippet sist på toppscorerlisten i **2** av **2** lister.',
+      title: 'Null tillit',
+      statistic:
+        'Forventningene er lave for **Mbappé**. **2** av **2** har tippet at han scorer færrest mål på toppscorerlista.',
     });
     expect(goalDroughtCard(rows, players, 'de')).toMatchObject({
-      title: 'Die Torflaute',
-      statistic: '**Mbappé** steht in **2** von **2** Torjägerlisten ganz unten.',
+      title: 'Kein Vertrauen',
+      statistic:
+        'Die Erwartungen an **Mbappé** sind gering. **2** von **2** tippen ihn auf die wenigsten Tore der Torjägerliste.',
     });
-    expect(goalDroughtCard(rows, players, 'en')?.title).toBe('The goal drought');
+    expect(goalDroughtCard(rows, players, 'en')?.title).toBe('No confidence');
   });
 
   it('is null with no rankings', () => {
@@ -758,7 +776,7 @@ describe('goalDroughtCard', () => {
 });
 
 describe('spotOnCard', () => {
-  it('names the member with the most exact scorelines, and counts what they made', () => {
+  it('names the member with the most perfect scorelines, and the one with the fewest', () => {
     const card = spotOnCard(
       [
         scored('u1', [2, 1], [2, 1]),
@@ -766,35 +784,58 @@ describe('spotOnCard', () => {
         scored('u1', [0, 2], [3, 0]),
         scored('u2', [1, 0], [1, 0]),
         scored('u2', [3, 1], [1, 0]),
+        scored('u3', [2, 2], [0, 1]),
       ],
       'en',
     );
-    expect(card?.title).toBe('Spot on');
+    expect(card?.title).toBe('Holding the answer key');
     expect(card?.statistic).toBe(
-      '**Alice** has called **2** scorelines exactly, from **3** scored predictions.',
+      '**Alice** has predicted a full **2** perfect scorelines! **Chris** has the fewest with **0** perfect scorelines.',
     );
     expect(card?.subjects).toEqual([
       { type: 'user', id: 'u1', name: 'Alice', imageUrl: '/api/images/alice.png', iconColor: null },
     ]);
-    expect(card?.linkType).toBeNull();
   });
 
-  it('uses the singular for one scoreline and one prediction', () => {
-    expect(spotOnCard([scored('u1', [2, 1], [2, 1])], 'en')?.statistic).toBe(
-      '**Alice** has called **1** scoreline exactly, from **1** scored prediction.',
+  it('uses the singular at the trailing end too', () => {
+    expect(
+      spotOnCard(
+        [
+          scored('u1', [2, 1], [2, 1]),
+          scored('u1', [1, 1], [1, 1]),
+          scored('u2', [1, 0], [1, 0]),
+          scored('u2', [0, 2], [1, 0]),
+        ],
+        'en',
+      )?.statistic,
+    ).toBe(
+      '**Alice** has predicted a full **2** perfect scorelines! **Bob** has the fewest with **1** perfect scoreline.',
     );
   });
 
-  it('shows a tie in full, and drops a denominator that would belong to neither', () => {
+  it('drops the second sentence when everybody is level', () => {
+    expect(spotOnCard([scored('u1', [2, 1], [2, 1])], 'en')?.statistic).toBe(
+      '**Alice** has predicted a full **1** perfect scoreline!',
+    );
+    expect(
+      spotOnCard([scored('u1', [2, 1], [2, 1]), scored('u2', [1, 0], [1, 0])], 'en')?.statistic,
+    ).toBe('**Alice and Bob** have each predicted a full **1** perfect scoreline!');
+  });
+
+  it('shows a tie at either end in full', () => {
     const card = spotOnCard(
       [
         scored('u1', [2, 1], [2, 1]),
         scored('u1', [0, 0], [1, 2]),
         scored('u2', [1, 0], [1, 0]),
+        scored('u3', [2, 2], [0, 1]),
+        scored('u3', [1, 1], [0, 1]),
       ],
       'en',
     );
-    expect(card?.statistic).toBe('**Alice and Bob** have each called **1** scoreline exactly.');
+    expect(card?.statistic).toBe(
+      '**Alice and Bob** have each predicted a full **1** perfect scoreline! **Chris** has the fewest with **0** perfect scorelines.',
+    );
     expect(card?.subjects.map(s => s.id)).toEqual(['u1', 'u2']);
   });
 
@@ -811,30 +852,38 @@ describe('spotOnCard', () => {
   });
 
   it('translates the title and the statistic', () => {
-    const rows = [scored('u1', [2, 1], [2, 1]), scored('u1', [1, 1], [1, 1]), scored('u1', [0, 2], [3, 0])];
+    const rows = [
+      scored('u1', [2, 1], [2, 1]),
+      scored('u1', [1, 1], [1, 1]),
+      scored('u2', [3, 1], [1, 0]),
+    ];
     expect(spotOnCard(rows, 'no')).toMatchObject({
-      title: 'Blink',
-      statistic: '**Alice** har **2** eksakte resultater, av **3** tips med resultat.',
+      title: 'Sitter med fasiten i hånden',
+      statistic:
+        '**Alice** har tippet hele **2** perfekte resultater! **Bob** har færrest med **0** fulltreffere.',
     });
     expect(spotOnCard(rows, 'de')).toMatchObject({
-      title: 'Volltreffer',
-      statistic: '**Alice** hat **2** exakte Ergebnisse getippt, aus **3** gewerteten Tipps.',
+      title: 'Mit dem Lösungsblatt in der Hand',
+      statistic:
+        '**Alice** hat ganze **2** perfekte Ergebnisse getippt! **Bob** hat mit **0** perfekten Ergebnissen die wenigsten.',
     });
   });
 
   it('has singulars and a tie in the other two locales too', () => {
-    const one = [scored('u1', [2, 1], [2, 1])];
+    const one = [scored('u1', [2, 1], [2, 1]), scored('u2', [3, 1], [1, 0])];
     expect(spotOnCard(one, 'no')?.statistic).toBe(
-      '**Alice** har **1** eksakt resultat, av **1** tips med resultat.',
+      '**Alice** har tippet hele **1** perfekt resultat! **Bob** har færrest med **0** fulltreffere.',
     );
     expect(spotOnCard(one, 'de')?.statistic).toBe(
-      '**Alice** hat **1** exaktes Ergebnis getippt, aus **1** gewerteten Tipp.',
+      '**Alice** hat ganze **1** perfektes Ergebnis getippt! **Bob** hat mit **0** perfekten Ergebnissen die wenigsten.',
     );
 
     const tie = [scored('u1', [2, 1], [2, 1]), scored('u2', [1, 0], [1, 0])];
-    expect(spotOnCard(tie, 'no')?.statistic).toBe('**Alice og Bob** har **1** eksakt resultat hver.');
+    expect(spotOnCard(tie, 'no')?.statistic).toBe(
+      '**Alice og Bob** har tippet hele **1** perfekt resultat hver!',
+    );
     expect(spotOnCard(tie, 'de')?.statistic).toBe(
-      '**Alice und Bob** haben je **1** exaktes Ergebnis getippt.',
+      '**Alice und Bob** haben je ganze **1** perfektes Ergebnis getippt!',
     );
   });
 });
@@ -992,9 +1041,9 @@ describe('bestPredictionCard', () => {
       teams,
       'en',
     );
-    expect(card?.title).toBe('Best prediction');
+    expect(card?.title).toBe('How did you know?');
     expect(card?.statistic).toBe(
-      '**Alice** was the only one to predict **Arsenal 2-1 Bayern**. Nobody else had the goal difference, and only **1** other picked the winner.',
+      '**Alice** was the only one to predict the perfect score for **Arsenal 2-1 Bayern**! Only **1** other even had the right outcome!',
     );
     expect(card?.subjects).toEqual([
       { type: 'user', id: 'u1', name: 'Alice', imageUrl: '/api/images/alice.png', iconColor: null },
@@ -1008,7 +1057,7 @@ describe('bestPredictionCard', () => {
       'en',
     );
     expect(card?.statistic).toBe(
-      '**Alice** was the only one to predict **Arsenal 2-1 Bayern**, and nobody else so much as picked the winner.',
+      '**Alice** was the only one to predict the perfect score for **Arsenal 2-1 Bayern**! Nobody else even got the outcome of the match right!',
     );
   });
 
@@ -1018,12 +1067,12 @@ describe('bestPredictionCard', () => {
       scored('u2', [3, 2], [2, 1], 'f1'),
     ];
     expect(bestPredictionCard(single, teams, 'en')?.statistic).toBe(
-      '**Alice** was the only one to predict **Arsenal 2-1 Bayern**, and only **1** other had the goal difference.',
+      '**Alice** was the only one to predict the perfect score for **Arsenal 2-1 Bayern**! Only **1** other even had the goal difference!',
     );
     expect(
       bestPredictionCard([...single, scored('u3', [1, 0], [2, 1], 'f1')], teams, 'en')?.statistic,
     ).toBe(
-      '**Alice** was the only one to predict **Arsenal 2-1 Bayern**, and only **2** others had the goal difference.',
+      '**Alice** was the only one to predict the perfect score for **Arsenal 2-1 Bayern**! Only **2** others even had the goal difference!',
     );
   });
 
@@ -1042,7 +1091,7 @@ describe('bestPredictionCard', () => {
       'en',
     );
     expect(card?.statistic).toBe(
-      '**Bob** was the only one to predict **Bayern 1-0 Barcelona**, and nobody else so much as picked the winner.',
+      '**Bob** was the only one to predict the perfect score for **Bayern 1-0 Barcelona**! Nobody else even got the outcome of the match right!',
     );
   });
 
@@ -1062,7 +1111,9 @@ describe('bestPredictionCard', () => {
   it('names the scoreline alone when the fixture has no teams yet', () => {
     expect(
       bestPredictionCard([scored('u1', [2, 1], [2, 1], 'f9')], teams, 'en')?.statistic,
-    ).toBe('**Alice** was the only one to predict **2-1**, and nobody else so much as picked the winner.');
+    ).toBe(
+      '**Alice** was the only one to predict the perfect score for **2-1**! Nobody else even got the outcome of the match right!',
+    );
   });
 
   it('names no fixture when two of them are level, and counts one member twice', () => {
@@ -1077,7 +1128,7 @@ describe('bestPredictionCard', () => {
       'en',
     );
     expect(tie?.statistic).toBe(
-      '**Alice and Bob** each predicted a scoreline nobody else got, and nobody else so much as picked the winner.',
+      '**Alice and Bob** each predicted a perfect score nobody else got! Nobody else even got the outcome of the match right!',
     );
     expect(tie?.subjects.map(s => s.id)).toEqual(['u1', 'u2']);
 
@@ -1092,7 +1143,7 @@ describe('bestPredictionCard', () => {
       'en',
     );
     expect(sameMember?.statistic).toBe(
-      '**Alice** predicted **2** scorelines nobody else got, and nobody else so much as picked the winner.',
+      '**Alice** predicted the perfect score in **2** matches nobody else got! Nobody else even got the outcome of the match right!',
     );
     expect(sameMember?.subjects.map(s => s.id)).toEqual(['u1']);
   });
@@ -1115,14 +1166,14 @@ describe('bestPredictionCard', () => {
       scored('u2', [2, 0], [2, 1], 'f1'),
     ];
     expect(bestPredictionCard(rows, teams, 'no')).toMatchObject({
-      title: 'Synsk',
+      title: 'Hvordan visste du det?',
       statistic:
-        '**Alice** var den eneste som tippet **Arsenal 2-1 Bayern**. Ingen andre hadde riktig målforskjell, og bare **1** annen traff på vinneren.',
+        '**Alice** var den eneste som tippet perfekt resultat for **Arsenal 2-1 Bayern**! Bare **1** annen tippet i det hele tatt riktig utfall!',
     });
     expect(bestPredictionCard(rows, teams, 'de')).toMatchObject({
-      title: 'Wahrsager',
+      title: 'Woher wusstest du das?',
       statistic:
-        '**Alice** hat als einzige Person **Arsenal 2-1 Bayern** getippt. Niemand sonst hatte die Tordifferenz, und nur **1** andere Person lag beim Sieger richtig.',
+        '**Alice** hat als einzige Person das perfekte Ergebnis für **Arsenal 2-1 Bayern** getippt! Nur **1** andere Person lag überhaupt beim Ausgang richtig!',
     });
   });
 });
@@ -1315,13 +1366,13 @@ describe('nationalityGoalsCard', () => {
       snapshot({ Norway: { goals: 23, players: 7 }, Spain: { goals: 40, players: 12 } }),
       'en',
     );
-    expect(card?.title).toBe('Norwegian goals');
+    expect(card?.title).toBe('Go Norway!');
     expect(card?.statistic).toBe(
       '**23** goals in this tournament have been scored by Norwegians — **7** different players.',
     );
-    expect(card?.subjects).toEqual([
-      { type: 'team', id: 'Norway', name: 'Norway', imageUrl: '/stat-flag-no.webp' },
-    ]);
+    // The flag is the tile's own background rather than a subject on it.
+    expect(card?.subjects).toEqual([]);
+    expect(card?.backgroundImageUrl).toBe('/stat-flag-no.webp');
   });
 
   it('matches the country key whatever case the provider sends', () => {
@@ -1353,11 +1404,11 @@ describe('nationalityGoalsCard', () => {
   it('translates the title and the statistic', () => {
     const rows = snapshot({ Norway: { goals: 23, players: 7 } });
     expect(nationalityGoalsCard(rows, 'no')).toMatchObject({
-      title: 'Norske mål',
+      title: 'Heia Norge!',
       statistic: '**23** mål i turneringen er scoret av nordmenn, fordelt på **7** spillere.',
     });
     expect(nationalityGoalsCard(rows, 'de')).toMatchObject({
-      title: 'Norwegische Tore',
+      title: 'Los, Norwegen!',
       statistic:
         '**23** Tore in diesem Wettbewerb gehen auf das Konto von Norwegern — **7** verschiedene Spieler.',
     });

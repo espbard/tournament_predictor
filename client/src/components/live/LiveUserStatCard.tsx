@@ -8,9 +8,11 @@ import { UserAvatar } from '@/components/UserAvatar';
 // as a tile: the subject is the tile's background and the words sit on top of it, with no
 // emoji — the picture already says what the card is about.
 //
-// What "background" means depends on the subject, and it is the one place the two kinds
-// of card differ:
+// What "background" means depends on the subject, and it is the one place the kinds of
+// card differ:
 //
+//   a card carrying `backgroundImageUrl` has said its picture is the tile — the flag on
+//     the nationality card — so it fills the whole of it and nothing else is drawn;
 //   players and members are photographs, so they fill the tile edge to edge — a member
 //     with no picture gets the initial-on-a-colour avatar they have everywhere else,
 //     squared off to fill the strip;
@@ -56,6 +58,28 @@ function Caption({ data }: Props) {
 
 export default function LiveUserStatCard({ data }: Props) {
   const subjects = data.subjects.slice(0, MAX_SUBJECTS);
+
+  // A card can hand over its own full-bleed picture instead of subjects — a flag, where
+  // there is no crest to cut in half and no face to crop past. It is the whole tile, so
+  // it takes the same dark foot the photographs get and nothing else is drawn on it.
+  if (data.backgroundImageUrl) {
+    return (
+      <article className="relative flex min-h-[18rem] flex-col justify-end overflow-hidden rounded-2xl border border-border bg-slate-900">
+        <img
+          aria-hidden
+          src={data.backgroundImageUrl}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black via-black/75 via-32% to-black/10"
+        />
+        <Caption data={data} />
+      </article>
+    );
+  }
+
   // Every subject on a card is the same kind — one card counts teams, another members.
   const isPhotograph = subjects[0]?.type === 'player' || subjects[0]?.type === 'user';
 

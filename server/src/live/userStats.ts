@@ -572,15 +572,15 @@ export function peoplesFavouriteCard(
   const statistic =
     lang === 'no'
       ? tied
-        ? `**${names}** er tippet øverst på tabellen i **${count}** tabelltips hver, av **${total}**.`
-        : `**${names}** er tippet øverst på tabellen i **${count}** av **${total}** tabelltips.`
+        ? `**${names}** er folkets favoritter! **${count}** av **${total}** har tippet hver av dem øverst på tabelltipset.`
+        : `**${names}** er folkets favoritt! **${count}** av **${total}** har tippet dem øverst på tabelltipset.`
       : lang === 'de'
         ? tied
-          ? `**${names}** stehen in je **${count}** von **${total}** Tabellentipps ganz oben.`
-          : `**${names}** steht in **${count}** von **${total}** Tabellentipps ganz oben.`
+          ? `**${names}** sind die Publikumslieblinge! **${count}** von **${total}** haben sie jeweils ganz oben im Tabellentipp.`
+          : `**${names}** ist der Publikumsliebling! **${count}** von **${total}** haben sie ganz oben im Tabellentipp.`
         : tied
-          ? `**${names}** each top the table in **${count}** of **${total}** predictions.`
-          : `**${names}** tops the table in **${count}** of **${total}** predictions.`;
+          ? `**${names}** are the people's favourites! **${count}** of **${total}** have each of them top of their table prediction.`
+          : `**${names}** are the people's favourite! **${count}** of **${total}** have them top of their table prediction.`;
 
   return card('peoplesFavourite', title, statistic, winners, 'team');
 }
@@ -598,20 +598,20 @@ export function woodenSpoonCard(
   const names = joinNames(winners.map(w => w.name), lang);
   const tied = winners.length > 1;
 
-  const title = lang === 'no' ? 'Bunnfavoritten' : lang === 'de' ? 'Das Schlusslicht' : 'The wooden spoon';
+  const title = lang === 'no' ? 'Bunnslammet' : lang === 'de' ? 'Der Bodensatz' : 'The bottom of the barrel';
 
   const statistic =
     lang === 'no'
       ? tied
-        ? `**${names}** er tippet sist i **${count}** tabelltips hver, av **${total}**.`
-        : `**${names}** er tippet sist i **${count}** av **${total}** tabelltips.`
+        ? `Ingen har trua på **${names}**! **${count}** av **${total}** har tippet at hver av dem ender helt sist på tabellen.`
+        : `Ingen har trua på **${names}**! **${count}** av **${total}** har tippet at de ender helt sist på tabellen.`
       : lang === 'de'
         ? tied
-          ? `**${names}** stehen in je **${count}** von **${total}** Tabellentipps ganz unten.`
-          : `**${names}** steht in **${count}** von **${total}** Tabellentipps ganz unten.`
+          ? `Niemand glaubt an **${names}**! **${count}** von **${total}** tippen jede von ihnen auf den letzten Tabellenplatz.`
+          : `Niemand glaubt an **${names}**! **${count}** von **${total}** tippen sie auf den letzten Tabellenplatz.`
         : tied
-          ? `**${names}** each finish bottom in **${count}** of **${total}** predictions.`
-          : `**${names}** finishes bottom in **${count}** of **${total}** predictions.`;
+          ? `Nobody believes in **${names}**! **${count}** of **${total}** have each of them finishing dead last.`
+          : `Nobody believes in **${names}**! **${count}** of **${total}** have them finishing dead last.`;
 
   return card('woodenSpoon', title, statistic, winners, 'team');
 }
@@ -662,20 +662,20 @@ export function goalDroughtCard(
   const names = joinNames(winners.map(w => w.name), lang);
   const tied = winners.length > 1;
 
-  const title = lang === 'no' ? 'Måltørken' : lang === 'de' ? 'Die Torflaute' : 'The goal drought';
+  const title = lang === 'no' ? 'Null tillit' : lang === 'de' ? 'Kein Vertrauen' : 'No confidence';
 
   const statistic =
     lang === 'no'
       ? tied
-        ? `**${names}** er tippet sist på toppscorerlisten i **${count}** lister hver, av **${total}**.`
-        : `**${names}** er tippet sist på toppscorerlisten i **${count}** av **${total}** lister.`
+        ? `Forventningene er lave for **${names}**. **${count}** av **${total}** har tippet at hver av dem scorer færrest mål på toppscorerlista.`
+        : `Forventningene er lave for **${names}**. **${count}** av **${total}** har tippet at han scorer færrest mål på toppscorerlista.`
       : lang === 'de'
         ? tied
-          ? `**${names}** stehen in je **${count}** von **${total}** Torjägerlisten ganz unten.`
-          : `**${names}** steht in **${count}** von **${total}** Torjägerlisten ganz unten.`
+          ? `Die Erwartungen an **${names}** sind gering. **${count}** von **${total}** tippen jeden von ihnen auf die wenigsten Tore der Torjägerliste.`
+          : `Die Erwartungen an **${names}** sind gering. **${count}** von **${total}** tippen ihn auf die wenigsten Tore der Torjägerliste.`
         : tied
-          ? `**${names}** each finish last on the scorer list in **${count}** of **${total}** rankings.`
-          : `**${names}** finishes last on the scorer list in **${count}** of **${total}** rankings.`;
+          ? `Expectations are low for **${names}**. **${count}** of **${total}** have each of them scoring the fewest goals on the top-scorer list.`
+          : `Expectations are low for **${names}**. **${count}** of **${total}** have him scoring the fewest goals on the top-scorer list.`;
 
   return card('goalDrought', title, statistic, winners, 'player');
 }
@@ -765,14 +765,15 @@ function tallyMembers(predictions: LiveStatsScoredPrediction[]): MemberTally[] {
 }
 
 /**
- * The member who has called the most scorelines outright.
+ * The member who has called the most scorelines outright — and, at the other end, the
+ * one who has called the fewest.
  *
- * Ties are shown rather than broken, as everywhere else in the deck: two members level
- * on the only number the card counts are level, and breaking it on how many predictions
- * they made would quietly turn it into a different card. That is also why the sentence
- * prints the denominator only when there is one winner — two members on five exact
- * scorelines have made different numbers of predictions, and a single "from **38**"
- * behind both names would be a number belonging to neither.
+ * Ties are shown rather than broken at both ends, as everywhere else in the deck: two
+ * members level on the only number the card counts are level.
+ *
+ * The second sentence is dropped when everybody is level, which includes a league of
+ * one: naming the same member as both the best and the worst of them is not a contrast,
+ * it is the same fact twice.
  *
  * Null until somebody has called one: a card announcing nobody's zero is not a statistic.
  */
@@ -780,41 +781,57 @@ export function spotOnCard(
   predictions: LiveStatsScoredPrediction[],
   lang: LiveStatsLang,
 ): UserStatCardData | null {
-  const rows = tallyMembers(predictions).filter(r => r.exactScores > 0);
+  const everyone = tallyMembers(predictions);
+  const rows = everyone.filter(r => r.exactScores > 0);
   if (rows.length === 0) return null;
 
   const exactScores = Math.max(...rows.map(r => r.exactScores));
   const winners = rows.filter(r => r.exactScores === exactScores).sort(byUsername);
 
-  const names = joinNames(winners.map(w => w.username), lang);
-  const tied = winners.length > 1;
-  const total = winners[0].predictions;
+  // Counted over everyone who has predicted, not only those who have called one: nobody
+  // has fewer perfect scorelines than the member who has never managed any.
+  const fewest = Math.min(...everyone.map(r => r.exactScores));
+  const trailers =
+    fewest === exactScores ? [] : everyone.filter(r => r.exactScores === fewest).sort(byUsername);
 
-  const title = lang === 'no' ? 'Blink' : lang === 'de' ? 'Volltreffer' : 'Spot on';
+  const names = joinNames(winners.map(w => w.username), lang);
+  const trailerNames = joinNames(trailers.map(t => t.username), lang);
+  const tied = winners.length > 1;
+
+  const title =
+    lang === 'no'
+      ? 'Sitter med fasiten i hånden'
+      : lang === 'de'
+        ? 'Mit dem Lösungsblatt in der Hand'
+        : 'Holding the answer key';
 
   // One exact scoreline is a real card — somebody has to be first — so every sentence
   // below has to read in the singular as well as the plural.
   const one = exactScores === 1;
-  const scorelines = one ? 'scoreline' : 'scorelines';
-  const resultater = one ? 'eksakt resultat' : 'eksakte resultater';
-  const ergebnisse = one ? 'exaktes Ergebnis' : 'exakte Ergebnisse';
+  const scorelines = one ? 'perfect scoreline' : 'perfect scorelines';
+  const resultater = one ? 'perfekt resultat' : 'perfekte resultater';
+  const ergebnisse = one ? 'perfektes Ergebnis' : 'perfekte Ergebnisse';
+
+  const fewestOne = fewest === 1;
+  const fewestScorelines = fewestOne ? 'perfect scoreline' : 'perfect scorelines';
+  const fulltreffere = fewestOne ? 'fulltreffer' : 'fulltreffere';
+  const fewestErgebnisse = fewestOne ? 'perfekten Ergebnis' : 'perfekten Ergebnissen';
 
   const statistic =
     lang === 'no'
-      ? tied
-        ? `**${names}** har **${exactScores}** ${resultater} hver.`
-        : `**${names}** har **${exactScores}** ${resultater}, av **${total}** tips med resultat.`
+      ? `**${names}** har tippet hele **${exactScores}** ${resultater}${tied ? ' hver' : ''}!` +
+        (trailers.length > 0
+          ? ` **${trailerNames}** har færrest med **${fewest}** ${fulltreffere}.`
+          : '')
       : lang === 'de'
-        ? tied
-          ? `**${names}** haben je **${exactScores}** ${ergebnisse} getippt.`
-          : `**${names}** hat **${exactScores}** ${ergebnisse} getippt, aus **${total}** gewerteten Tipp${
-              total === 1 ? '' : 's'
-            }.`
-        : tied
-          ? `**${names}** have each called **${exactScores}** ${scorelines} exactly.`
-          : `**${names}** has called **${exactScores}** ${scorelines} exactly, from **${total}** scored prediction${
-              total === 1 ? '' : 's'
-            }.`;
+        ? `**${names}** ${tied ? 'haben je' : 'hat'} ganze **${exactScores}** ${ergebnisse} getippt!` +
+          (trailers.length > 0
+            ? ` **${trailerNames}** ${trailers.length > 1 ? 'haben' : 'hat'} mit **${fewest}** ${fewestErgebnisse} die wenigsten.`
+            : '')
+        : `**${names}** ${tied ? 'have each' : 'has'} predicted a full **${exactScores}** ${scorelines}!` +
+          (trailers.length > 0
+            ? ` **${trailerNames}** ${trailers.length > 1 ? 'have' : 'has'} the fewest with **${fewest}** ${fewestScorelines}.`
+            : '');
 
   return memberCard('spotOn', title, statistic, winners);
 }
@@ -967,7 +984,12 @@ export function bestPredictionCard(
   const names = joinNames(winners.map(w => w.username), lang);
   const { othersWithGoalDifference: gd, othersWithOutcome: outcome } = best;
 
-  const title = lang === 'no' ? 'Synsk' : lang === 'de' ? 'Wahrsager' : 'Best prediction';
+  const title =
+    lang === 'no'
+      ? 'Hvordan visste du det?'
+      : lang === 'de'
+        ? 'Woher wusstest du das?'
+        : 'How did you know?';
 
   // Two fixtures level on both counts are two different stories, so a tie names no
   // fixture: only what every one of them has in common. And a tie can be one member
@@ -975,47 +997,51 @@ export function bestPredictionCard(
   const alone = tie.length === 1;
   const named = alone ? teamNames(best.winner, indexTeams(teams)) : null;
   const score = `${best.winner.predictedHome}-${best.winner.predictedAway}`;
+  // The fixture, scoreline and all — or the scoreline alone where the teams have no names
+  // yet. It is what they predicted and what happened, those being the same thing here.
   const what = named ? `**${named.home} ${score} ${named.away}**` : `**${score}**`;
+
+  // Three things can be said about how alone they were, and only one of them is true at a
+  // time: somebody else had the margin, or nobody did but somebody had the winner, or
+  // nobody managed even that.
+  const appendix =
+    lang === 'no'
+      ? gd > 0
+        ? ` Bare **${gd}** ${gd === 1 ? 'annen' : 'andre'} tippet i det hele tatt riktig målforskjell!`
+        : outcome > 0
+          ? ` Bare **${outcome}** ${outcome === 1 ? 'annen' : 'andre'} tippet i det hele tatt riktig utfall!`
+          : ' Ingen andre tippet engang riktig utfall av kampen!'
+      : lang === 'de'
+        ? gd > 0
+          ? ` Nur **${gd}** ${gd === 1 ? 'andere Person hatte' : 'andere hatten'} überhaupt die Tordifferenz!`
+          : outcome > 0
+            ? ` Nur **${outcome}** ${outcome === 1 ? 'andere Person lag' : 'andere lagen'} überhaupt beim Ausgang richtig!`
+            : ' Niemand sonst lag auch nur beim Ausgang der Partie richtig!'
+        : gd > 0
+          ? ` Only **${gd}** ${gd === 1 ? 'other' : 'others'} even had the goal difference!`
+          : outcome > 0
+            ? ` Only **${outcome}** ${outcome === 1 ? 'other' : 'others'} even had the right outcome!`
+            : ' Nobody else even got the outcome of the match right!';
 
   const statistic =
     lang === 'no'
       ? (alone
-          ? `**${names}** var den eneste som tippet ${what}`
+          ? `**${names}** var den eneste som tippet perfekt resultat for ${what}!`
           : winners.length === 1
-            ? `**${names}** tippet **${tie.length}** stillinger ingen andre traff`
-            : `**${names}** tippet hver en stilling ingen andre traff`) +
-        (gd > 0
-          ? `, og bare **${gd}** ${gd === 1 ? 'annen' : 'andre'} hadde riktig målforskjell.`
-          : outcome > 0
-            ? `. Ingen andre hadde riktig målforskjell, og bare **${outcome}** ${
-                outcome === 1 ? 'annen' : 'andre'
-              } traff på vinneren.`
-            : ', og ingen andre traff engang på vinneren.')
+            ? `**${names}** tippet perfekt resultat i **${tie.length}** kamper som ingen andre traff!`
+            : `**${names}** tippet hver et perfekt resultat som ingen andre traff!`) + appendix
       : lang === 'de'
         ? (alone
-            ? `**${names}** hat als einzige Person ${what} getippt`
+            ? `**${names}** hat als einzige Person das perfekte Ergebnis für ${what} getippt!`
             : winners.length === 1
-              ? `**${names}** hat **${tie.length}** Ergebnisse getippt, die sonst niemand hatte`
-              : `**${names}** haben jeweils ein Ergebnis getippt, das sonst niemand hatte`) +
-          (gd > 0
-            ? `, und nur **${gd}** ${gd === 1 ? 'andere Person hatte' : 'andere hatten'} die Tordifferenz.`
-            : outcome > 0
-              ? `. Niemand sonst hatte die Tordifferenz, und nur **${outcome}** ${
-                  outcome === 1 ? 'andere Person lag' : 'andere lagen'
-                } beim Sieger richtig.`
-              : ', und niemand sonst lag auch nur beim Sieger richtig.')
+              ? `**${names}** hat in **${tie.length}** Spielen das perfekte Ergebnis getippt, das sonst niemand hatte!`
+              : `**${names}** haben jeweils ein perfektes Ergebnis getippt, das sonst niemand hatte!`) +
+          appendix
         : (alone
-            ? `**${names}** was the only one to predict ${what}`
+            ? `**${names}** was the only one to predict the perfect score for ${what}!`
             : winners.length === 1
-              ? `**${names}** predicted **${tie.length}** scorelines nobody else got`
-              : `**${names}** each predicted a scoreline nobody else got`) +
-          (gd > 0
-            ? `, and only **${gd}** ${gd === 1 ? 'other' : 'others'} had the goal difference.`
-            : outcome > 0
-              ? `. Nobody else had the goal difference, and only **${outcome}** ${
-                  outcome === 1 ? 'other' : 'others'
-                } picked the winner.`
-              : ', and nobody else so much as picked the winner.');
+              ? `**${names}** predicted the perfect score in **${tie.length}** matches nobody else got!`
+              : `**${names}** each predicted a perfect score nobody else got!`) + appendix;
 
   return memberCard('bestPrediction', title, statistic, winners);
 }
@@ -1353,8 +1379,7 @@ export function nationalityGoalsCard(
   const { goals, players } = entry;
   const floor = snapshot.truncated;
 
-  const title =
-    lang === 'no' ? 'Norske mål' : lang === 'de' ? 'Norwegische Tore' : 'Norwegian goals';
+  const title = lang === 'no' ? 'Heia Norge!' : lang === 'de' ? 'Los, Norwegen!' : 'Go Norway!';
 
   const statistic =
     lang === 'no'
@@ -1372,12 +1397,18 @@ export function nationalityGoalsCard(
             : `**${goals}** goals in this tournament have been scored by Norwegians`) +
           (players === 1 ? ' — **1** player.' : ` — **${players}** different players.`);
 
-  // A flag is a picture of the subject, not a photograph of one, so it is shown whole on
-  // the light ground — the same treatment a crest gets. See UserStatSubject: `type` says
-  // how to picture the subject, not what kind of thing it is.
-  return card('norwegianGoals', title, statistic, [
-    { id: NATIONALITY, name: NATIONALITY, imageUrl: NATIONALITY_FLAG },
-  ], 'team');
+  // The flag is the tile rather than a picture on it: a rectangle of solid colour fills a
+  // card better than anything cropping could do to it, and there is no crest or face here
+  // that a full bleed would cut in half. `backgroundImageUrl` is how the payload says so,
+  // and it leaves `subjects` empty — the background is the whole picture.
+  return {
+    id: 'norwegianGoals',
+    title,
+    statistic,
+    subjects: [],
+    linkType: null,
+    backgroundImageUrl: NATIONALITY_FLAG,
+  };
 }
 
 /** Every card that has something to say, in the order they should be shown. */

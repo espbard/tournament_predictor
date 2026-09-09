@@ -1666,7 +1666,7 @@ season's squads, plus an admin warning when the deadline is close and the shortl
 
 ---
 
-## 18. The member pair: "Spot on" and "Almost" *(added after the six phases, on request)*
+## 18. The member pair: "Holding the answer key" and "Almost" *(added after the six phases, on request)*
 
 Two more stat cards, and the first about the members rather than what they predicted:
 
@@ -1709,7 +1709,7 @@ Two cards about a single prediction rather than a member's season, `bestPredicti
 | The second key is the outcome count, not the fixture's date or its odds | It is the same question one rung down: how alone were they? Anything else would be a different card wearing this one's name |
 | "Worst" ranks on the distance between predicted and actual **goal difference**, not between the scorelines | It is what was asked for, and it is the honest measure: a wild 6-5 on a 1-0 read the match correctly and would otherwise outrank a backwards 0-4 on a 3-0 |
 | A tie names no fixture — and a tie held by one member alone says how many predictions it was | Two fixtures level on the ranking are two different stories, so the sentence keeps only what they share. "Each" describes two members, not one member twice, so that case counts the predictions instead |
-| Both cards keep the manual type's titles (`Best prediction` / `Synsk` / `Wahrsager`, `Worst prediction` / `Skivebom` / `Katastrophentipp`) even though the criteria differ | The league already reads those words as "the standout call" and "the howler". The manual type's rules are its own — it has stages, bonus sources and a bracket — but the thing being named is the same |
+| Both cards took the manual type's titles (`Best prediction` / `Synsk` / `Wahrsager`, `Worst prediction` / `Skivebom` / `Katastrophentipp`) even though the criteria differ — the best card was renamed later, see §22 | The league already reads those words as "the standout call" and "the howler". The manual type's rules are its own — it has stages, bonus sources and a bracket — but the thing being named is the same |
 | The subject is the member, not the match, and `linkType` stays null | `LiveUserStatCard` renders subjects as the tile's picture and has no match view to link to. The fixture is in the sentence, where the teams can be named without a route |
 | The route's one prediction query grew `fixtureId`, `homeTeamId` and `awayTeamId`; nothing else was added | The pair reads the same rows the member pair does. Naming the teams costs two ids on a query that was already running, and the team names are already loaded for the table cards |
 
@@ -1755,7 +1755,33 @@ most expected result** and **Most unexpected result**. All six live in
 
 ---
 
-## 22. References
+## 22. A pass over the deck's wording *(added after the six phases, on request)*
+
+Six cards rewritten to the copy the league actually wanted, the Norwegian written by the owner
+and the English and German aligned to it. Only wording, one title-driven rename of the flag
+treatment aside — no card changed what it counts.
+
+| Card | Now reads |
+|---|---|
+| `peoplesFavourite` | **Folkefavoritten** / *The people's favourite* / *Der Publikumsliebling* — "**Bayern** are the people's favourite! **2** of **3** have them top of their table prediction." |
+| `woodenSpoon` | **Bunnslammet** / *The bottom of the barrel* / *Der Bodensatz* — "Nobody believes in **Barcelona**! **2** of **3** have them finishing dead last." |
+| `goalDrought` | **Null tillit** / *No confidence* / *Kein Vertrauen* — "Expectations are low for **Mbappé**. **2** of **3** have him scoring the fewest goals on the top-scorer list." |
+| `spotOn` | **Sitter med fasiten i hånden** / *Holding the answer key* / *Mit dem Lösungsblatt in der Hand* — now names the other end too: "**Alice** has predicted a full **2** perfect scorelines! **Chris** has the fewest with **0**." |
+| `bestPrediction` | **Hvordan visste du det?** / *How did you know?* / *Woher wusstest du das?* — "**Alice** was the only one to predict the perfect score for **Arsenal 2-1 Bayern**!" plus one of three tails |
+| `norwegianGoals` | **Heia Norge!** / *Go Norway!* / *Los, Norwegen!*, with the flag filling the tile |
+
+| Decision | Why |
+|---|---|
+| The English and German titles follow the Norwegian **metaphor**, not the Norwegian words | `Bunnslammet` is the sludge at the bottom of the barrel, not a wooden spoon, and `Null tillit` is about confidence rather than a drought. Translating the old titles would have left three languages telling three different jokes |
+| Two typos in the supplied Norwegian were corrected — *Forventingene* → *Forventningene*, *scoret* → *scorer*, and the `Synsk` replacement title read *Hvordan hviste du et?* | They are spellings, not wording. The sentences are otherwise the owner's, word for word |
+| "Spot on" keeps its ranking and gains a second sentence naming whoever has the fewest, counted over everyone who has predicted at all | Nobody has fewer perfect scorelines than the member who has never managed one, so the trailing end is only interesting if it includes them. The sentence is dropped when everybody is level — naming one member as both the best and the worst of them is the same fact twice, and it is what a league of one would otherwise print |
+| Its denominator ("from **38** scored predictions") is gone with the old sentence | The new copy does not ask for it, and the contrast with the trailing member says more than a rate did |
+| The best-prediction card's three tails map exactly onto the ranking underneath it | "Only **N** others even had the goal difference" is the first key, "only **N** others even had the right outcome" the second, and "nobody else even got the outcome right" the case the second key was invented for. The card now says out loud what it sorted on |
+| The flag became `backgroundImageUrl` on the card rather than a subject, and `LiveUserStatCard` grew a full-bleed branch for it | A rectangle of solid colour fills a tile better than any cropping could, and unlike a crest or a face there is nothing in it to cut in half. The branch is keyed off the payload field rather than off the card's id, so the next card that wants to be its own picture needs no client change |
+
+---
+
+## 23. References
 
 - [2026/27 Champions League: teams, dates, draws, format](https://www.uefa.com/uefachampionsleague/news/02a6-20d57cfcd03e-407c22a7f465-1000--2026-27-champions-league-teams-dates-draws-format-final/)
 - [UEFA confirms date for the 2026/27 Champions League league phase draw](https://www.besoccer.com/new/uefa-confirms-date-for-the-202627-champions-league-league-phase-draw-1421299)
