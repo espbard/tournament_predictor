@@ -1,4 +1,5 @@
 import type { UserStatCardData } from '@tournament-predictor/shared';
+import { UserAvatar } from '@/components/UserAvatar';
 
 // ── A live competition's stat card ────────────────────────────────────────────
 //
@@ -10,7 +11,9 @@ import type { UserStatCardData } from '@tournament-predictor/shared';
 // What "background" means depends on the subject, and it is the one place the two kinds
 // of card differ:
 //
-//   players are photographs, so they fill the tile edge to edge;
+//   players and members are photographs, so they fill the tile edge to edge — a member
+//     with no picture gets the initial-on-a-colour avatar they have everywhere else,
+//     squared off to fill the strip;
 //   crests are logos on empty space, so cropping them to fill would cut them in half —
 //     they are shown whole instead, on a ground that runs light at the top and dark at
 //     the foot. That one gradient does two jobs: a crest is drawn to sit on white, and
@@ -53,24 +56,35 @@ function Caption({ data }: Props) {
 
 export default function LiveUserStatCard({ data }: Props) {
   const subjects = data.subjects.slice(0, MAX_SUBJECTS);
-  // Every subject on a card is the same kind — one card counts teams, another players.
-  const isPlayer = subjects[0]?.type === 'player';
+  // Every subject on a card is the same kind — one card counts teams, another members.
+  const isPhotograph = subjects[0]?.type === 'player' || subjects[0]?.type === 'user';
 
-  if (isPlayer) {
+  if (isPhotograph) {
     return (
       <article className="relative flex min-h-[18rem] flex-col justify-end overflow-hidden rounded-2xl border border-border bg-slate-900">
         {/* Equal strips, so a tie fills the tile as completely as a single winner does.
             Anchored to the top because these are faces: a portrait cropped into a wider
             box loses its subject from the bottom, not the head. */}
         <div aria-hidden className="absolute inset-0 flex">
-          {subjects.map(subject => (
-            <img
-              key={subject.id}
-              src={subject.imageUrl ?? '/default-avatar.png'}
-              alt=""
-              className="h-full min-w-0 flex-1 object-cover object-top"
-            />
-          ))}
+          {subjects.map(subject =>
+            subject.type === 'user' ? (
+              <UserAvatar
+                key={subject.id}
+                username={subject.name}
+                imageUrl={subject.imageUrl}
+                iconColor={subject.iconColor}
+                className="h-full min-w-0 flex-1 object-top"
+                style={{ borderRadius: 0 }}
+              />
+            ) : (
+              <img
+                key={subject.id}
+                src={subject.imageUrl ?? '/default-avatar.png'}
+                alt=""
+                className="h-full min-w-0 flex-1 object-cover object-top"
+              />
+            ),
+          )}
         </div>
 
         <span

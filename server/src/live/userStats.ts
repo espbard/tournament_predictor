@@ -12,6 +12,9 @@ import type { LiveScorerNationalities, UserStatCardData } from '@tournament-pred
 // top-scorer list. All four are the same count — which entrant sits at one end of the most
 // rankings — so they share countEnd and differ only in their wording.
 //
+// Then one card about the members themselves rather than what they predicted: who keeps
+// landing on the right margin and the wrong scoreline.
+//
 // Plus one card that is not about predictions at all: how many goals Norwegians have
 // actually scored. It reads the snapshot the scorer sync leaves on the tournament, so it
 // costs no provider request of its own.
@@ -258,6 +261,139 @@ export function goalDroughtCard(
 }
 
 
+// ── Almost ────────────────────────────────────────────────────────────────────
+
+/**
+ * One scored prediction, paired with the result it was scored against.
+ *
+ * The predicted and actual scores travel rather than the stored tier columns, because
+ * those hold *points*, and a competition is free to configure a tier at zero — which
+ * would turn "got the goal difference right" into "got the goal difference right in a
+ * competition that pays for it". The two comparisons below are the same ones
+ * calculateLivePoints makes; see server/src/live/scoring.ts.
+ */
+export interface LiveStatsScoredPrediction {
+  userId: string;
+  username: string;
+  imageUrl: string | null;
+  iconColor: string | null;
+  predictedHome: number;
+  predictedAway: number;
+  /** End of normal time — the score the tiers are judged against. */
+  actualHome: number;
+  actualAway: number;
+}
+
+interface AlmostTally {
+  userId: string;
+  username: string;
+  imageUrl: string | null;
+  iconColor: string | null;
+  goalDifferences: number;
+  exactScores: number;
+}
+
+/**
+ * The member who reads the match right and the scoreline wrong: most predictions with
+ * the goal difference correct, and — among those level on that — the fewest that landed
+ * on the exact scoreline.
+ *
+ * Two keys in that order, rather than the widest gap between the two counts, because
+ * that is the statistic the card claims to show. It does mean a prolific predictor who
+ * also hits a few scorelines outranks a quieter one who hits none; the second key is
+ * what separates them once they are level, and the sentence prints both numbers so the
+ * card can be read either way.
+ *
+ * Exact scorelines are counted inside the goal-difference total, not against it, because
+ * that is how the tiers stack: an exact scoreline necessarily has the right margin too.
+ *
+ * Null until somebody has had a goal difference right — a card that names nobody, or
+ * names somebody with nothing to their name, is not a statistic.
+ */
+export function almostCard(
+  predictions: LiveStatsScoredPrediction[],
+  lang: LiveStatsLang,
+): UserStatCardData | null {
+  const tallies = new Map<string, AlmostTally>();
+  for (const p of predictions) {
+    if (p.actualHome - p.actualAway !== p.predictedHome - p.predictedAway) continue;
+    const tally: AlmostTally = tallies.get(p.userId) ?? {
+      userId: p.userId,
+      username: p.username,
+      imageUrl: p.imageUrl,
+      iconColor: p.iconColor,
+      goalDifferences: 0,
+      exactScores: 0,
+    };
+    tally.goalDifferences += 1;
+    if (p.predictedHome === p.actualHome && p.predictedAway === p.actualAway) {
+      tally.exactScores += 1;
+    }
+    tallies.set(p.userId, tally);
+  }
+  if (tallies.size === 0) return null;
+
+  const rows = [...tallies.values()];
+  const goalDifferences = Math.max(...rows.map(r => r.goalDifferences));
+  const contenders = rows.filter(r => r.goalDifferences === goalDifferences);
+  const exactScores = Math.min(...contenders.map(r => r.exactScores));
+  // Level on both counts is a genuine tie, and shown as one — same rule as countEnd.
+  const winners = contenders
+    .filter(r => r.exactScores === exactScores)
+    .sort((a, b) => a.username.localeCompare(b.username));
+
+  const names = joinNames(winners.map(w => w.username), lang);
+  const tied = winners.length > 1;
+  const none = exactScores === 0;
+
+  const title = lang === 'no' ? 'Nesten' : lang === 'de' ? 'Fast' : 'Almost';
+
+  const statistic =
+    lang === 'no'
+      ? `**${names}** har rett målforskjell i **${goalDifferences}** ${
+          goalDifferences === 1 ? 'kamp' : 'kamper'
+        }${tied ? ' hver' : ''}, ` +
+        (none
+          ? 'uten et eneste eksakt resultat.'
+          : `men bare **${exactScores}** eksakt${exactScores === 1 ? '' : 'e'} resultat${
+              exactScores === 1 ? '' : 'er'
+            }${tied ? ' hver' : ''}.`)
+      : lang === 'de'
+        ? `**${names}** ${tied ? 'haben in je' : 'hat in'} **${goalDifferences}** ${
+            goalDifferences === 1 ? 'Spiel' : 'Spielen'
+          } die Tordifferenz getroffen, ` +
+          (none
+            ? 'aber kein einziges exaktes Ergebnis.'
+            : `aber nur ${tied ? 'je ' : ''}**${exactScores}** exakte${
+                exactScores === 1 ? 's Ergebnis' : ' Ergebnisse'
+              }.`)
+        : `**${names}** ${tied ? 'each have' : 'has'} the goal difference right in **${goalDifferences}** ${
+            goalDifferences === 1 ? 'match' : 'matches'
+          }, ` +
+          (none
+            ? 'without a single exact scoreline.'
+            : `with only **${exactScores}** exact scoreline${exactScores === 1 ? '' : 's'}${
+                tied ? ' each' : ''
+              }.`);
+
+  return {
+    id: 'almost',
+    title,
+    statistic,
+    // Built here rather than through `card()`: a member is the one subject that can have
+    // no picture at all, and the live card falls back to their initial on `iconColor`.
+    subjects: winners.map(w => ({
+      type: 'user' as const,
+      id: w.userId,
+      name: w.username,
+      imageUrl: w.imageUrl,
+      iconColor: w.iconColor,
+    })),
+    linkType: null,
+  };
+}
+
+
 // ── Goals by nationality ──────────────────────────────────────────────────────
 
 /** The country counted, and the flag shown for it. One line to change to count another. */
@@ -327,16 +463,25 @@ export function buildLiveUserStats(
     teams: LiveStatsTeam[];
     scorerPredictions: LiveStatsScorerPrediction[];
     players: LiveStatsPlayer[];
+    scoredPredictions: LiveStatsScoredPrediction[];
     scorerNationalities: LiveScorerNationalities | null;
   },
   lang: LiveStatsLang,
 ): UserStatCardData[] {
-  const { tablePredictions, teams, scorerPredictions, players, scorerNationalities } = input;
+  const {
+    tablePredictions,
+    teams,
+    scorerPredictions,
+    players,
+    scoredPredictions,
+    scorerNationalities,
+  } = input;
   return [
     peoplesFavouriteCard(tablePredictions, teams, lang),
     woodenSpoonCard(tablePredictions, teams, lang),
     goldenBootCard(scorerPredictions, players, lang),
     goalDroughtCard(scorerPredictions, players, lang),
+    almostCard(scoredPredictions, lang),
     nationalityGoalsCard(scorerNationalities, lang),
   ].filter((c): c is UserStatCardData => c !== null);
 }

@@ -602,7 +602,7 @@ liveCompetitionsRouter.get('/competitions/:id/user-stats', requireAuth, async (r
     // the table half rather than ending the whole request.
     const stage = tablePredictionStage(getLiveFormat(tournament.format), tournament.startStageKey);
 
-    const [tablePredictions, teams, scorerPredictions, players] = await Promise.all([
+    const [tablePredictions, teams, scorerPredictions, players, scoredPredictions] = await Promise.all([
       stage
         ? db
             .select({
@@ -655,6 +655,41 @@ liveCompetitionsRouter.get('/competitions/:id/user-stats', requireAuth, async (r
         .select({ id: livePlayers.id, name: livePlayers.name, imageUrl: livePlayers.imageUrl })
         .from(livePlayers)
         .where(eq(livePlayers.liveTournamentId, tournament.id)),
+      // Every prediction that has been scored, with the result it was scored against.
+      // `points IS NOT NULL` is the same "counts in the game" test the leaderboard and the
+      // progression chart use — it is what the scoring trigger writes, so a fixture the
+      // admin left out of its gameweek is already excluded, while one that scored and was
+      // later moved back to postponed still counts, exactly as it does on the leaderboard.
+      db
+        .select({
+          userId: livePredictions.userId,
+          username: users.username,
+          imageUrl: users.imageUrl,
+          iconColor: users.iconColor,
+          predictedHome: livePredictions.homeScore,
+          predictedAway: livePredictions.awayScore,
+          actualHome: liveFixtures.normalTimeHome,
+          actualAway: liveFixtures.normalTimeAway,
+        })
+        .from(livePredictions)
+        .innerJoin(liveFixtures, eq(liveFixtures.id, livePredictions.liveFixtureId))
+        .innerJoin(users, eq(users.id, livePredictions.userId))
+        // The same membership join the two rankings above use, for the same reason.
+        .innerJoin(
+          liveCompetitionMembers,
+          and(
+            eq(liveCompetitionMembers.liveCompetitionId, livePredictions.liveCompetitionId),
+            eq(liveCompetitionMembers.userId, livePredictions.userId),
+          ),
+        )
+        .where(
+          and(
+            eq(livePredictions.liveCompetitionId, competition.id),
+            isNotNull(livePredictions.points),
+            isNotNull(liveFixtures.normalTimeHome),
+            isNotNull(liveFixtures.normalTimeAway),
+          ),
+        ),
     ]);
 
     return res.json(
@@ -664,6 +699,13 @@ liveCompetitionsRouter.get('/competitions/:id/user-stats', requireAuth, async (r
           teams,
           scorerPredictions,
           players,
+          // The two isNotNull filters above are what make these assertions safe: Drizzle
+          // types a joined nullable column as nullable whatever the WHERE clause says.
+          scoredPredictions: scoredPredictions.map(p => ({
+            ...p,
+            actualHome: p.actualHome!,
+            actualAway: p.actualAway!,
+          })),
           // Already on the row this route loaded, so the nationality card costs no query.
           scorerNationalities: tournament.scorerNationalities ?? null,
         },

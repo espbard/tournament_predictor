@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  almostCard,
   buildLiveUserStats,
   nationalityGoalsCard,
   goalDroughtCard,
@@ -23,6 +24,25 @@ const players = [
 ];
 
 const rank = (userId: string, ...orderedPlayerIds: string[]) => ({ userId, orderedPlayerIds });
+
+/**
+ * One scored prediction: who made it, what they said and what happened. `scored` is
+ * shorthand for "predicted 2-1, actual 3-1" — the two pairs a tally is made from.
+ */
+const scored = (
+  userId: string,
+  [predictedHome, predictedAway]: [number, number],
+  [actualHome, actualAway]: [number, number],
+) => ({
+  userId,
+  username: userId === 'u1' ? 'Alice' : userId === 'u2' ? 'Bob' : 'Chris',
+  imageUrl: userId === 'u1' ? '/api/images/alice.png' : null,
+  iconColor: userId === 'u1' ? null : '#334155',
+  predictedHome,
+  predictedAway,
+  actualHome,
+  actualAway,
+});
 
 const snapshot = (
   byNationality: Record<string, { goals: number; players: number }>,
@@ -228,18 +248,167 @@ describe('goalDroughtCard', () => {
   });
 });
 
+describe('almostCard', () => {
+  it('names the member with the most right margins and the fewest right scorelines', () => {
+    const card = almostCard(
+      [
+        // Alice: three right margins, one of them the scoreline itself.
+        scored('u1', [2, 1], [3, 2]),
+        scored('u1', [1, 1], [2, 2]),
+        scored('u1', [0, 2], [0, 2]),
+        // Bob: two right margins, and the rest of his predictions nowhere near.
+        scored('u2', [1, 0], [2, 1]),
+        scored('u2', [3, 1], [1, 0]),
+        scored('u2', [0, 0], [4, 1]),
+      ],
+      'en',
+    );
+    expect(card?.title).toBe('Almost');
+    expect(card?.statistic).toBe(
+      '**Alice** has the goal difference right in **3** matches, with only **1** exact scoreline.',
+    );
+    expect(card?.subjects).toEqual([
+      { type: 'user', id: 'u1', name: 'Alice', imageUrl: '/api/images/alice.png', iconColor: null },
+    ]);
+    expect(card?.linkType).toBeNull();
+  });
+
+  it('separates members level on margins by who hit the fewest scorelines', () => {
+    const card = almostCard(
+      [
+        scored('u1', [2, 1], [2, 1]),
+        scored('u1', [1, 0], [3, 2]),
+        scored('u2', [1, 1], [2, 2]),
+        scored('u2', [0, 1], [1, 2]),
+      ],
+      'en',
+    );
+    expect(card?.statistic).toBe(
+      '**Bob** has the goal difference right in **2** matches, without a single exact scoreline.',
+    );
+    expect(card?.subjects.map(s => s.id)).toEqual(['u2']);
+  });
+
+  it('never lets a smaller pile of margins win on scorelines alone', () => {
+    const card = almostCard(
+      [
+        // Chris has one more right margin than Bob, though he also hit two scorelines.
+        scored('u3', [1, 0], [1, 0]),
+        scored('u3', [2, 1], [2, 1]),
+        scored('u3', [0, 1], [1, 2]),
+        scored('u2', [1, 1], [3, 3]),
+        scored('u2', [2, 0], [3, 1]),
+      ],
+      'en',
+    );
+    expect(card?.statistic).toBe(
+      '**Chris** has the goal difference right in **3** matches, with only **2** exact scorelines.',
+    );
+  });
+
+  it('shows every member of a tie, by name, and pictures them all', () => {
+    const card = almostCard(
+      [scored('u2', [1, 1], [2, 2]), scored('u1', [1, 0], [2, 1])],
+      'en',
+    );
+    expect(card?.statistic).toBe(
+      '**Alice and Bob** each have the goal difference right in **1** match, without a single exact scoreline.',
+    );
+    expect(card?.subjects.map(s => s.id)).toEqual(['u1', 'u2']);
+  });
+
+  it('says "each" on both counts when a tie has hit scorelines too', () => {
+    const card = almostCard(
+      [
+        scored('u1', [1, 0], [1, 0]),
+        scored('u1', [2, 0], [3, 1]),
+        scored('u2', [1, 1], [1, 1]),
+        scored('u2', [0, 2], [1, 3]),
+      ],
+      'en',
+    );
+    expect(card?.statistic).toBe(
+      '**Alice and Bob** each have the goal difference right in **2** matches, with only **1** exact scoreline each.',
+    );
+  });
+
+  it('carries the member colour so a member with no picture still has a tile', () => {
+    const card = almostCard([scored('u2', [1, 1], [2, 2])], 'en');
+    expect(card?.subjects).toEqual([
+      { type: 'user', id: 'u2', name: 'Bob', imageUrl: null, iconColor: '#334155' },
+    ]);
+  });
+
+  it('is null with no scored predictions, or none with the margin right', () => {
+    expect(almostCard([], 'en')).toBeNull();
+    expect(almostCard([scored('u1', [2, 0], [0, 1]), scored('u2', [1, 1], [0, 3])], 'en')).toBeNull();
+  });
+
+  it('translates the title and the statistic', () => {
+    const rows = [scored('u1', [2, 1], [3, 2]), scored('u1', [1, 1], [1, 1])];
+    expect(almostCard(rows, 'no')).toMatchObject({
+      title: 'Nesten',
+      statistic:
+        '**Alice** har rett målforskjell i **2** kamper, men bare **1** eksakt resultat.',
+    });
+    expect(almostCard(rows, 'de')).toMatchObject({
+      title: 'Fast',
+      statistic:
+        '**Alice** hat in **2** Spielen die Tordifferenz getroffen, aber nur **1** exaktes Ergebnis.',
+    });
+  });
+
+  it('has plurals and a tie in the other two locales too', () => {
+    const tie = [
+      scored('u1', [1, 0], [2, 1]),
+      scored('u1', [0, 1], [1, 2]),
+      scored('u2', [1, 1], [2, 2]),
+      scored('u2', [0, 2], [1, 3]),
+    ];
+    expect(almostCard(tie, 'no')?.statistic).toBe(
+      '**Alice og Bob** har rett målforskjell i **2** kamper hver, uten et eneste eksakt resultat.',
+    );
+    expect(almostCard(tie, 'de')?.statistic).toBe(
+      '**Alice und Bob** haben in je **2** Spielen die Tordifferenz getroffen, aber kein einziges exaktes Ergebnis.',
+    );
+
+    const many = [
+      scored('u1', [1, 0], [1, 0]),
+      scored('u1', [2, 2], [2, 2]),
+      scored('u1', [0, 1], [1, 2]),
+    ];
+    expect(almostCard(many, 'no')?.statistic).toBe(
+      '**Alice** har rett målforskjell i **3** kamper, men bare **2** eksakte resultater.',
+    );
+    expect(almostCard(many, 'de')?.statistic).toBe(
+      '**Alice** hat in **3** Spielen die Tordifferenz getroffen, aber nur **2** exakte Ergebnisse.',
+    );
+  });
+});
+
 describe('buildLiveUserStats', () => {
   const all = {
     tablePredictions: [pick('u1', 't1', 't3')],
     teams,
     scorerPredictions: [rank('u1', 'p1', 'p3')],
     players,
+    scoredPredictions: [],
     scorerNationalities: null,
   };
 
   it('drops cards that have nothing to say', () => {
     expect(
-      buildLiveUserStats({ tablePredictions: [], teams, scorerPredictions: [], players, scorerNationalities: null }, 'en'),
+      buildLiveUserStats(
+        {
+          tablePredictions: [],
+          teams,
+          scorerPredictions: [],
+          players,
+          scoredPredictions: [],
+          scorerNationalities: null,
+        },
+        'en',
+      ),
     ).toEqual([]);
   });
 
@@ -262,6 +431,26 @@ describe('buildLiveUserStats', () => {
     expect(
       buildLiveUserStats({ ...all, scorerPredictions: [] }, 'en').map(c => c.id),
     ).toEqual(['peoplesFavourite', 'woodenSpoon']);
+  });
+
+  it('puts the member card after the two pairs and before the nationality one', () => {
+    expect(
+      buildLiveUserStats(
+        {
+          ...all,
+          scoredPredictions: [scored('u1', [1, 0], [2, 1])],
+          scorerNationalities: snapshot({ Norway: { goals: 3, players: 2 } }),
+        },
+        'en',
+      ).map(c => c.id),
+    ).toEqual([
+      'peoplesFavourite',
+      'woodenSpoon',
+      'goldenBoot',
+      'goalDrought',
+      'almost',
+      'norwegianGoals',
+    ]);
   });
 
   it('carries no emoji or icon field for the live card to key off', () => {
@@ -339,6 +528,7 @@ describe('nationalityGoalsCard', () => {
       teams,
       scorerPredictions: [rank('u1', 'p1', 'p3')],
       players,
+      scoredPredictions: [],
     };
     expect(buildLiveUserStats({ ...base, scorerNationalities: null }, 'en').map(c => c.id)).toEqual([
       'peoplesFavourite',
@@ -362,6 +552,7 @@ describe('nationalityGoalsCard', () => {
           teams,
           scorerPredictions: [],
           players,
+          scoredPredictions: [],
           scorerNationalities: snapshot({ Norway: { goals: 3, players: 2 } }),
         },
         'en',

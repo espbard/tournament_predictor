@@ -1666,7 +1666,24 @@ season's squads, plus an admin warning when the deadline is close and the shortl
 
 ---
 
-## 18. References
+## 18. The "Almost" card *(added after the six phases, on request)*
+
+A sixth stat card, and the first about the members rather than what they predicted: who has
+the goal difference right in the most matches, and — among those level on that — the fewest
+exact scorelines. `almostCard()` in `server/src/live/userStats.ts`.
+
+| Decision | Why |
+|---|---|
+| Two keys in that order — most goal differences first, fewest exact scorelines only as the separator — rather than the widest gap between them, which is what the manual type's "Close but no cigar" uses | It is the statistic that was asked for, and the one the sentence prints. The cost is that a prolific predictor who also hits a few scorelines outranks a quieter one who hits none; both numbers are in the sentence, so the card can be read either way |
+| Exact scorelines are counted **inside** the goal-difference total, not against it | That is how the tiers stack: an exact scoreline necessarily has the right margin too, and `calculateLivePoints` awards both. Subtracting them would make the headline number disagree with the leaderboard's goal-difference column |
+| The card is built from the predicted and actual **scores**, not from the stored `correct_goal_difference_points` / `exact_score_points` columns | Those hold points, and a competition may configure a tier at zero. The card would then silently become "got the margin right in a competition that pays for it". The two comparisons it makes are the ones in `server/src/live/scoring.ts` |
+| …but the rows it reads are still selected by `points IS NOT NULL` | That is the leaderboard's and the progression chart's own test for "counts in the game", written by the scoring trigger: a fixture the admin left out of its gameweek is already excluded, and one that scored before being moved back to postponed still counts. Re-deriving that rule here is how the card would eventually disagree with the leaderboard above it |
+| `UserStatSubject.type` gained no new value — the card uses the existing `'user'` | It already means "a photograph, cropped to fill", which is what a member is. `LiveUserStatCard` only had to learn that `'user'` takes the photograph branch, and to fall back to `UserAvatar` — the initial on `iconColor` — for a member with no picture |
+| Ties are shown rather than broken, and members who have never had a margin right are simply absent | Both match the cards already in the deck: `countEnd` shows a tie, and a card that can name nobody returns null instead of printing a zero |
+
+---
+
+## 19. References
 
 - [2026/27 Champions League: teams, dates, draws, format](https://www.uefa.com/uefachampionsleague/news/02a6-20d57cfcd03e-407c22a7f465-1000--2026-27-champions-league-teams-dates-draws-format-final/)
 - [UEFA confirms date for the 2026/27 Champions League league phase draw](https://www.besoccer.com/new/uefa-confirms-date-for-the-202627-champions-league-league-phase-draw-1421299)
