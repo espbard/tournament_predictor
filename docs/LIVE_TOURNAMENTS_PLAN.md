@@ -1943,8 +1943,8 @@ start arriving it is not: the people who are playing get pushed off the bottom o
 screen by the people who are not, and the points chart draws a flat bundle of lines along
 its x-axis.
 
-So from the first completed fixture, a member who has submitted nothing is left out of the
-leaderboard, the podium above it and the progression chart. The rule lives in
+So from the first completed fixture, a member who has not predicted a fixture is left out
+of the leaderboard, the podium above it and the progression chart. The rule lives in
 `server/src/live/participation.ts` and both read models go through it — the leaderboard
 route and `loadLiveProgression()`, which is also what the leader stat card walks — so the
 three cannot disagree about who is in the competition.
@@ -1952,7 +1952,8 @@ three cannot disagree about who is in the competition.
 | Decision | Why |
 |---|---|
 | The filter runs on the server, in the two read models, not in the components | The podium, the leaderboard and the chart would each need the same rule, and the stat deck's leader card reads the progression too. One place is also what keeps a rank of 4 from appearing under a list of three names |
-| "Has predicted" means **any** prediction — a fixture, the league table, the top-scorer ranking, a bonus answer — not just a fixture prediction | A member who ranked the table but has not reached the fixtures yet holds table points. Hiding them would take points somebody actually scored off the leaderboard, which is wrong in a way that a slightly long list is not |
+| "Has predicted" means a **fixture** prediction. The season-long side bets — the league table, the top-scorer ranking, the bonus questions — do not count | Requested. Each of those is one submission made before a ball is kicked, so somebody who filled one in and never came back is exactly the dormant member this hides. The consequence is accepted: a member holding only side-bet points is hidden, points and all. The leaderboard is a list of the people playing the fixtures |
+| Any fixture prediction counts, scored or not | Somebody who has filled in the matches still to come is playing, whether or not any of them has been settled yet |
 | A completed fixture means one that counts: `finished` **and** selected for its gameweek | The same test the rest of the live type uses. A tournament whose finished fixtures were all left out of their gameweeks has not started as far as this competition is concerned, so nobody is behind yet |
 | Ranks are computed **after** the filter | Hiding a row from a ranked list leaves a gap in the numbers. The hidden members are on zero and therefore last, so nothing above them moves |
 | The filter never empties the view: if it would hide everybody, everybody is shown | A competition opened mid-season, where matches are already behind but nobody has predicted yet, would otherwise render as "no members" and read as broken. There the roster is still the most useful thing to print |

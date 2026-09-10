@@ -1,13 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { isLiveFixtureSelected } from '@tournament-predictor/shared';
 import { db } from '../db/client';
-import {
-  liveBonusAnswers,
-  liveFixtures,
-  livePredictions,
-  liveScorerPredictions,
-  liveTablePredictions,
-} from '../db/liveSchema';
+import { liveFixtures, livePredictions } from '../db/liveSchema';
 import { loadSelectionIndex } from './selections';
 
 // ── Who is playing ────────────────────────────────────────────────────────────
@@ -20,14 +14,15 @@ import { loadSelectionIndex } from './selections';
 // is off the bottom of a phone screen and drawing a flat line along the foot of the
 // points chart.
 //
-// So from the first completed match, a member who has not submitted anything is left out
+// So from the first completed match, a member who has not predicted a fixture is left out
 // of the leaderboard and the progression chart. Two deliberate choices in that rule:
 //
-//   * "Submitted anything" means any prediction — a fixture, the league table, the
-//     top-scorer ranking, a bonus answer — not only a fixture prediction. Hiding a member
-//     who ranked the table but has not reached the fixtures yet would take their table
-//     points off the leaderboard with them, and a leaderboard that omits points somebody
-//     has actually scored is wrong in a way that a slightly long list is not.
+//   * Only fixture predictions count. The season-long side bets — the league table, the
+//     top-scorer ranking, the bonus questions — are one submission each made before a ball
+//     is kicked, and somebody who filled one in and then never came back is exactly the
+//     dormant member this hides. It follows that a member holding only side-bet points
+//     goes with them, points and all; the leaderboard is a list of the people playing the
+//     fixtures, and it is being read that way.
 //   * A completed match means one that counts: finished, and selected for its gameweek.
 //     A tournament whose finished fixtures were all left out of their gameweeks has not
 //     started as far as this competition is concerned.
@@ -39,7 +34,7 @@ import { loadSelectionIndex } from './selections';
 export interface LiveParticipation {
   /** True once at least one fixture that counts towards this competition has been played. */
   hasCompletedFixtures: boolean;
-  /** Members who have submitted a prediction of any kind. */
+  /** Members who have predicted at least one fixture. */
   participantIds: Set<string>;
 }
 
@@ -47,14 +42,7 @@ export async function loadLiveParticipation(
   competitionId: string,
   liveTournamentId: string,
 ): Promise<LiveParticipation> {
-  const [
-    finishedFixtures,
-    selections,
-    fixturePredictors,
-    tablePredictors,
-    scorerPredictors,
-    bonusPredictors,
-  ] = await Promise.all([
+  const [finishedFixtures, selections, fixturePredictors] = await Promise.all([
     db
       .select({
         id: liveFixtures.id,
@@ -69,31 +57,17 @@ export async function loadLiveParticipation(
         ),
       ),
     loadSelectionIndex(liveTournamentId),
+    // Every prediction, scored or not: somebody who has filled in the fixtures still to
+    // come is playing, whether or not any of them has been settled yet.
     db
       .selectDistinct({ userId: livePredictions.userId })
       .from(livePredictions)
       .where(eq(livePredictions.liveCompetitionId, competitionId)),
-    db
-      .selectDistinct({ userId: liveTablePredictions.userId })
-      .from(liveTablePredictions)
-      .where(eq(liveTablePredictions.liveCompetitionId, competitionId)),
-    db
-      .selectDistinct({ userId: liveScorerPredictions.userId })
-      .from(liveScorerPredictions)
-      .where(eq(liveScorerPredictions.liveCompetitionId, competitionId)),
-    db
-      .selectDistinct({ userId: liveBonusAnswers.userId })
-      .from(liveBonusAnswers)
-      .where(eq(liveBonusAnswers.liveCompetitionId, competitionId)),
   ]);
 
   return {
     hasCompletedFixtures: finishedFixtures.some(f => isLiveFixtureSelected(f, selections)),
-    participantIds: new Set(
-      [...fixturePredictors, ...tablePredictors, ...scorerPredictors, ...bonusPredictors].map(
-        r => r.userId,
-      ),
-    ),
+    participantIds: new Set(fixturePredictors.map(r => r.userId)),
   };
 }
 

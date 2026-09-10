@@ -14,11 +14,11 @@ describe('filterLiveParticipants', () => {
     );
   });
 
-  it('drops members who have never predicted once a match is behind', () => {
+  it('drops members who have never predicted a fixture once a match is behind', () => {
     expect(filterLiveParticipants(MEMBERS, participation())).toEqual([{ userId: 'u1' }]);
   });
 
-  it('keeps a member who has predicted anything at all', () => {
+  it('keeps every member who has predicted a fixture', () => {
     const kept = filterLiveParticipants(
       MEMBERS,
       participation({ participantIds: new Set(['u1', 'u3']) }),
