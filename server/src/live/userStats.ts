@@ -629,9 +629,10 @@ export function woodenSpoonCard(
  * story in it either. It is the split that makes it worth printing, and the believers
  * are the half of it worth naming.
  *
- * Where two teams are level, they are shown together only if the same members believe in
- * both — a shared maverick is one story. Otherwise the alphabetically first keeps the
- * card, because a sentence naming two sets of believers cannot say who backed which.
+ * Teams level on both counts are all shown, and each gets its own sentence naming who
+ * still backs it: one sentence could not say who backed which. There is no cap on how
+ * many — a league that has written off four teams bar one believer each is a card worth
+ * printing in full, and the tile shows the first four crests either way.
  *
  * Null where the format has no bands to drop out of — a domestic league's table means
  * plenty, but not this — and null while nobody is written off, or everybody is.
@@ -676,38 +677,53 @@ export function lastBelieverCard(
     .filter(v => v.believers.length === fewestBelievers)
     .sort((a, b) => a.team.name.localeCompare(b.team.name));
 
-  // Two teams written off by the same members and believed in by the same members are one
-  // story; two with different believers are two, and only one of them fits in a sentence.
-  const believerIds = (v: Verdict) =>
-    dedupeByUser(v.believers)
-      .map(b => b.userId)
-      .join('|');
-  const winners = tied.filter(v => believerIds(v) === believerIds(tied[0]));
-
-  const believers = dedupeByUser(winners[0].believers);
+  // Every team level on both counts is shown, whoever believes in them. Two teams with
+  // different believers are two stories, so they get a sentence each rather than one
+  // sentence that could not say who backed which.
+  const winners = tied;
   const { writtenOff, ranked } = winners[0];
   const names = joinNames(winners.map(w => w.team.name), lang);
-  const believerNames = joinNames(believers.map(b => b.username), lang);
-  const alone = believers.length === 1;
+  const single = winners.length === 1;
+
+  /** "Alice is the only one with Viking going through", once per team. */
+  const believedBy = (verdict: Verdict): string => {
+    const believers = dedupeByUser(verdict.believers);
+    const who = joinNames(believers.map(b => b.username), lang);
+    const alone = believers.length === 1;
+    // With one team on the card its name has just been printed, so the sentence says
+    // "them"; with several it has to say which of them it means.
+    const team = single
+      ? lang === 'no'
+        ? 'dem'
+        : lang === 'de'
+          ? 'sie'
+          : 'them'
+      : `**${verdict.team.name}**`;
+
+    return lang === 'no'
+      ? alone
+        ? `**${who}** er den eneste som har tippet ${team} videre.`
+        : `Bare **${who}** har tippet ${team} videre.`
+      : lang === 'de'
+        ? alone
+          ? `**${who}** ist die einzige Person, die ${team} weiterkommen sieht.`
+          : `Nur **${who}** sehen ${team} weiterkommen.`
+        : alone
+          ? `**${who}** is the only one with ${team} going through.`
+          : `Only **${who}** have ${team} going through.`;
+  };
 
   const title =
     lang === 'no' ? 'Den siste troende' : lang === 'de' ? 'Der letzte Gläubige' : 'The last believer';
 
-  const statistic =
+  const opening =
     lang === 'no'
-      ? `**${writtenOff}** av **${ranked}** har tippet at **${names}** ryker rett ut. ` +
-        (alone
-          ? `**${believerNames}** er den eneste som har tippet dem videre.`
-          : `Bare **${believerNames}** har tippet dem videre.`)
+      ? `**${writtenOff}** av **${ranked}** har tippet at **${names}** ryker rett ut.`
       : lang === 'de'
-        ? `**${writtenOff}** von **${ranked}** tippen **${names}** auf den direkten Abgang. ` +
-          (alone
-            ? `**${believerNames}** ist die einzige Person, die sie weiterkommen sieht.`
-            : `Nur **${believerNames}** sehen sie weiterkommen.`)
-        : `**${writtenOff}** of **${ranked}** have **${names}** dropping straight out. ` +
-          (alone
-            ? `**${believerNames}** is the only one with them going through.`
-            : `Only **${believerNames}** have them going through.`);
+        ? `**${writtenOff}** von **${ranked}** tippen **${names}** auf den direkten Abgang.`
+        : `**${writtenOff}** of **${ranked}** have **${names}** dropping straight out.`;
+
+  const statistic = [opening, ...winners.map(believedBy)].join(' ');
 
   return card('lastBeliever', title, statistic, winners.map(w => w.team), 'team');
 }

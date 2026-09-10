@@ -1867,13 +1867,17 @@ and is named for it. `lastBelieverCard()` in `server/src/live/userStats.ts`.
 
 > **11** of **12** have **Slovan Bratislava** dropping straight out. **Alice** is the only one
 > with them going through.
+>
+> **11** of **12** have **Slovan Bratislava and Young Boys** dropping straight out. **Alice** is
+> the only one with **Slovan Bratislava** going through. **Bob** is the only one with **Young
+> Boys** going through.
 
 | Decision | Why |
 |---|---|
 | Both conditions are the card: most members writing them off, and **at least one** not | A team everybody writes off is a fact about the draw, and a team nobody writes off has no story either. It is the split that is worth printing, and the believers are the half worth naming |
 | The band is the format's **bottom** one — the band with no upper bound, so the one that runs to the foot of the table | The Champions League league phase sends 25th and below out with no play-off behind them; the bands are already the source of truth for table scoring, and reading them means the card follows a format change instead of a hardcoded 25. A format without bands says nothing at all |
 | The route hands the card a number, not the stage | What the sentence needs is "from 25th". Keeping the lookup in the route leaves the card pure and lets a test say `5` |
-| Ties are shown together **only when the same members believe in both** teams | A shared maverick is one story and reads as one sentence. Two teams with different believers are two stories, and a sentence naming both sets cannot say who backed which — so the alphabetically first keeps the card. It is the one place in the deck a tie is broken rather than shown, and the reason is that the tie is between subjects whose supporting cast differs |
+| Every team level on both counts is shown, and each gets its **own sentence** naming who backs that one | One sentence listing both sets of believers could not say who backed which. There is no cap on how many: a league that has written off four teams bar one believer each is worth printing in full, and the tile shows the first four crests either way |
 | Level teams are separated first by the **fewest** believers | The fewer people stand against the league, the better the story the card is looking for |
 | A team no longer in the tournament is dropped from every count | Same rule as `countEnd`: the sentence has to be able to name its subject, and the "x of y" it prints has to add up |
 | Table predictions grew the member's name and picture, via a join the query did not have | Naming the believers needs them, and the two cards already reading those rows are unaffected |

@@ -781,24 +781,11 @@ describe('lastBelieverCard', () => {
     );
   });
 
-  it('shows two level teams together only when the same members believe in both', () => {
-    const shared = lastBelieverCard(
+  it('gives every level team its own sentence, naming who backs that one', () => {
+    const card = lastBelieverCard(
       [
-        // Alice alone has both Enschede and Feyenoord surviving.
-        pick('u1', 't5', 't6', 't1', 't2', 't3', 't4'),
-        pick('u2', 't1', 't2', 't3', 't4', 't5', 't6'),
-        pick('u3', 't1', 't2', 't3', 't4', 't5', 't6'),
-      ],
-      six,
-      5,
-      'en',
-    );
-    expect(shared?.subjects.map(s => s.id)).toEqual(['t5', 't6']);
-    expect(shared?.statistic).toContain('**Enschede and Feyenoord** dropping straight out');
-    expect(shared?.statistic).toContain('**Alice** is the only one');
-
-    const apart = lastBelieverCard(
-      [
+        // Alice is alone on Enschede, Bob alone on Feyenoord, and Chris has written off
+        // both. Two stories, so two sentences.
         pick('u1', 't5', 't1', 't2', 't3', 't6', 't4'),
         pick('u2', 't6', 't1', 't2', 't4', 't3', 't5'),
         pick('u3', 't1', 't2', 't3', 't4', 't5', 't6'),
@@ -807,9 +794,30 @@ describe('lastBelieverCard', () => {
       5,
       'en',
     );
-    // Two stories, and only one fits in the sentence: the first by name keeps the card.
-    expect(apart?.subjects.map(s => s.id)).toEqual(['t5']);
-    expect(apart?.statistic).toContain('**Alice** is the only one');
+    expect(card?.statistic).toBe(
+      '**2** of **3** have **Enschede and Feyenoord** dropping straight out.' +
+        ' **Alice** is the only one with **Enschede** going through.' +
+        ' **Bob** is the only one with **Feyenoord** going through.',
+    );
+    expect(card?.subjects.map(s => s.id)).toEqual(['t5', 't6']);
+  });
+
+  it('names the same believer once per team when they back both', () => {
+    const card = lastBelieverCard(
+      [
+        pick('u1', 't5', 't6', 't1', 't2', 't3', 't4'),
+        pick('u2', 't1', 't2', 't3', 't4', 't5', 't6'),
+        pick('u3', 't1', 't2', 't3', 't4', 't5', 't6'),
+      ],
+      six,
+      5,
+      'en',
+    );
+    expect(card?.statistic).toBe(
+      '**2** of **3** have **Enschede and Feyenoord** dropping straight out.' +
+        ' **Alice** is the only one with **Enschede** going through.' +
+        ' **Alice** is the only one with **Feyenoord** going through.',
+    );
   });
 
   it('is null without bands, without predictions, or where the band takes nobody', () => {
@@ -848,6 +856,24 @@ describe('lastBelieverCard', () => {
       statistic:
         '**2** von **3** tippen **Feyenoord** auf den direkten Abgang. **Alice** ist die einzige Person, die sie weiterkommen sieht.',
     });
+  });
+
+  it('names each team in the other two locales when several are level', () => {
+    const rows = [
+      pick('u1', 't5', 't1', 't2', 't3', 't6', 't4'),
+      pick('u2', 't6', 't1', 't2', 't4', 't3', 't5'),
+      pick('u3', 't1', 't2', 't3', 't4', 't5', 't6'),
+    ];
+    expect(lastBelieverCard(rows, six, 5, 'no')?.statistic).toBe(
+      '**2** av **3** har tippet at **Enschede og Feyenoord** ryker rett ut.' +
+        ' **Alice** er den eneste som har tippet **Enschede** videre.' +
+        ' **Bob** er den eneste som har tippet **Feyenoord** videre.',
+    );
+    expect(lastBelieverCard(rows, six, 5, 'de')?.statistic).toBe(
+      '**2** von **3** tippen **Enschede und Feyenoord** auf den direkten Abgang.' +
+        ' **Alice** ist die einzige Person, die **Enschede** weiterkommen sieht.' +
+        ' **Bob** ist die einzige Person, die **Feyenoord** weiterkommen sieht.',
+    );
   });
 });
 
