@@ -1132,13 +1132,13 @@ Mounted as `app.use('/api/live', liveRouter)` in `server/src/index.ts`.
 | POST | `/competitions/join` | auth — `{inviteCode}` |
 | DELETE | `/competitions/:id/leave` | auth |
 | GET | `/competitions/:id/members` | auth |
-| GET | `/competitions/:id/leaderboard` | auth |
-| GET | `/competitions/:id/leaderboard-progression?lang=` | auth (member) — running totals per played fixture, in the manual type's `LeaderboardProgressionResponse` shape |
+| GET | `/competitions/:id/leaderboard` | auth — members who have never predicted drop out once a fixture has been played (§30) |
+| GET | `/competitions/:id/leaderboard-progression?lang=` | auth (member) — running totals per played fixture, in the manual type's `LeaderboardProgressionResponse` shape. Same member filter as the leaderboard (§30) |
 | GET | `/competitions/:id/user-stats?lang=` | auth (member) — the stat-card deck, worded server-side |
 | GET | `/competitions/:id/events` | auth — SSE: `fixtures-updated`, `leaderboard-updated`, `scorers-updated` |
 | GET | `/competitions/:id/fixtures` | auth — **main read model**: fixtures for a stage/matchday + caller's prediction + `lockedAt` + `isLocked` + `isSelected` + awarded points, in one call |
 | PUT | `/competitions/:id/predictions` | auth — upsert one `{fixtureId, homeScore, awayScore}`; rejects a fixture left out of its gameweek's selected matches |
-| GET | `/competitions/:id/predictions/:userId` | auth — another member's, **only for already-locked fixtures** |
+| GET | `/competitions/:id/predictions/:userId` | auth — another member's, **only for already-locked fixtures**, except for a test account (§31) |
 | GET | `/competitions/:id/bonus-questions` | auth — the questions plus `lockedAt` / `isLocked` per question |
 | GET / PUT | `/competitions/:id/bonus-answers` | auth — the caller's answers; `PUT {questionId, answer}` upserts one, enforcing that question's deadline |
 | GET | `/competitions/:id/bonus-answers/:userId` | auth — another member's, **only for already-locked questions** |
@@ -1934,7 +1934,59 @@ made of. It lives in `buildLiveUserStats()` and nowhere else:
 
 ---
 
-## 30. References
+## 30. The leaderboard drops the members who never played *(added after the six phases, on request)*
+
+A live competition collects members long before it collects predictions, and some never
+predict at all. Until the first match has been played that is harmless — a leaderboard of
+zeros is the roster, and seeing your name on it is half of why you joined. Once results
+start arriving it is not: the people who are playing get pushed off the bottom of a phone
+screen by the people who are not, and the points chart draws a flat bundle of lines along
+its x-axis.
+
+So from the first completed fixture, a member who has not predicted a fixture is left out
+of the leaderboard, the podium above it and the progression chart — except for the member
+reading the page, who always sees their own row. The rule lives in
+`server/src/live/participation.ts` and both read models go through it — the leaderboard
+route and `loadLiveProgression()`, which is also what the leader stat card walks — so the
+three cannot disagree about who is in the competition.
+
+| Decision | Why |
+|---|---|
+| The filter runs on the server, in the two read models, not in the components | The podium, the leaderboard and the chart would each need the same rule, and the stat deck's leader card reads the progression too. One place is also what keeps a rank of 4 from appearing under a list of three names |
+| "Has predicted" means a **fixture** prediction. The season-long side bets — the league table, the top-scorer ranking, the bonus questions — do not count | Requested. Each of those is one submission made before a ball is kicked, so somebody who filled one in and never came back is exactly the dormant member this hides. The consequence is accepted: a member holding only side-bet points is hidden, points and all. The leaderboard is a list of the people playing the fixtures |
+| Any fixture prediction counts, scored or not | Somebody who has filled in the matches still to come is playing, whether or not any of them has been settled yet |
+| A completed fixture means one that counts: `finished` **and** selected for its gameweek | The same test the rest of the live type uses. A tournament whose finished fixtures were all left out of their gameweeks has not started as far as this competition is concerned, so nobody is behind yet |
+| Ranks are computed **after** the filter | Hiding a row from a ranked list leaves a gap in the numbers. The hidden members are on zero and therefore last, so nothing above them moves |
+| The filter never empties the view: if it would hide everybody, everybody is shown | A competition opened mid-season, where matches are already behind but nobody has predicted yet, would otherwise render as "no members" and read as broken. There the roster is still the most useful thing to print |
+| The caller always sees their own row, on the leaderboard and in the chart | Requested. Hiding somebody from their own leaderboard reads as having been thrown out of a competition they are still in, and it is the one row nobody can misread — it is theirs, and it is on zero because they have not predicted. Other members' lists do not grow, so the tail the filter exists to remove stays removed |
+| The stat deck does not take the exception: `loadLiveProgression()` is passed a null viewer there | The deck is open to the league and reads the same for everybody. A non-predicting member is always last and flat, so including them would change nothing on the cards except whose deck they appear in |
+
+---
+
+## 31. Test accounts see the predictions early *(added after the six phases, on request)*
+
+Another member's fixture predictions are closed until that fixture locks, an hour before
+kickoff, so nobody can copy one while it still matters. That rule makes §30 hard to check:
+the way to confirm the leaderboard is hiding the right members is to open each member's
+fixtures tab and see who has predicted what, and before kickoff it is empty for everybody.
+
+`isTestAccount`, the flag an admin already toggles on `AdminHomePage` and the one the
+manual type lets preview a tournament's final results early, now also bypasses that lock:
+`GET /competitions/:id/predictions/:userId` returns every prediction rather than only the
+locked ones, and `GET /competitions/:id/fixtures/:fixtureId/predictions` answers rather
+than refusing. Both go through `canPreviewLivePredictions()` in the live competitions
+route.
+
+| Decision | Why |
+|---|---|
+| The existing `isTestAccount` flag, not a new one | It already exists, an admin already has a toggle for it on the home page, and it already means "this account is not playing for anything" — the manual type's final-results preview is gated on exactly the same flag |
+| Admins are **not** included, unlike the manual type's `isAdmin \|\| isTestAccount` preview | Requested as the test attribute alone. An admin who wants the bypass can set the flag on their own account, and that leaves an ordinary admin looking at the same league everybody else does |
+| It is a bypass on **reading** only | A test account still cannot predict a locked fixture, and no other member's view changes. Nothing about scoring or the leaderboard moves |
+| The "what everyone predicted" dropdown got the same exemption, though it is only drawn under a **finished** fixture | Both routes enforce one rule and should not drift. The per-user page is the one a tester actually uses |
+
+---
+
+## 32. References
 
 - [2026/27 Champions League: teams, dates, draws, format](https://www.uefa.com/uefachampionsleague/news/02a6-20d57cfcd03e-407c22a7f465-1000--2026-27-champions-league-teams-dates-draws-format-final/)
 - [UEFA confirms date for the 2026/27 Champions League league phase draw](https://www.besoccer.com/new/uefa-confirms-date-for-the-202627-champions-league-league-phase-draw-1421299)
