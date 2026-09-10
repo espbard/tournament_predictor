@@ -160,26 +160,6 @@ interface CardMember {
 const byUsername = (a: CardMember, b: CardMember) => a.username.localeCompare(b.username);
 
 /**
- * Rows that carry the same members, gathered into one group each, in the order the rows
- * come in. One member who is the only believer in two clubs is one story and one
- * sentence; two members with a club each are two.
- */
-function groupByMembers<T>(
-  rows: T[],
-  membersOf: (row: T) => CardMember[],
-): Array<{ members: CardMember[]; rows: T[] }> {
-  const groups = new Map<string, { members: CardMember[]; rows: T[] }>();
-  for (const row of rows) {
-    const members = membersOf(row);
-    const key = members.map(m => m.userId).join('|');
-    const group = groups.get(key);
-    if (group) group.rows.push(row);
-    else groups.set(key, { members, rows: [row] });
-  }
-  return [...groups.values()];
-}
-
-/**
  * One entry per member, name-sorted. The prediction pair below ranks predictions rather
  * than members, so the same member can hold two of the rows that tie; they are one
  * subject and one name in the sentence either way.
@@ -719,25 +699,24 @@ export function deadCertCard(
           ? `Every one of **${ranked}** has **${names}** in the **${directPlaces}** that go straight through.`
           : `**${most}** of **${ranked}** have **${names}** in the **${directPlaces}** that go straight through.`;
 
-  // Teams nobody left out have nothing to say — that is the whole league agreeing — and
-  // the rest are grouped by who left them out, so one doubter with two clubs says so once.
-  const doubted = winners.filter(w => w.doubters.length > 0);
-  const groups = groupByMembers(doubted, w => dedupeByUser(w.doubters));
-  const together = groups.length === 1 && doubted.length === winners.length;
+  const single = winners.length === 1;
 
-  /** "Alice was the only one to predict them outside the top 8", per set of doubters. */
-  const doubtedBy = (group: { members: CardMember[]; rows: Backing[] }): string => {
-    const who = joinNames(group.members.map(d => d.username), lang);
-    const alone = group.members.length === 1;
-    // Where every team on the card has the same doubters the opening line has already
-    // named them all, so the sentence can say "them" rather than list them twice.
-    const team = together
+  /** "Alice was the only one to predict them outside the top 8", per team that has one. */
+  const doubtedBy = (backing: Backing): string | null => {
+    const doubters = dedupeByUser(backing.doubters);
+    // Nothing to say about a team nobody left out, which is the whole league agreeing.
+    if (doubters.length === 0) return null;
+    const who = joinNames(doubters.map(d => d.username), lang);
+    const alone = doubters.length === 1;
+    // With one team on the card its name has just been printed, so the sentence says
+    // "them"; with several it has to say which of them it means.
+    const team = single
       ? lang === 'no'
         ? 'dem'
         : lang === 'de'
           ? 'sie'
           : 'them'
-      : `**${joinNames(group.rows.map(r => r.team.name), lang)}**`;
+      : `**${backing.team.name}**`;
 
     return lang === 'no'
       ? alone
@@ -752,10 +731,10 @@ export function deadCertCard(
           : `**${who}** were the only ones to predict ${team} outside the top **${directPlaces}**.`;
   };
 
-  const doubts = groups.map(doubtedBy);
-  // One set of doubters reads as part of the same breath; several are a line each, for the
-  // same reason the last-believer card gives each set its own.
-  const statistic = [opening, ...doubts].join(together ? ' ' : '\n');
+  const doubts = winners.map(doubtedBy).filter((line): line is string => line !== null);
+  // One team's doubters read as part of the same breath; several teams' are a line each,
+  // for the same reason the last-believer card gives each team its own.
+  const statistic = [opening, ...doubts].join(single ? ' ' : '\n');
 
   return card('deadCert', title, statistic, winners.map(w => w.team), 'team');
 }
@@ -769,11 +748,10 @@ export function deadCertCard(
  * story in it either. It is the split that makes it worth printing, and the believers
  * are the half of it worth naming.
  *
- * Teams level on both counts are all shown, and each set of believers gets its own line:
- * one member who is the only one backing two of them says so once, while two members with
- * a club each cannot share a sentence without losing who backed which. There is no cap on
- * how many — a league that has written off four teams bar one believer each is a card
- * worth printing in full, and the tile shows the first four crests either way.
+ * Teams level on both counts are all shown, and each gets its own line naming who still
+ * backs it: one line could not say who backed which. There is no cap on how many — a
+ * league that has written off four teams bar one believer each is a card worth printing
+ * in full, and the tile shows the first four crests either way.
  *
  * Null where the format has no bands to drop out of — a domestic league's table means
  * plenty, but not this — and null while nobody is written off, or everybody is.
@@ -825,16 +803,15 @@ export function lastBelieverCard(
   const { writtenOff, ranked } = winners[0];
   const names = joinNames(winners.map(w => w.team.name), lang);
 
-  const groups = groupByMembers(winners, v => dedupeByUser(v.believers));
-
-  /** "Alice is the only one with Viking going through", once per set of believers. */
-  const believedBy = (group: { members: CardMember[]; rows: Verdict[] }): string => {
-    const who = joinNames(group.members.map(b => b.username), lang);
-    const alone = group.members.length === 1;
-    // Always named, even where the opening line has just listed them: a line that said
-    // "them" beside another line that named a club would read as being about the same
-    // clubs, and these lines exist precisely to keep them apart.
-    const team = `**${joinNames(group.rows.map(r => r.team.name), lang)}**`;
+  /** "Alice is the only one with Viking going through", once per team. */
+  const believedBy = (verdict: Verdict): string => {
+    const believers = dedupeByUser(verdict.believers);
+    const who = joinNames(believers.map(b => b.username), lang);
+    const alone = believers.length === 1;
+    // Always named, even where the opening line has just listed them: a club per line is
+    // what keeps two of them from reading as one, and the same member holding two lines
+    // is a fair picture of a member who backed two clubs nobody else did.
+    const team = `**${verdict.team.name}**`;
 
     return lang === 'no'
       ? alone
@@ -865,7 +842,7 @@ export function lastBelieverCard(
 
   // A line each, because these are several stories and a paragraph of them runs together.
   // See LiveUserStatCard, which keeps the breaks.
-  const statistic = [opening, ...groups.map(believedBy)].join('\n');
+  const statistic = [opening, ...winners.map(believedBy)].join('\n');
 
   return card('lastBeliever', title, statistic, winners.map(w => w.team), 'team');
 }

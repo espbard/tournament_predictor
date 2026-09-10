@@ -1877,7 +1877,8 @@ out, where at least one member has them going through, and is named for it.
 > with them going through.
 >
 > **11** of **12** have **Slovan Bratislava, Sparta Praha and Young Boys** dropping straight out.
-> **Alice** is the only one with **Slovan Bratislava and Sparta Praha** going through.
+> **Alice** is the only one with **Slovan Bratislava** going through.
+> **Alice** is the only one with **Sparta Praha** going through.
 > **Bob** is the only one with **Young Boys** going through.
 
 | Decision | Why |
@@ -1888,7 +1889,7 @@ out, where at least one member has them going through, and is named for it.
 | The bands are the format's own — the top one for the dead cert, and for the last believer the **bottom** one — the band with no upper bound, so the one that runs to the foot of the table | The Champions League league phase sends 25th and below out with no play-off behind them; the bands are already the source of truth for table scoring, and reading them means the card follows a format change instead of a hardcoded 25. A format without bands says nothing at all |
 | The route hands the card a number, not the stage | What the sentence needs is "from 25th". Keeping the lookup in the route leaves the card pure and lets a test say `5` |
 | The dead cert names whoever left them out, and says nothing at all where nobody did | That silence is the unanimous case, which has nothing left to say — and it is why the card needed the members on its rows, not just a count |
-| Every team level on both counts is shown, and the lines are one per **set of believers**, not one per team — the dead cert groups its doubters the same way | One sentence listing both sets of believers could not say who backed which. One member who is the only one backing two clubs says so once, on a line that names both. The clubs are always named, even where the opening line has just listed them: a line saying "them" beside another that names a club reads as being about the same clubs, and these lines exist to keep them apart. Two members with a club each cannot share a sentence without losing who backed which, so they get a line apiece. There is no cap on how many, and the tile shows the first four crests either way |
+| Every team level on both counts is shown, and each gets its own **line** naming who backs that one — the dead cert does the same with its doubters | One sentence listing both sets of believers could not say who backed which. One line could not say who backed which, and a member who is the only believer in two clubs holding two of the lines is a fair picture of exactly that. The club is always named — a line saying "them" beside another that names one reads as being about the same club. There is no cap on how many, and the tile shows the first four crests either way |
 | Level teams are separated first by the **fewest** believers | The fewer people stand against the league, the better the story the card is looking for |
 | A team no longer in the tournament is dropped from every count | Same rule as `countEnd`: the sentence has to be able to name its subject, and the "x of y" it prints has to add up |
 | Table predictions grew the member's name and picture, via a join the query did not have | Naming the believers needs them, and the two cards already reading those rows are unaffected |

@@ -785,7 +785,7 @@ describe('deadCertCard', () => {
     );
   });
 
-  it('says it once when the same member left every tied team out', () => {
+  it('gives each tied team its own line, even where one member left them all out', () => {
     const card = deadCertCard(
       [
         pick('u1', 't1', 't2', 't3', 't4', 't5', 't6'),
@@ -796,10 +796,10 @@ describe('deadCertCard', () => {
       2,
       'en',
     );
-    // Chris left both Arsenal and Bayern out of his top two, so he is named once.
     expect(card?.statistic).toBe(
       '**2** of **3** have **Arsenal and Bayern** in the **2** that go straight through.' +
-        ' **Chris** was the only one to predict them outside the top **2**.',
+        '\n**Chris** was the only one to predict **Arsenal** outside the top **2**.' +
+        '\n**Chris** was the only one to predict **Bayern** outside the top **2**.',
     );
   });
 
@@ -947,7 +947,7 @@ describe('lastBelieverCard', () => {
     expect(card?.subjects.map(s => s.id)).toEqual(['t5', 't6']);
   });
 
-  it('says it once when the same member is the only believer in both', () => {
+  it('gives each team its own line, even where one member believes in both', () => {
     const card = lastBelieverCard(
       [
         pick('u1', 't5', 't6', 't1', 't2', 't3', 't4'),
@@ -960,11 +960,12 @@ describe('lastBelieverCard', () => {
     );
     expect(card?.statistic).toBe(
       '**2** of **3** have **Enschede and Feyenoord** dropping straight out.' +
-        '\n**Alice** is the only one with **Enschede and Feyenoord** going through.',
+        '\n**Alice** is the only one with **Enschede** going through.' +
+        '\n**Alice** is the only one with **Feyenoord** going through.',
     );
   });
 
-  it('groups the clubs by who backs them: two lines, not three', () => {
+  it('gives three level clubs three lines, whoever backs them', () => {
     const card = lastBelieverCard(
       [
         // Bob is the only one backing Bayern and Arsenal; Chris the only one on Barcelona.
@@ -979,8 +980,9 @@ describe('lastBelieverCard', () => {
     );
     expect(card?.statistic).toBe(
       '**3** of **4** have **Arsenal, Barcelona and Bayern** dropping straight out.' +
-        '\n**Bob** is the only one with **Arsenal and Bayern** going through.' +
-        '\n**Chris** is the only one with **Barcelona** going through.',
+        '\n**Bob** is the only one with **Arsenal** going through.' +
+        '\n**Chris** is the only one with **Barcelona** going through.' +
+        '\n**Bob** is the only one with **Bayern** going through.',
     );
   });
 
