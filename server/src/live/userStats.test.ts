@@ -1811,12 +1811,12 @@ describe('buildLiveUserStats', () => {
     ).toEqual([]);
   });
 
-  it('returns the two pairs, table first, top before bottom in each', () => {
+  it('returns the two pairs, in the running order the league chose', () => {
     expect(buildLiveUserStats(all, 'en').map(c => c.id)).toEqual([
-      'peoplesFavourite',
-      'woodenSpoon',
       'goldenBoot',
       'goalDrought',
+      'peoplesFavourite',
+      'woodenSpoon',
       'inHaalandWeTrust',
     ]);
   });
@@ -1833,7 +1833,7 @@ describe('buildLiveUserStats', () => {
     ).toEqual(['peoplesFavourite', 'woodenSpoon']);
   });
 
-  it('runs leaderboard cards first, then the rankings, then the predictions', () => {
+  it('runs the cards in the order the league chose', () => {
     expect(
       buildLiveUserStats(
         {
@@ -1862,21 +1862,21 @@ describe('buildLiveUserStats', () => {
       ).map(c => c.id),
     ).toEqual([
       'theLeader',
+      'goldenBoot',
+      'goalDrought',
+      'tronderHater',
+      'worstPrediction',
       'bestForm',
       'peoplesFavourite',
       'woodenSpoon',
-      'deadCert',
-      'lastBeliever',
-      'goldenBoot',
-      'goalDrought',
       'inHaalandWeTrust',
       'spotOn',
-      'almost',
-      'bestPrediction',
-      'worstPrediction',
-      'mostPredictableResult',
+      'deadCert',
+      'lastBeliever',
       'norwegianGoals',
-      'tronderHater',
+      'mostPredictableResult',
+      'bestPrediction',
+      'almost',
     ]);
   });
 
@@ -1886,10 +1886,10 @@ describe('buildLiveUserStats', () => {
         c => c.id,
       ),
     ).toEqual([
-      'peoplesFavourite',
-      'woodenSpoon',
       'goldenBoot',
       'goalDrought',
+      'peoplesFavourite',
+      'woodenSpoon',
       'inHaalandWeTrust',
       'almost',
     ]);
@@ -2023,7 +2023,7 @@ describe('nationalityGoalsCard', () => {
     });
   });
 
-  it('joins the deck last, and only when it has something to say', () => {
+  it('joins the deck only when it has something to say', () => {
     const base = {
       tablePredictions: [pick('u1', 't1', 't3')],
       teams,
@@ -2037,10 +2037,10 @@ describe('nationalityGoalsCard', () => {
       bonusAnswers: [],
     };
     expect(buildLiveUserStats({ ...base, scorerNationalities: null }, 'en').map(c => c.id)).toEqual([
-      'peoplesFavourite',
-      'woodenSpoon',
       'goldenBoot',
       'goalDrought',
+      'peoplesFavourite',
+      'woodenSpoon',
       'inHaalandWeTrust',
     ]);
     expect(
@@ -2049,10 +2049,10 @@ describe('nationalityGoalsCard', () => {
         'en',
       ).map(c => c.id),
     ).toEqual([
-      'peoplesFavourite',
-      'woodenSpoon',
       'goldenBoot',
       'goalDrought',
+      'peoplesFavourite',
+      'woodenSpoon',
       'inHaalandWeTrust',
       'norwegianGoals',
     ]);

@@ -24,6 +24,10 @@ import { LIVE_SEASON_MILESTONE_IDS } from './progression';
 // the two ends of the bands: the team the league has going straight through, and the one
 // it has written off bar a believer — who is named.
 //
+// The cards are grouped by what they are made of here, and by nothing at all in
+// buildLiveUserStats at the foot of the file: that list is a running order the league
+// chose, and it is the one place it lives.
+//
 // Then a pair about the members themselves rather than what they predicted: who calls the
 // scoreline outright most often, and who keeps landing on the right margin and the wrong
 // scoreline. And a pair about one prediction rather than a season of them: the one nobody
@@ -1911,26 +1915,31 @@ export function buildLiveUserStats(
     scorerNationalities,
     bonusAnswers,
   } = input;
+  // The order the league asked for. It is a running order rather than a grouping: the
+  // cards are not sorted by what they are made of, so this list is the only place it
+  // lives, and moving one is moving a line.
   return [
     theLeaderCard(progression, lang),
+    goldenBootCard(scorerPredictions, players, lang),
+    goalDroughtCard(scorerPredictions, players, lang),
+    tronderHaterCard(bonusAnswers, lang),
+    worstPredictionCard(scoredPredictions, teams, lang),
     bestFormCard(scoredPredictions, progression, lang),
     worstFormCard(scoredPredictions, progression, lang),
+    // The two table movers were not in the order given; they sit with the form pair they
+    // were borrowed alongside until somebody says otherwise.
     theClimberCard(progression, lang),
     theFallerCard(progression, lang),
     peoplesFavouriteCard(tablePredictions, teams, lang),
     woodenSpoonCard(tablePredictions, teams, lang),
-    deadCertCard(tablePredictions, teams, directPlaces, lang),
-    lastBelieverCard(tablePredictions, teams, eliminationFrom, lang),
-    goldenBootCard(scorerPredictions, players, lang),
-    goalDroughtCard(scorerPredictions, players, lang),
     inHaalandWeTrustCard(scorerPredictions, players, lang),
     spotOnCard(scoredPredictions, lang),
-    almostCard(scoredPredictions, lang),
-    bestPredictionCard(scoredPredictions, teams, lang),
-    worstPredictionCard(scoredPredictions, teams, lang),
+    deadCertCard(tablePredictions, teams, directPlaces, lang),
+    lastBelieverCard(tablePredictions, teams, eliminationFrom, lang),
+    nationalityGoalsCard(scorerNationalities, bonusAnswers, lang),
     mostExpectedResultCard(scoredPredictions, teams, progression, scoringConfig, lang),
     mostUnexpectedResultCard(scoredPredictions, teams, progression, lang),
-    nationalityGoalsCard(scorerNationalities, bonusAnswers, lang),
-    tronderHaterCard(bonusAnswers, lang),
+    bestPredictionCard(scoredPredictions, teams, lang),
+    almostCard(scoredPredictions, lang),
   ].filter((c): c is UserStatCardData => c !== null);
 }
