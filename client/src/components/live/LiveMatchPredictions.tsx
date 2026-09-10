@@ -26,6 +26,8 @@ interface Props {
   fixtureId: string;
   /** Names link to that member's read-only predictions, same as the leaderboard. */
   linkToUsers?: boolean;
+  /** The fixture's whole-number multiplier, so a highlighted match can name its own ×N. */
+  multiplier?: number;
 }
 
 type Prediction = NonNullable<LiveFixturePredictionRow['prediction']>;
@@ -73,14 +75,27 @@ function scoreClass(prediction: Prediction): string {
  * the badge, not to enumerate everything that was missed — and the total is spelled out
  * only when there is more than one line to add up.
  */
-function PointsBreakdown({ prediction }: { prediction: Prediction }) {
+function PointsBreakdown({
+  prediction,
+  multiplier = 1,
+}: {
+  prediction: Prediction;
+  multiplier?: number;
+}) {
   const { t } = useT();
 
+  // The three tiers are sums, so they read as "+3". The multiplier is not a fourth source
+  // of points but what was done to the other three, so it names the factor instead — the
+  // bonus it paid is still what carries the total from the tiers to the badge.
   const lines = [
-    { key: 'exact', points: prediction.exactScorePoints },
-    { key: 'goalDifference', points: prediction.correctGoalDifferencePoints },
-    { key: 'outcome', points: prediction.correctOutcomePoints },
-    { key: 'highlight', points: prediction.multiplierBonusPoints },
+    { key: 'exact', points: prediction.exactScorePoints, value: null as string | null },
+    { key: 'goalDifference', points: prediction.correctGoalDifferencePoints, value: null },
+    { key: 'outcome', points: prediction.correctOutcomePoints, value: null },
+    {
+      key: 'multiplier',
+      points: prediction.multiplierBonusPoints,
+      value: multiplier > 1 ? t('live.multiplier.badge', { multiplier }) : null,
+    },
   ].filter(line => line.points > 0);
 
   if (lines.length === 0) {
@@ -98,7 +113,9 @@ function PointsBreakdown({ prediction }: { prediction: Prediction }) {
           <dt className="text-muted-foreground">
             {t(`live.matchPredictions.breakdown.${line.key}`)}
           </dt>
-          <dd className="shrink-0 font-medium tabular-nums">+{line.points}</dd>
+          <dd className="shrink-0 font-medium tabular-nums">
+            {line.value ?? `+${line.points}`}
+          </dd>
         </div>
       ))}
 
@@ -116,6 +133,7 @@ export default function LiveMatchPredictions({
   competitionId,
   fixtureId,
   linkToUsers = true,
+  multiplier = 1,
 }: Props) {
   const { t } = useT();
   const { user } = useAuthStore();
@@ -266,7 +284,9 @@ export default function LiveMatchPredictions({
                       )}
                     </div>
 
-                    {breakdown && isExpanded && <PointsBreakdown prediction={breakdown} />}
+                    {breakdown && isExpanded && (
+                      <PointsBreakdown prediction={breakdown} multiplier={multiplier} />
+                    )}
                   </li>
                 );
               })}

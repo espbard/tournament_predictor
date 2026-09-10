@@ -338,6 +338,7 @@ export default function LiveFixtureCard({
           competitionId={competitionId}
           fixtureId={fixture.id}
           linkToUsers={linkToUsers}
+          multiplier={multiplier}
         />
       )}
     </div>
