@@ -872,7 +872,7 @@ describe('lastBelieverCard', () => {
     );
     expect(card?.title).toBe('The last believer');
     expect(card?.statistic).toBe(
-      '**2** of **3** have **Feyenoord** dropping straight out.\n**Alice** is the only one with them going through.',
+      '**2** of **3** have **Feyenoord** dropping straight out.\n**Alice** is the only one with **Feyenoord** going through.',
     );
     expect(card?.subjects).toEqual([
       { type: 'team', id: 't6', name: 'Feyenoord', imageUrl: null },
@@ -893,7 +893,7 @@ describe('lastBelieverCard', () => {
     );
     expect(card?.subjects.map(s => s.id)).toEqual(['t5']);
     expect(card?.statistic).toBe(
-      '**2** of **3** have **Enschede** dropping straight out.\n**Bob** is the only one with them going through.',
+      '**2** of **3** have **Enschede** dropping straight out.\n**Bob** is the only one with **Enschede** going through.',
     );
   });
 
@@ -922,7 +922,7 @@ describe('lastBelieverCard', () => {
       'en',
     );
     expect(card?.statistic).toBe(
-      '**3** of **5** have **Feyenoord** dropping straight out.\nOnly **Dana and Erik** have them going through.',
+      '**3** of **5** have **Feyenoord** dropping straight out.\nOnly **Dana and Erik** have **Feyenoord** going through.',
     );
   });
 
@@ -960,7 +960,27 @@ describe('lastBelieverCard', () => {
     );
     expect(card?.statistic).toBe(
       '**2** of **3** have **Enschede and Feyenoord** dropping straight out.' +
-        '\n**Alice** is the only one with them going through.',
+        '\n**Alice** is the only one with **Enschede and Feyenoord** going through.',
+    );
+  });
+
+  it('groups the clubs by who backs them: two lines, not three', () => {
+    const card = lastBelieverCard(
+      [
+        // Bob is the only one backing Bayern and Arsenal; Chris the only one on Barcelona.
+        pick('u2', 't1', 't2', 't4', 't3', 't5', 't6'),
+        pick('u3', 't3', 't4', 't5', 't1', 't2', 't6'),
+        pick('u1', 't4', 't5', 't6', 't1', 't2', 't3'),
+        pick('u4', 't4', 't5', 't6', 't1', 't2', 't3'),
+      ],
+      six,
+      4,
+      'en',
+    );
+    expect(card?.statistic).toBe(
+      '**3** of **4** have **Arsenal, Barcelona and Bayern** dropping straight out.' +
+        '\n**Bob** is the only one with **Arsenal and Bayern** going through.' +
+        '\n**Chris** is the only one with **Barcelona** going through.',
     );
   });
 
@@ -980,7 +1000,7 @@ describe('lastBelieverCard', () => {
       'en',
     );
     expect(card?.statistic).toBe(
-      '**1** of **2** have **Feyenoord** dropping straight out.\n**Bob** is the only one with them going through.',
+      '**1** of **2** have **Feyenoord** dropping straight out.\n**Bob** is the only one with **Feyenoord** going through.',
     );
   });
 
@@ -993,12 +1013,12 @@ describe('lastBelieverCard', () => {
     expect(lastBelieverCard(rows, six, 5, 'no')).toMatchObject({
       title: 'I hvert fall noen som har trua',
       statistic:
-        '**2** av **3** har tippet at **Feyenoord** ryker rett ut.\n**Alice** er den eneste som har tippet dem videre.',
+        '**2** av **3** har tippet at **Feyenoord** ryker rett ut.\n**Alice** er den eneste som har tippet **Feyenoord** videre.',
     });
     expect(lastBelieverCard(rows, six, 5, 'de')).toMatchObject({
       title: 'Der letzte Gläubige',
       statistic:
-        '**2** von **3** tippen **Feyenoord** auf den direkten Abgang.\n**Alice** ist die einzige Person, die sie weiterkommen sieht.',
+        '**2** von **3** tippen **Feyenoord** auf den direkten Abgang.\n**Alice** ist die einzige Person, die **Feyenoord** weiterkommen sieht.',
     });
   });
 

@@ -826,21 +826,15 @@ export function lastBelieverCard(
   const names = joinNames(winners.map(w => w.team.name), lang);
 
   const groups = groupByMembers(winners, v => dedupeByUser(v.believers));
-  // Where every team on the card has the same believers the opening line has already
-  // named them all, so the sentence can say "them" rather than list them twice.
-  const together = groups.length === 1;
 
   /** "Alice is the only one with Viking going through", once per set of believers. */
   const believedBy = (group: { members: CardMember[]; rows: Verdict[] }): string => {
     const who = joinNames(group.members.map(b => b.username), lang);
     const alone = group.members.length === 1;
-    const team = together
-      ? lang === 'no'
-        ? 'dem'
-        : lang === 'de'
-          ? 'sie'
-          : 'them'
-      : `**${joinNames(group.rows.map(r => r.team.name), lang)}**`;
+    // Always named, even where the opening line has just listed them: a line that said
+    // "them" beside another line that named a club would read as being about the same
+    // clubs, and these lines exist precisely to keep them apart.
+    const team = `**${joinNames(group.rows.map(r => r.team.name), lang)}**`;
 
     return lang === 'no'
       ? alone
