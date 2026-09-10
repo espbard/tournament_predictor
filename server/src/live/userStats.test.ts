@@ -1821,8 +1821,7 @@ describe('nationalityGoalsCard', () => {
     expect(card?.title).toBe('Go Norway!');
     expect(card?.statistic).toBe(
       '**Alice** has the most faith in the Norwegian players! They have them scoring **12** goals in total this tournament!' +
-        ' More than anybody else! **Bob**, meanwhile, has them managing only **3** Norwegian goals.' +
-        ' The average guess is **7.0** goals between them.' +
+        ' **Bob**, meanwhile, believes there will only be **3** Norwegian goals scored.' +
         '\n\nSo far Norwegians have scored **5** goals between them! Spread across **3** different Norwegian scorers.',
     );
     // The flag is the tile's own background rather than a subject on it.
@@ -1833,8 +1832,7 @@ describe('nationalityGoalsCard', () => {
   it('stands on the predictions alone before anybody has scored', () => {
     expect(nationalityGoalsCard(null, guesses, 'en')?.statistic).toBe(
       '**Alice** has the most faith in the Norwegian players! They have them scoring **12** goals in total this tournament!' +
-        ' More than anybody else! **Bob**, meanwhile, has them managing only **3** Norwegian goals.' +
-        ' The average guess is **7.0** goals between them.',
+        ' **Bob**, meanwhile, believes there will only be **3** Norwegian goals scored.',
     );
     expect(nationalityGoalsCard(snapshot({ Norway: { goals: 0, players: 0 } }), guesses, 'en')?.statistic).not.toContain(
       'So far',
@@ -1850,11 +1848,23 @@ describe('nationalityGoalsCard', () => {
   it('names everyone level at either end, and drops the contrast when all guessed alike', () => {
     const tie = nationalityGoalsCard(null, [guess('u1', '9'), guess('u3', '9'), guess('u2', '2')], 'en');
     expect(tie?.statistic).toContain('**Alice and Chris** have the most faith');
-    expect(tie?.statistic).toContain('**Bob**, meanwhile, has');
+    expect(tie?.statistic).toContain('**Bob**, meanwhile, believes there will only be **2**');
 
     const level = nationalityGoalsCard(null, [guess('u1', '7'), guess('u2', '7')], 'en');
     expect(level?.statistic).toBe(
-      '**Alice and Bob** have the most faith in the Norwegian players! They have them scoring **7** goals in total this tournament! The average guess is **7.0** goals between them.',
+      '**Alice and Bob** have the most faith in the Norwegian players! They have them scoring **7** goals in total this tournament!',
+    );
+  });
+
+  it('agrees with itself in number when several share the low guess', () => {
+    const card = nationalityGoalsCard(
+      null,
+      [guess('u1', '12'), guess('u2', '3'), guess('u3', '3')],
+      'en',
+    );
+    expect(card?.statistic).toBe(
+      '**Alice** has the most faith in the Norwegian players! They have them scoring **12** goals in total this tournament!' +
+        ' **Bob and Chris**, meanwhile, believe there will only be **3** Norwegian goals scored.',
     );
   });
 
@@ -1869,7 +1879,7 @@ describe('nationalityGoalsCard', () => {
       'en',
     );
     expect(card?.statistic).toBe(
-      '**Alice** has the most faith in the Norwegian players! They have them scoring **12** goals in total this tournament! The average guess is **12.0** goals between them.',
+      '**Alice** has the most faith in the Norwegian players! They have them scoring **12** goals in total this tournament!',
     );
   });
 
@@ -1900,16 +1910,14 @@ describe('nationalityGoalsCard', () => {
       title: 'Heia Norge!',
       statistic:
         '**Alice** har mest trua på de norske spillerne! De har tippet at de scorer totalt **12** mål i turneringen!' +
-        ' Det er flest av samtlige! **Bob**, imidlertid, har tippet at det kun blir **3** norske mål i turneringen.' +
-        ' I gjennomsnitt er det tippet at norske spillere scorer til sammen **7.0** mål.' +
+        ' **Bob**, imidlertid, har tippet at det kun blir **3** norske mål i turneringen.' +
         '\n\nSå langt har norske spillere scoret **5** mål seg imellom! Fordelt på **3** forskjellige norske målscorere.',
     });
     expect(nationalityGoalsCard(snapshot({ Norway: { goals: 5, players: 3 } }), guesses, 'de')).toMatchObject({
       title: 'Los, Norwegen!',
       statistic:
         '**Alice** glaubt am meisten an die norwegischen Spieler! Getippt sind insgesamt **12** Tore in diesem Wettbewerb!' +
-        ' Mehr als alle anderen! **Bob** hingegen tippt nur **3** norwegische Tore.' +
-        ' Im Schnitt werden **7.0** norwegische Tore getippt.' +
+        ' **Bob** hingegen glaubt nur an **3** norwegische Tore.' +
         '\n\nBisher haben Norweger **5** Tore untereinander erzielt! Verteilt auf **3** verschiedene norwegische Torschützen.',
     });
   });

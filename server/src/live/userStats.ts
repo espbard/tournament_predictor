@@ -1713,7 +1713,7 @@ function norwegianGoalGuesses(answers: LiveStatsBonusAnswer[]): Guess[] {
  * What the league expects of the Norwegians, and what the Norwegians have managed.
  *
  * Two halves, and either can stand alone. The first is the bonus question — who backs
- * them hardest, who backs them least, and what the league guesses on average. The second
+ * them hardest and who backs them least. The second
  * is what has actually been scored, read off the snapshot refreshLivePlayerGoals folds
  * out of the provider's scorer feed, so it is as fresh as the last sync and costs no
  * request of its own.
@@ -1748,7 +1748,6 @@ export function nationalityGoalsCard(
   if (guesses.length > 0) {
     const most = Math.max(...guesses.map(g => g.goals));
     const least = Math.min(...guesses.map(g => g.goals));
-    const average = (guesses.reduce((sum, g) => sum + g.goals, 0) / guesses.length).toFixed(1);
     const believers = dedupeByUser(guesses.filter(g => g.goals === most));
     const doubters = dedupeByUser(guesses.filter(g => g.goals === least));
     const believerNames = joinNames(believers.map(b => b.username), lang);
@@ -1761,20 +1760,17 @@ export function nationalityGoalsCard(
       lang === 'no'
         ? `**${believerNames}** har mest trua på de norske spillerne! De har tippet at de scorer totalt **${most}** mål i turneringen!` +
           (split
-            ? ` Det er flest av samtlige! **${doubterNames}**, imidlertid, har tippet at det kun blir **${least}** norske mål i turneringen.`
-            : '') +
-          ` I gjennomsnitt er det tippet at norske spillere scorer til sammen **${average}** mål.`
+            ? ` **${doubterNames}**, imidlertid, har tippet at det kun blir **${least}** norske mål i turneringen.`
+            : '')
         : lang === 'de'
           ? `**${believerNames}** glaubt am meisten an die norwegischen Spieler! Getippt sind insgesamt **${most}** Tore in diesem Wettbewerb!` +
             (split
-              ? ` Mehr als alle anderen! **${doubterNames}** hingegen tippt nur **${least}** norwegische Tore.`
-              : '') +
-            ` Im Schnitt werden **${average}** norwegische Tore getippt.`
+              ? ` **${doubterNames}** hingegen ${doubters.length === 1 ? 'glaubt' : 'glauben'} nur an **${least}** norwegische Tore.`
+              : '')
           : `**${believerNames}** ${believers.length === 1 ? 'has' : 'have'} the most faith in the Norwegian players! They have them scoring **${most}** goals in total this tournament!` +
             (split
-              ? ` More than anybody else! **${doubterNames}**, meanwhile, ${doubters.length === 1 ? 'has' : 'have'} them managing only **${least}** Norwegian goals.`
-              : '') +
-            ` The average guess is **${average}** goals between them.`;
+              ? ` **${doubterNames}**, meanwhile, ${doubters.length === 1 ? 'believes' : 'believe'} there will only be **${least}** Norwegian goals scored.`
+              : '');
   }
 
   if (scored) {

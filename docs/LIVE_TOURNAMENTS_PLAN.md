@@ -1807,24 +1807,22 @@ the golden boot, and who has him lowest. `inHaalandWeTrustCard()` in
 ## 24. "Heia Norge!" reads the bonus question *(added after the six phases, on request)*
 
 The nationality card grew a first half: what the league answered to the bonus question *"Hvor
-mange mål blir scoret av norske spillere?"* — who backs them hardest, who backs them least,
-and the average guess — above what they have actually scored.
+mange mål blir scoret av norske spillere?"* — who backs them hardest and who backs them least
+— above what they have actually scored.
 
 > **Alice** har mest trua på de norske spillerne! De har tippet at de scorer totalt **12** mål i
-> turneringen! Det er flest av samtlige! **Bob**, imidlertid, har tippet at det kun blir **3**
-> norske mål i turneringen. I gjennomsnitt er det tippet at norske spillere scorer til sammen
-> **7.0** mål.
+> turneringen! **Bob**, imidlertid, har tippet at det kun blir **3** norske mål i turneringen.
 >
 > Så langt har norske spillere scoret **5** mål seg imellom! Fordelt på **3** forskjellige
 > norske målscorere.
 
 | Decision | Why |
 |---|---|
+| The league's average guess came out again, and with it the comparison to everybody else | Requested. The two ends of the league say what the middle of it was going to: the sentence names who is highest and who is lowest, and a mean between them was arithmetic the card did not need |
 | The question is found by the **words in it** — a number question mentioning *norsk* and *mål* — not by its exact text or a stored id | An admin types it, and next season's wording will differ. An exact match would leave the card silently half-empty, and there is no second numeric question about Norwegians for it to collide with |
 | Either half stands alone, and the card is null only when neither has anything | A league arguing about Norwegians before any of them has scored is a card; so is a tally with no bonus question behind it. Only "no answers and no goals" is nothing to say |
 | The contrast sentence goes when everybody guessed the same number | The two ends would be the same people saying the same thing — the rule the answer-key and Haaland cards already follow |
 | Reading other members' answers needs no new gate | The bonus-answers route already opens them to the league as soon as they are given; only points are redacted, and this card prints none |
-| The average is `toFixed(1)`, with a decimal point in all three languages | It matches the manual type's Brautometer, which prints a point everywhere. A locale-aware comma here and nowhere else in the deck would look like a bug |
 | The card now hands over two paragraphs, and `LiveUserStatCard` renders the caption `whitespace-pre-line` | The predictions and what actually happened are two different subjects; running them together made a wall of text. Every other card is one paragraph and is unaffected |
 | The answers query is filtered to `answerType = 'number'` in SQL, but *which* question is the card's own business | Narrowing to numbers is cheap and safe; the matching rule belongs beside the sentence that depends on it, like the `NATIONALITY` constant above it |
 
