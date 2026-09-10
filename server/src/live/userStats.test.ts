@@ -784,6 +784,24 @@ describe('deadCertCard', () => {
     );
   });
 
+  it('says it once when the same member left every tied team out', () => {
+    const card = deadCertCard(
+      [
+        pick('u1', 't1', 't2', 't3', 't4', 't5', 't6'),
+        pick('u2', 't2', 't1', 't3', 't4', 't5', 't6'),
+        pick('u3', 't3', 't4', 't1', 't2', 't5', 't6'),
+      ],
+      six,
+      2,
+      'en',
+    );
+    // Chris left both Arsenal and Bayern out of his top two, so he is named once.
+    expect(card?.statistic).toBe(
+      '**2** of **3** have **Arsenal and Bayern** in the **2** that go straight through.' +
+        ' **Chris** was the only one to predict them outside the top **2**.',
+    );
+  });
+
   it('leaves a team that has left the tournament out of both halves of the count', () => {
     const card = deadCertCard(
       [pick('u1', 'gone', 't1', 't2'), pick('u2', 't1', 'gone', 't2')],
@@ -807,7 +825,7 @@ describe('deadCertCard', () => {
   it('translates the title and both wordings', () => {
     const unanimous = [pick('u1', 't1', 't2', 't3'), pick('u2', 't1', 't3', 't2')];
     expect(deadCertCard(unanimous, six, 1, 'no')).toMatchObject({
-      title: 'Så godt som klar',
+      title: 'Sikkerstikket',
       statistic: 'Alle **2** har tippet **Bayern** blant de **1** som går rett videre.',
     });
     expect(deadCertCard(unanimous, six, 1, 'de')).toMatchObject({
@@ -928,7 +946,7 @@ describe('lastBelieverCard', () => {
     expect(card?.subjects.map(s => s.id)).toEqual(['t5', 't6']);
   });
 
-  it('names the same believer once per team when they back both', () => {
+  it('says it once when the same member is the only believer in both', () => {
     const card = lastBelieverCard(
       [
         pick('u1', 't5', 't6', 't1', 't2', 't3', 't4'),
@@ -941,8 +959,7 @@ describe('lastBelieverCard', () => {
     );
     expect(card?.statistic).toBe(
       '**2** of **3** have **Enschede and Feyenoord** dropping straight out.' +
-        '\n**Alice** is the only one with **Enschede** going through.' +
-        '\n**Alice** is the only one with **Feyenoord** going through.',
+        '\n**Alice** is the only one with them going through.',
     );
   });
 
@@ -973,7 +990,7 @@ describe('lastBelieverCard', () => {
       pick('u3', 't1', 't2', 't3', 't4', 't5', 't6'),
     ];
     expect(lastBelieverCard(rows, six, 5, 'no')).toMatchObject({
-      title: 'Den siste troende',
+      title: 'I hvert fall noen som har trua',
       statistic:
         '**2** av **3** har tippet at **Feyenoord** ryker rett ut.\n**Alice** er den eneste som har tippet dem videre.',
     });

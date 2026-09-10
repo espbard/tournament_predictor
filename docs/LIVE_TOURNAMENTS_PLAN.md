@@ -1862,7 +1862,7 @@ the Stats entry is offered to every member.
 Two more cards beside the table pair, one at each end of the format's bands.
 `deadCertCard()` and `lastBelieverCard()` in `server/src/live/userStats.ts`.
 
-**A dead cert** — the team the league has qualifying directly, and how much of the league that
+**A dead cert** (`Sikkerstikket`) — the team the league has qualifying directly, and how much of the league that
 is:
 
 > Every one of **12** has **Bayern** in the **8** that go straight through.
@@ -1870,7 +1870,7 @@ is:
 > **9** of **12** have **Bayern** in the **8** that go straight through. **Alice, Bob and
 > Chris** were the only ones to predict them outside the top **8**.
 
-**The last believer** — the team most members have finishing in the band that goes straight
+**The last believer** (`I hvert fall noen som har trua`) — the team most members have finishing in the band that goes straight
 out, where at least one member has them going through, and is named for it.
 
 > **11** of **12** have **Slovan Bratislava** dropping straight out. **Alice** is the only one
@@ -1888,7 +1888,7 @@ out, where at least one member has them going through, and is named for it.
 | The bands are the format's own — the top one for the dead cert, and for the last believer the **bottom** one — the band with no upper bound, so the one that runs to the foot of the table | The Champions League league phase sends 25th and below out with no play-off behind them; the bands are already the source of truth for table scoring, and reading them means the card follows a format change instead of a hardcoded 25. A format without bands says nothing at all |
 | The route hands the card a number, not the stage | What the sentence needs is "from 25th". Keeping the lookup in the route leaves the card pure and lets a test say `5` |
 | The dead cert names whoever left them out, and says nothing at all where nobody did | That silence is the unanimous case, which has nothing left to say — and it is why the card needed the members on its rows, not just a count |
-| Every team level on both counts is shown, and each gets its own **line** naming who backs that one — the dead cert does the same where several teams tie | One sentence listing both sets of believers could not say who backed which. There is no cap on how many: a league that has written off four teams bar one believer each is worth printing in full, and the tile shows the first four crests either way. One team's dissenters stay on the opening line, where there is no ambiguity about who they mean |
+| Every team level on both counts is shown, and the lines are one per **set of believers**, not one per team — the dead cert groups its doubters the same way | One sentence listing both sets of believers could not say who backed which. One member who is the only one backing two clubs says so once, and where every team on the card shares its believers the line says "them" — the opening line has just named them all. Two members with a club each still cannot share a sentence without losing who backed which, so they get a line apiece. There is no cap on how many, and the tile shows the first four crests either way |
 | Level teams are separated first by the **fewest** believers | The fewer people stand against the league, the better the story the card is looking for |
 | A team no longer in the tournament is dropped from every count | Same rule as `countEnd`: the sentence has to be able to name its subject, and the "x of y" it prints has to add up |
 | Table predictions grew the member's name and picture, via a join the query did not have | Naming the believers needs them, and the two cards already reading those rows are unaffected |
