@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   almostCard,
+  deadCertCard,
   bestFormCard,
   bestPredictionCard,
   buildLiveUserStats,
@@ -700,6 +701,107 @@ describe('woodenSpoonCard', () => {
         'Niemand glaubt an **Barcelona**! **2** von **2** tippen sie auf den letzten Tabellenplatz.',
     });
     expect(woodenSpoonCard(rows, teams, 'en')?.title).toBe('The bottom of the barrel');
+  });
+});
+
+describe('deadCertCard', () => {
+  const six = [
+    { id: 't1', name: 'Bayern', crestUrl: '/api/images/bayern.png' },
+    { id: 't2', name: 'Arsenal', crestUrl: '/api/images/arsenal.png' },
+    { id: 't3', name: 'Barcelona', crestUrl: null },
+    { id: 't4', name: 'Dortmund', crestUrl: null },
+    { id: 't5', name: 'Enschede', crestUrl: null },
+    { id: 't6', name: 'Feyenoord', crestUrl: null },
+  ];
+
+  it('says "every one of them" when the league agrees', () => {
+    const card = deadCertCard(
+      [
+        pick('u1', 't1', 't2', 't3', 't4', 't5', 't6'),
+        pick('u2', 't1', 't3', 't2', 't4', 't5', 't6'),
+        pick('u3', 't3', 't1', 't2', 't4', 't5', 't6'),
+      ],
+      six,
+      2,
+      'en',
+    );
+    expect(card?.title).toBe('A dead cert');
+    expect(card?.statistic).toBe(
+      'Every one of **3** has **Bayern** in the **2** that go straight through.',
+    );
+    expect(card?.subjects).toEqual([
+      { type: 'team', id: 't1', name: 'Bayern', imageUrl: '/api/images/bayern.png' },
+    ]);
+  });
+
+  it('falls back to whoever most of them have, when nobody is unanimous', () => {
+    const card = deadCertCard(
+      [
+        pick('u1', 't1', 't2', 't3', 't4', 't5', 't6'),
+        pick('u2', 't1', 't3', 't2', 't4', 't5', 't6'),
+        // Chris has Bayern third, and nobody else's top two overlaps with anybody's.
+        pick('u3', 't4', 't5', 't1', 't2', 't3', 't6'),
+      ],
+      six,
+      2,
+      'en',
+    );
+    expect(card?.statistic).toBe(
+      '**2** of **3** have **Bayern** in the **2** that go straight through — more than any other team.',
+    );
+  });
+
+  it('shows every team the whole league agrees on', () => {
+    const card = deadCertCard(
+      [pick('u1', 't1', 't2', 't3'), pick('u2', 't2', 't1', 't3')],
+      six,
+      2,
+      'en',
+    );
+    expect(card?.statistic).toBe(
+      'Every one of **2** has **Arsenal and Bayern** in the **2** that go straight through.',
+    );
+    expect(card?.subjects.map(s => s.id)).toEqual(['t2', 't1']);
+  });
+
+  it('leaves a team that has left the tournament out of both halves of the count', () => {
+    const card = deadCertCard(
+      [pick('u1', 'gone', 't1', 't2'), pick('u2', 't1', 'gone', 't2')],
+      six,
+      2,
+      'en',
+    );
+    expect(card?.statistic).toBe(
+      'Every one of **2** has **Bayern** in the **2** that go straight through.',
+    );
+  });
+
+  it('is null without bands and without predictions', () => {
+    const rows = [pick('u1', 't1', 't2', 't3')];
+    expect(deadCertCard(rows, six, null, 'en')).toBeNull();
+    expect(deadCertCard(rows, six, 0, 'en')).toBeNull();
+    expect(deadCertCard([], six, 2, 'en')).toBeNull();
+    expect(deadCertCard([pick('u1', 'gone')], six, 2, 'en')).toBeNull();
+  });
+
+  it('translates the title and both wordings', () => {
+    const unanimous = [pick('u1', 't1', 't2', 't3'), pick('u2', 't1', 't3', 't2')];
+    expect(deadCertCard(unanimous, six, 1, 'no')).toMatchObject({
+      title: 'Så godt som klar',
+      statistic: 'Alle **2** har tippet **Bayern** blant de **1** som går rett videre.',
+    });
+    expect(deadCertCard(unanimous, six, 1, 'de')).toMatchObject({
+      title: 'So gut wie durch',
+      statistic: 'Alle **2** haben **Bayern** unter den **1**, die direkt weiterkommen.',
+    });
+
+    const split = [pick('u1', 't1', 't2', 't3'), pick('u2', 't2', 't1', 't3')];
+    expect(deadCertCard(split, six, 1, 'no')?.statistic).toBe(
+      '**1** av **2** har tippet **Arsenal og Bayern** blant de **1** som går rett videre — flere enn noe annet lag.',
+    );
+    expect(deadCertCard(split, six, 1, 'de')?.statistic).toBe(
+      '**1** von **2** haben **Arsenal und Bayern** unter den **1**, die direkt weiterkommen — mehr als jede andere Mannschaft.',
+    );
   });
 });
 
@@ -1560,6 +1662,7 @@ describe('buildLiveUserStats', () => {
   const all = {
     tablePredictions: [pick('u1', 't1', 't3')],
     teams,
+    directPlaces: null,
     eliminationFrom: null,
     scorerPredictions: [rank('u1', 'p1', 'p3')],
     players,
@@ -1576,7 +1679,8 @@ describe('buildLiveUserStats', () => {
         {
           tablePredictions: [],
           teams,
-          eliminationFrom: null,
+          directPlaces: null,
+    eliminationFrom: null,
           scorerPredictions: [],
           players,
           scoredPredictions: [],
@@ -1620,6 +1724,7 @@ describe('buildLiveUserStats', () => {
           // Two rankings that disagree about which of the two teams goes out, so a band
           // starting at second place leaves each of them written off once and backed once.
           tablePredictions: [pick('u1', 't1', 't3'), pick('u2', 't3', 't1')],
+          directPlaces: 1,
           eliminationFrom: 2,
           scoredPredictions: [
             scored('u1', [1, 0], [1, 0], 'f1'),
@@ -1636,6 +1741,7 @@ describe('buildLiveUserStats', () => {
       'bestForm',
       'peoplesFavourite',
       'woodenSpoon',
+      'deadCert',
       'lastBeliever',
       'goldenBoot',
       'goalDrought',
@@ -1788,7 +1894,8 @@ describe('nationalityGoalsCard', () => {
     const base = {
       tablePredictions: [pick('u1', 't1', 't3')],
       teams,
-      eliminationFrom: null,
+      directPlaces: null,
+    eliminationFrom: null,
       scorerPredictions: [rank('u1', 'p1', 'p3')],
       players,
       scoredPredictions: [],
@@ -1824,7 +1931,8 @@ describe('nationalityGoalsCard', () => {
         {
           tablePredictions: [],
           teams,
-          eliminationFrom: null,
+          directPlaces: null,
+    eliminationFrom: null,
           scorerPredictions: [],
           players,
           scoredPredictions: [],

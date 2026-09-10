@@ -618,6 +618,8 @@ liveCompetitionsRouter.get('/competitions/:id/user-stats', requireAuth, async (r
     // A format with no table stage can still have a top-scorer ranking, so this narrows
     // the table half rather than ending the whole request.
     const stage = tablePredictionStage(getLiveFormat(tournament.format), tournament.startStageKey);
+    // The top band of that table — the places that qualify for the knockout directly.
+    const directPlaces = stage?.bands?.find(band => band.from === 1)?.to ?? null;
     // The bottom band of that table — the positions that go out of the tournament outright,
     // with no play-off behind them. It is the band that runs to the foot of the table, so
     // it is the one with no upper bound. Null for a format with no bands, which is the
@@ -776,6 +778,7 @@ liveCompetitionsRouter.get('/competitions/:id/user-stats', requireAuth, async (r
         {
           tablePredictions,
           teams,
+          directPlaces,
           eliminationFrom,
           scorerPredictions,
           players,

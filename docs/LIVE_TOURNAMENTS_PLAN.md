@@ -1859,11 +1859,21 @@ the Stats entry is offered to every member.
 
 ---
 
-## 27. "The last believer" *(added after the six phases, on request)*
+## 27. The two ends of the bands *(added after the six phases, on request)*
 
-An eighteenth card, beside the table pair: the team most members have finishing in the band
-that goes straight out of the tournament — where at least one member has them going through,
-and is named for it. `lastBelieverCard()` in `server/src/live/userStats.ts`.
+Two more cards beside the table pair, one at each end of the format's bands.
+`deadCertCard()` and `lastBelieverCard()` in `server/src/live/userStats.ts`.
+
+**A dead cert** — the team the league has qualifying directly, and how much of the league that
+is:
+
+> Every one of **12** has **Bayern** in the **8** that go straight through.
+>
+> **9** of **12** have **Bayern** in the **8** that go straight through — more than any other
+> team.
+
+**The last believer** — the team most members have finishing in the band that goes straight
+out, where at least one member has them going through, and is named for it.
 
 > **11** of **12** have **Slovan Bratislava** dropping straight out. **Alice** is the only one
 > with them going through.
@@ -1874,8 +1884,10 @@ and is named for it. `lastBelieverCard()` in `server/src/live/userStats.ts`.
 
 | Decision | Why |
 |---|---|
-| Both conditions are the card: most members writing them off, and **at least one** not | A team everybody writes off is a fact about the draw, and a team nobody writes off has no story either. It is the split that is worth printing, and the believers are the half worth naming |
-| The band is the format's **bottom** one — the band with no upper bound, so the one that runs to the foot of the table | The Champions League league phase sends 25th and below out with no play-off behind them; the bands are already the source of truth for table scoring, and reading them means the card follows a format change instead of a hardcoded 25. A format without bands says nothing at all |
+| "Everyone" and "most people" are one count on the dead-cert card, worded two ways | A league of twelve agreeing eleven times over is the same statistic as one agreeing twelve; a second card, or a card that vanished the moment one member disagreed, would be the same fact with a hole in it. The sentence says "every one of them" when the count is the whole league and names the best-supported team otherwise |
+| The dead-cert card shows ties without further ado | With eight places to fill, several teams being nailed on is the normal case rather than an edge one |
+| The last believer needs both conditions: most members writing them off, and **at least one** not | A team everybody writes off is a fact about the draw, and a team nobody writes off has no story either. It is the split that is worth printing, and the believers are the half worth naming |
+| The bands are the format's own — the top one for the dead cert, and for the last believer the **bottom** one — the band with no upper bound, so the one that runs to the foot of the table | The Champions League league phase sends 25th and below out with no play-off behind them; the bands are already the source of truth for table scoring, and reading them means the card follows a format change instead of a hardcoded 25. A format without bands says nothing at all |
 | The route hands the card a number, not the stage | What the sentence needs is "from 25th". Keeping the lookup in the route leaves the card pure and lets a test say `5` |
 | Every team level on both counts is shown, and each gets its **own sentence** naming who backs that one | One sentence listing both sets of believers could not say who backed which. There is no cap on how many: a league that has written off four teams bar one believer each is worth printing in full, and the tile shows the first four crests either way |
 | Level teams are separated first by the **fewest** believers | The fewer people stand against the league, the better the story the card is looking for |

@@ -20,8 +20,9 @@ import { LIVE_SEASON_MILESTONE_IDS } from './progression';
 // Two matched pairs, one per ranking the game asks for: who the league thinks will finish
 // top and bottom of the league table, and who it thinks will finish top and bottom of the
 // top-scorer list. All four are the same count — which entrant sits at one end of the most
-// rankings — so they share countEnd and differ only in their wording. Beside the table
-// pair, the team the league has written off bar one member — and that member, named.
+// rankings — so they share countEnd and differ only in their wording. Beside the table pair,
+// the two ends of the bands: the team the league has going straight through, and the one
+// it has written off bar a believer — who is named.
 //
 // Then a pair about the members themselves rather than what they predicted: who calls the
 // scoreline outright most often, and who keeps landing on the right margin and the wrong
@@ -618,6 +619,73 @@ export function woodenSpoonCard(
           : `Nobody believes in **${names}**! **${count}** of **${total}** have them finishing dead last.`;
 
   return card('woodenSpoon', title, statistic, winners, 'team');
+}
+
+/**
+ * The team the league has going straight through to the knockout — everyone's pick where
+ * the league agrees, and the closest thing to it where it does not.
+ *
+ * One count, worded two ways: the most members placing a team inside the band that
+ * qualifies directly, and a sentence that says "every one of them" when that count is the
+ * whole league. There is no separate unanimous card, because a league of twelve agreeing
+ * eleven times over is the same statistic as one agreeing twelve.
+ *
+ * Ties are shown, as everywhere else — with a top eight to fill, several teams being
+ * nailed on is the normal case rather than an edge one.
+ *
+ * Null where the format has no band that qualifies directly, and null while nobody has
+ * been placed in it.
+ */
+export function deadCertCard(
+  predictions: LiveStatsTablePrediction[],
+  teams: LiveStatsTeam[],
+  directPlaces: number | null,
+  lang: LiveStatsLang,
+): UserStatCardData | null {
+  if (!directPlaces || directPlaces < 1) return null;
+
+  const byId = indexTeams(teams);
+  const through = new Map<string, number>();
+  const ranked = new Map<string, number>();
+  for (const prediction of predictions) {
+    prediction.orderedTeamIds.forEach((teamId, index) => {
+      // A team that has left the tournament is left out of both halves of the count, the
+      // same way countEnd drops one: the sentence has to be able to name its subject.
+      if (!byId.has(teamId)) return;
+      ranked.set(teamId, (ranked.get(teamId) ?? 0) + 1);
+      if (index + 1 <= directPlaces) through.set(teamId, (through.get(teamId) ?? 0) + 1);
+    });
+  }
+  if (through.size === 0) return null;
+
+  const most = Math.max(...through.values());
+  const winners = [...through.entries()]
+    .filter(([, count]) => count === most)
+    .map(([teamId]) => byId.get(teamId)!)
+    .sort((a, b) => a.name.localeCompare(b.name));
+  // Each tied team was ranked by the same members in practice; where an old ranking missed
+  // one of them, the first winner's denominator is the honest one to print.
+  const total = ranked.get(winners[0].id)!;
+  const everyone = most === total;
+
+  const names = joinNames(winners.map(w => w.name), lang);
+  const title =
+    lang === 'no' ? 'Så godt som klar' : lang === 'de' ? 'So gut wie durch' : 'A dead cert';
+
+  const statistic =
+    lang === 'no'
+      ? everyone
+        ? `Alle **${total}** har tippet **${names}** blant de **${directPlaces}** som går rett videre.`
+        : `**${most}** av **${total}** har tippet **${names}** blant de **${directPlaces}** som går rett videre — flere enn noe annet lag.`
+      : lang === 'de'
+        ? everyone
+          ? `Alle **${total}** haben **${names}** unter den **${directPlaces}**, die direkt weiterkommen.`
+          : `**${most}** von **${total}** haben **${names}** unter den **${directPlaces}**, die direkt weiterkommen — mehr als jede andere Mannschaft.`
+        : everyone
+          ? `Every one of **${total}** has **${names}** in the **${directPlaces}** that go straight through.`
+          : `**${most}** of **${total}** have **${names}** in the **${directPlaces}** that go straight through — more than any other team.`;
+
+  return card('deadCert', title, statistic, winners, 'team');
 }
 
 /**
@@ -1705,6 +1773,11 @@ export function buildLiveUserStats(
     tablePredictions: LiveStatsTablePrediction[];
     teams: LiveStatsTeam[];
     /**
+     * How many places qualify directly for the knockout — the top band of the table
+     * stage. Null where the format has no bands.
+     */
+    directPlaces: number | null;
+    /**
      * The position from which a team is out of the tournament outright — the bottom band
      * of the table stage. Null where the format has no bands.
      */
@@ -1724,6 +1797,7 @@ export function buildLiveUserStats(
   const {
     tablePredictions,
     teams,
+    directPlaces,
     eliminationFrom,
     scorerPredictions,
     players,
@@ -1741,6 +1815,7 @@ export function buildLiveUserStats(
     theFallerCard(progression, lang),
     peoplesFavouriteCard(tablePredictions, teams, lang),
     woodenSpoonCard(tablePredictions, teams, lang),
+    deadCertCard(tablePredictions, teams, directPlaces, lang),
     lastBelieverCard(tablePredictions, teams, eliminationFrom, lang),
     goldenBootCard(scorerPredictions, players, lang),
     goalDroughtCard(scorerPredictions, players, lang),
