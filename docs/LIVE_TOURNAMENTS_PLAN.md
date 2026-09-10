@@ -1138,7 +1138,7 @@ Mounted as `app.use('/api/live', liveRouter)` in `server/src/index.ts`.
 | GET | `/competitions/:id/events` | auth — SSE: `fixtures-updated`, `leaderboard-updated`, `scorers-updated` |
 | GET | `/competitions/:id/fixtures` | auth — **main read model**: fixtures for a stage/matchday + caller's prediction + `lockedAt` + `isLocked` + `isSelected` + awarded points, in one call |
 | PUT | `/competitions/:id/predictions` | auth — upsert one `{fixtureId, homeScore, awayScore}`; rejects a fixture left out of its gameweek's selected matches |
-| GET | `/competitions/:id/predictions/:userId` | auth — another member's, **only for already-locked fixtures** |
+| GET | `/competitions/:id/predictions/:userId` | auth — another member's, **only for already-locked fixtures**, except for a test account (§31) |
 | GET | `/competitions/:id/bonus-questions` | auth — the questions plus `lockedAt` / `isLocked` per question |
 | GET / PUT | `/competitions/:id/bonus-answers` | auth — the caller's answers; `PUT {questionId, answer}` upserts one, enforcing that question's deadline |
 | GET | `/competitions/:id/bonus-answers/:userId` | auth — another member's, **only for already-locked questions** |
@@ -1963,7 +1963,30 @@ three cannot disagree about who is in the competition.
 
 ---
 
-## 31. References
+## 31. Test accounts see the predictions early *(added after the six phases, on request)*
+
+Another member's fixture predictions are closed until that fixture locks, an hour before
+kickoff, so nobody can copy one while it still matters. That rule makes §30 hard to check:
+the way to confirm the leaderboard is hiding the right members is to open each member's
+fixtures tab and see who has predicted what, and before kickoff it is empty for everybody.
+
+`isTestAccount`, the flag an admin already toggles on `AdminHomePage` and the one the
+manual type lets preview a tournament's final results early, now also bypasses that lock:
+`GET /competitions/:id/predictions/:userId` returns every prediction rather than only the
+locked ones, and `GET /competitions/:id/fixtures/:fixtureId/predictions` answers rather
+than refusing. Both go through `canPreviewLivePredictions()` in the live competitions
+route.
+
+| Decision | Why |
+|---|---|
+| The existing `isTestAccount` flag, not a new one | It already exists, an admin already has a toggle for it on the home page, and it already means "this account is not playing for anything" — the manual type's final-results preview is gated on exactly the same flag |
+| Admins are **not** included, unlike the manual type's `isAdmin \|\| isTestAccount` preview | Requested as the test attribute alone. An admin who wants the bypass can set the flag on their own account, and that leaves an ordinary admin looking at the same league everybody else does |
+| It is a bypass on **reading** only | A test account still cannot predict a locked fixture, and no other member's view changes. Nothing about scoring or the leaderboard moves |
+| The "what everyone predicted" dropdown got the same exemption, though it is only drawn under a **finished** fixture | Both routes enforce one rule and should not drift. The per-user page is the one a tester actually uses |
+
+---
+
+## 32. References
 
 - [2026/27 Champions League: teams, dates, draws, format](https://www.uefa.com/uefachampionsleague/news/02a6-20d57cfcd03e-407c22a7f465-1000--2026-27-champions-league-teams-dates-draws-format-final/)
 - [UEFA confirms date for the 2026/27 Champions League league phase draw](https://www.besoccer.com/new/uefa-confirms-date-for-the-202627-champions-league-league-phase-draw-1421299)

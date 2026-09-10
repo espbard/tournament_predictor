@@ -96,6 +96,23 @@ async function assertMember(
   return !!membership;
 }
 
+/**
+ * Whether this account may read another member's prediction for a fixture that has not
+ * locked yet.
+ *
+ * Only test accounts, the flag an admin already toggles on `AdminHomePage`, and the same
+ * one the manual type lets preview a tournament's final results before it is completed.
+ * The lock exists so nobody can copy a prediction while it still matters; a test account
+ * is not playing for anything, and confirming that a change to the leaderboard behaves
+ * means being able to see who has predicted what before the matches go off.
+ *
+ * It is a bypass on **reading**, and nothing else. A test account still cannot predict a
+ * locked fixture, and every other member's view is unchanged.
+ */
+function canPreviewLivePredictions(user: { isTestAccount: boolean }): boolean {
+  return user.isTestAccount;
+}
+
 // ── Competitions ──────────────────────────────────────────────────────────────
 
 liveCompetitionsRouter.get('/competitions', requireAuth, async (_req, res) => {
@@ -1428,7 +1445,8 @@ liveCompetitionsRouter.put('/competitions/:id/predictions', requireAuth, async (
 
 /**
  * Another member's predictions — but only for fixtures that are already locked, so
- * nobody can copy a prediction while it still matters.
+ * nobody can copy a prediction while it still matters. A test account sees the lot; see
+ * `canPreviewLivePredictions`.
  */
 liveCompetitionsRouter.get(
   '/competitions/:id/predictions/:userId',
@@ -1453,9 +1471,13 @@ liveCompetitionsRouter.get(
         );
 
       const now = new Date();
+      const seesEverything = canPreviewLivePredictions(res.locals.user);
       return res.json(
         rows
-          .filter(r => isFixtureLocked({ kickoffAt: r.kickoffAt, status: r.status }, now))
+          .filter(
+            r =>
+              seesEverything || isFixtureLocked({ kickoffAt: r.kickoffAt, status: r.status }, now),
+          )
           .map(r => r.prediction),
       );
     } catch (err) {
@@ -1474,7 +1496,8 @@ liveCompetitionsRouter.get(
  * outright, so listing them as never having made one would be noise.
  *
  * Gated on the fixture's own lock, the same rule the per-user routes above follow: until
- * kickoff − 60 min this would be a way to copy somebody else's prediction.
+ * kickoff − 60 min this would be a way to copy somebody else's prediction. Test accounts
+ * are exempt, as they are there — see `canPreviewLivePredictions`.
  */
 // ── Top-scorer ranking ────────────────────────────────────────────────────────
 //
@@ -1810,7 +1833,10 @@ liveCompetitionsRouter.get(
         );
       if (!fixture) return res.status(404).json({ error: 'Fixture not found' });
 
-      if (!isFixtureLocked({ kickoffAt: fixture.kickoffAt, status: fixture.status })) {
+      if (
+        !canPreviewLivePredictions(res.locals.user) &&
+        !isFixtureLocked({ kickoffAt: fixture.kickoffAt, status: fixture.status })
+      ) {
         return res.status(403).json({ error: 'Not visible until the match has locked' });
       }
 

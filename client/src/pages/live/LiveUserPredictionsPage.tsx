@@ -32,7 +32,9 @@ import LiveBonusQuestionsTab from '@/components/live/LiveBonusQuestionsTab';
 // two season-long calls — the table and the bonus questions — are open to the league from
 // the moment they are given, because arguing about them before the season is the point.
 // Per-fixture predictions are not: those stay closed until their own kickoff, so a member's
-// fixtures tab legitimately shows nothing for a gameweek still to be played.
+// fixtures tab legitimately shows nothing for a gameweek still to be played. A test account
+// is the exception and is sent the lot, which is how one is checked against what the
+// leaderboard is showing.
 //
 // Looking at yourself is the one case that reads none of that, since the competition's own
 // queries already hold your predictions.
@@ -74,7 +76,8 @@ export default function LiveUserPredictionsPage() {
     enabled: !!id,
   });
 
-  // Their predictions, which the server has already narrowed to fixtures that have locked.
+  // Their predictions, which the server has already narrowed to fixtures that have locked —
+  // unless the caller is a test account, which is sent every one.
   const { data: theirPredictions = [] } = useQuery({
     queryKey: liveKeys.userPredictions(id!, userId!),
     queryFn: () => liveApi.otherUserPredictions(id!, userId!),
