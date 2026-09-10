@@ -17,6 +17,7 @@ import {
   theClimberCard,
   theFallerCard,
   theLeaderCard,
+  tronderHaterCard,
   woodenSpoonCard,
   worstFormCard,
   worstPredictionCard,
@@ -1699,6 +1700,59 @@ describe('inHaalandWeTrustCard', () => {
   });
 });
 
+describe('tronderHaterCard', () => {
+  const asked = (userId: string, answer: string, question = 'Scorer en trønder mål i turneringen?') => ({
+    ...memberOf(userId),
+    question,
+    answer,
+  });
+
+  it('names whoever answered No, and nobody else', () => {
+    const card = tronderHaterCard(
+      [asked('u1', 'No'), asked('u2', 'Yes'), asked('u3', 'No')],
+      'no',
+    );
+    expect(card?.title).toBe('Trønderhateren');
+    expect(card?.statistic).toBe(
+      '**Alice og Chris** hater Trøndelag! De tror ikke at en eneste trønder scorer mål i løpet av turneringen!',
+    );
+    expect(card?.subjects.map(s => s.id)).toEqual(['u1', 'u3']);
+  });
+
+  it('agrees in number in the two locales that inflect the verb', () => {
+    const one = [asked('u1', 'No')];
+    expect(tronderHaterCard(one, 'en')).toMatchObject({
+      title: 'The Trøndelag hater',
+      statistic:
+        '**Alice** hates Trøndelag! They do not believe a single trønder will score in the whole tournament!',
+    });
+    expect(tronderHaterCard(one, 'de')).toMatchObject({
+      title: 'Der Trøndelag-Hasser',
+      statistic:
+        '**Alice** hasst Trøndelag! Sie glauben nicht, dass ein einziger Trønder im ganzen Turnier trifft!',
+    });
+
+    const two = [asked('u1', 'No'), asked('u2', 'No')];
+    expect(tronderHaterCard(two, 'en')?.statistic).toContain('**Alice and Bob** hate Trøndelag!');
+    expect(tronderHaterCard(two, 'de')?.statistic).toContain('**Alice und Bob** hassen Trøndelag!');
+  });
+
+  it('finds the question without the ø, and reads the answer whatever its case', () => {
+    expect(
+      tronderHaterCard([asked('u1', 'no', 'Scorer en tronder mal i turneringen?')], 'en'),
+    ).not.toBeNull();
+    expect(tronderHaterCard([asked('u1', ' NO ')], 'en')).not.toBeNull();
+  });
+
+  it('is null when nobody said No, or nobody was asked', () => {
+    expect(tronderHaterCard([], 'en')).toBeNull();
+    expect(tronderHaterCard([asked('u1', 'Yes'), asked('u2', 'Yes')], 'en')).toBeNull();
+    expect(
+      tronderHaterCard([asked('u1', 'No', 'Scorer en nordmann mål i turneringen?')], 'en'),
+    ).toBeNull();
+  });
+});
+
 describe('buildLiveUserStats', () => {
   const all = {
     tablePredictions: [pick('u1', 't1', 't3')],
@@ -1774,6 +1828,13 @@ describe('buildLiveUserStats', () => {
           ],
           progression: progression([{ u1: 3, u2: 1 }]),
           scorerNationalities: snapshot({ Norway: { goals: 3, players: 2 } }),
+          bonusAnswers: [
+            {
+              ...memberOf('u2'),
+              question: 'Scorer en trønder mål i turneringen?',
+              answer: 'No',
+            },
+          ],
         },
         'en',
       ).map(c => c.id),
@@ -1793,6 +1854,7 @@ describe('buildLiveUserStats', () => {
       'worstPrediction',
       'mostPredictableResult',
       'norwegianGoals',
+      'tronderHater',
     ]);
   });
 

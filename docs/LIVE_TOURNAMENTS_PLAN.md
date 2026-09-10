@@ -1895,7 +1895,26 @@ out, where at least one member has them going through, and is named for it.
 
 ---
 
-## 28. References
+## 28. "Trønderhateren" *(added after the six phases, on request)*
+
+A card that only exists when somebody has answered **No** to the bonus question *"Scorer en
+trønder mål i turneringen?"* — and names them. `tronderHaterCard()` in
+`server/src/live/userStats.ts`.
+
+> **Alice og Chris** hater Trøndelag! De tror ikke at en eneste trønder scorer mål i løpet av
+> turneringen!
+
+| Decision | Why |
+|---|---|
+| No answers of No, no card | It is not a statistic about how popular the answer is; it is about the people who gave it. A league that all expect a goal has nothing to say here |
+| The question is matched on the word **trønder** — with and without the ø — rather than on its exact text | Same reason as the Norwegian-goals question beside it: an admin types it, and a keyboard somewhere will not have the ø |
+| The answer is compared against the canonical `No` the picker stores, trimmed and case-insensitively | `liveBonusOptions` gives yes/no questions exactly `Yes` and `No`, and `checkLiveBonusAnswer` stores what it validated. Reading it loosely costs nothing and survives a hand-edited row |
+| The route's bonus-answer query widened from `number` to `number, yes_no` | It is the same query the nationality card already needed; the two cards pick their own question out of it by the words in it. Nothing else in the deck reads the rows, and a numeric card cannot mistake a "No" for a total |
+| The subjects are the members, not a flag or a crest | The card is about them. Trøndelag has no crest in this app, and a card can only picture one kind of thing |
+
+---
+
+## 29. References
 
 - [2026/27 Champions League: teams, dates, draws, format](https://www.uefa.com/uefachampionsleague/news/02a6-20d57cfcd03e-407c22a7f465-1000--2026-27-champions-league-teams-dates-draws-format-final/)
 - [UEFA confirms date for the 2026/27 Champions League league phase draw](https://www.besoccer.com/new/uefa-confirms-date-for-the-202627-champions-league-league-phase-draw-1421299)

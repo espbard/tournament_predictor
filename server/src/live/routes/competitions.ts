@@ -740,10 +740,10 @@ liveCompetitionsRouter.get('/competitions/:id/user-stats', requireAuth, async (r
       // The leader card walks the same milestones the chart is drawn from, so the card
       // and the leaderboard can never disagree about who is top.
       loadLiveProgression(competition.id, tournament.id, lang),
-      // Every answer to a number bonus question, with the question it answers: the
-      // nationality card picks its own out by the words in it. Answers are already open
-      // to the league — see the bonus-answers route — so nothing is revealed here that a
-      // member could not read off another member's page.
+      // Every answer to a number or yes/no bonus question, with the question it answers:
+      // the two cards that read them pick their own out by the words in them. Answers are
+      // already open to the league — see the bonus-answers route — so nothing is revealed
+      // here that a member could not read off another member's page.
       db
         .select({
           question: liveBonusQuestions.question,
@@ -768,7 +768,7 @@ liveCompetitionsRouter.get('/competitions/:id/user-stats', requireAuth, async (r
         .where(
           and(
             eq(liveBonusAnswers.liveCompetitionId, competition.id),
-            eq(liveBonusQuestions.answerType, 'number'),
+            inArray(liveBonusQuestions.answerType, ['number', 'yes_no']),
           ),
         ),
     ]);

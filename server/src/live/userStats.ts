@@ -29,8 +29,9 @@ import { LIVE_SEASON_MILESTONE_IDS } from './progression';
 // scoreline. And a pair about one prediction rather than a season of them: the one nobody
 // else saw coming, and the one that missed by the most goals.
 //
-// Plus one card that is not about predictions at all: how many goals Norwegians have
-// actually scored. It reads the snapshot the scorer sync leaves on the tournament, so it
+// Plus two off the bonus questions: how many goals the league expects of Norwegians
+// against how many they have actually scored, and whoever expects nothing at all of
+// Trøndelag. It reads the snapshot the scorer sync leaves on the tournament, so it
 // costs no provider request of its own.
 
 export type LiveStatsLang = 'en' | 'no' | 'de';
@@ -1842,6 +1843,60 @@ export function nationalityGoalsCard(
   };
 }
 
+// ── Trøndelag ─────────────────────────────────────────────────────────────────
+
+/**
+ * The other bonus question this file reads, matched the same way as the Norwegian one:
+ * by the word in it rather than by its exact text, since an admin types it.
+ *
+ * "Scorer en trønder mål i turneringen?" — a yes/no question, and the answer that makes a
+ * card is No. Spelled without the ø as well, because a keyboard somewhere will.
+ */
+const TRONDER_QUESTION = ['trønder', 'tronder'];
+
+/** Yes/no answers are stored in the canonical spelling the picker offers. See bonus.ts. */
+const NO_ANSWER = 'no';
+
+/**
+ * Whoever has backed Trøndelag to score nothing at all.
+ *
+ * Only ever a card when somebody has answered No: a league that all expect a goal has
+ * nothing to say here, and this is not a statistic about the answer's popularity — it is
+ * about the people who gave it.
+ */
+export function tronderHaterCard(
+  bonusAnswers: LiveStatsBonusAnswer[],
+  lang: LiveStatsLang,
+): UserStatCardData | null {
+  const haters = dedupeByUser(
+    bonusAnswers.filter(answer => {
+      const question = answer.question.toLowerCase();
+      if (!TRONDER_QUESTION.some(word => question.includes(word))) return false;
+      return answer.answer.trim().toLowerCase() === NO_ANSWER;
+    }),
+  );
+  if (haters.length === 0) return null;
+
+  const names = joinNames(haters.map(h => h.username), lang);
+  const alone = haters.length === 1;
+
+  const title =
+    lang === 'no'
+      ? 'Trønderhateren'
+      : lang === 'de'
+        ? 'Der Trøndelag-Hasser'
+        : 'The Trøndelag hater';
+
+  const statistic =
+    lang === 'no'
+      ? `**${names}** hater Trøndelag! De tror ikke at en eneste trønder scorer mål i løpet av turneringen!`
+      : lang === 'de'
+        ? `**${names}** ${alone ? 'hasst' : 'hassen'} Trøndelag! Sie glauben nicht, dass ein einziger Trønder im ganzen Turnier trifft!`
+        : `**${names}** ${alone ? 'hates' : 'hate'} Trøndelag! They do not believe a single trønder will score in the whole tournament!`;
+
+  return memberCard('tronderHater', title, statistic, haters);
+}
+
 /** Every card that has something to say, in the order they should be shown. */
 export function buildLiveUserStats(
   input: {
@@ -1864,7 +1919,10 @@ export function buildLiveUserStats(
     /** What this competition pays per tier — the expected-result card ranks on it. */
     scoringConfig: LiveScoringConfig;
     scorerNationalities: LiveScorerNationalities | null;
-    /** Answers to the number bonus questions — the nationality card reads one of them. */
+    /**
+     * Answers to the bonus questions the deck reads — how many goals Norwegians score,
+     * and whether a trønder scores at all.
+     */
     bonusAnswers: LiveStatsBonusAnswer[];
   },
   lang: LiveStatsLang,
@@ -1902,5 +1960,6 @@ export function buildLiveUserStats(
     mostExpectedResultCard(scoredPredictions, teams, progression, scoringConfig, lang),
     mostUnexpectedResultCard(scoredPredictions, teams, progression, lang),
     nationalityGoalsCard(scorerNationalities, bonusAnswers, lang),
+    tronderHaterCard(bonusAnswers, lang),
   ].filter((c): c is UserStatCardData => c !== null);
 }
