@@ -1132,8 +1132,8 @@ Mounted as `app.use('/api/live', liveRouter)` in `server/src/index.ts`.
 | POST | `/competitions/join` | auth — `{inviteCode}` |
 | DELETE | `/competitions/:id/leave` | auth |
 | GET | `/competitions/:id/members` | auth |
-| GET | `/competitions/:id/leaderboard` | auth |
-| GET | `/competitions/:id/leaderboard-progression?lang=` | auth (member) — running totals per played fixture, in the manual type's `LeaderboardProgressionResponse` shape |
+| GET | `/competitions/:id/leaderboard` | auth — members who have never predicted drop out once a fixture has been played (§30) |
+| GET | `/competitions/:id/leaderboard-progression?lang=` | auth (member) — running totals per played fixture, in the manual type's `LeaderboardProgressionResponse` shape. Same member filter as the leaderboard (§30) |
 | GET | `/competitions/:id/user-stats?lang=` | auth (member) — the stat-card deck, worded server-side |
 | GET | `/competitions/:id/events` | auth — SSE: `fixtures-updated`, `leaderboard-updated`, `scorers-updated` |
 | GET | `/competitions/:id/fixtures` | auth — **main read model**: fixtures for a stage/matchday + caller's prediction + `lockedAt` + `isLocked` + `isSelected` + awarded points, in one call |
@@ -1934,7 +1934,33 @@ made of. It lives in `buildLiveUserStats()` and nowhere else:
 
 ---
 
-## 30. References
+## 30. The leaderboard drops the members who never played *(added after the six phases, on request)*
+
+A live competition collects members long before it collects predictions, and some never
+predict at all. Until the first match has been played that is harmless — a leaderboard of
+zeros is the roster, and seeing your name on it is half of why you joined. Once results
+start arriving it is not: the people who are playing get pushed off the bottom of a phone
+screen by the people who are not, and the points chart draws a flat bundle of lines along
+its x-axis.
+
+So from the first completed fixture, a member who has submitted nothing is left out of the
+leaderboard, the podium above it and the progression chart. The rule lives in
+`server/src/live/participation.ts` and both read models go through it — the leaderboard
+route and `loadLiveProgression()`, which is also what the leader stat card walks — so the
+three cannot disagree about who is in the competition.
+
+| Decision | Why |
+|---|---|
+| The filter runs on the server, in the two read models, not in the components | The podium, the leaderboard and the chart would each need the same rule, and the stat deck's leader card reads the progression too. One place is also what keeps a rank of 4 from appearing under a list of three names |
+| "Has predicted" means **any** prediction — a fixture, the league table, the top-scorer ranking, a bonus answer — not just a fixture prediction | A member who ranked the table but has not reached the fixtures yet holds table points. Hiding them would take points somebody actually scored off the leaderboard, which is wrong in a way that a slightly long list is not |
+| A completed fixture means one that counts: `finished` **and** selected for its gameweek | The same test the rest of the live type uses. A tournament whose finished fixtures were all left out of their gameweeks has not started as far as this competition is concerned, so nobody is behind yet |
+| Ranks are computed **after** the filter | Hiding a row from a ranked list leaves a gap in the numbers. The hidden members are on zero and therefore last, so nothing above them moves |
+| The filter never empties the view: if it would hide everybody, everybody is shown | A competition opened mid-season, where matches are already behind but nobody has predicted yet, would otherwise render as "no members" and read as broken. There the roster is still the most useful thing to print |
+| A member who has not predicted loses sight of their own row too | They are not in the game yet, and the rule cannot make an exception for the reader without the leaderboard meaning something different to each person looking at it. Predicting anything at all puts them back |
+
+---
+
+## 31. References
 
 - [2026/27 Champions League: teams, dates, draws, format](https://www.uefa.com/uefachampionsleague/news/02a6-20d57cfcd03e-407c22a7f465-1000--2026-27-champions-league-teams-dates-draws-format-final/)
 - [UEFA confirms date for the 2026/27 Champions League league phase draw](https://www.besoccer.com/new/uefa-confirms-date-for-the-202627-champions-league-league-phase-draw-1421299)

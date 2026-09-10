@@ -50,6 +50,7 @@ import { loadLiveBonusAnswers } from '../bonusScoring';
 import { redactLiveBonusAnswerPoints, redactLiveBonusQuestions } from '../bonusVisibility';
 import { recalculateLiveCompetition } from '../scoringTrigger';
 import { loadSelectionIndex } from '../selections';
+import { filterLiveParticipants, loadLiveParticipation } from '../participation';
 import { buildLiveProgression, type LiveProgressionLang } from '../progression';
 import { rankLiveScorers } from '../scorerScoring';
 import { buildLiveUserStats, type LiveStatsLang } from '../userStats';
@@ -399,32 +400,49 @@ liveCompetitionsRouter.get('/competitions/:id/members', requireAuth, async (req,
   }
 });
 
-/** A straight read of the denormalised columns — three point sources, no computation. */
+/**
+ * A straight read of the denormalised columns — three point sources, no computation.
+ *
+ * Members who have never predicted drop out once matches have been played; see
+ * server/src/live/participation.ts for the rule. Ranking happens after that filter, so
+ * the numbers down the side run 1, 2, 3 with no gaps where a hidden member would be.
+ */
 liveCompetitionsRouter.get('/competitions/:id/leaderboard', requireAuth, async (req, res) => {
   try {
     if (!(await assertMember(req.params.id, res.locals.user))) {
       return res.status(403).json({ error: 'Not a member of this competition' });
     }
 
-    const rows = await db
-      .select({
-        userId: liveCompetitionMembers.userId,
-        username: users.username,
-        imageUrl: users.imageUrl,
-        iconColor: users.iconColor,
-        totalPoints: liveCompetitionMembers.totalPoints,
-        correctOutcomePoints: liveCompetitionMembers.correctOutcomePoints,
-        correctGoalDifferencePoints: liveCompetitionMembers.correctGoalDifferencePoints,
-        exactScorePoints: liveCompetitionMembers.exactScorePoints,
-        multiplierBonusPoints: liveCompetitionMembers.multiplierBonusPoints,
-        tablePoints: liveCompetitionMembers.tablePoints,
-        scorerPoints: liveCompetitionMembers.scorerPoints,
-        bonusPoints: liveCompetitionMembers.bonusPoints,
-      })
-      .from(liveCompetitionMembers)
-      .innerJoin(users, eq(liveCompetitionMembers.userId, users.id))
-      .where(eq(liveCompetitionMembers.liveCompetitionId, req.params.id))
-      .orderBy(desc(liveCompetitionMembers.totalPoints), asc(users.username));
+    const [competition] = await db
+      .select({ id: liveCompetitions.id, liveTournamentId: liveCompetitions.liveTournamentId })
+      .from(liveCompetitions)
+      .where(eq(liveCompetitions.id, req.params.id));
+    if (!competition) return res.status(404).json({ error: 'Not found' });
+
+    const [allRows, participation] = await Promise.all([
+      db
+        .select({
+          userId: liveCompetitionMembers.userId,
+          username: users.username,
+          imageUrl: users.imageUrl,
+          iconColor: users.iconColor,
+          totalPoints: liveCompetitionMembers.totalPoints,
+          correctOutcomePoints: liveCompetitionMembers.correctOutcomePoints,
+          correctGoalDifferencePoints: liveCompetitionMembers.correctGoalDifferencePoints,
+          exactScorePoints: liveCompetitionMembers.exactScorePoints,
+          multiplierBonusPoints: liveCompetitionMembers.multiplierBonusPoints,
+          tablePoints: liveCompetitionMembers.tablePoints,
+          scorerPoints: liveCompetitionMembers.scorerPoints,
+          bonusPoints: liveCompetitionMembers.bonusPoints,
+        })
+        .from(liveCompetitionMembers)
+        .innerJoin(users, eq(liveCompetitionMembers.userId, users.id))
+        .where(eq(liveCompetitionMembers.liveCompetitionId, competition.id))
+        .orderBy(desc(liveCompetitionMembers.totalPoints), asc(users.username)),
+      loadLiveParticipation(competition.id, competition.liveTournamentId),
+    ]);
+
+    const rows = filterLiveParticipants(allRows, participation);
 
     // Standard competition ranking: equal totals share a rank, and the next rank skips.
     let previousPoints: number | null = null;
@@ -471,70 +489,84 @@ async function loadLiveProgression(
   liveTournamentId: string,
   lang: LiveProgressionLang,
 ): Promise<LeaderboardProgressionResponse> {
-  const [members, fixtures, teamRows, predictions, tablePoints, scorerPoints, bonusPoints, selections] =
-    await Promise.all([
-      db
-        .select({
-          userId: liveCompetitionMembers.userId,
-          username: users.username,
-          imageUrl: users.imageUrl,
-          iconColor: users.iconColor,
-        })
-        .from(liveCompetitionMembers)
-        .innerJoin(users, eq(liveCompetitionMembers.userId, users.id))
-        .where(eq(liveCompetitionMembers.liveCompetitionId, competitionId))
-        .orderBy(asc(users.username)),
-      db
-        .select({
-          id: liveFixtures.id,
-          kickoffAt: liveFixtures.kickoffAt,
-          status: liveFixtures.status,
-          stageKey: liveFixtures.stageKey,
-          matchday: liveFixtures.matchday,
-          homeTeamId: liveFixtures.homeTeamId,
-          awayTeamId: liveFixtures.awayTeamId,
-        })
-        .from(liveFixtures)
-        // Every fixture, not just the finished ones: a scored fixture the provider has
-        // since moved back to postponed still holds points on the leaderboard, and
-        // buildLiveProgression is the one place that rule lives.
-        .where(eq(liveFixtures.liveTournamentId, liveTournamentId)),
-      db
-        .select({
-          id: liveTeams.id,
-          name: liveTeams.name,
-          shortName: liveTeams.shortName,
-          tla: liveTeams.tla,
-        })
-        .from(liveTeams)
-        .where(eq(liveTeams.liveTournamentId, liveTournamentId)),
-      db
-        .select({
-          userId: livePredictions.userId,
-          liveFixtureId: livePredictions.liveFixtureId,
-          points: livePredictions.points,
-        })
-        .from(livePredictions)
-        .where(
-          and(
-            eq(livePredictions.liveCompetitionId, competitionId),
-            isNotNull(livePredictions.points),
-          ),
+  const [
+    allMembers,
+    fixtures,
+    teamRows,
+    predictions,
+    tablePoints,
+    scorerPoints,
+    bonusPoints,
+    selections,
+    participation,
+  ] = await Promise.all([
+    db
+      .select({
+        userId: liveCompetitionMembers.userId,
+        username: users.username,
+        imageUrl: users.imageUrl,
+        iconColor: users.iconColor,
+      })
+      .from(liveCompetitionMembers)
+      .innerJoin(users, eq(liveCompetitionMembers.userId, users.id))
+      .where(eq(liveCompetitionMembers.liveCompetitionId, competitionId))
+      .orderBy(asc(users.username)),
+    db
+      .select({
+        id: liveFixtures.id,
+        kickoffAt: liveFixtures.kickoffAt,
+        status: liveFixtures.status,
+        stageKey: liveFixtures.stageKey,
+        matchday: liveFixtures.matchday,
+        homeTeamId: liveFixtures.homeTeamId,
+        awayTeamId: liveFixtures.awayTeamId,
+      })
+      .from(liveFixtures)
+      // Every fixture, not just the finished ones: a scored fixture the provider has
+      // since moved back to postponed still holds points on the leaderboard, and
+      // buildLiveProgression is the one place that rule lives.
+      .where(eq(liveFixtures.liveTournamentId, liveTournamentId)),
+    db
+      .select({
+        id: liveTeams.id,
+        name: liveTeams.name,
+        shortName: liveTeams.shortName,
+        tla: liveTeams.tla,
+      })
+      .from(liveTeams)
+      .where(eq(liveTeams.liveTournamentId, liveTournamentId)),
+    db
+      .select({
+        userId: livePredictions.userId,
+        liveFixtureId: livePredictions.liveFixtureId,
+        points: livePredictions.points,
+      })
+      .from(livePredictions)
+      .where(
+        and(
+          eq(livePredictions.liveCompetitionId, competitionId),
+          isNotNull(livePredictions.points),
         ),
-      db
-        .select({ userId: liveTablePredictions.userId, points: liveTablePredictions.points })
-        .from(liveTablePredictions)
-        .where(eq(liveTablePredictions.liveCompetitionId, competitionId)),
-      db
-        .select({ userId: liveScorerPredictions.userId, points: liveScorerPredictions.points })
-        .from(liveScorerPredictions)
-        .where(eq(liveScorerPredictions.liveCompetitionId, competitionId)),
-      db
-        .select({ userId: liveBonusAnswers.userId, points: liveBonusAnswers.points })
-        .from(liveBonusAnswers)
-        .where(eq(liveBonusAnswers.liveCompetitionId, competitionId)),
-      loadSelectionIndex(liveTournamentId),
-    ]);
+      ),
+    db
+      .select({ userId: liveTablePredictions.userId, points: liveTablePredictions.points })
+      .from(liveTablePredictions)
+      .where(eq(liveTablePredictions.liveCompetitionId, competitionId)),
+    db
+      .select({ userId: liveScorerPredictions.userId, points: liveScorerPredictions.points })
+      .from(liveScorerPredictions)
+      .where(eq(liveScorerPredictions.liveCompetitionId, competitionId)),
+    db
+      .select({ userId: liveBonusAnswers.userId, points: liveBonusAnswers.points })
+      .from(liveBonusAnswers)
+      .where(eq(liveBonusAnswers.liveCompetitionId, competitionId)),
+    loadSelectionIndex(liveTournamentId),
+    loadLiveParticipation(competitionId, liveTournamentId),
+  ]);
+
+  // The same members the leaderboard shows: a line that never leaves zero belongs to
+  // somebody who is not playing, and the chart is unreadable with a bundle of them.
+  const members = filterLiveParticipants(allMembers, participation);
 
   return buildLiveProgression(
     {
