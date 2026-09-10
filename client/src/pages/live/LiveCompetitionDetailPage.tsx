@@ -68,11 +68,7 @@ export default function LiveCompetitionDetailPage() {
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
 
   const tabParam = searchParams.get('tab') as TabId | null;
-  const requestedTab: TabId = tabParam && TABS.includes(tabParam) ? tabParam : 'fixtures';
-  // The statistics are a test-account preview for now, and the server refuses everyone
-  // else — so anyone else is put back on the fixtures rather than shown an empty section.
-  const activeTab: TabId =
-    requestedTab === 'userStats' && !user?.isTestAccount ? 'fixtures' : requestedTab;
+  const activeTab: TabId = tabParam && TABS.includes(tabParam) ? tabParam : 'fixtures';
 
   const [stageKey, setStageKey] = useState<string | null>(null);
   const [matchday, setMatchday] = useState<number | null>(null);
@@ -130,7 +126,7 @@ export default function LiveCompetitionDetailPage() {
   const { data: userStats = [] } = useQuery({
     queryKey: liveKeys.userStats(id!, language),
     queryFn: () => liveApi.userStats(id!, language),
-    enabled: !!id && activeTab === 'userStats' && !!user?.isTestAccount,
+    enabled: !!id && activeTab === 'userStats',
   });
 
   const { data: teams = [] } = useQuery({

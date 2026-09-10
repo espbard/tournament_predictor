@@ -84,6 +84,13 @@ export interface LiveProgressionInput {
   bonusPoints: LiveProgressionUserPoints[];
 }
 
+/**
+ * The milestone ids the three season-long lumps get. They are not fixtures, which is why
+ * theLeaderCard in userStats.ts walks past them: a lump settled once at the end of the
+ * season is not a run of matches anybody led through.
+ */
+export const LIVE_SEASON_MILESTONE_IDS = ['table', 'scorers', 'bonus'] as const;
+
 const SEASON_LABELS: Record<LiveProgressionLang, { table: string; scorers: string; bonus: string }> = {
   en: { table: 'Table', scorers: 'Top scorers', bonus: 'Bonus' },
   no: { table: 'Tabell', scorers: 'Toppscorere', bonus: 'Bonus' },
@@ -176,10 +183,11 @@ export function buildLiveProgression(
   // withheld from the chart until it has actually awarded something, so a season still
   // being played does not end on three flat steps.
   const labels = SEASON_LABELS[lang];
+  const [tableId, scorersId, bonusId] = LIVE_SEASON_MILESTONE_IDS;
   const seasonSources = [
-    { id: 'table', label: labels.table, totals: sumByUser(input.tablePoints, memberIds) },
-    { id: 'scorers', label: labels.scorers, totals: sumByUser(input.scorerPoints, memberIds) },
-    { id: 'bonus', label: labels.bonus, totals: sumByUser(input.bonusPoints, memberIds) },
+    { id: tableId, label: labels.table, totals: sumByUser(input.tablePoints, memberIds) },
+    { id: scorersId, label: labels.scorers, totals: sumByUser(input.scorerPoints, memberIds) },
+    { id: bonusId, label: labels.bonus, totals: sumByUser(input.bonusPoints, memberIds) },
   ] as const;
 
   for (const source of seasonSources) {

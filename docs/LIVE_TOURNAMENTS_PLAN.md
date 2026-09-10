@@ -1134,7 +1134,7 @@ Mounted as `app.use('/api/live', liveRouter)` in `server/src/index.ts`.
 | GET | `/competitions/:id/members` | auth |
 | GET | `/competitions/:id/leaderboard` | auth |
 | GET | `/competitions/:id/leaderboard-progression?lang=` | auth (member) — running totals per played fixture, in the manual type's `LeaderboardProgressionResponse` shape |
-| GET | `/competitions/:id/user-stats?lang=` | auth (member) **+ test account or admin** — the stat-card deck, worded server-side |
+| GET | `/competitions/:id/user-stats?lang=` | auth (member) — the stat-card deck, worded server-side |
 | GET | `/competitions/:id/events` | auth — SSE: `fixtures-updated`, `leaderboard-updated`, `scorers-updated` |
 | GET | `/competitions/:id/fixtures` | auth — **main read model**: fixtures for a stage/matchday + caller's prediction + `lockedAt` + `isLocked` + `isSelected` + awarded points, in one call |
 | PUT | `/competitions/:id/predictions` | auth — upsert one `{fixtureId, homeScore, awayScore}`; rejects a fixture left out of its gameweek's selected matches |
@@ -1222,7 +1222,7 @@ Components under `client/src/components/live/`:
 `CompetitionDetailPage` does — including navigating from the navbar rather than an in-page tab
 bar. Its sections fall under the navbar's two dropdowns: **Predictions** (Fixtures · Table
 prediction · Top scorers · Bonus questions) and **Results** (Table · Leaderboard · Point
-progression, plus Stats for test accounts). No knockout tab, no bracket, no group-position tab.
+progression, plus Stats). No knockout tab, no bracket, no group-position tab.
 
 The Fixtures tab is driven by the format, not hardcoded:
 
@@ -1666,7 +1666,275 @@ season's squads, plus an admin warning when the deadline is close and the shortl
 
 ---
 
-## 18. References
+## 18. The member pair: "Holding the answer key" and "Almost" *(added after the six phases, on request)*
+
+Two more stat cards, and the first about the members rather than what they predicted:
+
+- **Spot on** — who has called the most scorelines outright.
+- **Almost** — who has the goal difference right in the most matches, and, among those level
+  on that, the fewest exact scorelines.
+
+`spotOnCard()` and `almostCard()` in `server/src/live/userStats.ts`, both read off one
+`tallyMembers()` pass so a member is counted the same way by each.
+
+| Decision | Why |
+|---|---|
+| One tally, two cards, in the same file as the rest of the deck | They ask the same two questions of the same rows — how often the margin was right, how often the scoreline was — and splitting them would give the pair two chances to disagree about what counts |
+| "Spot on" prints the denominator ("from **38** scored predictions") only when a single member wins | Tied members have made different numbers of predictions, so one number behind both names would belong to neither. Breaking the tie on that number instead would quietly make it a hit-rate card, which is not what was asked for |
+| Almost: two keys in that order — most goal differences first, fewest exact scorelines only as the separator — rather than the widest gap between them, which is what the manual type's "Close but no cigar" uses | It is the statistic that was asked for, and the one the sentence prints. The cost is that a prolific predictor who also hits a few scorelines outranks a quieter one who hits none; both numbers are in the sentence, so the card can be read either way |
+| Exact scorelines are counted **inside** the goal-difference total, not against it | That is how the tiers stack: an exact scoreline necessarily has the right margin too, and `calculateLivePoints` awards both. Subtracting them would make the headline number disagree with the leaderboard's goal-difference column |
+| The tally is built from the predicted and actual **scores**, not from the stored `correct_goal_difference_points` / `exact_score_points` columns | Those hold points, and a competition may configure a tier at zero. The cards would then silently become "got it right in a competition that pays for it". The two comparisons they make are the ones in `server/src/live/scoring.ts` |
+| …but the rows they read are still selected by `points IS NOT NULL` | That is the leaderboard's and the progression chart's own test for "counts in the game", written by the scoring trigger: a fixture the admin left out of its gameweek is already excluded, and one that scored before being moved back to postponed still counts. Re-deriving that rule here is how the cards would eventually disagree with the leaderboard above them |
+| `UserStatSubject.type` gained no new value — both cards use the existing `'user'` | It already means "a photograph, cropped to fill", which is what a member is. `LiveUserStatCard` only had to learn that `'user'` takes the photograph branch, and to fall back to `UserAvatar` — the initial on `iconColor` — for a member with no picture |
+| Ties are shown rather than broken, and a member with nothing to their name is simply absent — no exact scoreline for "Spot on", no right margin for "Almost" | Both match the cards already in the deck: `countEnd` shows a tie, and a card that can name nobody returns null instead of printing a zero |
+| Both cards read the same rows and cost the route one shared query | There is no second query to add when a third member card follows |
+
+---
+
+## 19. The prediction pair: best and worst *(added after the six phases, on request)*
+
+Two cards about a single prediction rather than a member's season, `bestPredictionCard()` and
+`worstPredictionCard()` in `server/src/live/userStats.ts`:
+
+- **Best prediction** — the fixture exactly one member called outright, where fewest of the
+  others managed even the goal difference; level on that, where fewest of them so much as
+  picked the winner.
+- **Worst prediction** — the prediction furthest from the goal difference that happened. 0-4
+  on a match that finished 3-0 is seven goals out. Titled **Det var nesten da!** / *Close
+  enough!* / *Knapp daneben!*, and it prints the miss rather than the number of goals it was
+  out by — see §25.
+
+| Decision | Why |
+|---|---|
+| "Others" excludes the member who called it, on both counts | They necessarily have the goal difference and the outcome too, so counting them would put a floor of one under every fixture and the "nobody else even had the goal difference" case — the one the card is looking for — could never occur |
+| A fixture two members both called exactly is not a candidate at all | The card is about a prediction nobody else made. The moment two people made it, it is neither theirs alone nor an interesting tie between them |
+| The second key is the outcome count, not the fixture's date or its odds | It is the same question one rung down: how alone were they? Anything else would be a different card wearing this one's name |
+| "Worst" ranks on the distance between predicted and actual **goal difference**, not between the scorelines | It is what was asked for, and it is the honest measure: a wild 6-5 on a 1-0 read the match correctly and would otherwise outrank a backwards 0-4 on a 3-0 |
+| A tie names no fixture — and a tie held by one member alone says how many predictions it was | Two fixtures level on the ranking are two different stories, so the sentence keeps only what they share. "Each" describes two members, not one member twice, so that case counts the predictions instead |
+| Both cards took the manual type's titles (`Best prediction` / `Synsk` / `Wahrsager`, `Worst prediction` / `Skivebom` / `Katastrophentipp`) even though the criteria differ — the best card was renamed later, see §22 | The league already reads those words as "the standout call" and "the howler". The manual type's rules are its own — it has stages, bonus sources and a bracket — but the thing being named is the same |
+| The subject is the member, not the match, and `linkType` stays null | `LiveUserStatCard` renders subjects as the tile's picture and has no match view to link to. The fixture is in the sentence, where the teams can be named without a route |
+| The route's one prediction query grew `fixtureId`, `homeTeamId` and `awayTeamId`; nothing else was added | The pair reads the same rows the member pair does. Naming the teams costs two ids on a query that was already running, and the team names are already loaded for the table cards |
+
+---
+
+## 20. "The Leader", borrowed from the manual type *(added after the six phases, on request)*
+
+The manual competition type's leader card, in the live deck and opening it: who is top of the
+leaderboard, and how many matches they have been top for. `theLeaderCard()` in
+`server/src/live/userStats.ts`.
+
+| Decision | Why |
+|---|---|
+| The sentence is the manual type's, word for word — `The Leader` / `Kongen på haugen` / `Der Platzhirsch`, and the three statistics that go with them | Requested. The league already reads those words as "who is winning"; the same fact worded differently in the other tournament type would be two cards, not one |
+| Which meant copying `formatUserList` rather than using this file's `joinNames` | The manual list bolds each name and puts a comma before the "and"; `joinNames` does neither. Printing the same sentence means punctuating it the same way, so the helper is duplicated deliberately, with a note pointing at the original |
+| The run is walked over the **points progression**, not recomputed from predictions | `buildLiveProgression` already owns what a played fixture is, which ones are excluded, and how the season-long lumps land. Walking its milestones is what makes the card, the chart and the leaderboard agree about who is top — a second implementation is how they would drift apart |
+| The progression queries moved into a `loadLiveProgression()` helper shared by the two routes that now need it | The user-stats route would otherwise repeat seven queries and the `isLiveFixtureSelected` mapping. It is one function call from each route, and the rules stay in `progression.ts` |
+| Only fixture milestones count towards the run | The table, the top-scorer ranking and the bonus questions are settled in one lump at the end of the season. They move the totals — so they can change who is leading — but they are not matches anybody led through, and the sentence counts games |
+| The one deviation: no leader while every total is still zero | The manual card would name the entire league at 0-0-0. The rest of this deck returns null instead of printing a zero, and a card that says everybody is winning is not a statistic |
+| `linkType` stays null, where the manual card links to the leaderboard | `LiveUserStatCard` renders no links, the same as for every other card in this deck |
+
+---
+
+## 21. Six more borrowed cards *(added after the six phases, on request)*
+
+The rest of the manual competition type's leaderboard and result cards, in the live deck with
+their sentences intact: **Best form**, **Worst form**, **The Climber**, **I'm falling!**, **The
+most expected result** and **Most unexpected result**. All six live in
+`server/src/live/userStats.ts`.
+
+| Decision | Why |
+|---|---|
+| Everything that says "the last 5 matches" or "the last 10 games" counts fixtures off the **points progression**, via one `playedFixtures()` walk the leader card shares | It is already the definition of a played fixture for this tournament type — deselected gameweek matches out, scored-then-postponed ones in — and it puts the fixtures in kickoff order, which is also the manual cards' tie-break. A second definition is how the cards would start disagreeing with the chart |
+| Form and drought are read from the per-prediction `points` the scoring trigger wrote, not recomputed | Same reason the chart reads them: they carry the multiplier bonus, so "gained 12 points" is the number that member actually gained |
+| Worst form still requires a prediction on **every** played fixture, as the manual card does | Otherwise the longest drought always belongs to whoever stopped playing, which is a sadder statistic than the one the card is telling |
+| The climber and the faller keep the manual card's ranking — joint totals share a place, and both need a move of at least two | 1, 2, 2, 4 means a shared second is not a climb, and one place is the table breathing rather than a story |
+| "The most expected result" ranks on the **tier** points a fixture paid — outcome, goal difference and exact score at this competition's configured rates — not on the points actually awarded | A fixture the admin marked as worth triple would otherwise win every time on the multiplier alone, which says nothing about how obvious it was. The average in the sentence is still the real points, multiplier included: that is what people took home |
+| Its live wording keeps saying "the correct result", which here means the correct **outcome** | It is the manual sentence, and the live tier it names is the same fact: home win, draw or away win |
+| A fixture whose teams the provider has not named is not a candidate for either result card | Both sentences are about who beat whom. A fixture with a hole where a club should be cannot be described, and the two cards are the only borrowed ones whose subjects are crests rather than a person |
+| The manual cards' `backgroundImageUrl` decorations (`/climber.png`, `/arrow-down.png`) are dropped | `LiveUserStatCard` renders the subject as the tile and reads none of those fields; carrying them would be dead payload |
+| The deviations from the manual behaviour are the deck's usual one: a card with nothing to say is dropped rather than shown empty | Best form withholds itself before anything is played and when the best haul is zero, where the manual card would print "No matches have been completed yet!" or name half the league on 0 points |
+| No new queries: the prediction query grew `points`, and the progression was already being loaded for the leader card | The whole borrowed set rides on rows the route had reasons to load anyway |
+
+---
+
+## 22. A pass over the deck's wording *(added after the six phases, on request)*
+
+Six cards rewritten to the copy the league actually wanted, the Norwegian written by the owner
+and the English and German aligned to it. Only wording, one title-driven rename of the flag
+treatment aside — no card changed what it counts.
+
+| Card | Now reads |
+|---|---|
+| `peoplesFavourite` | **Folkefavoritten** / *The people's favourite* / *Der Publikumsliebling* — "**Bayern** are the people's favourite! **2** of **3** have them top of their table prediction." |
+| `woodenSpoon` | **Bunnslammet** / *The bottom of the barrel* / *Der Bodensatz* — "Nobody believes in **Barcelona**! **2** of **3** have them finishing dead last." |
+| `goalDrought` | **Null tillit** / *No confidence* / *Kein Vertrauen* — "Expectations are low for **Mbappé**. **2** of **3** have him scoring the fewest goals on the top-scorer list." |
+| `spotOn` | **Sitter med fasiten i hånden** / *Holding the answer key* / *Mit dem Lösungsblatt in der Hand* — now names the other end too: "**Alice** has predicted a full **2** perfect scorelines! **Chris** has the fewest with **0**." |
+| `bestPrediction` | **Hvordan visste du det?** / *How did you know?* / *Woher wusstest du das?* — "**Alice** was the only one to predict the perfect score for **Arsenal 2-1 Bayern**!" plus one of three tails |
+| `norwegianGoals` | **Heia Norge!** / *Go Norway!* / *Los, Norwegen!*, with the flag filling the tile |
+
+| Decision | Why |
+|---|---|
+| The English and German titles follow the Norwegian **metaphor**, not the Norwegian words | `Bunnslammet` is the sludge at the bottom of the barrel, not a wooden spoon, and `Null tillit` is about confidence rather than a drought. Translating the old titles would have left three languages telling three different jokes |
+| Two typos in the supplied Norwegian were corrected — *Forventingene* → *Forventningene*, *scoret* → *scorer*, and the `Synsk` replacement title read *Hvordan hviste du et?* | They are spellings, not wording. The sentences are otherwise the owner's, word for word |
+| "Spot on" keeps its ranking and gains a second sentence naming whoever has the fewest, counted over everyone who has predicted at all | Nobody has fewer perfect scorelines than the member who has never managed one, so the trailing end is only interesting if it includes them. The sentence is dropped when everybody is level — naming one member as both the best and the worst of them is the same fact twice, and it is what a league of one would otherwise print |
+| Its denominator ("from **38** scored predictions") is gone with the old sentence | The new copy does not ask for it, and the contrast with the trailing member says more than a rate did |
+| The best-prediction card's three tails map exactly onto the ranking underneath it | "Only **N** others even had the goal difference" is the first key, "only **N** others even had the right outcome" the second, and "nobody else even got the outcome right" the case the second key was invented for. The card now says out loud what it sorted on |
+| The flag became `backgroundImageUrl` on the card rather than a subject, and `LiveUserStatCard` grew a full-bleed branch for it | A rectangle of solid colour fills a tile better than any cropping could, and unlike a crest or a face there is nothing in it to cut in half. The branch is keyed off the payload field rather than off the card's id, so the next card that wants to be its own picture needs no client change |
+
+---
+
+## 23. "In Haaland we trust" *(added after the six phases, on request)*
+
+A card about one player and the league's faith in him: how many of them have Haaland winning
+the golden boot, and who has him lowest. `inHaalandWeTrustCard()` in
+`server/src/live/userStats.ts`.
+
+> **1** of **3** have Haaland finishing as top scorer! The one with the least faith in him:
+> **Chris**, who put him **3rd** on the top-scorer list.
+
+| Decision | Why |
+|---|---|
+| The title is `In Haaland we trust` in all three languages | Requested. It is a slogan, not a sentence, and the joke does not survive being translated |
+| He is found by **surname**, case-insensitively, rather than by an exact name or a stored id | The provider spells him "Erling Haaland" and has spelled him "Erling Braut Haaland". A Norwegian league will only ever have one Haaland, so the surname is the half that is safe to match; two spellings sort by name so the card cannot flicker between them. It is one constant to change to follow somebody else |
+| The denominator is the rankings that place him **at all**, not every ranking | A ranking saved before he joined the shortlist has no opinion about him to count, in either half of the sentence — the same rule `countEnd` uses for a team that has left |
+| Nobody backing him is still a card | "**0** of **7** have Haaland finishing as top scorer" is the funnier version of the same statistic, and unlike a zero on the counting cards it names a real thing the league did |
+| The second sentence goes when the lowest anybody has him is first place | With the whole league behind him there is no member with "least faith", only the same fact said twice — the rule the answer-key card already follows |
+| The subject is Haaland, though the sentence names members | It is his card. The doubters are the punchline, not the picture |
+| The scorer-ranking rows grew `username`, `imageUrl` and `iconColor`, via a join the query did not have | Naming the doubters needs them, and the two ranking cards above it are unaffected by the extra columns |
+
+---
+
+## 24. "Heia Norge!" reads the bonus question *(added after the six phases, on request)*
+
+The nationality card grew a first half: what the league answered to the bonus question *"Hvor
+mange mål blir scoret av norske spillere?"* — who backs them hardest and who backs them least
+— above what they have actually scored.
+
+> **Alice** har mest trua på de norske spillerne! De har tippet at de scorer totalt **12** mål i
+> turneringen! **Bob**, imidlertid, har tippet at det kun blir **3** norske mål i turneringen.
+>
+> Så langt har norske spillere scoret **5** mål seg imellom! Fordelt på **3** forskjellige
+> norske målscorere.
+
+| Decision | Why |
+|---|---|
+| The league's average guess came out again, and with it the comparison to everybody else | Requested. The two ends of the league say what the middle of it was going to: the sentence names who is highest and who is lowest, and a mean between them was arithmetic the card did not need |
+| The question is found by the **words in it** — a number question mentioning *norsk* and *mål* — not by its exact text or a stored id | An admin types it, and next season's wording will differ. An exact match would leave the card silently half-empty, and there is no second numeric question about Norwegians for it to collide with |
+| Either half stands alone, and the card is null only when neither has anything | A league arguing about Norwegians before any of them has scored is a card; so is a tally with no bonus question behind it. Only "no answers and no goals" is nothing to say |
+| The contrast sentence goes when everybody guessed the same number | The two ends would be the same people saying the same thing — the rule the answer-key and Haaland cards already follow |
+| Reading other members' answers needs no new gate | The bonus-answers route already opens them to the league as soon as they are given; only points are redacted, and this card prints none |
+| The card now hands over two paragraphs, and `LiveUserStatCard` renders the caption `whitespace-pre-line` | The predictions and what actually happened are two different subjects; running them together made a wall of text. Every other card is one paragraph and is unaffected |
+| The answers query is filtered to `answerType = 'number'` in SQL, but *which* question is the card's own business | Narrowing to numbers is cheap and safe; the matching rule belongs beside the sentence that depends on it, like the `NATIONALITY` constant above it |
+
+---
+
+## 25. The worst prediction stops counting goals *(added after the six phases, on request)*
+
+`worstPrediction` renamed to **Det var nesten da!** / *Close enough!* / *Knapp daneben!*, and
+its sentence now ends on the claim rather than on the arithmetic:
+
+> **Alice** tippet **0-4** på **Arsenal mot Bayern**, som endte **3-0**. Ingen andre har bommet
+> så stort på en kamp!
+
+| Decision | Why |
+|---|---|
+| The goal-difference distance is still what the card ranks on; it just stopped printing it | It is the only honest way to order the misses, but "seven goals out on the goal difference" was arithmetic where the card wanted a punchline. Nothing about which prediction wins changed |
+| The two tie sentences had to be reworded rather than just re-ended | "Nobody else has missed by that much" is false when somebody else missed by exactly that much. A tie between members now says they are level and that nobody has missed by *more*; a tie one member holds alone keeps the stronger claim, since there genuinely is no other member in it |
+| The English title avoids "Almost" and the German avoids "Fast" | Both are already the `almost` card's titles, and two cards in one deck answering to the same word is a card nobody can refer to |
+
+---
+
+## 26. The deck opens to the league *(added after the six phases, on request)*
+
+`/competitions/:id/user-stats` no longer refuses everyone but admins and test accounts, and
+the Stats entry is offered to every member.
+
+| Decision | Why |
+|---|---|
+| Membership is still checked | It is somebody's league, and every card is about that competition |
+| Nothing in the deck had to be redacted first | Each card is built from what the other views already show a member: the leaderboard and its progression, the table and top-scorer rankings, each other's predictions and bonus answers. Bonus **points** are the one thing withheld until a tournament completes, and no card prints them |
+| Three gates came out, not one | The route's check, the page's redirect back to the fixtures, and the navbar entry — a client that offered a tab the server refused was the reason the last two existed |
+
+---
+
+## 27. The two ends of the bands *(added after the six phases, on request)*
+
+Two more cards beside the table pair, one at each end of the format's bands.
+`deadCertCard()` and `lastBelieverCard()` in `server/src/live/userStats.ts`.
+
+**A dead cert** (`Sikkerstikket`) — the team the league has qualifying directly, and how much of the league that
+is:
+
+> Every one of **12** has **Bayern** in the **8** that go straight through.
+>
+> **9** of **12** have **Bayern** in the **8** that go straight through. **Alice, Bob and
+> Chris** were the only ones to predict them outside the top **8**.
+
+**The last believer** (`I hvert fall noen som har trua`) — the team most members have finishing in the band that goes straight
+out, where at least one member has them going through, and is named for it.
+
+> **11** of **12** have **Slovan Bratislava** dropping straight out. **Alice** is the only one
+> with them going through.
+>
+> **11** of **12** have **Slovan Bratislava, Sparta Praha and Young Boys** dropping straight out.
+> **Alice** is the only one with **Slovan Bratislava** going through.
+> **Alice** is the only one with **Sparta Praha** going through.
+> **Bob** is the only one with **Young Boys** going through.
+
+| Decision | Why |
+|---|---|
+| "Everyone" and "most people" are one count on the dead-cert card, worded two ways | A league of twelve agreeing eleven times over is the same statistic as one agreeing twelve; a second card, or a card that vanished the moment one member disagreed, would be the same fact with a hole in it. The sentence says "every one of them" when the count is the whole league and names the best-supported team otherwise |
+| The dead-cert card shows ties without further ado | With eight places to fill, several teams being nailed on is the normal case rather than an edge one |
+| The last believer needs both conditions: most members writing them off, and **at least one** not | A team everybody writes off is a fact about the draw, and a team nobody writes off has no story either. It is the split that is worth printing, and the believers are the half worth naming |
+| The bands are the format's own — the top one for the dead cert, and for the last believer the **bottom** one — the band with no upper bound, so the one that runs to the foot of the table | The Champions League league phase sends 25th and below out with no play-off behind them; the bands are already the source of truth for table scoring, and reading them means the card follows a format change instead of a hardcoded 25. A format without bands says nothing at all |
+| The route hands the card a number, not the stage | What the sentence needs is "from 25th". Keeping the lookup in the route leaves the card pure and lets a test say `5` |
+| The dead cert names whoever left them out, and says nothing at all where nobody did | That silence is the unanimous case, which has nothing left to say — and it is why the card needed the members on its rows, not just a count |
+| Every team level on both counts is shown, and each gets its own **line** naming who backs that one — the dead cert does the same with its doubters | One sentence listing both sets of believers could not say who backed which. One line could not say who backed which, and a member who is the only believer in two clubs holding two of the lines is a fair picture of exactly that. The club is always named — a line saying "them" beside another that names one reads as being about the same club. There is no cap on how many, and the tile shows the first four crests either way |
+| Level teams are separated first by the **fewest** believers | The fewer people stand against the league, the better the story the card is looking for |
+| A team no longer in the tournament is dropped from every count | Same rule as `countEnd`: the sentence has to be able to name its subject, and the "x of y" it prints has to add up |
+| Table predictions grew the member's name and picture, via a join the query did not have | Naming the believers needs them, and the two cards already reading those rows are unaffected |
+
+---
+
+## 28. "Trønderhateren" *(added after the six phases, on request)*
+
+A card that only exists when somebody has answered **No** to the bonus question *"Scorer en
+trønder mål i turneringen?"* — and names them. `tronderHaterCard()` in
+`server/src/live/userStats.ts`.
+
+> **Alice og Chris** hater Trøndelag! De tror ikke at en eneste trønder scorer mål i løpet av
+> turneringen!
+
+| Decision | Why |
+|---|---|
+| No answers of No, no card | It is not a statistic about how popular the answer is; it is about the people who gave it. A league that all expect a goal has nothing to say here |
+| The question is matched on the word **trønder** — with and without the ø — rather than on its exact text | Same reason as the Norwegian-goals question beside it: an admin types it, and a keyboard somewhere will not have the ø |
+| The answer is compared against the canonical `No` the picker stores, trimmed and case-insensitively | `liveBonusOptions` gives yes/no questions exactly `Yes` and `No`, and `checkLiveBonusAnswer` stores what it validated. Reading it loosely costs nothing and survives a hand-edited row |
+| The route's bonus-answer query widened from `number` to `number, yes_no` | It is the same query the nationality card already needed; the two cards pick their own question out of it by the words in it. Nothing else in the deck reads the rows, and a numeric card cannot mistake a "No" for a total |
+| The subjects are the members, not a flag or a crest | The card is about them. Trøndelag has no crest in this app, and a card can only picture one kind of thing |
+
+---
+
+## 29. The running order *(added after the six phases, on request)*
+
+The deck is shown in an order the league chose rather than one grouped by what the cards are
+made of. It lives in `buildLiveUserStats()` and nowhere else:
+
+1. The Leader · 2. The golden boot · 3. No confidence · 4. Trønderhateren · 5. Close enough! ·
+6. Best form · 7. Worst form · 8. The people's favourite · 9. The bottom of the barrel ·
+10. In Haaland we trust · 11. Holding the answer key · 12. A dead cert · 13. The last believer ·
+14. Go Norway! · 15. The Climber · 16. I'm falling! · 17. The most expected result ·
+18. Most unexpected result · 19. How did you know? · 20. Almost
+
+| Decision | Why |
+|---|---|
+| The order is a plain list in the builder, not a `sortOrder` on each card | It is one line per card in one place, and a card that has nothing to say still drops out of it by returning null. A weight per card would put the running order in twenty places |
+| The two table movers, which the order first given did not mention, sit after the Norway card | Where the league put them once they were pointed out |
+| Worst form was already built, and is simply rarer than the rest | It needs a member who has predicted **every** played fixture and has then gone two or more of them without a point. Anybody who has skipped a fixture is out of the running, which is the manual card's own rule: otherwise the longest drought always belongs to whoever stopped playing |
+
+---
+
+## 30. References
 
 - [2026/27 Champions League: teams, dates, draws, format](https://www.uefa.com/uefachampionsleague/news/02a6-20d57cfcd03e-407c22a7f465-1000--2026-27-champions-league-teams-dates-draws-format-final/)
 - [UEFA confirms date for the 2026/27 Champions League league phase draw](https://www.besoccer.com/new/uefa-confirms-date-for-the-202627-champions-league-league-phase-draw-1421299)
