@@ -33,6 +33,19 @@ describe('filterLiveParticipants', () => {
     ).toEqual(ordered);
   });
 
+  it('keeps the member reading the page, predictions or not', () => {
+    expect(filterLiveParticipants(MEMBERS, participation(), 'u3')).toEqual([
+      { userId: 'u1' },
+      { userId: 'u3' },
+    ]);
+  });
+
+  it('does not add a viewer who is not a member', () => {
+    expect(filterLiveParticipants(MEMBERS, participation(), 'someone-else')).toEqual([
+      { userId: 'u1' },
+    ]);
+  });
+
   it('falls back to the full roster rather than showing nobody', () => {
     expect(filterLiveParticipants(MEMBERS, participation({ participantIds: new Set() }))).toEqual(
       MEMBERS,

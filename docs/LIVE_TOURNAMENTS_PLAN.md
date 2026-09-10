@@ -1944,7 +1944,8 @@ screen by the people who are not, and the points chart draws a flat bundle of li
 its x-axis.
 
 So from the first completed fixture, a member who has not predicted a fixture is left out
-of the leaderboard, the podium above it and the progression chart. The rule lives in
+of the leaderboard, the podium above it and the progression chart — except for the member
+reading the page, who always sees their own row. The rule lives in
 `server/src/live/participation.ts` and both read models go through it — the leaderboard
 route and `loadLiveProgression()`, which is also what the leader stat card walks — so the
 three cannot disagree about who is in the competition.
@@ -1957,7 +1958,8 @@ three cannot disagree about who is in the competition.
 | A completed fixture means one that counts: `finished` **and** selected for its gameweek | The same test the rest of the live type uses. A tournament whose finished fixtures were all left out of their gameweeks has not started as far as this competition is concerned, so nobody is behind yet |
 | Ranks are computed **after** the filter | Hiding a row from a ranked list leaves a gap in the numbers. The hidden members are on zero and therefore last, so nothing above them moves |
 | The filter never empties the view: if it would hide everybody, everybody is shown | A competition opened mid-season, where matches are already behind but nobody has predicted yet, would otherwise render as "no members" and read as broken. There the roster is still the most useful thing to print |
-| A member who has not predicted loses sight of their own row too | They are not in the game yet, and the rule cannot make an exception for the reader without the leaderboard meaning something different to each person looking at it. Predicting anything at all puts them back |
+| The caller always sees their own row, on the leaderboard and in the chart | Requested. Hiding somebody from their own leaderboard reads as having been thrown out of a competition they are still in, and it is the one row nobody can misread — it is theirs, and it is on zero because they have not predicted. Other members' lists do not grow, so the tail the filter exists to remove stays removed |
+| The stat deck does not take the exception: `loadLiveProgression()` is passed a null viewer there | The deck is open to the league and reads the same for everybody. A non-predicting member is always last and flat, so including them would change nothing on the cards except whose deck they appear in |
 
 ---
 

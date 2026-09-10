@@ -27,6 +27,12 @@ import { loadSelectionIndex } from './selections';
 //     A tournament whose finished fixtures were all left out of their gameweeks has not
 //     started as far as this competition is concerned.
 //
+// The member reading the page is the exception: they always see their own row, whether or
+// not they have predicted. Hiding somebody from their own leaderboard reads as having been
+// thrown out of a competition they are still in, and it is the one row they cannot be
+// confused about — it is theirs, and it is on zero because they have not predicted. Others
+// still do not see it, so nobody else's list grows.
+//
 // The filter never empties the view. A competition opened mid-season, where matches are
 // already behind but nobody has predicted yet, would otherwise show no members at all
 // and read as broken; there the roster is still the most useful thing to print.
@@ -74,6 +80,9 @@ export async function loadLiveParticipation(
 /**
  * Drop the members who have not predicted, once there is anything to have predicted for.
  *
+ * `viewerId` is the member reading the page, who is always kept — pass null for a view
+ * that is the same for everybody, such as the stat deck.
+ *
  * Order is preserved, so a caller that has already sorted and ranked keeps its order —
  * though ranking after filtering is what the leaderboard does, so that a hidden member
  * cannot leave a gap in the numbers.
@@ -81,8 +90,11 @@ export async function loadLiveParticipation(
 export function filterLiveParticipants<T extends { userId: string }>(
   members: T[],
   participation: LiveParticipation,
+  viewerId: string | null = null,
 ): T[] {
   if (!participation.hasCompletedFixtures) return members;
-  const participants = members.filter(m => participation.participantIds.has(m.userId));
+  const participants = members.filter(
+    m => participation.participantIds.has(m.userId) || m.userId === viewerId,
+  );
   return participants.length > 0 ? participants : members;
 }

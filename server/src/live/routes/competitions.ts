@@ -403,9 +403,10 @@ liveCompetitionsRouter.get('/competitions/:id/members', requireAuth, async (req,
 /**
  * A straight read of the denormalised columns — three point sources, no computation.
  *
- * Members who have never predicted drop out once matches have been played; see
- * server/src/live/participation.ts for the rule. Ranking happens after that filter, so
- * the numbers down the side run 1, 2, 3 with no gaps where a hidden member would be.
+ * Members who have never predicted a fixture drop out once matches have been played —
+ * except the caller, who always sees their own row. See server/src/live/participation.ts
+ * for the rule. Ranking happens after that filter, so the numbers down the side run
+ * 1, 2, 3 with no gaps where a hidden member would be.
  */
 liveCompetitionsRouter.get('/competitions/:id/leaderboard', requireAuth, async (req, res) => {
   try {
@@ -442,7 +443,7 @@ liveCompetitionsRouter.get('/competitions/:id/leaderboard', requireAuth, async (
       loadLiveParticipation(competition.id, competition.liveTournamentId),
     ]);
 
-    const rows = filterLiveParticipants(allRows, participation);
+    const rows = filterLiveParticipants(allRows, participation, res.locals.user.id);
 
     // Standard competition ranking: equal totals share a rank, and the next rank skips.
     let previousPoints: number | null = null;
@@ -488,6 +489,9 @@ async function loadLiveProgression(
   competitionId: string,
   liveTournamentId: string,
   lang: LiveProgressionLang,
+  /** The member reading the chart, who keeps their own line whether or not they have
+      predicted. Null for the stat deck, which reads the same for everybody. */
+  viewerId: string | null,
 ): Promise<LeaderboardProgressionResponse> {
   const [
     allMembers,
@@ -565,8 +569,9 @@ async function loadLiveProgression(
   ]);
 
   // The same members the leaderboard shows: a line that never leaves zero belongs to
-  // somebody who is not playing, and the chart is unreadable with a bundle of them.
-  const members = filterLiveParticipants(allMembers, participation);
+  // somebody who is not playing, and the chart is unreadable with a bundle of them. The
+  // caller's own line is the exception, for the same reason it is on the leaderboard.
+  const members = filterLiveParticipants(allMembers, participation, viewerId);
 
   return buildLiveProgression(
     {
@@ -610,7 +615,9 @@ liveCompetitionsRouter.get(
       const lang: LiveProgressionLang =
         req.query.lang === 'no' ? 'no' : req.query.lang === 'de' ? 'de' : 'en';
 
-      return res.json(await loadLiveProgression(id, competition.liveTournamentId, lang));
+      return res.json(
+        await loadLiveProgression(id, competition.liveTournamentId, lang, res.locals.user.id),
+      );
     } catch (err) {
       return fail(res, err);
     }
@@ -771,7 +778,7 @@ liveCompetitionsRouter.get('/competitions/:id/user-stats', requireAuth, async (r
         ),
       // The leader card walks the same milestones the chart is drawn from, so the card
       // and the leaderboard can never disagree about who is top.
-      loadLiveProgression(competition.id, tournament.id, lang),
+      loadLiveProgression(competition.id, tournament.id, lang, null),
       // Every answer to a number or yes/no bonus question, with the question it answers:
       // the two cards that read them pick their own out by the words in them. Answers are
       // already open to the league — see the bonus-answers route — so nothing is revealed
