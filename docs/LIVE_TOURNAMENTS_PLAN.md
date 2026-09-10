@@ -1869,8 +1869,8 @@ is:
 
 > Every one of **12** has **Bayern** in the **8** that go straight through.
 >
-> **9** of **12** have **Bayern** in the **8** that go straight through — more than any other
-> team.
+> **9** of **12** have **Bayern** in the **8** that go straight through. **Alice, Bob and
+> Chris** were the only ones to predict them outside the top **8**.
 
 **The last believer** — the team most members have finishing in the band that goes straight
 out, where at least one member has them going through, and is named for it.
@@ -1878,9 +1878,9 @@ out, where at least one member has them going through, and is named for it.
 > **11** of **12** have **Slovan Bratislava** dropping straight out. **Alice** is the only one
 > with them going through.
 >
-> **11** of **12** have **Slovan Bratislava and Young Boys** dropping straight out. **Alice** is
-> the only one with **Slovan Bratislava** going through. **Bob** is the only one with **Young
-> Boys** going through.
+> **11** of **12** have **Slovan Bratislava and Young Boys** dropping straight out.
+> **Alice** is the only one with **Slovan Bratislava** going through.
+> **Bob** is the only one with **Young Boys** going through.
 
 | Decision | Why |
 |---|---|
@@ -1889,7 +1889,8 @@ out, where at least one member has them going through, and is named for it.
 | The last believer needs both conditions: most members writing them off, and **at least one** not | A team everybody writes off is a fact about the draw, and a team nobody writes off has no story either. It is the split that is worth printing, and the believers are the half worth naming |
 | The bands are the format's own — the top one for the dead cert, and for the last believer the **bottom** one — the band with no upper bound, so the one that runs to the foot of the table | The Champions League league phase sends 25th and below out with no play-off behind them; the bands are already the source of truth for table scoring, and reading them means the card follows a format change instead of a hardcoded 25. A format without bands says nothing at all |
 | The route hands the card a number, not the stage | What the sentence needs is "from 25th". Keeping the lookup in the route leaves the card pure and lets a test say `5` |
-| Every team level on both counts is shown, and each gets its **own sentence** naming who backs that one | One sentence listing both sets of believers could not say who backed which. There is no cap on how many: a league that has written off four teams bar one believer each is worth printing in full, and the tile shows the first four crests either way |
+| The dead cert names whoever left them out, and says nothing at all where nobody did | That silence is the unanimous case, which has nothing left to say — and it is why the card needed the members on its rows, not just a count |
+| Every team level on both counts is shown, and each gets its own **line** naming who backs that one — the dead cert does the same where several teams tie | One sentence listing both sets of believers could not say who backed which. There is no cap on how many: a league that has written off four teams bar one believer each is worth printing in full, and the tile shows the first four crests either way. One team's dissenters stay on the opening line, where there is no ambiguity about who they mean |
 | Level teams are separated first by the **fewest** believers | The fewer people stand against the league, the better the story the card is looking for |
 | A team no longer in the tournament is dropped from every count | Same rule as `countEnd`: the sentence has to be able to name its subject, and the "x of y" it prints has to add up |
 | Table predictions grew the member's name and picture, via a join the query did not have | Naming the believers needs them, and the two cards already reading those rows are unaffected |

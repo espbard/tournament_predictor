@@ -747,7 +747,8 @@ describe('deadCertCard', () => {
       'en',
     );
     expect(card?.statistic).toBe(
-      '**2** of **3** have **Bayern** in the **2** that go straight through — more than any other team.',
+      '**2** of **3** have **Bayern** in the **2** that go straight through.' +
+        ' **Chris** was the only one to predict them outside the top **2**.',
     );
   });
 
@@ -762,6 +763,25 @@ describe('deadCertCard', () => {
       'Every one of **2** has **Arsenal and Bayern** in the **2** that go straight through.',
     );
     expect(card?.subjects.map(s => s.id)).toEqual(['t2', 't1']);
+  });
+
+  it('names every member who left them out, and none where nobody did', () => {
+    const card = deadCertCard(
+      [
+        pick('u1', 't1', 't2', 't3', 't4', 't5', 't6'),
+        pick('u2', 't1', 't3', 't2', 't4', 't5', 't6'),
+        pick('u3', 't1', 't4', 't2', 't3', 't5', 't6'),
+        pick('u4', 't2', 't5', 't1', 't3', 't4', 't6'),
+        pick('u5', 't3', 't4', 't1', 't2', 't5', 't6'),
+      ],
+      six,
+      2,
+      'en',
+    );
+    expect(card?.statistic).toBe(
+      '**3** of **5** have **Bayern** in the **2** that go straight through.' +
+        ' **Dana and Erik** were the only ones to predict them outside the top **2**.',
+    );
   });
 
   it('leaves a team that has left the tournament out of both halves of the count', () => {
@@ -797,10 +817,14 @@ describe('deadCertCard', () => {
 
     const split = [pick('u1', 't1', 't2', 't3'), pick('u2', 't2', 't1', 't3')];
     expect(deadCertCard(split, six, 1, 'no')?.statistic).toBe(
-      '**1** av **2** har tippet **Arsenal og Bayern** blant de **1** som går rett videre — flere enn noe annet lag.',
+      '**1** av **2** har tippet **Arsenal og Bayern** blant de **1** som går rett videre.' +
+        '\n**Alice** var den eneste som tippet **Arsenal** utenfor topp **1**.' +
+        '\n**Bob** var den eneste som tippet **Bayern** utenfor topp **1**.',
     );
     expect(deadCertCard(split, six, 1, 'de')?.statistic).toBe(
-      '**1** von **2** haben **Arsenal und Bayern** unter den **1**, die direkt weiterkommen — mehr als jede andere Mannschaft.',
+      '**1** von **2** haben **Arsenal und Bayern** unter den **1**, die direkt weiterkommen.' +
+        '\n**Alice** war die einzige Person, die **Arsenal** außerhalb der Top **1** getippt hat.' +
+        '\n**Bob** war die einzige Person, die **Bayern** außerhalb der Top **1** getippt hat.',
     );
   });
 });
@@ -829,7 +853,7 @@ describe('lastBelieverCard', () => {
     );
     expect(card?.title).toBe('The last believer');
     expect(card?.statistic).toBe(
-      '**2** of **3** have **Feyenoord** dropping straight out. **Alice** is the only one with them going through.',
+      '**2** of **3** have **Feyenoord** dropping straight out.\n**Alice** is the only one with them going through.',
     );
     expect(card?.subjects).toEqual([
       { type: 'team', id: 't6', name: 'Feyenoord', imageUrl: null },
@@ -850,7 +874,7 @@ describe('lastBelieverCard', () => {
     );
     expect(card?.subjects.map(s => s.id)).toEqual(['t5']);
     expect(card?.statistic).toBe(
-      '**2** of **3** have **Enschede** dropping straight out. **Bob** is the only one with them going through.',
+      '**2** of **3** have **Enschede** dropping straight out.\n**Bob** is the only one with them going through.',
     );
   });
 
@@ -879,7 +903,7 @@ describe('lastBelieverCard', () => {
       'en',
     );
     expect(card?.statistic).toBe(
-      '**3** of **5** have **Feyenoord** dropping straight out. Only **Dana and Erik** have them going through.',
+      '**3** of **5** have **Feyenoord** dropping straight out.\nOnly **Dana and Erik** have them going through.',
     );
   });
 
@@ -898,8 +922,8 @@ describe('lastBelieverCard', () => {
     );
     expect(card?.statistic).toBe(
       '**2** of **3** have **Enschede and Feyenoord** dropping straight out.' +
-        ' **Alice** is the only one with **Enschede** going through.' +
-        ' **Bob** is the only one with **Feyenoord** going through.',
+        '\n**Alice** is the only one with **Enschede** going through.' +
+        '\n**Bob** is the only one with **Feyenoord** going through.',
     );
     expect(card?.subjects.map(s => s.id)).toEqual(['t5', 't6']);
   });
@@ -917,8 +941,8 @@ describe('lastBelieverCard', () => {
     );
     expect(card?.statistic).toBe(
       '**2** of **3** have **Enschede and Feyenoord** dropping straight out.' +
-        ' **Alice** is the only one with **Enschede** going through.' +
-        ' **Alice** is the only one with **Feyenoord** going through.',
+        '\n**Alice** is the only one with **Enschede** going through.' +
+        '\n**Alice** is the only one with **Feyenoord** going through.',
     );
   });
 
@@ -938,7 +962,7 @@ describe('lastBelieverCard', () => {
       'en',
     );
     expect(card?.statistic).toBe(
-      '**1** of **2** have **Feyenoord** dropping straight out. **Bob** is the only one with them going through.',
+      '**1** of **2** have **Feyenoord** dropping straight out.\n**Bob** is the only one with them going through.',
     );
   });
 
@@ -951,12 +975,12 @@ describe('lastBelieverCard', () => {
     expect(lastBelieverCard(rows, six, 5, 'no')).toMatchObject({
       title: 'Den siste troende',
       statistic:
-        '**2** av **3** har tippet at **Feyenoord** ryker rett ut. **Alice** er den eneste som har tippet dem videre.',
+        '**2** av **3** har tippet at **Feyenoord** ryker rett ut.\n**Alice** er den eneste som har tippet dem videre.',
     });
     expect(lastBelieverCard(rows, six, 5, 'de')).toMatchObject({
       title: 'Der letzte Gläubige',
       statistic:
-        '**2** von **3** tippen **Feyenoord** auf den direkten Abgang. **Alice** ist die einzige Person, die sie weiterkommen sieht.',
+        '**2** von **3** tippen **Feyenoord** auf den direkten Abgang.\n**Alice** ist die einzige Person, die sie weiterkommen sieht.',
     });
   });
 
@@ -968,13 +992,13 @@ describe('lastBelieverCard', () => {
     ];
     expect(lastBelieverCard(rows, six, 5, 'no')?.statistic).toBe(
       '**2** av **3** har tippet at **Enschede og Feyenoord** ryker rett ut.' +
-        ' **Alice** er den eneste som har tippet **Enschede** videre.' +
-        ' **Bob** er den eneste som har tippet **Feyenoord** videre.',
+        '\n**Alice** er den eneste som har tippet **Enschede** videre.' +
+        '\n**Bob** er den eneste som har tippet **Feyenoord** videre.',
     );
     expect(lastBelieverCard(rows, six, 5, 'de')?.statistic).toBe(
       '**2** von **3** tippen **Enschede und Feyenoord** auf den direkten Abgang.' +
-        ' **Alice** ist die einzige Person, die **Enschede** weiterkommen sieht.' +
-        ' **Bob** ist die einzige Person, die **Feyenoord** weiterkommen sieht.',
+        '\n**Alice** ist die einzige Person, die **Enschede** weiterkommen sieht.' +
+        '\n**Bob** ist die einzige Person, die **Feyenoord** weiterkommen sieht.',
     );
   });
 });

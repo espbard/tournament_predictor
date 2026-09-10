@@ -630,6 +630,9 @@ export function woodenSpoonCard(
  * whole league. There is no separate unanimous card, because a league of twelve agreeing
  * eleven times over is the same statistic as one agreeing twelve.
  *
+ * Whoever did leave them out is named after it, and a team nobody left out simply has no
+ * second sentence — that is the unanimous case, and it has nothing left to say.
+ *
  * Ties are shown, as everywhere else — with a top eight to fill, several teams being
  * nailed on is the normal case rather than an edge one.
  *
@@ -645,47 +648,93 @@ export function deadCertCard(
   if (!directPlaces || directPlaces < 1) return null;
 
   const byId = indexTeams(teams);
-  const through = new Map<string, number>();
-  const ranked = new Map<string, number>();
+  interface Backing {
+    team: Entrant;
+    through: number;
+    doubters: CardMember[];
+    ranked: number;
+  }
+  const backings = new Map<string, Backing>();
   for (const prediction of predictions) {
     prediction.orderedTeamIds.forEach((teamId, index) => {
-      // A team that has left the tournament is left out of both halves of the count, the
-      // same way countEnd drops one: the sentence has to be able to name its subject.
-      if (!byId.has(teamId)) return;
-      ranked.set(teamId, (ranked.get(teamId) ?? 0) + 1);
-      if (index + 1 <= directPlaces) through.set(teamId, (through.get(teamId) ?? 0) + 1);
+      // A team that has left the tournament is left out of every count, the same way
+      // countEnd drops one: the sentence has to be able to name its subject.
+      const team = byId.get(teamId);
+      if (!team) return;
+      const backing = backings.get(teamId) ?? { team, through: 0, doubters: [], ranked: 0 };
+      backing.ranked += 1;
+      if (index + 1 <= directPlaces) backing.through += 1;
+      else backing.doubters.push(prediction);
+      backings.set(teamId, backing);
     });
   }
-  if (through.size === 0) return null;
+  if (backings.size === 0) return null;
 
-  const most = Math.max(...through.values());
-  const winners = [...through.entries()]
-    .filter(([, count]) => count === most)
-    .map(([teamId]) => byId.get(teamId)!)
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const most = Math.max(...[...backings.values()].map(b => b.through));
+  if (most === 0) return null;
+  const winners = [...backings.values()]
+    .filter(b => b.through === most)
+    .sort((a, b) => a.team.name.localeCompare(b.team.name));
+
   // Each tied team was ranked by the same members in practice; where an old ranking missed
   // one of them, the first winner's denominator is the honest one to print.
-  const total = ranked.get(winners[0].id)!;
-  const everyone = most === total;
+  const { through, ranked } = winners[0];
+  const everyone = through === ranked;
+  const names = joinNames(winners.map(w => w.team.name), lang);
+  const single = winners.length === 1;
 
-  const names = joinNames(winners.map(w => w.name), lang);
   const title =
     lang === 'no' ? 'Så godt som klar' : lang === 'de' ? 'So gut wie durch' : 'A dead cert';
 
-  const statistic =
+  const opening =
     lang === 'no'
       ? everyone
-        ? `Alle **${total}** har tippet **${names}** blant de **${directPlaces}** som går rett videre.`
-        : `**${most}** av **${total}** har tippet **${names}** blant de **${directPlaces}** som går rett videre — flere enn noe annet lag.`
+        ? `Alle **${ranked}** har tippet **${names}** blant de **${directPlaces}** som går rett videre.`
+        : `**${most}** av **${ranked}** har tippet **${names}** blant de **${directPlaces}** som går rett videre.`
       : lang === 'de'
         ? everyone
-          ? `Alle **${total}** haben **${names}** unter den **${directPlaces}**, die direkt weiterkommen.`
-          : `**${most}** von **${total}** haben **${names}** unter den **${directPlaces}**, die direkt weiterkommen — mehr als jede andere Mannschaft.`
+          ? `Alle **${ranked}** haben **${names}** unter den **${directPlaces}**, die direkt weiterkommen.`
+          : `**${most}** von **${ranked}** haben **${names}** unter den **${directPlaces}**, die direkt weiterkommen.`
         : everyone
-          ? `Every one of **${total}** has **${names}** in the **${directPlaces}** that go straight through.`
-          : `**${most}** of **${total}** have **${names}** in the **${directPlaces}** that go straight through — more than any other team.`;
+          ? `Every one of **${ranked}** has **${names}** in the **${directPlaces}** that go straight through.`
+          : `**${most}** of **${ranked}** have **${names}** in the **${directPlaces}** that go straight through.`;
 
-  return card('deadCert', title, statistic, winners, 'team');
+  /** "Alice was the only one to predict them outside the top 8", per team that has one. */
+  const doubtedBy = (backing: Backing): string | null => {
+    const doubters = dedupeByUser(backing.doubters);
+    // Nothing to say about a team nobody left out, which is the whole league agreeing.
+    if (doubters.length === 0) return null;
+    const who = joinNames(doubters.map(d => d.username), lang);
+    const alone = doubters.length === 1;
+    // With one team on the card its name has just been printed, so the sentence says
+    // "them"; with several it has to say which of them it means.
+    const team = single
+      ? lang === 'no'
+        ? 'dem'
+        : lang === 'de'
+          ? 'sie'
+          : 'them'
+      : `**${backing.team.name}**`;
+
+    return lang === 'no'
+      ? alone
+        ? `**${who}** var den eneste som tippet ${team} utenfor topp **${directPlaces}**.`
+        : `**${who}** var de eneste som tippet ${team} utenfor topp **${directPlaces}**.`
+      : lang === 'de'
+        ? alone
+          ? `**${who}** war die einzige Person, die ${team} außerhalb der Top **${directPlaces}** getippt hat.`
+          : `**${who}** waren die Einzigen, die ${team} außerhalb der Top **${directPlaces}** getippt haben.`
+        : alone
+          ? `**${who}** was the only one to predict ${team} outside the top **${directPlaces}**.`
+          : `**${who}** were the only ones to predict ${team} outside the top **${directPlaces}**.`;
+  };
+
+  const doubts = winners.map(doubtedBy).filter((line): line is string => line !== null);
+  // One team's doubters read as part of the same breath; several teams' are a line each,
+  // for the same reason the last-believer card gives each team its own.
+  const statistic = single ? [opening, ...doubts].join(' ') : [opening, ...doubts].join('\n');
+
+  return card('deadCert', title, statistic, winners.map(w => w.team), 'team');
 }
 
 /**
@@ -697,10 +746,10 @@ export function deadCertCard(
  * story in it either. It is the split that makes it worth printing, and the believers
  * are the half of it worth naming.
  *
- * Teams level on both counts are all shown, and each gets its own sentence naming who
- * still backs it: one sentence could not say who backed which. There is no cap on how
- * many — a league that has written off four teams bar one believer each is a card worth
- * printing in full, and the tile shows the first four crests either way.
+ * Teams level on both counts are all shown, and each gets its own line naming who still
+ * backs it: one sentence could not say who backed which. There is no cap on how many — a
+ * league that has written off four teams bar one believer each is a card worth printing
+ * in full, and the tile shows the first four crests either way.
  *
  * Null where the format has no bands to drop out of — a domestic league's table means
  * plenty, but not this — and null while nobody is written off, or everybody is.
@@ -791,7 +840,9 @@ export function lastBelieverCard(
         ? `**${writtenOff}** von **${ranked}** tippen **${names}** auf den direkten Abgang.`
         : `**${writtenOff}** of **${ranked}** have **${names}** dropping straight out.`;
 
-  const statistic = [opening, ...winners.map(believedBy)].join(' ');
+  // A line each, because with several teams these are several stories, and a paragraph of
+  // them runs together. See LiveUserStatCard, which keeps the breaks.
+  const statistic = [opening, ...winners.map(believedBy)].join('\n');
 
   return card('lastBeliever', title, statistic, winners.map(w => w.team), 'team');
 }
