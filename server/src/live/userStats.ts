@@ -21,8 +21,7 @@ import { LIVE_SEASON_MILESTONE_IDS } from './progression';
 // top and bottom of the league table, and who it thinks will finish top and bottom of the
 // top-scorer list. All four are the same count — which entrant sits at one end of the most
 // rankings — so they share countEnd and differ only in their wording. Beside the table
-// pair, the team the league is surest of: fewest members, but not none, have it missing
-// the places that go straight through.
+// pair, the team the league has written off bar one member — and that member, named.
 //
 // Then a pair about the members themselves rather than what they predicted: who calls the
 // scoreline outright most often, and who keeps landing on the right margin and the wrong
@@ -47,8 +46,7 @@ export interface LiveStatsPlayer {
   imageUrl: string | null;
 }
 
-export interface LiveStatsTablePrediction {
-  userId: string;
+export interface LiveStatsTablePrediction extends CardMember {
   orderedTeamIds: string[];
 }
 
@@ -623,69 +621,95 @@ export function woodenSpoonCard(
 }
 
 /**
- * The team the league is surest of — the one fewest members have finishing outside the
- * places that go straight through to the knockout, without that being nobody at all.
+ * The team the league has written off, and whoever still has them going through.
  *
- * "At least one" is the whole card. A team every single member has going through is a
- * fact about the draw, not about the league; a team with exactly one doubter is a
- * near-unanimous verdict and a person standing against it, which is the interesting
- * shape. So the count is a minimum over the teams somebody doubts.
+ * Most members put them in the band that goes straight out — no play-off, no second
+ * chance — and at least one member does not. That last condition is the card: a team
+ * everybody writes off is a fact about the draw, and a team nobody writes off has no
+ * story in it either. It is the split that makes it worth printing, and the believers
+ * are the half of it worth naming.
  *
- * Null where the format has no bands to be inside or outside of — a domestic league's
- * table means plenty, but not this — and null where nobody doubts anybody.
+ * Where two teams are level, they are shown together only if the same members believe in
+ * both — a shared maverick is one story. Otherwise the alphabetically first keeps the
+ * card, because a sentence naming two sets of believers cannot say who backed which.
+ *
+ * Null where the format has no bands to drop out of — a domestic league's table means
+ * plenty, but not this — and null while nobody is written off, or everybody is.
  */
-export function surestThingCard(
+export function lastBelieverCard(
   predictions: LiveStatsTablePrediction[],
   teams: LiveStatsTeam[],
-  directPlaces: number | null,
+  eliminationFrom: number | null,
   lang: LiveStatsLang,
 ): UserStatCardData | null {
-  if (!directPlaces || directPlaces < 1) return null;
+  if (!eliminationFrom || eliminationFrom < 1) return null;
 
   const byId = indexTeams(teams);
-  const doubted = new Map<string, number>();
-  const ranked = new Map<string, number>();
+  interface Verdict {
+    team: Entrant;
+    writtenOff: number;
+    believers: CardMember[];
+    ranked: number;
+  }
+  const verdicts = new Map<string, Verdict>();
   for (const prediction of predictions) {
     prediction.orderedTeamIds.forEach((teamId, index) => {
-      // A team that has left the tournament is left out of both halves of the count, the
-      // same way countEnd drops one: the sentence has to be able to name its subject.
-      if (!byId.has(teamId)) return;
-      ranked.set(teamId, (ranked.get(teamId) ?? 0) + 1);
-      if (index + 1 > directPlaces) doubted.set(teamId, (doubted.get(teamId) ?? 0) + 1);
+      // A team that has left the tournament is left out of every count, the same way
+      // countEnd drops one: the sentence has to be able to name its subject.
+      const team = byId.get(teamId);
+      if (!team) return;
+      const verdict = verdicts.get(teamId) ?? { team, writtenOff: 0, believers: [], ranked: 0 };
+      verdict.ranked += 1;
+      if (index + 1 >= eliminationFrom) verdict.writtenOff += 1;
+      else verdict.believers.push(prediction);
+      verdicts.set(teamId, verdict);
     });
   }
-  if (doubted.size === 0) return null;
 
-  const fewest = Math.min(...doubted.values());
-  const winners = [...doubted.entries()]
-    .filter(([, count]) => count === fewest)
-    .map(([teamId]) => byId.get(teamId)!)
-    .sort((a, b) => a.name.localeCompare(b.name));
-  // Each tied team was ranked by the same members in practice, and where an old ranking
-  // missed one of them the first winner's denominator is the honest one to print.
-  const total = ranked.get(winners[0].id)!;
+  const candidates = [...verdicts.values()].filter(v => v.writtenOff > 0 && v.believers.length > 0);
+  if (candidates.length === 0) return null;
 
-  const names = joinNames(winners.map(w => w.name), lang);
-  const tied = winners.length > 1;
-  const one = fewest === 1;
+  const mostWrittenOff = Math.max(...candidates.map(v => v.writtenOff));
+  const level = candidates.filter(v => v.writtenOff === mostWrittenOff);
+  const fewestBelievers = Math.min(...level.map(v => v.believers.length));
+  const tied = level
+    .filter(v => v.believers.length === fewestBelievers)
+    .sort((a, b) => a.team.name.localeCompare(b.team.name));
+
+  // Two teams written off by the same members and believed in by the same members are one
+  // story; two with different believers are two, and only one of them fits in a sentence.
+  const believerIds = (v: Verdict) =>
+    dedupeByUser(v.believers)
+      .map(b => b.userId)
+      .join('|');
+  const winners = tied.filter(v => believerIds(v) === believerIds(tied[0]));
+
+  const believers = dedupeByUser(winners[0].believers);
+  const { writtenOff, ranked } = winners[0];
+  const names = joinNames(winners.map(w => w.team.name), lang);
+  const believerNames = joinNames(believers.map(b => b.username), lang);
+  const alone = believers.length === 1;
 
   const title =
-    lang === 'no' ? 'Sikreste kortet' : lang === 'de' ? 'Die sicherste Bank' : 'The safest bet';
+    lang === 'no' ? 'Den siste troende' : lang === 'de' ? 'Der letzte Gläubige' : 'The last believer';
 
   const statistic =
     lang === 'no'
-      ? tied
-        ? `**${names}** er de sikreste kortene i ligaen: bare **${fewest}** av **${total}** har tippet hver av dem utenfor topp **${directPlaces}**.`
-        : `**${names}** er det sikreste kortet i ligaen: bare **${fewest}** av **${total}** har tippet dem utenfor topp **${directPlaces}**.`
+      ? `**${writtenOff}** av **${ranked}** har tippet at **${names}** ryker rett ut. ` +
+        (alone
+          ? `**${believerNames}** er den eneste som har tippet dem videre.`
+          : `Bare **${believerNames}** har tippet dem videre.`)
       : lang === 'de'
-        ? tied
-          ? `**${names}** sind die sichersten Banken der Liga: nur **${fewest}** von **${total}** ${one ? 'tippt' : 'tippen'} jede von ihnen aus den Top **${directPlaces}**.`
-          : `**${names}** ist die sicherste Bank der Liga: nur **${fewest}** von **${total}** ${one ? 'tippt' : 'tippen'} sie aus den Top **${directPlaces}**.`
-        : tied
-          ? `**${names}** are the surest things in the league: only **${fewest}** of **${total}** ${one ? 'has' : 'have'} each of them missing out on the top **${directPlaces}**.`
-          : `**${names}** are the surest thing in the league: only **${fewest}** of **${total}** ${one ? 'has' : 'have'} them missing out on the top **${directPlaces}**.`;
+        ? `**${writtenOff}** von **${ranked}** tippen **${names}** auf den direkten Abgang. ` +
+          (alone
+            ? `**${believerNames}** ist die einzige Person, die sie weiterkommen sieht.`
+            : `Nur **${believerNames}** sehen sie weiterkommen.`)
+        : `**${writtenOff}** of **${ranked}** have **${names}** dropping straight out. ` +
+          (alone
+            ? `**${believerNames}** is the only one with them going through.`
+            : `Only **${believerNames}** have them going through.`);
 
-  return card('surestThing', title, statistic, winners, 'team');
+  return card('lastBeliever', title, statistic, winners.map(w => w.team), 'team');
 }
 
 
@@ -1665,10 +1689,10 @@ export function buildLiveUserStats(
     tablePredictions: LiveStatsTablePrediction[];
     teams: LiveStatsTeam[];
     /**
-     * How many places go straight through to the knockout — the top band of the table
-     * stage. Null where the format has no bands.
+     * The position from which a team is out of the tournament outright — the bottom band
+     * of the table stage. Null where the format has no bands.
      */
-    directPlaces: number | null;
+    eliminationFrom: number | null;
     scorerPredictions: LiveStatsScorerPrediction[];
     players: LiveStatsPlayer[];
     scoredPredictions: LiveStatsScoredPrediction[];
@@ -1684,7 +1708,7 @@ export function buildLiveUserStats(
   const {
     tablePredictions,
     teams,
-    directPlaces,
+    eliminationFrom,
     scorerPredictions,
     players,
     scoredPredictions,
@@ -1701,7 +1725,7 @@ export function buildLiveUserStats(
     theFallerCard(progression, lang),
     peoplesFavouriteCard(tablePredictions, teams, lang),
     woodenSpoonCard(tablePredictions, teams, lang),
-    surestThingCard(tablePredictions, teams, directPlaces, lang),
+    lastBelieverCard(tablePredictions, teams, eliminationFrom, lang),
     goldenBootCard(scorerPredictions, players, lang),
     goalDroughtCard(scorerPredictions, players, lang),
     inHaalandWeTrustCard(scorerPredictions, players, lang),

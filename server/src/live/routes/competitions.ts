@@ -618,9 +618,11 @@ liveCompetitionsRouter.get('/competitions/:id/user-stats', requireAuth, async (r
     // A format with no table stage can still have a top-scorer ranking, so this narrows
     // the table half rather than ending the whole request.
     const stage = tablePredictionStage(getLiveFormat(tournament.format), tournament.startStageKey);
-    // The top band of that table — the places that go straight through to the knockout.
-    // Null for a format with no bands, which is the safest-bet card saying nothing.
-    const directPlaces = stage?.bands?.find(band => band.from === 1)?.to ?? null;
+    // The bottom band of that table — the positions that go out of the tournament outright,
+    // with no play-off behind them. It is the band that runs to the foot of the table, so
+    // it is the one with no upper bound. Null for a format with no bands, which is the
+    // last-believer card saying nothing.
+    const eliminationFrom = stage?.bands?.find(band => band.to === null)?.from ?? null;
 
     const [
       tablePredictions,
@@ -635,9 +637,15 @@ liveCompetitionsRouter.get('/competitions/:id/user-stats', requireAuth, async (r
         ? db
             .select({
               userId: liveTablePredictions.userId,
+              username: users.username,
+              imageUrl: users.imageUrl,
+              iconColor: users.iconColor,
               orderedTeamIds: liveTablePredictions.orderedTeamIds,
             })
             .from(liveTablePredictions)
+            // The member comes along: the last-believer card names whoever still has a
+            // written-off team going through.
+            .innerJoin(users, eq(users.id, liveTablePredictions.userId))
             // Read through the membership table rather than straight off the prediction
             // table: leaving a competition removes the membership row and leaves the
             // prediction behind, and someone who has left should not still get a vote.
@@ -768,7 +776,7 @@ liveCompetitionsRouter.get('/competitions/:id/user-stats', requireAuth, async (r
         {
           tablePredictions,
           teams,
-          directPlaces,
+          eliminationFrom,
           scorerPredictions,
           players,
           // The three isNotNull filters above are what make these assertions safe:

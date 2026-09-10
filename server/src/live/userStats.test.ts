@@ -11,8 +11,8 @@ import {
   goldenBootCard,
   inHaalandWeTrustCard,
   peoplesFavouriteCard,
+  lastBelieverCard,
   spotOnCard,
-  surestThingCard,
   theClimberCard,
   theFallerCard,
   theLeaderCard,
@@ -27,7 +27,26 @@ const teams = [
   { id: 't3', name: 'Barcelona', crestUrl: null },
 ];
 
-const pick = (userId: string, ...orderedTeamIds: string[]) => ({ userId, orderedTeamIds });
+/** The members every fixture below is made of, by the id they are referred to by. */
+const USERNAMES: Record<string, string> = {
+  u1: 'Alice',
+  u2: 'Bob',
+  u3: 'Chris',
+  u4: 'Dana',
+  u5: 'Erik',
+};
+
+const memberOf = (userId: string) => ({
+  userId,
+  username: USERNAMES[userId] ?? userId,
+  imageUrl: userId === 'u1' ? '/api/images/alice.png' : null,
+  iconColor: userId === 'u1' ? null : '#334155',
+});
+
+const pick = (userId: string, ...orderedTeamIds: string[]) => ({
+  ...memberOf(userId),
+  orderedTeamIds,
+});
 
 const players = [
   { id: 'p1', name: 'Haaland', imageUrl: '/api/images/haaland.png' },
@@ -36,10 +55,7 @@ const players = [
 ];
 
 const rank = (userId: string, ...orderedPlayerIds: string[]) => ({
-  userId,
-  username: userId === 'u1' ? 'Alice' : userId === 'u2' ? 'Bob' : 'Chris',
-  imageUrl: userId === 'u1' ? '/api/images/alice.png' : null,
-  iconColor: userId === 'u1' ? null : '#334155',
+  ...memberOf(userId),
   orderedPlayerIds,
 });
 
@@ -86,10 +102,7 @@ const scored = (
   fixtureId = 'f1',
   points = tierPoints([predictedHome, predictedAway], [actualHome, actualAway]),
 ) => ({
-  userId,
-  username: userId === 'u1' ? 'Alice' : userId === 'u2' ? 'Bob' : 'Chris',
-  imageUrl: userId === 'u1' ? '/api/images/alice.png' : null,
-  iconColor: userId === 'u1' ? null : '#334155',
+  ...memberOf(userId),
   fixtureId,
   homeTeamId: fixtureTeams[fixtureId]?.[0] ?? null,
   awayTeamId: fixtureTeams[fixtureId]?.[1] ?? null,
@@ -115,12 +128,7 @@ const progression = (
     stage: 'league',
     cumulativePoints,
   })),
-  users: ids.map(userId => ({
-    userId,
-    username: userId === 'u1' ? 'Alice' : userId === 'u2' ? 'Bob' : 'Chris',
-    imageUrl: userId === 'u1' ? '/api/images/alice.png' : null,
-    iconColor: userId === 'u1' ? null : '#334155',
-  })),
+  users: ids.map(memberOf),
 });
 
 /** The season-long lumps, which are milestones on the chart but not matches. */
@@ -695,8 +703,7 @@ describe('woodenSpoonCard', () => {
   });
 });
 
-describe('surestThingCard', () => {
-  /** Six teams, so "top 2" leaves somewhere for the doubted ones to be put. */
+describe('lastBelieverCard', () => {
   const six = [
     { id: 't1', name: 'Bayern', crestUrl: '/api/images/bayern.png' },
     { id: 't2', name: 'Arsenal', crestUrl: '/api/images/arsenal.png' },
@@ -706,93 +713,140 @@ describe('surestThingCard', () => {
     { id: 't6', name: 'Feyenoord', crestUrl: null },
   ];
 
-  it('names the team fewest members have missing out, doubted by at least one', () => {
-    const card = surestThingCard(
+  it('names the written-off team and the one member still backing it', () => {
+    const card = lastBelieverCard(
       [
-        // Bayern is in the top two for two of the three; everybody else for at most one.
-        pick('u1', 't2', 't1', 't3', 't4', 't5', 't6'),
-        pick('u2', 't3', 't1', 't2', 't4', 't5', 't6'),
-        pick('u3', 't4', 't5', 't1', 't2', 't3', 't6'),
+        // Feyenoord is bottom-two for Bob and Chris, but Alice has them surviving.
+        pick('u1', 't1', 't2', 't3', 't6', 't4', 't5'),
+        pick('u2', 't1', 't2', 't3', 't4', 't6', 't5'),
+        pick('u3', 't1', 't2', 't3', 't4', 't5', 't6'),
       ],
       six,
-      2,
+      5,
       'en',
     );
-    expect(card?.title).toBe('The safest bet');
+    expect(card?.title).toBe('The last believer');
     expect(card?.statistic).toBe(
-      '**Bayern** are the surest thing in the league: only **1** of **3** has them missing out on the top **2**.',
+      '**2** of **3** have **Feyenoord** dropping straight out. **Alice** is the only one with them going through.',
     );
     expect(card?.subjects).toEqual([
-      { type: 'team', id: 't1', name: 'Bayern', imageUrl: '/api/images/bayern.png' },
+      { type: 'team', id: 't6', name: 'Feyenoord', imageUrl: null },
     ]);
   });
 
-  it('passes over a team nobody doubts, however unanimous', () => {
-    const card = surestThingCard(
-      [pick('u1', 't1', 't2', 't3'), pick('u2', 't1', 't3', 't2')],
-      six,
-      2,
-      'en',
-    );
-    // Bayern is top two on both, so the card belongs to whoever somebody has left out.
-    expect(card?.subjects.map(s => s.id)).toEqual(['t2', 't3']);
-    expect(card?.statistic).toContain('**Arsenal and Barcelona**');
-    expect(card?.statistic).toContain('only **1** of **2** has each of them');
-  });
-
-  it('counts the plural of doubters', () => {
-    const card = surestThingCard(
+  it('passes over a team nobody believes in at all', () => {
+    const card = lastBelieverCard(
       [
+        // Nobody has Feyenoord surviving, so the card belongs to Enschede instead.
         pick('u1', 't1', 't2', 't3', 't4', 't5', 't6'),
-        pick('u2', 't1', 't3', 't2', 't4', 't5', 't6'),
-        pick('u3', 't1', 't4', 't2', 't3', 't5', 't6'),
-        pick('u4', 't2', 't4', 't1', 't3', 't5', 't6'),
-        pick('u5', 't3', 't5', 't1', 't2', 't4', 't6'),
+        pick('u2', 't1', 't2', 't3', 't5', 't4', 't6'),
+        pick('u3', 't1', 't2', 't3', 't4', 't5', 't6'),
       ],
       six,
-      2,
+      5,
       'en',
     );
+    expect(card?.subjects.map(s => s.id)).toEqual(['t5']);
     expect(card?.statistic).toBe(
-      '**Bayern** are the surest thing in the league: only **2** of **5** have them missing out on the top **2**.',
+      '**2** of **3** have **Enschede** dropping straight out. **Bob** is the only one with them going through.',
     );
   });
 
-  it('leaves a team that has left the tournament out of both halves of the count', () => {
-    const card = surestThingCard(
-      [pick('u1', 'gone', 't1', 't2'), pick('u2', 't1', 't2', 'gone')],
+  it('passes over a team nobody has written off', () => {
+    expect(
+      lastBelieverCard(
+        [pick('u1', 't1', 't2', 't3'), pick('u2', 't2', 't1', 't3')],
+        six,
+        4,
+        'en',
+      ),
+    ).toBeNull();
+  });
+
+  it('names several believers when a team has more than one', () => {
+    const card = lastBelieverCard(
+      [
+        pick('u1', 't1', 't2', 't3', 't4', 't5', 't6'),
+        pick('u2', 't1', 't2', 't3', 't4', 't5', 't6'),
+        pick('u3', 't1', 't2', 't3', 't4', 't5', 't6'),
+        pick('u4', 't6', 't1', 't2', 't3', 't4', 't5'),
+        pick('u5', 't6', 't1', 't2', 't3', 't4', 't5'),
+      ],
       six,
-      1,
+      6,
       'en',
     );
     expect(card?.statistic).toBe(
-      '**Bayern** are the surest thing in the league: only **1** of **2** has them missing out on the top **1**.',
+      '**3** of **5** have **Feyenoord** dropping straight out. Only **Dana and Erik** have them going through.',
     );
   });
 
-  it('is null without bands, without predictions, or where nobody is doubted', () => {
-    const rows = [pick('u1', 't1', 't2', 't3')];
-    expect(surestThingCard(rows, six, null, 'en')).toBeNull();
-    expect(surestThingCard(rows, six, 0, 'en')).toBeNull();
-    expect(surestThingCard([], six, 2, 'en')).toBeNull();
-    expect(surestThingCard(rows, six, 3, 'en')).toBeNull();
+  it('shows two level teams together only when the same members believe in both', () => {
+    const shared = lastBelieverCard(
+      [
+        // Alice alone has both Enschede and Feyenoord surviving.
+        pick('u1', 't5', 't6', 't1', 't2', 't3', 't4'),
+        pick('u2', 't1', 't2', 't3', 't4', 't5', 't6'),
+        pick('u3', 't1', 't2', 't3', 't4', 't5', 't6'),
+      ],
+      six,
+      5,
+      'en',
+    );
+    expect(shared?.subjects.map(s => s.id)).toEqual(['t5', 't6']);
+    expect(shared?.statistic).toContain('**Enschede and Feyenoord** dropping straight out');
+    expect(shared?.statistic).toContain('**Alice** is the only one');
+
+    const apart = lastBelieverCard(
+      [
+        pick('u1', 't5', 't1', 't2', 't3', 't6', 't4'),
+        pick('u2', 't6', 't1', 't2', 't4', 't3', 't5'),
+        pick('u3', 't1', 't2', 't3', 't4', 't5', 't6'),
+      ],
+      six,
+      5,
+      'en',
+    );
+    // Two stories, and only one fits in the sentence: the first by name keeps the card.
+    expect(apart?.subjects.map(s => s.id)).toEqual(['t5']);
+    expect(apart?.statistic).toContain('**Alice** is the only one');
+  });
+
+  it('is null without bands, without predictions, or where the band takes nobody', () => {
+    const rows = [pick('u1', 't1', 't2', 't3'), pick('u2', 't2', 't3', 't1')];
+    expect(lastBelieverCard(rows, six, null, 'en')).toBeNull();
+    expect(lastBelieverCard(rows, six, 0, 'en')).toBeNull();
+    expect(lastBelieverCard([], six, 3, 'en')).toBeNull();
+    expect(lastBelieverCard(rows, six, 9, 'en')).toBeNull();
+  });
+
+  it('leaves a team that has left the tournament out of the count', () => {
+    const card = lastBelieverCard(
+      [pick('u1', 't1', 'gone', 't6'), pick('u2', 't1', 't6', 'gone')],
+      six,
+      3,
+      'en',
+    );
+    expect(card?.statistic).toBe(
+      '**1** of **2** have **Feyenoord** dropping straight out. **Bob** is the only one with them going through.',
+    );
   });
 
   it('translates the title and the statistic', () => {
     const rows = [
-      pick('u1', 't1', 't2', 't3'),
-      pick('u2', 't2', 't3', 't1'),
-      pick('u3', 't2', 't1', 't3'),
+      pick('u1', 't1', 't2', 't3', 't6', 't4', 't5'),
+      pick('u2', 't1', 't2', 't3', 't4', 't5', 't6'),
+      pick('u3', 't1', 't2', 't3', 't4', 't5', 't6'),
     ];
-    expect(surestThingCard(rows, six, 2, 'no')).toMatchObject({
-      title: 'Sikreste kortet',
+    expect(lastBelieverCard(rows, six, 5, 'no')).toMatchObject({
+      title: 'Den siste troende',
       statistic:
-        '**Bayern** er det sikreste kortet i ligaen: bare **1** av **3** har tippet dem utenfor topp **2**.',
+        '**2** av **3** har tippet at **Feyenoord** ryker rett ut. **Alice** er den eneste som har tippet dem videre.',
     });
-    expect(surestThingCard(rows, six, 2, 'de')).toMatchObject({
-      title: 'Die sicherste Bank',
+    expect(lastBelieverCard(rows, six, 5, 'de')).toMatchObject({
+      title: 'Der letzte Gläubige',
       statistic:
-        '**Bayern** ist die sicherste Bank der Liga: nur **1** von **3** tippt sie aus den Top **2**.',
+        '**2** von **3** tippen **Feyenoord** auf den direkten Abgang. **Alice** ist die einzige Person, die sie weiterkommen sieht.',
     });
   });
 });
@@ -1480,7 +1534,7 @@ describe('buildLiveUserStats', () => {
   const all = {
     tablePredictions: [pick('u1', 't1', 't3')],
     teams,
-    directPlaces: null,
+    eliminationFrom: null,
     scorerPredictions: [rank('u1', 'p1', 'p3')],
     players,
     scoredPredictions: [],
@@ -1496,7 +1550,7 @@ describe('buildLiveUserStats', () => {
         {
           tablePredictions: [],
           teams,
-          directPlaces: null,
+          eliminationFrom: null,
           scorerPredictions: [],
           players,
           scoredPredictions: [],
@@ -1537,9 +1591,10 @@ describe('buildLiveUserStats', () => {
       buildLiveUserStats(
         {
           ...all,
-          // 't1' first and 't3' second in the one table prediction, so a top-1 band has
-          // exactly one team somebody has missing out on it.
-          directPlaces: 1,
+          // Two rankings that disagree about which of the two teams goes out, so a band
+          // starting at second place leaves each of them written off once and backed once.
+          tablePredictions: [pick('u1', 't1', 't3'), pick('u2', 't3', 't1')],
+          eliminationFrom: 2,
           scoredPredictions: [
             scored('u1', [1, 0], [1, 0], 'f1'),
             scored('u1', [2, 0], [3, 1], 'f2'),
@@ -1555,7 +1610,7 @@ describe('buildLiveUserStats', () => {
       'bestForm',
       'peoplesFavourite',
       'woodenSpoon',
-      'surestThing',
+      'lastBeliever',
       'goldenBoot',
       'goalDrought',
       'inHaalandWeTrust',
@@ -1594,10 +1649,7 @@ describe('buildLiveUserStats', () => {
 describe('nationalityGoalsCard', () => {
   /** An answer to the Norwegian-goals bonus question, from one member. */
   const guess = (userId: string, answer: string, question = 'Hvor mange mål blir scoret av norske spillere?') => ({
-    userId,
-    username: userId === 'u1' ? 'Alice' : userId === 'u2' ? 'Bob' : 'Chris',
-    imageUrl: userId === 'u1' ? '/api/images/alice.png' : null,
-    iconColor: userId === 'u1' ? null : '#334155',
+    ...memberOf(userId),
     question,
     answer,
   });
@@ -1710,7 +1762,7 @@ describe('nationalityGoalsCard', () => {
     const base = {
       tablePredictions: [pick('u1', 't1', 't3')],
       teams,
-      directPlaces: null,
+      eliminationFrom: null,
       scorerPredictions: [rank('u1', 'p1', 'p3')],
       players,
       scoredPredictions: [],
@@ -1746,7 +1798,7 @@ describe('nationalityGoalsCard', () => {
         {
           tablePredictions: [],
           teams,
-          directPlaces: null,
+          eliminationFrom: null,
           scorerPredictions: [],
           players,
           scoredPredictions: [],

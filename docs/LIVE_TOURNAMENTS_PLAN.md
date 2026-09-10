@@ -1859,22 +1859,24 @@ the Stats entry is offered to every member.
 
 ---
 
-## 27. "The safest bet" *(added after the six phases, on request)*
+## 27. "The last believer" *(added after the six phases, on request)*
 
-An eighteenth card, beside the table pair: the team fewest members have finishing outside the
-places that go straight through to the knockout — with at least one member who does.
-`surestThingCard()` in `server/src/live/userStats.ts`.
+An eighteenth card, beside the table pair: the team most members have finishing in the band
+that goes straight out of the tournament — where at least one member has them going through,
+and is named for it. `lastBelieverCard()` in `server/src/live/userStats.ts`.
 
-> **Bayern** are the surest thing in the league: only **1** of **12** has them missing out on
-> the top **8**.
+> **11** of **12** have **Slovan Bratislava** dropping straight out. **Alice** is the only one
+> with them going through.
 
 | Decision | Why |
 |---|---|
-| "At least one" is the card, not a footnote on it | A team every single member has going through is a fact about the draw; a team with exactly one doubter is a near-unanimous league and somebody standing against it. The count is therefore a minimum over the teams somebody doubts, never over all of them |
-| The cut-off comes from the format's **top band** — the first band starting at position 1 — not from a hardcoded eight | The Champions League league phase sends 1–8 straight through today and has changed shape twice in living memory; a domestic league has no bands at all and the card says nothing there, which is right. `bandForPosition` already treats the bands as the source of truth for scoring, and this reads the same definitions |
-| The route hands the card a number, not the stage | The stage is a format object with providers and legs on it; what the sentence needs is "the top **8**". Keeping the lookup in the route leaves the card pure and lets a test say `2` |
-| A team no longer in the tournament is dropped from both halves of the count | Same rule as `countEnd`: the sentence has to be able to name its subject, and the "x of y" it prints has to add up |
-| Ties are shown, and the denominator printed is the first winner's | Every tied team was ranked by the same members in practice; where an old ranking missed one of them, one honest number beats an averaged one |
+| Both conditions are the card: most members writing them off, and **at least one** not | A team everybody writes off is a fact about the draw, and a team nobody writes off has no story either. It is the split that is worth printing, and the believers are the half worth naming |
+| The band is the format's **bottom** one — the band with no upper bound, so the one that runs to the foot of the table | The Champions League league phase sends 25th and below out with no play-off behind them; the bands are already the source of truth for table scoring, and reading them means the card follows a format change instead of a hardcoded 25. A format without bands says nothing at all |
+| The route hands the card a number, not the stage | What the sentence needs is "from 25th". Keeping the lookup in the route leaves the card pure and lets a test say `5` |
+| Ties are shown together **only when the same members believe in both** teams | A shared maverick is one story and reads as one sentence. Two teams with different believers are two stories, and a sentence naming both sets cannot say who backed which — so the alphabetically first keeps the card. It is the one place in the deck a tie is broken rather than shown, and the reason is that the tie is between subjects whose supporting cast differs |
+| Level teams are separated first by the **fewest** believers | The fewer people stand against the league, the better the story the card is looking for |
+| A team no longer in the tournament is dropped from every count | Same rule as `countEnd`: the sentence has to be able to name its subject, and the "x of y" it prints has to add up |
+| Table predictions grew the member's name and picture, via a join the query did not have | Naming the believers needs them, and the two cards already reading those rows are unaffected |
 
 ---
 
