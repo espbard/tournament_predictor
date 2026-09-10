@@ -12,6 +12,7 @@ import {
   inHaalandWeTrustCard,
   peoplesFavouriteCard,
   spotOnCard,
+  surestThingCard,
   theClimberCard,
   theFallerCard,
   theLeaderCard,
@@ -691,6 +692,108 @@ describe('woodenSpoonCard', () => {
         'Niemand glaubt an **Barcelona**! **2** von **2** tippen sie auf den letzten Tabellenplatz.',
     });
     expect(woodenSpoonCard(rows, teams, 'en')?.title).toBe('The bottom of the barrel');
+  });
+});
+
+describe('surestThingCard', () => {
+  /** Six teams, so "top 2" leaves somewhere for the doubted ones to be put. */
+  const six = [
+    { id: 't1', name: 'Bayern', crestUrl: '/api/images/bayern.png' },
+    { id: 't2', name: 'Arsenal', crestUrl: '/api/images/arsenal.png' },
+    { id: 't3', name: 'Barcelona', crestUrl: null },
+    { id: 't4', name: 'Dortmund', crestUrl: null },
+    { id: 't5', name: 'Enschede', crestUrl: null },
+    { id: 't6', name: 'Feyenoord', crestUrl: null },
+  ];
+
+  it('names the team fewest members have missing out, doubted by at least one', () => {
+    const card = surestThingCard(
+      [
+        // Bayern is in the top two for two of the three; everybody else for at most one.
+        pick('u1', 't2', 't1', 't3', 't4', 't5', 't6'),
+        pick('u2', 't3', 't1', 't2', 't4', 't5', 't6'),
+        pick('u3', 't4', 't5', 't1', 't2', 't3', 't6'),
+      ],
+      six,
+      2,
+      'en',
+    );
+    expect(card?.title).toBe('The safest bet');
+    expect(card?.statistic).toBe(
+      '**Bayern** are the surest thing in the league: only **1** of **3** has them missing out on the top **2**.',
+    );
+    expect(card?.subjects).toEqual([
+      { type: 'team', id: 't1', name: 'Bayern', imageUrl: '/api/images/bayern.png' },
+    ]);
+  });
+
+  it('passes over a team nobody doubts, however unanimous', () => {
+    const card = surestThingCard(
+      [pick('u1', 't1', 't2', 't3'), pick('u2', 't1', 't3', 't2')],
+      six,
+      2,
+      'en',
+    );
+    // Bayern is top two on both, so the card belongs to whoever somebody has left out.
+    expect(card?.subjects.map(s => s.id)).toEqual(['t2', 't3']);
+    expect(card?.statistic).toContain('**Arsenal and Barcelona**');
+    expect(card?.statistic).toContain('only **1** of **2** has each of them');
+  });
+
+  it('counts the plural of doubters', () => {
+    const card = surestThingCard(
+      [
+        pick('u1', 't1', 't2', 't3', 't4', 't5', 't6'),
+        pick('u2', 't1', 't3', 't2', 't4', 't5', 't6'),
+        pick('u3', 't1', 't4', 't2', 't3', 't5', 't6'),
+        pick('u4', 't2', 't4', 't1', 't3', 't5', 't6'),
+        pick('u5', 't3', 't5', 't1', 't2', 't4', 't6'),
+      ],
+      six,
+      2,
+      'en',
+    );
+    expect(card?.statistic).toBe(
+      '**Bayern** are the surest thing in the league: only **2** of **5** have them missing out on the top **2**.',
+    );
+  });
+
+  it('leaves a team that has left the tournament out of both halves of the count', () => {
+    const card = surestThingCard(
+      [pick('u1', 'gone', 't1', 't2'), pick('u2', 't1', 't2', 'gone')],
+      six,
+      1,
+      'en',
+    );
+    expect(card?.statistic).toBe(
+      '**Bayern** are the surest thing in the league: only **1** of **2** has them missing out on the top **1**.',
+    );
+  });
+
+  it('is null without bands, without predictions, or where nobody is doubted', () => {
+    const rows = [pick('u1', 't1', 't2', 't3')];
+    expect(surestThingCard(rows, six, null, 'en')).toBeNull();
+    expect(surestThingCard(rows, six, 0, 'en')).toBeNull();
+    expect(surestThingCard([], six, 2, 'en')).toBeNull();
+    expect(surestThingCard(rows, six, 3, 'en')).toBeNull();
+  });
+
+  it('translates the title and the statistic', () => {
+    const rows = [
+      pick('u1', 't1', 't2', 't3'),
+      pick('u2', 't2', 't3', 't1'),
+      pick('u3', 't2', 't1', 't3'),
+    ];
+    expect(surestThingCard(rows, six, 2, 'no')).toMatchObject({
+      title: 'Sikreste kortet',
+      statistic:
+        '**Bayern** er det sikreste kortet i ligaen: bare **1** av **3** har tippet dem utenfor topp **2**.',
+    });
+    expect(surestThingCard(rows, six, 2, 'de')).toMatchObject({
+      title: 'Die sicherste Bank',
+      statistic:
+        '**Bayern** ist die sicherste Bank der Liga: nur **1** von **3** tippt sie aus den Top **2**.',
+    });
   });
 });
 
@@ -1377,6 +1480,7 @@ describe('buildLiveUserStats', () => {
   const all = {
     tablePredictions: [pick('u1', 't1', 't3')],
     teams,
+    directPlaces: null,
     scorerPredictions: [rank('u1', 'p1', 'p3')],
     players,
     scoredPredictions: [],
@@ -1392,6 +1496,7 @@ describe('buildLiveUserStats', () => {
         {
           tablePredictions: [],
           teams,
+          directPlaces: null,
           scorerPredictions: [],
           players,
           scoredPredictions: [],
@@ -1432,6 +1537,9 @@ describe('buildLiveUserStats', () => {
       buildLiveUserStats(
         {
           ...all,
+          // 't1' first and 't3' second in the one table prediction, so a top-1 band has
+          // exactly one team somebody has missing out on it.
+          directPlaces: 1,
           scoredPredictions: [
             scored('u1', [1, 0], [1, 0], 'f1'),
             scored('u1', [2, 0], [3, 1], 'f2'),
@@ -1447,6 +1555,7 @@ describe('buildLiveUserStats', () => {
       'bestForm',
       'peoplesFavourite',
       'woodenSpoon',
+      'surestThing',
       'goldenBoot',
       'goalDrought',
       'inHaalandWeTrust',
@@ -1601,6 +1710,7 @@ describe('nationalityGoalsCard', () => {
     const base = {
       tablePredictions: [pick('u1', 't1', 't3')],
       teams,
+      directPlaces: null,
       scorerPredictions: [rank('u1', 'p1', 'p3')],
       players,
       scoredPredictions: [],
@@ -1636,6 +1746,7 @@ describe('nationalityGoalsCard', () => {
         {
           tablePredictions: [],
           teams,
+          directPlaces: null,
           scorerPredictions: [],
           players,
           scoredPredictions: [],

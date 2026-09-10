@@ -20,7 +20,9 @@ import { LIVE_SEASON_MILESTONE_IDS } from './progression';
 // Two matched pairs, one per ranking the game asks for: who the league thinks will finish
 // top and bottom of the league table, and who it thinks will finish top and bottom of the
 // top-scorer list. All four are the same count — which entrant sits at one end of the most
-// rankings — so they share countEnd and differ only in their wording.
+// rankings — so they share countEnd and differ only in their wording. Beside the table
+// pair, the team the league is surest of: fewest members, but not none, have it missing
+// the places that go straight through.
 //
 // Then a pair about the members themselves rather than what they predicted: who calls the
 // scoreline outright most often, and who keeps landing on the right margin and the wrong
@@ -619,6 +621,73 @@ export function woodenSpoonCard(
 
   return card('woodenSpoon', title, statistic, winners, 'team');
 }
+
+/**
+ * The team the league is surest of — the one fewest members have finishing outside the
+ * places that go straight through to the knockout, without that being nobody at all.
+ *
+ * "At least one" is the whole card. A team every single member has going through is a
+ * fact about the draw, not about the league; a team with exactly one doubter is a
+ * near-unanimous verdict and a person standing against it, which is the interesting
+ * shape. So the count is a minimum over the teams somebody doubts.
+ *
+ * Null where the format has no bands to be inside or outside of — a domestic league's
+ * table means plenty, but not this — and null where nobody doubts anybody.
+ */
+export function surestThingCard(
+  predictions: LiveStatsTablePrediction[],
+  teams: LiveStatsTeam[],
+  directPlaces: number | null,
+  lang: LiveStatsLang,
+): UserStatCardData | null {
+  if (!directPlaces || directPlaces < 1) return null;
+
+  const byId = indexTeams(teams);
+  const doubted = new Map<string, number>();
+  const ranked = new Map<string, number>();
+  for (const prediction of predictions) {
+    prediction.orderedTeamIds.forEach((teamId, index) => {
+      // A team that has left the tournament is left out of both halves of the count, the
+      // same way countEnd drops one: the sentence has to be able to name its subject.
+      if (!byId.has(teamId)) return;
+      ranked.set(teamId, (ranked.get(teamId) ?? 0) + 1);
+      if (index + 1 > directPlaces) doubted.set(teamId, (doubted.get(teamId) ?? 0) + 1);
+    });
+  }
+  if (doubted.size === 0) return null;
+
+  const fewest = Math.min(...doubted.values());
+  const winners = [...doubted.entries()]
+    .filter(([, count]) => count === fewest)
+    .map(([teamId]) => byId.get(teamId)!)
+    .sort((a, b) => a.name.localeCompare(b.name));
+  // Each tied team was ranked by the same members in practice, and where an old ranking
+  // missed one of them the first winner's denominator is the honest one to print.
+  const total = ranked.get(winners[0].id)!;
+
+  const names = joinNames(winners.map(w => w.name), lang);
+  const tied = winners.length > 1;
+  const one = fewest === 1;
+
+  const title =
+    lang === 'no' ? 'Sikreste kortet' : lang === 'de' ? 'Die sicherste Bank' : 'The safest bet';
+
+  const statistic =
+    lang === 'no'
+      ? tied
+        ? `**${names}** er de sikreste kortene i ligaen: bare **${fewest}** av **${total}** har tippet hver av dem utenfor topp **${directPlaces}**.`
+        : `**${names}** er det sikreste kortet i ligaen: bare **${fewest}** av **${total}** har tippet dem utenfor topp **${directPlaces}**.`
+      : lang === 'de'
+        ? tied
+          ? `**${names}** sind die sichersten Banken der Liga: nur **${fewest}** von **${total}** ${one ? 'tippt' : 'tippen'} jede von ihnen aus den Top **${directPlaces}**.`
+          : `**${names}** ist die sicherste Bank der Liga: nur **${fewest}** von **${total}** ${one ? 'tippt' : 'tippen'} sie aus den Top **${directPlaces}**.`
+        : tied
+          ? `**${names}** are the surest things in the league: only **${fewest}** of **${total}** ${one ? 'has' : 'have'} each of them missing out on the top **${directPlaces}**.`
+          : `**${names}** are the surest thing in the league: only **${fewest}** of **${total}** ${one ? 'has' : 'have'} them missing out on the top **${directPlaces}**.`;
+
+  return card('surestThing', title, statistic, winners, 'team');
+}
+
 
 // ── The top-scorer pair ───────────────────────────────────────────────────────
 
@@ -1595,6 +1664,11 @@ export function buildLiveUserStats(
   input: {
     tablePredictions: LiveStatsTablePrediction[];
     teams: LiveStatsTeam[];
+    /**
+     * How many places go straight through to the knockout — the top band of the table
+     * stage. Null where the format has no bands.
+     */
+    directPlaces: number | null;
     scorerPredictions: LiveStatsScorerPrediction[];
     players: LiveStatsPlayer[];
     scoredPredictions: LiveStatsScoredPrediction[];
@@ -1610,6 +1684,7 @@ export function buildLiveUserStats(
   const {
     tablePredictions,
     teams,
+    directPlaces,
     scorerPredictions,
     players,
     scoredPredictions,
@@ -1626,6 +1701,7 @@ export function buildLiveUserStats(
     theFallerCard(progression, lang),
     peoplesFavouriteCard(tablePredictions, teams, lang),
     woodenSpoonCard(tablePredictions, teams, lang),
+    surestThingCard(tablePredictions, teams, directPlaces, lang),
     goldenBootCard(scorerPredictions, players, lang),
     goalDroughtCard(scorerPredictions, players, lang),
     inHaalandWeTrustCard(scorerPredictions, players, lang),

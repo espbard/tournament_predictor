@@ -1859,7 +1859,26 @@ the Stats entry is offered to every member.
 
 ---
 
-## 27. References
+## 27. "The safest bet" *(added after the six phases, on request)*
+
+An eighteenth card, beside the table pair: the team fewest members have finishing outside the
+places that go straight through to the knockout — with at least one member who does.
+`surestThingCard()` in `server/src/live/userStats.ts`.
+
+> **Bayern** are the surest thing in the league: only **1** of **12** has them missing out on
+> the top **8**.
+
+| Decision | Why |
+|---|---|
+| "At least one" is the card, not a footnote on it | A team every single member has going through is a fact about the draw; a team with exactly one doubter is a near-unanimous league and somebody standing against it. The count is therefore a minimum over the teams somebody doubts, never over all of them |
+| The cut-off comes from the format's **top band** — the first band starting at position 1 — not from a hardcoded eight | The Champions League league phase sends 1–8 straight through today and has changed shape twice in living memory; a domestic league has no bands at all and the card says nothing there, which is right. `bandForPosition` already treats the bands as the source of truth for scoring, and this reads the same definitions |
+| The route hands the card a number, not the stage | The stage is a format object with providers and legs on it; what the sentence needs is "the top **8**". Keeping the lookup in the route leaves the card pure and lets a test say `2` |
+| A team no longer in the tournament is dropped from both halves of the count | Same rule as `countEnd`: the sentence has to be able to name its subject, and the "x of y" it prints has to add up |
+| Ties are shown, and the denominator printed is the first winner's | Every tied team was ranked by the same members in practice; where an old ranking missed one of them, one honest number beats an averaged one |
+
+---
+
+## 28. References
 
 - [2026/27 Champions League: teams, dates, draws, format](https://www.uefa.com/uefachampionsleague/news/02a6-20d57cfcd03e-407c22a7f465-1000--2026-27-champions-league-teams-dates-draws-format-final/)
 - [UEFA confirms date for the 2026/27 Champions League league phase draw](https://www.besoccer.com/new/uefa-confirms-date-for-the-202627-champions-league-league-phase-draw-1421299)

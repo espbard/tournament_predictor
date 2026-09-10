@@ -618,6 +618,9 @@ liveCompetitionsRouter.get('/competitions/:id/user-stats', requireAuth, async (r
     // A format with no table stage can still have a top-scorer ranking, so this narrows
     // the table half rather than ending the whole request.
     const stage = tablePredictionStage(getLiveFormat(tournament.format), tournament.startStageKey);
+    // The top band of that table — the places that go straight through to the knockout.
+    // Null for a format with no bands, which is the safest-bet card saying nothing.
+    const directPlaces = stage?.bands?.find(band => band.from === 1)?.to ?? null;
 
     const [
       tablePredictions,
@@ -765,6 +768,7 @@ liveCompetitionsRouter.get('/competitions/:id/user-stats', requireAuth, async (r
         {
           tablePredictions,
           teams,
+          directPlaces,
           scorerPredictions,
           players,
           // The three isNotNull filters above are what make these assertions safe:
