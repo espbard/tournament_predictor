@@ -1880,6 +1880,28 @@ describe('buildLiveUserStats', () => {
     ]);
   });
 
+  it('puts the two table movers after the Norway card', () => {
+    // Eleven milestones, so the movers have a window to measure; Chris climbs past Alice.
+    const turnaround = progression([
+      { u1: 10, u2: 5, u3: 1 },
+      ...Array.from({ length: 9 }, () => ({ u1: 10, u2: 5, u3: 1 })),
+      { u1: 5, u2: 15, u3: 20 },
+    ]);
+    const ids = buildLiveUserStats(
+      {
+        ...all,
+        progression: turnaround,
+        scorerNationalities: snapshot({ Norway: { goals: 3, players: 2 } }),
+      },
+      'en',
+    ).map(c => c.id);
+    expect(ids.filter(id => ['norwegianGoals', 'theClimber', 'theFaller'].includes(id))).toEqual([
+      'norwegianGoals',
+      'theClimber',
+      'theFaller',
+    ]);
+  });
+
   it('shows the near-miss card alone when nobody has called a scoreline', () => {
     expect(
       buildLiveUserStats({ ...all, scoredPredictions: [scored('u1', [1, 0], [2, 1])] }, 'en').map(

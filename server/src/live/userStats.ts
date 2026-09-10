@@ -1926,10 +1926,6 @@ export function buildLiveUserStats(
     worstPredictionCard(scoredPredictions, teams, lang),
     bestFormCard(scoredPredictions, progression, lang),
     worstFormCard(scoredPredictions, progression, lang),
-    // The two table movers were not in the order given; they sit with the form pair they
-    // were borrowed alongside until somebody says otherwise.
-    theClimberCard(progression, lang),
-    theFallerCard(progression, lang),
     peoplesFavouriteCard(tablePredictions, teams, lang),
     woodenSpoonCard(tablePredictions, teams, lang),
     inHaalandWeTrustCard(scorerPredictions, players, lang),
@@ -1937,6 +1933,8 @@ export function buildLiveUserStats(
     deadCertCard(tablePredictions, teams, directPlaces, lang),
     lastBelieverCard(tablePredictions, teams, eliminationFrom, lang),
     nationalityGoalsCard(scorerNationalities, bonusAnswers, lang),
+    theClimberCard(progression, lang),
+    theFallerCard(progression, lang),
     mostExpectedResultCard(scoredPredictions, teams, progression, scoringConfig, lang),
     mostUnexpectedResultCard(scoredPredictions, teams, progression, lang),
     bestPredictionCard(scoredPredictions, teams, lang),

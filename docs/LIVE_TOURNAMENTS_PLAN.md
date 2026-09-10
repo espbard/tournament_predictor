@@ -1921,15 +1921,15 @@ The deck is shown in an order the league chose rather than one grouped by what t
 made of. It lives in `buildLiveUserStats()` and nowhere else:
 
 1. The Leader · 2. The golden boot · 3. No confidence · 4. Trønderhateren · 5. Close enough! ·
-6. Best form · 7. Worst form · 8. The Climber · 9. I'm falling! · 10. The people's favourite ·
-11. The bottom of the barrel · 12. In Haaland we trust · 13. Holding the answer key ·
-14. A dead cert · 15. The last believer · 16. Go Norway! · 17. The most expected result ·
+6. Best form · 7. Worst form · 8. The people's favourite · 9. The bottom of the barrel ·
+10. In Haaland we trust · 11. Holding the answer key · 12. A dead cert · 13. The last believer ·
+14. Go Norway! · 15. The Climber · 16. I'm falling! · 17. The most expected result ·
 18. Most unexpected result · 19. How did you know? · 20. Almost
 
 | Decision | Why |
 |---|---|
 | The order is a plain list in the builder, not a `sortOrder` on each card | It is one line per card in one place, and a card that has nothing to say still drops out of it by returning null. A weight per card would put the running order in twenty places |
-| The two table movers, which the order given did not mention, sit with the form pair | They were borrowed alongside it and read as the same kind of card — a leaderboard's recent history. Easy to move if the league wants them elsewhere |
+| The two table movers, which the order first given did not mention, sit after the Norway card | Where the league put them once they were pointed out |
 | Worst form was already built, and is simply rarer than the rest | It needs a member who has predicted **every** played fixture and has then gone two or more of them without a point. Anybody who has skipped a fixture is out of the running, which is the manual card's own rule: otherwise the longest drought always belongs to whoever stopped playing |
 
 ---
