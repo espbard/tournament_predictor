@@ -1924,7 +1924,7 @@ made of. It lives in `buildLiveUserStats()` and nowhere else:
 6. Best form · 7. Worst form · 8. The people's favourite · 9. The bottom of the barrel ·
 10. In Haaland we trust · 11. Holding the answer key · 12. A dead cert · 13. The last believer ·
 14. Go Norway! · 15. The Climber · 16. I'm falling! · 17. The most expected result ·
-18. Most unexpected result · 19. How did you know? · 20. Almost
+18. Most unexpected result · 19. How did you know? · 20. Almost · 21. Best when it counts (§34)
 
 | Decision | Why |
 |---|---|
@@ -2027,7 +2027,28 @@ case that beats it outright:
 
 ---
 
-## 34. References
+## 34. "Best når det gjelder" *(added after the six phases, on request)*
+
+A card about the matches an admin marked as worth more: who took the most out of them.
+`bestWhenItCountsCard()` in `server/src/live/userStats.ts`, last in the running order.
+
+> **Alice** har hentet **8** bonuspoeng fra de **2** markerte kampene — flere enn noen andre!
+>
+> *Best when it counts* — "**Alice** has taken **8** extra points from the **2** highlighted
+> matches — more than anybody else!" · *Wenn es drauf ankommt*
+
+| Decision | Why |
+|---|---|
+| It ranks on the **multiplier bonus** — what the highlight added — rather than on everything those fixtures paid | It is the number the leaderboard already shows in its own **Markert** column, so a member can check the card against the table. The tiers underneath the bonus were on offer on every ordinary fixture too; counting them would make this a second telling of who predicts well in general, which the deck has cards for already |
+| The bonus travels on the prediction, alongside the fixture's multiplier | `live_predictions.multiplier_bonus_points` is what the member was actually paid, written by the scoring trigger. The multiplier comes too, because "which matches were highlighted" cannot be read off a bonus: one everybody got wrong paid nobody anything and would otherwise vanish from the count |
+| The count in the sentence is of highlighted fixtures **somebody predicted** | It is what the deck can see, and a highlighted match nobody in the league predicted paid nobody. The card counts what was played for |
+| Null with no highlighted match played, and null again when every member came away from them empty | The deck's own rule: a card that names nobody, or names somebody with nothing to their name, is not a statistic. "Best at earning zero" is the second of those |
+| A tie is shown rather than broken, and the sentence switches to "hver" / "each" | As everywhere else in the deck. Two members level on the only number the card counts are level |
+| Last in the running order | Where a new card goes unless the league says otherwise; moving it is moving a line in `buildLiveUserStats()` |
+
+---
+
+## 35. References
 
 - [2026/27 Champions League: teams, dates, draws, format](https://www.uefa.com/uefachampionsleague/news/02a6-20d57cfcd03e-407c22a7f465-1000--2026-27-champions-league-teams-dates-draws-format-final/)
 - [UEFA confirms date for the 2026/27 Champions League league phase draw](https://www.besoccer.com/new/uefa-confirms-date-for-the-202627-champions-league-league-phase-draw-1421299)

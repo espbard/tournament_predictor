@@ -1034,6 +1034,17 @@ export interface LiveStatsScoredPrediction {
   actualAway: number;
   /** What it was awarded, multiplier bonus included: the leaderboard's own number. */
   points: number;
+  /**
+   * The fixture's point multiplier — an admin marking one match as worth more. 1 on an
+   * ordinary fixture, so "highlighted" is simply anything above it.
+   */
+  multiplier: number;
+  /**
+   * What that multiplier added on top of the tiers, and nothing else — the leaderboard's
+   * highlight column, stored per prediction by the scoring trigger. Carried rather than
+   * worked out from `points` and the multiplier: it is what the member was actually paid.
+   */
+  multiplierBonusPoints: number;
 }
 
 /** The three tiers, asked of one prediction. Nested, exactly as calculateLivePoints has them. */
@@ -1216,6 +1227,96 @@ export function almostCard(
             : `with only **${exactScores}** ${scorelines}${tied ? ' each' : ''}.`);
 
   return memberCard('almost', title, statistic, winners);
+}
+
+
+// ── The highlighted matches ───────────────────────────────────────────────────
+
+/** What one member took out of the matches an admin marked as worth more. */
+interface HighlightTally extends CardMember {
+  /** The multiplier's share of their points, summed: the leaderboard's highlight column. */
+  bonus: number;
+}
+
+/**
+ * Who cashed in when the points were doubled: the member whose predictions on highlighted
+ * fixtures — the ones an admin put a multiplier on — earned the most on top of the tiers.
+ *
+ * It ranks on the bonus alone rather than on everything those matches paid, because the
+ * bonus is what the highlight itself was worth. The tiers underneath it were on offer to
+ * the whole league on every other fixture too, and counting them would make this a second
+ * telling of who predicts well in general. It is also the number the leaderboard already
+ * shows in its own column, so a member can check the card against the table.
+ *
+ * Ties are shown rather than broken, as everywhere else in the deck.
+ *
+ * Null where the competition has no highlighted match that has been played, and null
+ * again where every member came away from them with nothing: a card announcing that
+ * somebody was best at earning zero is not a statistic.
+ */
+export function bestWhenItCountsCard(
+  predictions: LiveStatsScoredPrediction[],
+  lang: LiveStatsLang,
+): UserStatCardData | null {
+  const onHighlights = predictions.filter(p => p.multiplier > 1);
+  if (onHighlights.length === 0) return null;
+
+  // The highlighted fixtures the deck can see, which is the ones somebody predicted: a
+  // match nobody in the league predicted paid nobody, and the sentence counts what was
+  // played for.
+  const played = new Set(onHighlights.map(p => p.fixtureId)).size;
+
+  const tallies = new Map<string, HighlightTally>();
+  for (const p of onHighlights) {
+    const tally: HighlightTally = tallies.get(p.userId) ?? {
+      userId: p.userId,
+      username: p.username,
+      imageUrl: p.imageUrl,
+      iconColor: p.iconColor,
+      bonus: 0,
+    };
+    tally.bonus += p.multiplierBonusPoints;
+    tallies.set(p.userId, tally);
+  }
+
+  const rows = [...tallies.values()];
+  const bonus = Math.max(...rows.map(r => r.bonus));
+  if (bonus <= 0) return null;
+
+  const winners = rows.filter(r => r.bonus === bonus).sort(byUsername);
+  const names = joinNames(winners.map(w => w.username), lang);
+  const tied = winners.length > 1;
+
+  const title =
+    lang === 'no'
+      ? 'Best når det gjelder'
+      : lang === 'de'
+        ? 'Wenn es drauf ankommt'
+        : 'Best when it counts';
+
+  // A league can be one highlighted match in, and "the 1 highlighted matches" is not a
+  // sentence — so the singular says "the one" and drops the number.
+  const one = played === 1;
+  const kampene = one ? 'den ene markerte kampen' : `de **${played}** markerte kampene`;
+  const spiele = one ? 'dem einen hervorgehobenen Spiel' : `den **${played}** hervorgehobenen Spielen`;
+  const matches = one ? 'the one highlighted match' : `the **${played}** highlighted matches`;
+  const punkt = bonus === 1 ? 'Zusatzpunkt' : 'Zusatzpunkte';
+  const points = bonus === 1 ? 'point' : 'points';
+
+  const statistic =
+    lang === 'no'
+      ? `**${names}** har hentet **${bonus}** bonuspoeng${tied ? ' hver' : ''} fra ${kampene} — ${
+          tied ? 'ingen andre har hentet flere' : 'flere enn noen andre'
+        }!`
+      : lang === 'de'
+        ? `**${names}** ${tied ? 'haben je' : 'hat'} **${bonus}** ${punkt} aus ${spiele} geholt — ${
+            tied ? 'niemand sonst hat mehr geholt' : 'mehr als alle anderen'
+          }!`
+        : `**${names}** ${tied ? 'have each' : 'has'} taken **${bonus}** extra ${points} from ${matches} — ${
+            tied ? 'nobody else has taken more' : 'more than anybody else'
+          }!`;
+
+  return memberCard('bestWhenItCounts', title, statistic, winners);
 }
 
 
@@ -1960,5 +2061,6 @@ export function buildLiveUserStats(
     mostUnexpectedResultCard(scoredPredictions, teams, progression, lang),
     bestPredictionCard(scoredPredictions, teams, lang),
     almostCard(scoredPredictions, lang),
+    bestWhenItCountsCard(scoredPredictions, lang),
   ].filter((c): c is UserStatCardData => c !== null);
 }

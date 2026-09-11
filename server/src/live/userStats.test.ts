@@ -4,6 +4,7 @@ import {
   deadCertCard,
   bestFormCard,
   bestPredictionCard,
+  bestWhenItCountsCard,
   buildLiveUserStats,
   mostExpectedResultCard,
   mostUnexpectedResultCard,
@@ -113,7 +114,28 @@ const scored = (
   actualHome,
   actualAway,
   points,
+  multiplier: 1,
+  multiplierBonusPoints: 0,
 });
+
+/**
+ * The same prediction on a fixture an admin marked as worth more: the multiplier, the
+ * points it pays at that rate, and the share of them the multiplier itself added.
+ */
+const highlighted = (
+  userId: string,
+  predicted: [number, number],
+  actual: [number, number],
+  fixtureId: string,
+  multiplier: number,
+) => {
+  const base = tierPoints(predicted, actual);
+  return {
+    ...scored(userId, predicted, actual, fixtureId, base * multiplier),
+    multiplier,
+    multiplierBonusPoints: base * (multiplier - 1),
+  };
+};
 
 /**
  * A points progression: one entry per milestone, each the running totals after it. The
@@ -1382,6 +1404,89 @@ describe('almostCard', () => {
   });
 });
 
+describe('bestWhenItCountsCard', () => {
+  it('adds up what the multipliers paid, and names whoever took the most', () => {
+    const card = bestWhenItCountsCard(
+      [
+        // f1 at x2 — Alice called it outright, Bob only picked the winner.
+        highlighted('u1', [2, 1], [2, 1], 'f1', 2),
+        highlighted('u2', [3, 0], [2, 1], 'f1', 2),
+        // f2 at x3 — the other way round, and the bigger multiplier turns it around.
+        highlighted('u1', [2, 1], [1, 0], 'f2', 3),
+        highlighted('u2', [1, 0], [1, 0], 'f2', 3),
+        // An ordinary fixture pays no bonus however well it was called.
+        scored('u1', [1, 0], [1, 0], 'f3'),
+      ],
+      'en',
+    );
+    expect(card?.title).toBe('Best when it counts');
+    expect(card?.statistic).toBe(
+      '**Bob** has taken **9** extra points from the **2** highlighted matches — more than anybody else!',
+    );
+    expect(card?.subjects).toEqual([
+      { type: 'user', id: 'u2', name: 'Bob', imageUrl: null, iconColor: '#334155' },
+    ]);
+  });
+
+  it('reads in the singular on one highlighted match and one point', () => {
+    expect(
+      bestWhenItCountsCard(
+        [highlighted('u1', [3, 0], [2, 1], 'f1', 2), highlighted('u2', [0, 2], [2, 1], 'f1', 2)],
+        'en',
+      )?.statistic,
+    ).toBe(
+      '**Alice** has taken **1** extra point from the one highlighted match — more than anybody else!',
+    );
+  });
+
+  it('shows a tie rather than breaking it', () => {
+    const card = bestWhenItCountsCard(
+      [
+        highlighted('u1', [2, 1], [2, 1], 'f1', 2),
+        highlighted('u2', [2, 1], [2, 1], 'f1', 2),
+        highlighted('u3', [3, 0], [2, 1], 'f1', 2),
+      ],
+      'en',
+    );
+    expect(card?.statistic).toBe(
+      '**Alice and Bob** have each taken **4** extra points from the one highlighted match — nobody else has taken more!',
+    );
+    expect(card?.subjects.map(s => s.id)).toEqual(['u1', 'u2']);
+  });
+
+  it('is null without a highlighted match, and when they all paid nothing', () => {
+    expect(bestWhenItCountsCard([], 'en')).toBeNull();
+    expect(
+      bestWhenItCountsCard([scored('u1', [2, 1], [2, 1], 'f1'), scored('u2', [1, 0], [1, 0], 'f2')], 'en'),
+    ).toBeNull();
+    // A highlighted match every one of them got wrong multiplies nothing into nothing.
+    expect(
+      bestWhenItCountsCard(
+        [highlighted('u1', [0, 2], [2, 1], 'f1', 3), highlighted('u2', [1, 1], [2, 1], 'f1', 3)],
+        'en',
+      ),
+    ).toBeNull();
+  });
+
+  it('translates the title and the statistic', () => {
+    const rows = [
+      highlighted('u1', [2, 1], [2, 1], 'f1', 2),
+      highlighted('u1', [2, 1], [1, 0], 'f2', 3),
+      highlighted('u2', [3, 0], [2, 1], 'f1', 2),
+    ];
+    expect(bestWhenItCountsCard(rows, 'no')).toMatchObject({
+      title: 'Best når det gjelder',
+      statistic:
+        '**Alice** har hentet **8** bonuspoeng fra de **2** markerte kampene — flere enn noen andre!',
+    });
+    expect(bestWhenItCountsCard(rows, 'de')).toMatchObject({
+      title: 'Wenn es drauf ankommt',
+      statistic:
+        '**Alice** hat **8** Zusatzpunkte aus den **2** hervorgehobenen Spielen geholt — mehr als alle anderen!',
+    });
+  });
+});
+
 describe('bestPredictionCard', () => {
   it('picks the lone exact scoreline that fewest others came near', () => {
     const card = bestPredictionCard(
@@ -1878,6 +1983,16 @@ describe('buildLiveUserStats', () => {
       'woodenSpoon',
       'inHaalandWeTrust',
     ]);
+  });
+
+  it('ends on the highlight card, where a highlighted match has been played', () => {
+    const ids = buildLiveUserStats(
+      { ...all, scoredPredictions: [highlighted('u1', [2, 1], [2, 1], 'f1', 2)] },
+      'en',
+    ).map(c => c.id);
+    expect(ids[ids.length - 1]).toBe('bestWhenItCounts');
+    // And it is not in the deck at all until one has.
+    expect(buildLiveUserStats(all, 'en').map(c => c.id)).not.toContain('bestWhenItCounts');
   });
 
   it('shows the scorer pair on its own when nobody has predicted a table', () => {
