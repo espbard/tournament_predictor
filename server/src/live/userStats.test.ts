@@ -1399,7 +1399,7 @@ describe('bestPredictionCard', () => {
     );
     expect(card?.title).toBe('How did you know?');
     expect(card?.statistic).toBe(
-      '**Alice** was the only one to predict the perfect score for **Arsenal 2-1 Bayern**! Only **1** other even had the right outcome!',
+      '**Alice** was the only one to predict the perfect score for **Arsenal 2-1 Bayern**! Nobody else even had the goal difference!',
     );
     expect(card?.subjects).toEqual([
       { type: 'user', id: 'u1', name: 'Alice', imageUrl: '/api/images/alice.png', iconColor: null },
@@ -1413,6 +1413,31 @@ describe('bestPredictionCard', () => {
       'en',
     );
     expect(card?.statistic).toBe(
+      '**Alice** was the only one to predict the perfect score for **Arsenal 2-1 Bayern**! Nobody else even got the outcome of the match right!',
+    );
+  });
+
+  it('drops to the outcome only where nobody else had even that', () => {
+    // Bob had the winner and not the margin, so the sentence stays on the margin: the
+    // tier the card is about, and the one nobody else reached.
+    expect(
+      bestPredictionCard(
+        [scored('u1', [2, 1], [2, 1], 'f1'), scored('u2', [3, 0], [2, 1], 'f1')],
+        teams,
+        'en',
+      )?.statistic,
+    ).toBe(
+      '**Alice** was the only one to predict the perfect score for **Arsenal 2-1 Bayern**! Nobody else even had the goal difference!',
+    );
+    // Bob had neither, and a fixture nobody else so much as called the winner of is the
+    // better story, so it is the one the sentence tells.
+    expect(
+      bestPredictionCard(
+        [scored('u1', [2, 1], [2, 1], 'f1'), scored('u2', [0, 2], [2, 1], 'f1')],
+        teams,
+        'en',
+      )?.statistic,
+    ).toBe(
       '**Alice** was the only one to predict the perfect score for **Arsenal 2-1 Bayern**! Nobody else even got the outcome of the match right!',
     );
   });
@@ -1524,12 +1549,12 @@ describe('bestPredictionCard', () => {
     expect(bestPredictionCard(rows, teams, 'no')).toMatchObject({
       title: 'Hvordan visste du det?',
       statistic:
-        '**Alice** var den eneste som tippet perfekt resultat for **Arsenal 2-1 Bayern**! Bare **1** annen tippet i det hele tatt riktig utfall!',
+        '**Alice** var den eneste som tippet perfekt resultat for **Arsenal 2-1 Bayern**! Ingen andre tippet engang riktig målforskjell!',
     });
     expect(bestPredictionCard(rows, teams, 'de')).toMatchObject({
       title: 'Woher wusstest du das?',
       statistic:
-        '**Alice** hat als einzige Person das perfekte Ergebnis für **Arsenal 2-1 Bayern** getippt! Nur **1** andere Person lag überhaupt beim Ausgang richtig!',
+        '**Alice** hat als einzige Person das perfekte Ergebnis für **Arsenal 2-1 Bayern** getippt! Niemand sonst hatte auch nur die Tordifferenz!',
     });
   });
 });

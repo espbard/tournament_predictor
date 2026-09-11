@@ -1778,7 +1778,7 @@ treatment aside — no card changed what it counts.
 | Two typos in the supplied Norwegian were corrected — *Forventingene* → *Forventningene*, *scoret* → *scorer*, and the `Synsk` replacement title read *Hvordan hviste du et?* | They are spellings, not wording. The sentences are otherwise the owner's, word for word |
 | "Spot on" keeps its ranking and gains a second sentence naming whoever has the fewest, counted over everyone who has predicted at all | Nobody has fewer perfect scorelines than the member who has never managed one, so the trailing end is only interesting if it includes them. The sentence is dropped when everybody is level — naming one member as both the best and the worst of them is the same fact twice, and it is what a league of one would otherwise print |
 | Its denominator ("from **38** scored predictions") is gone with the old sentence | The new copy does not ask for it, and the contrast with the trailing member says more than a rate did |
-| The best-prediction card's three tails map exactly onto the ranking underneath it | "Only **N** others even had the goal difference" is the first key, "only **N** others even had the right outcome" the second, and "nobody else even got the outcome right" the case the second key was invented for. The card now says out loud what it sorted on |
+| The best-prediction card's three tails map exactly onto the ranking underneath it | "Only **N** others even had the goal difference" is the first key, "only **N** others even had the right outcome" the second, and "nobody else even got the outcome right" the case the second key was invented for. The card now says out loud what it sorted on. §33 later took the middle tail off the outcome and put it back on the goal difference, the ranking itself unchanged |
 | The flag became `backgroundImageUrl` on the card rather than a subject, and `LiveUserStatCard` grew a full-bleed branch for it | A rectangle of solid colour fills a tile better than any cropping could, and unlike a crest or a face there is nothing in it to cut in half. The branch is keyed off the payload field rather than off the card's id, so the next card that wants to be its own picture needs no client change |
 
 ---
@@ -2006,7 +2006,28 @@ which fixture, how it finished — and the claim closes the card underneath:
 
 ---
 
-## 33. References
+## 33. "How did you know?" stays on the goal difference *(added after the six phases, on request)*
+
+The card's middle tail counted the others who had the **outcome** right. It now counts the
+others on the **goal difference**, like the tail above it, and the outcome is left to the one
+case that beats it outright:
+
+| Others on the margin | Others on the outcome | Tail |
+|---|---|---|
+| **N** > 0 | any | Only **N** others even had the goal difference! |
+| 0 | > 0 | Nobody else even had the goal difference! *(was: only **N** others even had the right outcome)* |
+| 0 | 0 | Nobody else even got the outcome of the match right! |
+
+| Decision | Why |
+|---|---|
+| The goal difference is what the tail talks about | Requested. It is the tier this card is about — the one the fixture is picked on — and "how many got within a goal of it" is the measure of how alone the winner was. How many merely picked the winner is a weaker fact standing in the same place |
+| Nobody else on the **outcome** still takes priority over it | Requested, and it is the rarer thing: a fixture where nobody else so much as called the winner beats one where they called it and missed the margin. It is the better story, so it is the one that gets told |
+| The two can never contradict each other | A margin cannot be right while the winner is wrong, so "nobody else had the outcome" already means nobody else had the margin. The priority only ever chooses the stronger of two true sentences |
+| The ranking underneath is untouched — fewest others on the margin, then fewest on the outcome | Which fixture wins was never the complaint, and the outcome count still separates two fixtures level on the margin. It is only what the sentence *prints* that moved |
+
+---
+
+## 34. References
 
 - [2026/27 Champions League: teams, dates, draws, format](https://www.uefa.com/uefachampionsleague/news/02a6-20d57cfcd03e-407c22a7f465-1000--2026-27-champions-league-teams-dates-draws-format-final/)
 - [UEFA confirms date for the 2026/27 Champions League league phase draw](https://www.besoccer.com/new/uefa-confirms-date-for-the-202627-champions-league-league-phase-draw-1421299)

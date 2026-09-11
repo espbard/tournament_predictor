@@ -1321,27 +1321,31 @@ export function bestPredictionCard(
   // yet. It is what they predicted and what happened, those being the same thing here.
   const what = named ? `**${named.home} ${score} ${named.away}**` : `**${score}**`;
 
-  // Three things can be said about how alone they were, and only one of them is true at a
-  // time: somebody else had the margin, or nobody did but somebody had the winner, or
-  // nobody managed even that.
+  // How alone they were, said in one of three ways. The goal difference is the tier this
+  // card is about, so the sentence stays on it — how many others reached it, or that
+  // none of them did — and drops to the outcome only for the one case that beats it:
+  // nobody else so much as calling the winner. That is the rarer and the better story,
+  // and it is why it takes priority rather than reading as the weaker claim it would be
+  // anywhere else. It also implies nobody else had the margin, a margin being impossible
+  // to get right while getting the winner wrong, so the two never contradict each other.
   const appendix =
     lang === 'no'
-      ? gd > 0
-        ? ` Bare **${gd}** ${gd === 1 ? 'annen' : 'andre'} tippet i det hele tatt riktig målforskjell!`
-        : outcome > 0
-          ? ` Bare **${outcome}** ${outcome === 1 ? 'annen' : 'andre'} tippet i det hele tatt riktig utfall!`
-          : ' Ingen andre tippet engang riktig utfall av kampen!'
+      ? outcome === 0
+        ? ' Ingen andre tippet engang riktig utfall av kampen!'
+        : gd === 0
+          ? ' Ingen andre tippet engang riktig målforskjell!'
+          : ` Bare **${gd}** ${gd === 1 ? 'annen' : 'andre'} tippet i det hele tatt riktig målforskjell!`
       : lang === 'de'
-        ? gd > 0
-          ? ` Nur **${gd}** ${gd === 1 ? 'andere Person hatte' : 'andere hatten'} überhaupt die Tordifferenz!`
-          : outcome > 0
-            ? ` Nur **${outcome}** ${outcome === 1 ? 'andere Person lag' : 'andere lagen'} überhaupt beim Ausgang richtig!`
-            : ' Niemand sonst lag auch nur beim Ausgang der Partie richtig!'
-        : gd > 0
-          ? ` Only **${gd}** ${gd === 1 ? 'other' : 'others'} even had the goal difference!`
-          : outcome > 0
-            ? ` Only **${outcome}** ${outcome === 1 ? 'other' : 'others'} even had the right outcome!`
-            : ' Nobody else even got the outcome of the match right!';
+        ? outcome === 0
+          ? ' Niemand sonst lag auch nur beim Ausgang der Partie richtig!'
+          : gd === 0
+            ? ' Niemand sonst hatte auch nur die Tordifferenz!'
+            : ` Nur **${gd}** ${gd === 1 ? 'andere Person hatte' : 'andere hatten'} überhaupt die Tordifferenz!`
+        : outcome === 0
+          ? ' Nobody else even got the outcome of the match right!'
+          : gd === 0
+            ? ' Nobody else even had the goal difference!'
+            : ` Only **${gd}** ${gd === 1 ? 'other' : 'others'} even had the goal difference!`;
 
   const statistic =
     lang === 'no'
