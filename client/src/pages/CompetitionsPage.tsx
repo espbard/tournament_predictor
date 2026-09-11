@@ -93,7 +93,7 @@ export default function CompetitionsPage() {
               type="text"
               value={name}
               onChange={e => setName(e.target.value)}
-              placeholder="e.g. World Cup 2026 — Friends League"
+              placeholder="e.g. World Cup 2026: Friends League"
               className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>

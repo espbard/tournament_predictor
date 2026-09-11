@@ -1924,7 +1924,8 @@ made of. It lives in `buildLiveUserStats()` and nowhere else:
 6. Best form · 7. Worst form · 8. The people's favourite · 9. The bottom of the barrel ·
 10. In Haaland we trust · 11. Holding the answer key · 12. A dead cert · 13. The last believer ·
 14. Go Norway! · 15. The Climber · 16. I'm falling! · 17. The most expected result ·
-18. Most unexpected result · 19. How did you know? · 20. Almost · 21. Best when it counts (§34)
+18. Most unexpected result · 19. How did you know? · 20. Almost · 21. Best when it counts (§34) ·
+22. God save the king (§35)
 
 | Decision | Why |
 |---|---|
@@ -2048,7 +2049,41 @@ A card about the matches an admin marked as worth more: who took the most out of
 
 ---
 
-## 35. References
+## 35. "God save the king" *(added after the six phases, on request)*
+
+The third card off a bonus question, and the mirror of Trønderhateren: whoever answered **No**
+to "Ryker minst ett engelsk lag ut i ligaspillet?", which is to say whoever has every English
+side surviving the league phase. `godSaveTheKingCard()` in `server/src/live/userStats.ts`.
+
+> **Alice og Bob** har trua på engelskmennene, og tror ikke at et eneste engelsk lag ryker ut
+> i ligaspillet!
+
+| Decision | Why |
+|---|---|
+| One title, `God save the king`, in all three languages | Requested. It is an anthem, so translating it would be translating a name |
+| The question is found by the words `engelsk` and `ligaspill` | Same rule as the other two bonus cards: an admin types the question and next season's wording will differ. `engelsk` catches `engelske`, `ligaspill` catches `ligaspillet`, and a question about a different country fails the first word |
+| Only the No answers, and null when there are none | The card is about the members who backed the English, not about how popular the answer was. The Trøndelag card is built the same way |
+| The flag is the tile (`backgroundImageUrl`), with the members still carried as subjects | Requested. `LiveUserStatCard` draws a full-bleed picture instead of the faces when a card sends one, exactly as the Norway card does; the members stay in the payload because they are who the card is about, and their names are in the sentence |
+| `client/public/stat-flag-england.webp`, beside `stat-flag-no.webp` | The same shape of asset for the same job. Named `england` rather than `en`, which everywhere else in the app means the English *language* |
+
+---
+
+## 36. No em dash in the copy *(added after the six phases, on request)*
+
+Nothing the page prints uses an em dash any more: 202 strings across the three locales in
+`client/src/lib/translations.ts`, both stat decks' sentences, and the prose in the pages and
+panels that do not go through the translation file.
+
+| Decision | Why |
+|---|---|
+| A colon where the dash set off an explanation, a comma where it set off a conjunction, brackets where it was a pair of them | They are what the dash was standing in for. A blanket substitution would have left comma splices where one clause simply followed another |
+| Code comments, this document and the CLI scripts keep theirs | They are not the page. The rule is about what a member reads |
+| The standalone `'—'` placeholder for an empty score or answer is left alone | It is a glyph standing in for "nothing here", not a sentence, and changing it would change how the score tables look rather than how they read |
+| Two tests hold the line: `client/src/lib/translations.test.ts` walks every string in the copy, and the live deck's own suite builds all 22 cards in all three languages | The rule is easy to break by hand a season from now, and both tests fail loudly rather than quietly letting one back in |
+
+---
+
+## 37. References
 
 - [2026/27 Champions League: teams, dates, draws, format](https://www.uefa.com/uefachampionsleague/news/02a6-20d57cfcd03e-407c22a7f465-1000--2026-27-champions-league-teams-dates-draws-format-final/)
 - [UEFA confirms date for the 2026/27 Champions League league phase draw](https://www.besoccer.com/new/uefa-confirms-date-for-the-202627-champions-league-league-phase-draw-1421299)

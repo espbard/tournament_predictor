@@ -168,7 +168,7 @@ function CompetitionsHome() {
               account can and cannot do rather than selling the app back to them. */}
           {user?.isLeaderboardUser && (
             <p className="text-sm text-muted-foreground">
-              Leaderboard viewer — enter an invite code to view a competition leaderboard.
+              Leaderboard viewer: enter an invite code to view a competition leaderboard.
             </p>
           )}
         </div>

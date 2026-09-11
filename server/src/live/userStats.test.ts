@@ -10,6 +10,7 @@ import {
   mostUnexpectedResultCard,
   nationalityGoalsCard,
   goalDroughtCard,
+  godSaveTheKingCard,
   goldenBootCard,
   inHaalandWeTrustCard,
   peoplesFavouriteCard,
@@ -593,7 +594,7 @@ describe('mostExpectedResultCard', () => {
     expect(mostExpectedResultCard(obvious, teams, twoPlayed, scoringConfig, 'de')).toMatchObject({
       title: 'Na klar!',
       statistic:
-        'Arsenal gegen Bayern (2-1) — so offensichtlich, dass sogar ein Blindgänger es hätte tippen können! 3 Leute lagen richtig, 1 davon sogar mit exaktem Ergebnis. Im Schnitt 2.33 Punkte pro Person. Und trotzdem hat **Chris** nur 1 Punkt geholt. Traurig.',
+        'Arsenal gegen Bayern (2-1): so offensichtlich, dass sogar ein Blindgänger es hätte tippen können! 3 Leute lagen richtig, 1 davon sogar mit exaktem Ergebnis. Im Schnitt 2.33 Punkte pro Person. Und trotzdem hat **Chris** nur 1 Punkt geholt. Traurig.',
     });
   });
 });
@@ -1421,7 +1422,7 @@ describe('bestWhenItCountsCard', () => {
     );
     expect(card?.title).toBe('Best when it counts');
     expect(card?.statistic).toBe(
-      '**Bob** has taken **9** extra points from the **2** highlighted matches — more than anybody else!',
+      '**Bob** has taken **9** extra points from the **2** highlighted matches, more than anybody else!',
     );
     expect(card?.subjects).toEqual([
       { type: 'user', id: 'u2', name: 'Bob', imageUrl: null, iconColor: '#334155' },
@@ -1435,7 +1436,7 @@ describe('bestWhenItCountsCard', () => {
         'en',
       )?.statistic,
     ).toBe(
-      '**Alice** has taken **1** extra point from the one highlighted match — more than anybody else!',
+      '**Alice** has taken **1** extra point from the one highlighted match, more than anybody else!',
     );
   });
 
@@ -1449,7 +1450,7 @@ describe('bestWhenItCountsCard', () => {
       'en',
     );
     expect(card?.statistic).toBe(
-      '**Alice and Bob** have each taken **4** extra points from the one highlighted match — nobody else has taken more!',
+      '**Alice and Bob** have each taken **4** extra points from the one highlighted match, and nobody else has taken more!',
     );
     expect(card?.subjects.map(s => s.id)).toEqual(['u1', 'u2']);
   });
@@ -1477,12 +1478,12 @@ describe('bestWhenItCountsCard', () => {
     expect(bestWhenItCountsCard(rows, 'no')).toMatchObject({
       title: 'Best når det gjelder',
       statistic:
-        '**Alice** har hentet **8** bonuspoeng fra de **2** markerte kampene — flere enn noen andre!',
+        '**Alice** har hentet **8** bonuspoeng fra de **2** markerte kampene, flere enn noen andre!',
     });
     expect(bestWhenItCountsCard(rows, 'de')).toMatchObject({
       title: 'Wenn es drauf ankommt',
       statistic:
-        '**Alice** hat **8** Zusatzpunkte aus den **2** hervorgehobenen Spielen geholt — mehr als alle anderen!',
+        '**Alice** hat **8** Zusatzpunkte aus den **2** hervorgehobenen Spielen geholt, mehr als alle anderen!',
     });
   });
 });
@@ -1871,7 +1872,7 @@ describe('inHaalandWeTrustCard', () => {
       '**1** av **2** har tippet at Haaland blir toppscorer! Brukeren som har minst tro på Brauten er **Bob**, som tippet at Haaland ender på **3. plass** på toppscorerlisten.',
     );
     expect(inHaalandWeTrustCard(rows, players, 'de')?.statistic).toBe(
-      '**1** von **2** tippen Haaland als Torschützenkönig! Am wenigsten glaubt **Bob** an ihn — auf **Platz 3** der Torjägerliste.',
+      '**1** von **2** tippen Haaland als Torschützenkönig! Am wenigsten glaubt **Bob** an ihn: auf **Platz 3** der Torjägerliste.',
     );
   });
 
@@ -1939,6 +1940,69 @@ describe('tronderHaterCard', () => {
   });
 });
 
+describe('godSaveTheKingCard', () => {
+  const asked = (
+    userId: string,
+    answer: string,
+    question = 'Ryker minst ett engelsk lag ut i ligaspillet?',
+  ) => ({
+    ...memberOf(userId),
+    question,
+    answer,
+  });
+
+  it('names whoever answered No, and flies the flag', () => {
+    const card = godSaveTheKingCard([asked('u1', 'No'), asked('u2', 'Yes'), asked('u3', 'No')], 'no');
+    expect(card?.title).toBe('God save the king');
+    expect(card?.statistic).toBe(
+      '**Alice og Chris** har trua på engelskmennene, og tror ikke at et eneste engelsk lag ryker ut i ligaspillet!',
+    );
+    expect(card?.subjects.map(s => s.id)).toEqual(['u1', 'u3']);
+    expect(card?.backgroundImageUrl).toBe('/stat-flag-england.webp');
+  });
+
+  it('keeps the one title in every language, and agrees in number', () => {
+    const one = [asked('u1', 'No')];
+    expect(godSaveTheKingCard(one, 'en')).toMatchObject({
+      title: 'God save the king',
+      statistic:
+        '**Alice** is backing the English, and does not believe a single English team will go out in the league phase!',
+    });
+    expect(godSaveTheKingCard(one, 'de')).toMatchObject({
+      title: 'God save the king',
+      statistic:
+        '**Alice** hält zu den Engländern und glaubt nicht, dass ein einziges englisches Team in der Ligaphase ausscheidet!',
+    });
+
+    const two = [asked('u1', 'No'), asked('u2', 'No')];
+    expect(godSaveTheKingCard(two, 'en')?.statistic).toBe(
+      '**Alice and Bob** are backing the English, and do not believe a single English team will go out in the league phase!',
+    );
+    expect(godSaveTheKingCard(two, 'de')?.statistic).toBe(
+      '**Alice und Bob** halten zu den Engländern und glauben nicht, dass ein einziges englisches Team in der Ligaphase ausscheidet!',
+    );
+  });
+
+  it('finds the question by its words, and reads the answer whatever its case', () => {
+    expect(
+      godSaveTheKingCard(
+        [asked('u1', 'no', 'Ryker det minst ett engelske lag ut av ligaspillet i år?')],
+        'en',
+      ),
+    ).not.toBeNull();
+    expect(godSaveTheKingCard([asked('u1', ' NO ')], 'en')).not.toBeNull();
+  });
+
+  it('is null when nobody said No, or nobody was asked', () => {
+    expect(godSaveTheKingCard([], 'en')).toBeNull();
+    expect(godSaveTheKingCard([asked('u1', 'Yes'), asked('u2', 'Yes')], 'en')).toBeNull();
+    // Another yes/no question about the league phase, with no English side in it.
+    expect(
+      godSaveTheKingCard([asked('u1', 'No', 'Ryker minst ett spansk lag ut i ligaspillet?')], 'en'),
+    ).toBeNull();
+  });
+});
+
 describe('buildLiveUserStats', () => {
   const all = {
     tablePredictions: [pick('u1', 't1', 't3')],
@@ -1985,14 +2049,55 @@ describe('buildLiveUserStats', () => {
     ]);
   });
 
-  it('ends on the highlight card, where a highlighted match has been played', () => {
+  it('ends on the two newest cards, in the order they were added', () => {
     const ids = buildLiveUserStats(
-      { ...all, scoredPredictions: [highlighted('u1', [2, 1], [2, 1], 'f1', 2)] },
+      {
+        ...all,
+        scoredPredictions: [highlighted('u1', [2, 1], [2, 1], 'f1', 2)],
+        bonusAnswers: [
+          {
+            ...memberOf('u1'),
+            question: 'Ryker minst ett engelsk lag ut i ligaspillet?',
+            answer: 'No',
+          },
+        ],
+      },
       'en',
     ).map(c => c.id);
-    expect(ids[ids.length - 1]).toBe('bestWhenItCounts');
-    // And it is not in the deck at all until one has.
+    expect(ids.slice(-2)).toEqual(['bestWhenItCounts', 'godSaveTheKing']);
+    // Neither is in the deck until there is something for it to say.
     expect(buildLiveUserStats(all, 'en').map(c => c.id)).not.toContain('bestWhenItCounts');
+    expect(buildLiveUserStats(all, 'en').map(c => c.id)).not.toContain('godSaveTheKing');
+  });
+
+  it('prints no em dash in any language', () => {
+    const deck = {
+      ...all,
+      scoredPredictions: [
+        highlighted('u1', [2, 1], [2, 1], 'f1', 2),
+        highlighted('u2', [3, 0], [2, 1], 'f1', 2),
+        scored('u3', [0, 3], [2, 1], 'f1'),
+      ],
+      scorerNationalities: snapshot({ Norway: { goals: 3, players: 2 } }),
+      bonusAnswers: [
+        { ...memberOf('u1'), question: 'Scorer en trønder mål i turneringen?', answer: 'No' },
+        {
+          ...memberOf('u2'),
+          question: 'Ryker minst ett engelsk lag ut i ligaspillet?',
+          answer: 'No',
+        },
+        {
+          ...memberOf('u3'),
+          question: 'Hvor mange mål blir scoret av norske spillere?',
+          answer: '5',
+        },
+      ],
+    };
+    for (const lang of ['en', 'no', 'de'] as const) {
+      for (const card of buildLiveUserStats(deck, lang)) {
+        expect(`${card.title} ${card.statistic}`).not.toContain('—');
+      }
+    }
   });
 
   it('shows the scorer pair on its own when nobody has predicted a table', () => {

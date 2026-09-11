@@ -1062,7 +1062,7 @@ function AdminBracketEditor({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold">Edit Bracket — First Round</h3>
+        <h3 className="text-sm font-semibold">Edit Bracket: First Round</h3>
         <div className="flex gap-2">
           <button
             type="button"
@@ -1566,7 +1566,7 @@ export default function TournamentKnockoutPage() {
         {tournament.imageUrl && (
           <img src={tournament.imageUrl} alt={tournament.name} className="h-10 w-10 rounded-lg object-cover" />
         )}
-        <h1 className="text-2xl font-bold">{tournament.name} — {t('knockout.knockoutStageTitle')}</h1>
+        <h1 className="text-2xl font-bold">{tournament.name}: {t('knockout.knockoutStageTitle')}</h1>
       </div>
 
       <TournamentKnockoutTabContent tournamentId={id!} />

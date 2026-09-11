@@ -868,8 +868,8 @@ export class BigBallsProvider implements LiveProvider {
         `${paged.ok ? `${paged.count} matches` : 'refused'}` +
         ` (without it: ${seasonProbe.count})` +
         (paged.ok && (paged.count ?? 0) > (seasonProbe.count ?? 0)
-          ? ' — the cap lifts, so syncing will page through'
-          : ' — the cap does not lift') +
+          ? ' (the cap lifts, so syncing will page through)'
+          : ' (the cap does not lift)') +
         (paged.detail ? ` · ${paged.detail}` : '');
       probes.push(paged);
     }

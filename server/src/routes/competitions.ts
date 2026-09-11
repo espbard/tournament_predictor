@@ -2352,10 +2352,10 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
               title: lang === 'no' ? 'Akkurat Som Jeg Spådde' : lang === 'de' ? 'Genau Wie Vorhergesagt' : 'Just As I Predicted',
               statistic: sameGroup
                 ? lang === 'no'
-                  ? `${topNames} traff på ${maxCorrect} av ${totalTeams} lag i ${stageLabel.no} — akkurat som alle andre!`
+                  ? `${topNames} traff på ${maxCorrect} av ${totalTeams} lag i ${stageLabel.no}, akkurat som alle andre!`
                   : lang === 'de'
-                    ? `${topNames} ${topGroup.length === 1 ? 'hat' : 'haben'} ${maxCorrect} von ${totalTeams} Mannschaften in ${stageLabel.de} richtig vorhergesagt — genau wie alle anderen!`
-                    : `${topNames} correctly predicted ${maxCorrect} of the ${totalTeams} teams in ${stageLabel.en} — same as everyone else!`
+                    ? `${topNames} ${topGroup.length === 1 ? 'hat' : 'haben'} ${maxCorrect} von ${totalTeams} Mannschaften in ${stageLabel.de} richtig vorhergesagt, genau wie alle anderen!`
+                    : `${topNames} correctly predicted ${maxCorrect} of the ${totalTeams} teams in ${stageLabel.en}, same as everyone else!`
                 : lang === 'no'
                   ? `${topNames} traff på hele ${maxCorrect} av ${totalTeams} lag i ${stageLabel.no}! ${formatUserList(bottomGroup.map(u => u.username), lang)} hadde færrest, med bare ${minCorrect}.`
                   : lang === 'de'
@@ -2837,7 +2837,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
             lang === 'no'
               ? `${formatUserList(patriotGroup.map(u => u.username), lang)} er den største patrioten! De har tippet at Norge har vunnet ${winner.wins} av sine ${winner.games} kamper${soFarNo}! Og at de har scoret hele ${winner.gf} mål og ${concededClause}`
               : lang === 'de'
-                ? `${formatUserList(patriotGroup.map(u => u.username), lang)} ist der größte Norwegen-Fan von allen! Norwegen gewinnt laut ${patriotGroup.length === 1 ? 'ihm/ihr' : 'ihnen'} sage und schreibe ${winner.wins} von ${winner.games} Spielen und schießt dabei stolze ${winner.gf} Tore — und hat dabei ${concededClause}`
+                ? `${formatUserList(patriotGroup.map(u => u.username), lang)} ist der größte Norwegen-Fan von allen! Norwegen gewinnt laut ${patriotGroup.length === 1 ? 'ihm/ihr' : 'ihnen'} sage und schreibe ${winner.wins} von ${winner.games} Spielen und schießt dabei stolze ${winner.gf} Tore, und hat dabei ${concededClause}`
                 : `${formatUserList(patriotGroup.map(u => u.username), lang)} ${patriotGroup.length === 1 ? 'is the biggest patriot' : 'are the biggest patriots'}! They've predicted that Norway has won ${winner.wins} of their ${winner.games} games${soFarEn}! And that they've scored a whopping ${winner.gf} goals and ${concededClause}`,
           subjects: patriotGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
           linkType: 'user',
@@ -3489,7 +3489,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           (lang === 'no'
             ? `${homeTeamName} mot ${awayTeamName} (${mostPredictableMatch.homeScore}-${mostPredictableMatch.awayScore}) var det mest forutsigbare resultatet! Totalt tippet ${resultCount} ${resultCount === 1 ? 'spiller' : 'spillere'} riktig resultat, og ${exactCount} av dem tippet eksakt resultat! Hver spiller sanket i snitt ${avgPoints} poeng.`
             : lang === 'de'
-              ? `${homeTeamName} gegen ${awayTeamName} (${mostPredictableMatch.homeScore}-${mostPredictableMatch.awayScore}) — so offensichtlich, dass sogar ein Blindgänger es hätte tippen können! ${resultCount} Leute lagen richtig, ${exactCount} davon sogar mit exaktem Ergebnis. Im Schnitt ${avgPoints} Punkte pro Person.`
+              ? `${homeTeamName} gegen ${awayTeamName} (${mostPredictableMatch.homeScore}-${mostPredictableMatch.awayScore}): so offensichtlich, dass sogar ein Blindgänger es hätte tippen können! ${resultCount} Leute lagen richtig, ${exactCount} davon sogar mit exaktem Ergebnis. Im Schnitt ${avgPoints} Punkte pro Person.`
               : `${homeTeamName} vs ${awayTeamName} (${mostPredictableMatch.homeScore} - ${mostPredictableMatch.awayScore}) was the most predictable outcome! A total of ${resultCount} ${resultCount === 1 ? 'user' : 'users'} predicted the correct result, and ${exactCount} of those predicted the exact score! Each user scored on average ${avgPoints} points.`) +
           appendText,
         subjects: [mostPredictableMatch.homeTeamId, mostPredictableMatch.awayTeamId]
@@ -3532,8 +3532,8 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           lang === 'no'
             ? `Det største spriket i tippingen så langt kom i kampen mellom ${homeTeamName} og ${awayTeamName}, hvor ${formatUserList(highGroup.map(u => u.username), lang)} tippet ${highGroup[0].predHomeScore}-${highGroup[0].predAwayScore} og ${formatUserList(lowGroup.map(u => u.username), lang)} tippet ${lowGroup[0].predHomeScore}-${lowGroup[0].predAwayScore}! Kampen endte til slutt med ${contrastMatch.homeScore}-${contrastMatch.awayScore}.`
             : lang === 'de'
-              ? `Bei ${homeTeamName} gegen ${awayTeamName} (${contrastMatch.homeScore}-${contrastMatch.awayScore}) waren die Meinungen gespalten! ${formatUserList(highGroup.map(u => u.username), lang)} tippte ${describeGoalDiff(maxDiff)}, während ${formatUserList(lowGroup.map(u => u.username), lang)} auf ${describeGoalDiff(minDiff)} setzte — eine Differenz von ${contrastGap} Toren!`
-              : `${homeTeamName} vs ${awayTeamName} (${contrastMatch.homeScore} - ${contrastMatch.awayScore}) caused the most contrasting predictions! ${formatUserList(highGroup.map(u => u.username), lang)} predicted ${describeGoalDiff(maxDiff)}, while ${formatUserList(lowGroup.map(u => u.username), lang)} predicted ${describeGoalDiff(minDiff)} — a ${contrastGap}-goal swing!`,
+              ? `Bei ${homeTeamName} gegen ${awayTeamName} (${contrastMatch.homeScore}-${contrastMatch.awayScore}) waren die Meinungen gespalten! ${formatUserList(highGroup.map(u => u.username), lang)} tippte ${describeGoalDiff(maxDiff)}, während ${formatUserList(lowGroup.map(u => u.username), lang)} auf ${describeGoalDiff(minDiff)} setzte: eine Differenz von ${contrastGap} Toren!`
+              : `${homeTeamName} vs ${awayTeamName} (${contrastMatch.homeScore} - ${contrastMatch.awayScore}) caused the most contrasting predictions! ${formatUserList(highGroup.map(u => u.username), lang)} predicted ${describeGoalDiff(maxDiff)}, while ${formatUserList(lowGroup.map(u => u.username), lang)} predicted ${describeGoalDiff(minDiff)}: a ${contrastGap}-goal swing!`,
         subjects: [...highGroup, ...lowGroup].map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
         linkType: 'match',
         matchId: contrastMatch.matchId,
@@ -3551,7 +3551,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           lang === 'no'
             ? `Kampen mellom ${homeTeamName} og ${awayTeamName} endte ${swingAndAMissData.homeScore} - ${swingAndAMissData.awayScore}, bare litt annerledes enn hva ${userNames} tippet, som trodde kampen skulle ende ${swingAndAMissData.predHomeScore} - ${swingAndAMissData.predAwayScore}.`
             : lang === 'de'
-              ? `Das Spiel ${homeTeamName} gegen ${awayTeamName} endete ${swingAndAMissData.homeScore} - ${swingAndAMissData.awayScore} — nur eine Kleinigkeit anders als ${userNames} gedacht hatte, der auf ${swingAndAMissData.predHomeScore} - ${swingAndAMissData.predAwayScore} tippte. Nah dran, aber leider nein.`
+              ? `Das Spiel ${homeTeamName} gegen ${awayTeamName} endete ${swingAndAMissData.homeScore} - ${swingAndAMissData.awayScore}, nur eine Kleinigkeit anders als ${userNames} gedacht hatte, der auf ${swingAndAMissData.predHomeScore} - ${swingAndAMissData.predAwayScore} tippte. Nah dran, aber leider nein.`
               : `The match between ${homeTeamName} and ${awayTeamName} ended ${swingAndAMissData.homeScore} - ${swingAndAMissData.awayScore}, just a little different from what ${userNames} predicted, who thought the match would end ${swingAndAMissData.predHomeScore} - ${swingAndAMissData.predAwayScore}.`,
         subjects: swingAndAMissData.users.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
         linkType: 'match',
@@ -3600,7 +3600,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           ? lang === 'no'
             ? `${formatUserList(closeButNoCigarGroup.map(u => u.username), lang)} har tippet riktig resultat ${closeButNoCigarGroup[0].correctResults} ${closeButNoCigarGroup[0].correctResults === 1 ? 'gang' : 'ganger'}, men ${closeButNoCigarTailNo}`
             : lang === 'de'
-              ? `${formatUserList(closeButNoCigarGroup.map(u => u.username), lang)} hat ${closeButNoCigarGroup[0].correctResults} Mal das richtige Ergebnis getippt, aber beim exakten Ergebnis — da hapert es gewaltig. ${closeButNoCigarTailDe}`
+              ? `${formatUserList(closeButNoCigarGroup.map(u => u.username), lang)} hat ${closeButNoCigarGroup[0].correctResults} Mal das richtige Ergebnis getippt, aber beim exakten Ergebnis, da hapert es gewaltig. ${closeButNoCigarTailDe}`
               : `${formatUserList(closeButNoCigarGroup.map(u => u.username), lang)} ${closeButNoCigarVerb} predicted the correct result ${closeButNoCigarGroup[0].correctResults} times, but ${closeButNoCigarVerb} ${closeButNoCigarTail}`
           : lang === 'no'
             ? 'Ingen har tippet riktig resultat ennå!'

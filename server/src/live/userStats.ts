@@ -33,10 +33,11 @@ import { LIVE_SEASON_MILESTONE_IDS } from './progression';
 // scoreline. And a pair about one prediction rather than a season of them: the one nobody
 // else saw coming, and the one that missed by the most goals.
 //
-// Plus two off the bonus questions: how many goals the league expects of Norwegians
-// against how many they have actually scored, and whoever expects nothing at all of
-// Trøndelag. It reads the snapshot the scorer sync leaves on the tournament, so it
-// costs no provider request of its own.
+// Plus three off the bonus questions: how many goals the league expects of Norwegians
+// against how many they have actually scored, whoever expects nothing at all of
+// Trøndelag, and whoever has every English side surviving the league phase. The first of
+// them reads the snapshot the scorer sync leaves on the tournament, so it costs no
+// provider request of its own.
 
 export type LiveStatsLang = 'en' | 'no' | 'de';
 
@@ -985,7 +986,7 @@ export function inHaalandWeTrustCard(
       : lang === 'no'
         ? ` ${one ? 'Brukeren' : 'Brukerne'} som har minst tro på Brauten er **${names}**, som tippet at Haaland ender på **${lowest}. plass** på toppscorerlisten.`
         : lang === 'de'
-          ? ` Am wenigsten ${one ? 'glaubt' : 'glauben'} **${names}** an ihn — auf **Platz ${lowest}** der Torjägerliste.`
+          ? ` Am wenigsten ${one ? 'glaubt' : 'glauben'} **${names}** an ihn: auf **Platz ${lowest}** der Torjägerliste.`
           : ` The ${one ? 'one' : 'ones'} with the least faith in him: **${names}**, who put him **${ordinal(lowest)}** on the top-scorer list.`;
 
   const statistic =
@@ -1305,15 +1306,15 @@ export function bestWhenItCountsCard(
 
   const statistic =
     lang === 'no'
-      ? `**${names}** har hentet **${bonus}** bonuspoeng${tied ? ' hver' : ''} fra ${kampene} — ${
-          tied ? 'ingen andre har hentet flere' : 'flere enn noen andre'
+      ? `**${names}** har hentet **${bonus}** bonuspoeng${tied ? ' hver' : ''} fra ${kampene}, ${
+          tied ? 'og ingen andre har hentet flere' : 'flere enn noen andre'
         }!`
       : lang === 'de'
-        ? `**${names}** ${tied ? 'haben je' : 'hat'} **${bonus}** ${punkt} aus ${spiele} geholt — ${
-            tied ? 'niemand sonst hat mehr geholt' : 'mehr als alle anderen'
+        ? `**${names}** ${tied ? 'haben je' : 'hat'} **${bonus}** ${punkt} aus ${spiele} geholt, ${
+            tied ? 'und niemand sonst hat mehr geholt' : 'mehr als alle anderen'
           }!`
-        : `**${names}** ${tied ? 'have each' : 'has'} taken **${bonus}** extra ${points} from ${matches} — ${
-            tied ? 'nobody else has taken more' : 'more than anybody else'
+        : `**${names}** ${tied ? 'have each' : 'has'} taken **${bonus}** extra ${points} from ${matches}, ${
+            tied ? 'and nobody else has taken more' : 'more than anybody else'
           }!`;
 
   return memberCard('bestWhenItCounts', title, statistic, winners);
@@ -1775,7 +1776,7 @@ export function mostExpectedResultCard(
     (lang === 'no'
       ? `${round.home} mot ${round.away} (${round.actualHome}-${round.actualAway}) var det mest forutsigbare resultatet! Totalt tippet ${outcomes} ${outcomes === 1 ? 'spiller' : 'spillere'} riktig resultat, og ${exact} av dem tippet eksakt resultat! Hver spiller sanket i snitt ${average} poeng.`
       : lang === 'de'
-        ? `${round.home} gegen ${round.away} (${round.actualHome}-${round.actualAway}) — so offensichtlich, dass sogar ein Blindgänger es hätte tippen können! ${outcomes} Leute lagen richtig, ${exact} davon sogar mit exaktem Ergebnis. Im Schnitt ${average} Punkte pro Person.`
+        ? `${round.home} gegen ${round.away} (${round.actualHome}-${round.actualAway}): so offensichtlich, dass sogar ein Blindgänger es hätte tippen können! ${outcomes} Leute lagen richtig, ${exact} davon sogar mit exaktem Ergebnis. Im Schnitt ${average} Punkte pro Person.`
         : `${round.home} vs ${round.away} (${round.actualHome} - ${round.actualAway}) was the most predictable outcome! A total of ${outcomes} ${outcomes === 1 ? 'user' : 'users'} predicted the correct result, and ${exact} of those predicted the exact score! Each user scored on average ${average} points.`) +
     appendix;
 
@@ -1994,6 +1995,69 @@ export function tronderHaterCard(
   return memberCard('tronderHater', title, statistic, haters);
 }
 
+// ── The English teams ─────────────────────────────────────────────────────────
+
+/** The card's own picture, in client/public. St George's cross, as the title asks. */
+const ENGLAND_FLAG = '/stat-flag-england.webp';
+
+/**
+ * The third bonus question the deck reads, matched on the words in it like the other two.
+ *
+ * "Ryker minst ett engelsk lag ut i ligaspillet?" is the wording today, typed in by an
+ * admin and free to change next season, so a question that mentions English sides and the
+ * league phase is the one. `engelsk` catches `engelske` as well, and `ligaspill` catches
+ * `ligaspillet`, which is how it is actually written.
+ */
+const ENGLISH_TEAMS_QUESTION = ['engelsk', 'ligaspill'];
+
+/**
+ * Whoever has every English side surviving the league phase: the members who answered No.
+ *
+ * The mirror of the Trøndelag card, and it reads the same way. Only ever a card when
+ * somebody has said No, because it is about the people who backed them rather than about
+ * how popular the answer was.
+ *
+ * The flag is the tile, as it is on the Norway card: the picture the card is named after.
+ * The members are still carried as subjects, since they are who the card is about, and
+ * the live tile draws the flag over them.
+ */
+export function godSaveTheKingCard(
+  bonusAnswers: LiveStatsBonusAnswer[],
+  lang: LiveStatsLang,
+): UserStatCardData | null {
+  const believers = dedupeByUser(
+    bonusAnswers.filter(answer => {
+      const question = answer.question.toLowerCase();
+      if (!ENGLISH_TEAMS_QUESTION.every(word => question.includes(word))) return false;
+      return answer.answer.trim().toLowerCase() === NO_ANSWER;
+    }),
+  );
+  if (believers.length === 0) return null;
+
+  const names = joinNames(believers.map(b => b.username), lang);
+  const alone = believers.length === 1;
+
+  // The one title that is the same in all three languages: it is a national anthem, and
+  // translating it would be translating a name.
+  const title = 'God save the king';
+
+  const statistic =
+    lang === 'no'
+      ? `**${names}** har trua på engelskmennene, og tror ikke at et eneste engelsk lag ryker ut i ligaspillet!`
+      : lang === 'de'
+        ? `**${names}** ${alone ? 'hält' : 'halten'} zu den Engländern und ${
+            alone ? 'glaubt' : 'glauben'
+          } nicht, dass ein einziges englisches Team in der Ligaphase ausscheidet!`
+        : `**${names}** ${alone ? 'is' : 'are'} backing the English, and ${
+            alone ? 'does' : 'do'
+          } not believe a single English team will go out in the league phase!`;
+
+  return {
+    ...memberCard('godSaveTheKing', title, statistic, believers),
+    backgroundImageUrl: ENGLAND_FLAG,
+  };
+}
+
 /** Every card that has something to say, in the order they should be shown. */
 export function buildLiveUserStats(
   input: {
@@ -2018,7 +2082,7 @@ export function buildLiveUserStats(
     scorerNationalities: LiveScorerNationalities | null;
     /**
      * Answers to the bonus questions the deck reads — how many goals Norwegians score,
-     * and whether a trønder scores at all.
+     * whether a trønder scores at all, and whether an English side goes out.
      */
     bonusAnswers: LiveStatsBonusAnswer[];
   },
@@ -2062,5 +2126,6 @@ export function buildLiveUserStats(
     bestPredictionCard(scoredPredictions, teams, lang),
     almostCard(scoredPredictions, lang),
     bestWhenItCountsCard(scoredPredictions, lang),
+    godSaveTheKingCard(bonusAnswers, lang),
   ].filter((c): c is UserStatCardData => c !== null);
 }

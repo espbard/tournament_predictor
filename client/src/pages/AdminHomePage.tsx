@@ -145,17 +145,17 @@ export default function AdminHomePage({ maintenanceMode }: Props) {
         )}
         {copyReport !== null && (
           copyReport.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nothing to copy — either no AI users have predictions, or all competitions are already in sync.</p>
+            <p className="text-sm text-muted-foreground">Nothing to copy: either no AI users have predictions, or all competitions are already in sync.</p>
           ) : (
             <ul className="mt-2 space-y-2 text-sm">
               {copyReport.map((r, i) => (
                 <li key={i} className="rounded border bg-muted/20 px-3 py-2">
                   <span className="font-medium">{r.username}</span>
-                  <span className="text-muted-foreground"> — copied from </span>
+                  <span className="text-muted-foreground">, copied from </span>
                   <span className="font-medium">"{r.source}"</span>
                   <span className="text-muted-foreground"> to </span>
                   <span className="font-medium">{r.targets.map(t => `"${t}"`).join(', ')}</span>
-                  <span className="text-muted-foreground"> ({r.matchPredsCopied} match preds{r.bracketCopied ? ', bracket' : ''}{r.bonusAnswersCopied > 0 ? `, ${r.bonusAnswersCopied} bonus answers` : ''}{r.membersAdded.length > 0 ? ` — also added to: ${r.membersAdded.map(n => `"${n}"`).join(', ')}` : ''})</span>
+                  <span className="text-muted-foreground"> ({r.matchPredsCopied} match preds{r.bracketCopied ? ', bracket' : ''}{r.bonusAnswersCopied > 0 ? `, ${r.bonusAnswersCopied} bonus answers` : ''}{r.membersAdded.length > 0 ? `, also added to: ${r.membersAdded.map(n => `"${n}"`).join(', ')}` : ''})</span>
                 </li>
               ))}
             </ul>

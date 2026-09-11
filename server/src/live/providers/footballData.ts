@@ -669,7 +669,7 @@ export class FootballDataProvider implements LiveProvider {
                 : `${withGoals} with a goal · ${withNationality}/${scorers.length} with a ` +
                   `nationality · asked for ${SCORER_FEED_LIMIT}, got ${scorers.length}` +
                   (scorers.length >= SCORER_FEED_LIMIT
-                    ? ' (at the limit — the list may be cut short)'
+                    ? ' (at the limit, the list may be cut short)'
                     : '') +
                   ` · top: ${top?.player?.name ?? '?'} (${top?.goals ?? 0}g ` +
                   `${top?.assists ?? 0}a, ${top?.player?.nationality ?? 'no nationality'})`,

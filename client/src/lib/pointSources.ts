@@ -201,12 +201,12 @@ export function buildGroupStageRoundPointSources(
     }
     sources.push({
       id: `group-r${r}-result`,
-      label: `${labels.round(r)} — ${labels.correctResult}`,
+      label: `${labels.round(r)}: ${labels.correctResult}`,
       pointsByUser: correctResultPoints,
     });
     sources.push({
       id: `group-r${r}-exact`,
-      label: `${labels.round(r)} — ${labels.exactScore}`,
+      label: `${labels.round(r)}: ${labels.exactScore}`,
       pointsByUser: exactScorePoints,
     });
   }

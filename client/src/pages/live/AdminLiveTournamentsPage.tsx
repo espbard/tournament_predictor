@@ -82,7 +82,7 @@ export default function AdminLiveTournamentsPage() {
             {presets.map(preset => (
               <option key={preset.key} value={preset.key} disabled={takenPresetKeys.has(preset.key)}>
                 {preset.defaultName}
-                {takenPresetKeys.has(preset.key) ? ` — ${t('live.admin.alreadyAdded')}` : ''}
+                {takenPresetKeys.has(preset.key) ? ` (${t('live.admin.alreadyAdded')})` : ''}
               </option>
             ))}
           </select>
