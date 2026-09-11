@@ -1925,7 +1925,7 @@ made of. It lives in `buildLiveUserStats()` and nowhere else:
 10. In Haaland we trust · 11. Holding the answer key · 12. A dead cert · 13. The last believer ·
 14. Go Norway! · 15. The Climber · 16. I'm falling! · 17. The most expected result ·
 18. Most unexpected result · 19. How did you know? · 20. Almost · 21. Best when it counts (§34) ·
-22. God save the king (§35)
+22. God save the king (§35) · 23. The Norway believer · 24. The Norway sceptic (§37)
 
 | Decision | Why |
 |---|---|
@@ -2079,11 +2079,36 @@ panels that do not go through the translation file.
 | A colon where the dash set off an explanation, a comma where it set off a conjunction, brackets where it was a pair of them | They are what the dash was standing in for. A blanket substitution would have left comma splices where one clause simply followed another |
 | Code comments, this document and the CLI scripts keep theirs | They are not the page. The rule is about what a member reads |
 | The standalone `'—'` placeholder for an empty score or answer is left alone | It is a glyph standing in for "nothing here", not a sentence, and changing it would change how the score tables look rather than how they read |
-| Two tests hold the line: `client/src/lib/translations.test.ts` walks every string in the copy, and the live deck's own suite builds all 22 cards in all three languages | The rule is easy to break by hand a season from now, and both tests fail loudly rather than quietly letting one back in |
+| Two tests hold the line: `client/src/lib/translations.test.ts` walks every string in the copy, and the live deck's own suite builds the whole deck in all three languages | The rule is easy to break by hand a season from now, and both tests fail loudly rather than quietly letting one back in |
 
 ---
 
-## 37. References
+## 37. The Norway pair *(added after the six phases, on request)*
+
+Two cards off the table predictions, about the two Norwegian clubs in the draw: whose table
+has **Bodø/Glimt** and **Viking** highest, and whose has them lowest.
+`norwayBelieverCard()` and `norwayScepticCard()` in `server/src/live/userStats.ts`, both onto
+one private `norwegianFaithCard()`.
+
+> **Norgesvennen** — "**Alice** har **FK Bodø/Glimt** på **1. plass** og **Viking FK** på
+> **2. plass**. Ingen har større tro på de norske lagene!"
+>
+> **Norgesskeptikeren** — "**Chris** har **FK Bodø/Glimt** på **4. plass** og **Viking FK** på
+> **5. plass**. Ingen har mindre tro på de norske lagene!"
+
+| Decision | Why |
+|---|---|
+| The two positions are added up to rank the members, and the sum is never printed | Requested. 12th is not a position anybody predicted, and two members level on it need not have got there the same way: 3rd and 9th is one story, 5th and 7th another. The card prints what each member actually predicted |
+| Members level on the sum get a line each | For that same reason. One sentence could not say who had which positions, and the deck already does this on **Close enough!** (§32) |
+| The clubs are found by the word `glimt` or `viking` in the team name | An id belongs to a provider and changes with it, and the name is written "FK Bodø/Glimt" by one and "Bodo/Glimt" by another. `glimt` survives a keyboard with no ø, and neither word belongs to another club in the draw |
+| A season with only one of them in the draw still gets a card | The question is how much faith a member has in the Norwegians who are actually there. Neither club in the draw is where the card has nothing to say |
+| A member whose table is missing a club that *is* in the draw is left out | Their sum would be short a number and would beat everybody else's for nothing. It is a ranking saved before the club joined the shortlist, not a member with an opinion about it |
+| Positions are read after dropping teams the tournament no longer has | A ranking still carrying one would push everything below it a place further down than the member ever predicted. `countEnd` and the dead-cert card drop them the same way |
+| Both cards are null when every member is level | There is no most and no least in a league that agrees, and both ends would name everybody. It is the rule **Holding the answer key** already uses for its second sentence |
+
+---
+
+## 38. References
 
 - [2026/27 Champions League: teams, dates, draws, format](https://www.uefa.com/uefachampionsleague/news/02a6-20d57cfcd03e-407c22a7f465-1000--2026-27-champions-league-teams-dates-draws-format-final/)
 - [UEFA confirms date for the 2026/27 Champions League league phase draw](https://www.besoccer.com/new/uefa-confirms-date-for-the-202627-champions-league-league-phase-draw-1421299)

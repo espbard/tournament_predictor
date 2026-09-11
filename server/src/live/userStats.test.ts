@@ -9,6 +9,8 @@ import {
   mostExpectedResultCard,
   mostUnexpectedResultCard,
   nationalityGoalsCard,
+  norwayBelieverCard,
+  norwayScepticCard,
   goalDroughtCard,
   godSaveTheKingCard,
   goldenBootCard,
@@ -1940,6 +1942,110 @@ describe('tronderHaterCard', () => {
   });
 });
 
+describe('the Norway pair', () => {
+  // Two Norwegian clubs in the draw, named the way a provider writes them, plus three
+  // others to fill the table out.
+  const norway = [
+    { id: 'n1', name: 'FK Bodø/Glimt', crestUrl: '/api/images/glimt.png' },
+    { id: 'n2', name: 'Viking FK', crestUrl: null },
+    ...teams,
+  ];
+  // Alice: 1 + 2 = 3. Bob: 2 + 4 = 6. Chris: 4 + 5 = 9.
+  const tables = [
+    pick('u1', 'n1', 'n2', 't1', 't2', 't3'),
+    pick('u2', 't1', 'n1', 't2', 'n2', 't3'),
+    pick('u3', 't1', 't2', 't3', 'n1', 'n2'),
+  ];
+
+  it('names the member whose table has them highest, and prints both positions', () => {
+    const card = norwayBelieverCard(tables, norway, 'en');
+    expect(card?.title).toBe('The Norway believer');
+    expect(card?.statistic).toBe(
+      '**Alice** has **FK Bodø/Glimt** in **1st** and **Viking FK** in **2nd**. Nobody has more faith in the Norwegian clubs!',
+    );
+    expect(card?.subjects.map(s => s.id)).toEqual(['u1']);
+  });
+
+  it('names the member whose table has them lowest', () => {
+    const card = norwayScepticCard(tables, norway, 'en');
+    expect(card?.title).toBe('The Norway sceptic');
+    expect(card?.statistic).toBe(
+      '**Chris** has **FK Bodø/Glimt** in **4th** and **Viking FK** in **5th**. Nobody has less faith in the Norwegian clubs!',
+    );
+    expect(card?.subjects.map(s => s.id)).toEqual(['u3']);
+  });
+
+  it('gives every member level on the total a line of their own, positions and all', () => {
+    // Alice 2 + 5 = 7, Bob 3 + 4 = 7: the same total, reached from different places.
+    const level = [
+      pick('u1', 't1', 'n1', 't2', 't3', 'n2'),
+      pick('u2', 't1', 't2', 'n1', 'n2', 't3'),
+      pick('u3', 't1', 't2', 't3', 'n1', 'n2'),
+    ];
+    expect(norwayBelieverCard(level, norway, 'en')?.statistic).toBe(
+      '**Alice** has **FK Bodø/Glimt** in **2nd** and **Viking FK** in **5th**.' +
+        '\n**Bob** has **FK Bodø/Glimt** in **3rd** and **Viking FK** in **4th**.' +
+        '\nNobody has more faith in the Norwegian clubs!',
+    );
+    expect(norwayBelieverCard(level, norway, 'en')?.subjects.map(s => s.id)).toEqual(['u1', 'u2']);
+  });
+
+  it('counts only the clubs the draw actually has', () => {
+    const glimtOnly = [
+      { id: 'n1', name: 'FK Bodø/Glimt', crestUrl: null },
+      ...teams,
+    ];
+    expect(
+      norwayBelieverCard(
+        [pick('u1', 'n1', 't1', 't2', 't3'), pick('u2', 't1', 't2', 'n1', 't3')],
+        glimtOnly,
+        'en',
+      )?.statistic,
+    ).toBe('**Alice** has **FK Bodø/Glimt** in **1st**. Nobody has more faith in the Norwegian clubs!');
+  });
+
+  it('reads the position among the teams still in the draw', () => {
+    // 'gone' is in the ranking but not in the tournament, so Bodø/Glimt is second, not third.
+    expect(
+      norwayBelieverCard(
+        [
+          pick('u1', 't1', 'gone', 'n1', 'n2', 't2'),
+          pick('u2', 't1', 't2', 't3', 'n1', 'n2'),
+        ],
+        norway,
+        'en',
+      )?.statistic,
+    ).toBe(
+      '**Alice** has **FK Bodø/Glimt** in **2nd** and **Viking FK** in **3rd**. Nobody has more faith in the Norwegian clubs!',
+    );
+  });
+
+  it('is null without the clubs, without a ranking that places them, or with the league level', () => {
+    expect(norwayBelieverCard(tables, teams, 'en')).toBeNull();
+    expect(norwayScepticCard(tables, teams, 'en')).toBeNull();
+    expect(norwayBelieverCard([], norway, 'en')).toBeNull();
+    // A ranking made before Viking joined the draw places one of the two, so it is out.
+    expect(norwayBelieverCard([pick('u1', 'n1', 't1', 't2')], norway, 'en')).toBeNull();
+    // Everybody level: there is no most and no least, only a league that agrees.
+    const agreed = [pick('u1', 'n1', 'n2', 't1'), pick('u2', 'n1', 'n2', 't2')];
+    expect(norwayBelieverCard(agreed, norway, 'en')).toBeNull();
+    expect(norwayScepticCard(agreed, norway, 'en')).toBeNull();
+  });
+
+  it('translates the titles and the sentences', () => {
+    expect(norwayBelieverCard(tables, norway, 'no')).toMatchObject({
+      title: 'Norgesvennen',
+      statistic:
+        '**Alice** har **FK Bodø/Glimt** på **1. plass** og **Viking FK** på **2. plass**. Ingen har større tro på de norske lagene!',
+    });
+    expect(norwayScepticCard(tables, norway, 'de')).toMatchObject({
+      title: 'Der Norwegen-Skeptiker',
+      statistic:
+        '**Chris** hat **FK Bodø/Glimt** auf **Platz 4** und **Viking FK** auf **Platz 5**. Niemand glaubt weniger an die norwegischen Klubs!',
+    });
+  });
+});
+
 describe('godSaveTheKingCard', () => {
   const asked = (
     userId: string,
@@ -2049,10 +2155,12 @@ describe('buildLiveUserStats', () => {
     ]);
   });
 
-  it('ends on the two newest cards, in the order they were added', () => {
+  it('ends on the four newest cards, in the order they were added', () => {
     const ids = buildLiveUserStats(
       {
         ...all,
+        teams: [{ id: 'n1', name: 'FK Bodø/Glimt', crestUrl: null }, ...teams],
+        tablePredictions: [pick('u1', 'n1', 't1', 't3'), pick('u2', 't1', 't3', 'n1')],
         scoredPredictions: [highlighted('u1', [2, 1], [2, 1], 'f1', 2)],
         bonusAnswers: [
           {
@@ -2064,15 +2172,24 @@ describe('buildLiveUserStats', () => {
       },
       'en',
     ).map(c => c.id);
-    expect(ids.slice(-2)).toEqual(['bestWhenItCounts', 'godSaveTheKing']);
-    // Neither is in the deck until there is something for it to say.
-    expect(buildLiveUserStats(all, 'en').map(c => c.id)).not.toContain('bestWhenItCounts');
-    expect(buildLiveUserStats(all, 'en').map(c => c.id)).not.toContain('godSaveTheKing');
+    expect(ids.slice(-4)).toEqual([
+      'bestWhenItCounts',
+      'godSaveTheKing',
+      'norwayBeliever',
+      'norwaySceptic',
+    ]);
+    // None of them is in the deck until there is something for it to say.
+    const quiet = buildLiveUserStats(all, 'en').map(c => c.id);
+    for (const id of ['bestWhenItCounts', 'godSaveTheKing', 'norwayBeliever', 'norwaySceptic']) {
+      expect(quiet).not.toContain(id);
+    }
   });
 
   it('prints no em dash in any language', () => {
     const deck = {
       ...all,
+      teams: [{ id: 'n1', name: 'FK Bodø/Glimt', crestUrl: null }, ...teams],
+      tablePredictions: [pick('u1', 'n1', 't1', 't3'), pick('u2', 't1', 't3', 'n1')],
       scoredPredictions: [
         highlighted('u1', [2, 1], [2, 1], 'f1', 2),
         highlighted('u2', [3, 0], [2, 1], 'f1', 2),
@@ -2094,7 +2211,10 @@ describe('buildLiveUserStats', () => {
       ],
     };
     for (const lang of ['en', 'no', 'de'] as const) {
-      for (const card of buildLiveUserStats(deck, lang)) {
+      const cards = buildLiveUserStats(deck, lang);
+      // The guard is only worth having if the deck it walks is the whole deck.
+      expect(cards.map(c => c.id)).toContain('norwaySceptic');
+      for (const card of cards) {
         expect(`${card.title} ${card.statistic}`).not.toContain('—');
       }
     }

@@ -38,6 +38,9 @@ import { LIVE_SEASON_MILESTONE_IDS } from './progression';
 // Trøndelag, and whoever has every English side surviving the league phase. The first of
 // them reads the snapshot the scorer sync leaves on the tournament, so it costs no
 // provider request of its own.
+//
+// And a pair off the table predictions about the same corner of the map: whose table has
+// the Norwegian clubs highest, and whose has them lowest.
 
 export type LiveStatsLang = 'en' | 'no' | 'de';
 
@@ -1941,6 +1944,172 @@ export function nationalityGoalsCard(
   };
 }
 
+// ── The Norwegian clubs ───────────────────────────────────────────────────────
+
+/**
+ * The two clubs the pair below reads, found by the distinctive word in each name rather
+ * than by an id: a provider writes "FK Bodø/Glimt" and "Viking FK" this season and may
+ * write them differently the next, and an id changes with the provider. `glimt` survives
+ * a keyboard with no ø, and neither word belongs to any other club in the draw.
+ *
+ * In the order the sentence names them.
+ */
+const NORWEGIAN_CLUBS = ['glimt', 'viking'];
+
+/** One member's table prediction, read for the Norwegian clubs alone. */
+interface NorwegianPlacings extends CardMember {
+  /** Where they put each club, in the order `clubs` has them. */
+  places: number[];
+  /** The two positions added up. What the cards rank on, and what they never print. */
+  combined: number;
+}
+
+/**
+ * Which of the two clubs are in this tournament, and where each member's table has them.
+ *
+ * A club the draw does not contain is simply not part of the sum, so a season with only
+ * one of them in it still has a card: the question is how much faith a member has in the
+ * Norwegians who are actually there. A member whose table is missing a club that *is* in
+ * the draw is left out instead, since their total would be short a number and would beat
+ * everybody else's for no reason.
+ */
+function norwegianPlacings(
+  predictions: LiveStatsTablePrediction[],
+  teams: LiveStatsTeam[],
+): { clubs: Entrant[]; rows: NorwegianPlacings[] } {
+  const byId = indexTeams(teams);
+  const clubs: Entrant[] = [];
+  for (const word of NORWEGIAN_CLUBS) {
+    const found = teams.find(t => t.name.toLowerCase().includes(word));
+    if (found) clubs.push({ id: found.id, name: found.name, imageUrl: found.crestUrl });
+  }
+  if (clubs.length === 0) return { clubs, rows: [] };
+
+  const rows: NorwegianPlacings[] = [];
+  for (const prediction of predictions) {
+    // Teams the tournament no longer has are dropped before the positions are read, the
+    // same way countEnd drops them: a ranking still carrying one would otherwise push
+    // everything below it a place further down than the member ever predicted.
+    const ranked = prediction.orderedTeamIds.filter(teamId => byId.has(teamId));
+    const places: number[] = [];
+    for (const club of clubs) {
+      // A ranking saved before a club joined the draw does not place it at all.
+      const index = ranked.indexOf(club.id);
+      if (index >= 0) places.push(index + 1);
+    }
+    if (places.length !== clubs.length) continue;
+    rows.push({
+      userId: prediction.userId,
+      username: prediction.username,
+      imageUrl: prediction.imageUrl,
+      iconColor: prediction.iconColor,
+      places,
+      combined: places.reduce((sum, place) => sum + place, 0),
+    });
+  }
+  return { clubs, rows };
+}
+
+/** "Alice has FK Bodø/Glimt in 3rd and Viking FK in 9th." */
+function placingLine(row: NorwegianPlacings, clubs: Entrant[], lang: LiveStatsLang): string {
+  const parts = clubs.map((club, i) =>
+    lang === 'no'
+      ? `**${club.name}** på **${row.places[i]}. plass**`
+      : lang === 'de'
+        ? `**${club.name}** auf **Platz ${row.places[i]}**`
+        : `**${club.name}** in **${ordinal(row.places[i])}**`,
+  );
+  const where = joinNames(parts, lang);
+  return lang === 'no'
+    ? `**${row.username}** har ${where}.`
+    : lang === 'de'
+      ? `**${row.username}** hat ${where}.`
+      : `**${row.username}** has ${where}.`;
+}
+
+/**
+ * The two ends of the league's faith in the Norwegian clubs: whose table puts Bodø/Glimt
+ * and Viking highest, and whose puts them lowest.
+ *
+ * The two positions are added together and the sum is what ranks the members, but it is
+ * never printed: 12th is not a position anybody predicted, and two members level on it
+ * can have got there from 3rd and 9th or from 5th and 7th. Each member's own two
+ * positions are what the card shows, a line each where several are level.
+ *
+ * Null where neither club is in the draw, where nobody has placed them, and where every
+ * member is level: with one number shared by the whole league there is no most and no
+ * least, only a league that agrees, and both ends would name everybody.
+ */
+function norwegianFaithCard(
+  predictions: LiveStatsTablePrediction[],
+  teams: LiveStatsTeam[],
+  lang: LiveStatsLang,
+  end: 'most' | 'least',
+): UserStatCardData | null {
+  const { clubs, rows } = norwegianPlacings(predictions, teams);
+  if (rows.length === 0) return null;
+
+  const totals = rows.map(r => r.combined);
+  const best = Math.min(...totals);
+  const worst = Math.max(...totals);
+  if (best === worst) return null;
+
+  const winners = rows.filter(r => r.combined === (end === 'most' ? best : worst)).sort(byUsername);
+
+  const title =
+    end === 'most'
+      ? lang === 'no'
+        ? 'Norgesvennen'
+        : lang === 'de'
+          ? 'Der Norwegen-Fan'
+          : 'The Norway believer'
+      : lang === 'no'
+        ? 'Norgesskeptikeren'
+        : lang === 'de'
+          ? 'Der Norwegen-Skeptiker'
+          : 'The Norway sceptic';
+
+  const claim =
+    end === 'most'
+      ? lang === 'no'
+        ? 'Ingen har større tro på de norske lagene!'
+        : lang === 'de'
+          ? 'Niemand glaubt mehr an die norwegischen Klubs!'
+          : 'Nobody has more faith in the Norwegian clubs!'
+      : lang === 'no'
+        ? 'Ingen har mindre tro på de norske lagene!'
+        : lang === 'de'
+          ? 'Niemand glaubt weniger an die norwegischen Klubs!'
+          : 'Nobody has less faith in the Norwegian clubs!';
+
+  // One member reads as a single breath; several are a line each, because members level
+  // on the sum need not have got there the same way, and the positions are the point.
+  const statistic =
+    winners.length === 1
+      ? `${placingLine(winners[0], clubs, lang)} ${claim}`
+      : [...winners.map(w => placingLine(w, clubs, lang)), claim].join('\n');
+
+  return memberCard(end === 'most' ? 'norwayBeliever' : 'norwaySceptic', title, statistic, winners);
+}
+
+/** Whose table has the Norwegian clubs highest. */
+export function norwayBelieverCard(
+  predictions: LiveStatsTablePrediction[],
+  teams: LiveStatsTeam[],
+  lang: LiveStatsLang,
+): UserStatCardData | null {
+  return norwegianFaithCard(predictions, teams, lang, 'most');
+}
+
+/** And whose has them lowest. */
+export function norwayScepticCard(
+  predictions: LiveStatsTablePrediction[],
+  teams: LiveStatsTeam[],
+  lang: LiveStatsLang,
+): UserStatCardData | null {
+  return norwegianFaithCard(predictions, teams, lang, 'least');
+}
+
 // ── Trøndelag ─────────────────────────────────────────────────────────────────
 
 /**
@@ -2127,5 +2296,7 @@ export function buildLiveUserStats(
     almostCard(scoredPredictions, lang),
     bestWhenItCountsCard(scoredPredictions, lang),
     godSaveTheKingCard(bonusAnswers, lang),
+    norwayBelieverCard(tablePredictions, teams, lang),
+    norwayScepticCard(tablePredictions, teams, lang),
   ].filter((c): c is UserStatCardData => c !== null);
 }
