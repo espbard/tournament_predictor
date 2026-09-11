@@ -2104,6 +2104,8 @@ one private `norwegianFaithCard()`.
 | A season with only one of them in the draw still gets a card | The question is how much faith a member has in the Norwegians who are actually there. Neither club in the draw is where the card has nothing to say |
 | A member whose table is missing a club that *is* in the draw is left out | Their sum would be short a number and would beat everybody else's for nothing. It is a ranking saved before the club joined the shortlist, not a member with an opinion about it |
 | Positions are read after dropping teams the tournament no longer has | A ranking still carrying one would push everything below it a place further down than the member ever predicted. `countEnd` and the dead-cert card drop them the same way |
+| Each end is its own picture (`backgroundImageUrl`): Bodø/Glimt's "hello Europe, my old friend" tifo on the believer, a Norwegian head in its hands on the sceptic | Requested. `LiveUserStatCard` already draws a full-bleed picture instead of the faces when a card sends one, as the Norway and England flag cards do, and the tile says which end of the pair it is before the sentence does. The members stay in the payload as the subjects and their names are in the text |
+| `client/public/stat-norway-believer.webp` and `stat-norway-sceptic.webp`, beside the two flags | The same shape of asset for the same job. Photographs rather than flat colour, so they are 71 KB and 34 KB rather than the flags' 2 KB, and the screenshot is kept at the width it came in at rather than upscaled |
 | Both cards are null when every member is level | There is no most and no least in a league that agrees, and both ends would name everybody. It is the rule **Holding the answer key** already uses for its second sentence |
 
 ---

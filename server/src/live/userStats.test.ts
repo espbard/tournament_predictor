@@ -1964,6 +1964,7 @@ describe('the Norway pair', () => {
       '**Alice** has **FK Bodø/Glimt** in **1st** and **Viking FK** in **2nd**. Nobody has more faith in the Norwegian clubs!',
     );
     expect(card?.subjects.map(s => s.id)).toEqual(['u1']);
+    expect(card?.backgroundImageUrl).toBe('/stat-norway-believer.webp');
   });
 
   it('names the member whose table has them lowest', () => {
@@ -1973,6 +1974,7 @@ describe('the Norway pair', () => {
       '**Chris** has **FK Bodø/Glimt** in **4th** and **Viking FK** in **5th**. Nobody has less faith in the Norwegian clubs!',
     );
     expect(card?.subjects.map(s => s.id)).toEqual(['u3']);
+    expect(card?.backgroundImageUrl).toBe('/stat-norway-sceptic.webp');
   });
 
   it('gives every member level on the total a line of their own, positions and all', () => {

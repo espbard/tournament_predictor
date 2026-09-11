@@ -1956,6 +1956,14 @@ export function nationalityGoalsCard(
  */
 const NORWEGIAN_CLUBS = ['glimt', 'viking'];
 
+/**
+ * The picture each end carries, in client/public. The believer gets Bodø/Glimt's "hello
+ * Europe, my old friend" tifo and the sceptic a Norwegian head in its hands, so the tile
+ * says which end of the pair it is before the sentence does.
+ */
+const NORWAY_BELIEVER_PICTURE = '/stat-norway-believer.webp';
+const NORWAY_SCEPTIC_PICTURE = '/stat-norway-sceptic.webp';
+
 /** One member's table prediction, read for the Norwegian clubs alone. */
 interface NorwegianPlacings extends CardMember {
   /** Where they put each club, in the order `clubs` has them. */
@@ -2036,6 +2044,11 @@ function placingLine(row: NorwegianPlacings, clubs: Entrant[], lang: LiveStatsLa
  * can have got there from 3rd and 9th or from 5th and 7th. Each member's own two
  * positions are what the card shows, a line each where several are level.
  *
+ * Each end carries its own picture as the tile, the way the Norway and England flag cards
+ * do: `LiveUserStatCard` draws a full-bleed `backgroundImageUrl` instead of the members'
+ * faces. They stay in the payload as the subjects, since they are who the card is about,
+ * and their names are in the sentence.
+ *
  * Null where neither club is in the draw, where nobody has placed them, and where every
  * member is level: with one number shared by the whole league there is no most and no
  * least, only a league that agrees, and both ends would name everybody.
@@ -2089,7 +2102,11 @@ function norwegianFaithCard(
       ? `${placingLine(winners[0], clubs, lang)} ${claim}`
       : [...winners.map(w => placingLine(w, clubs, lang)), claim].join('\n');
 
-  return memberCard(end === 'most' ? 'norwayBeliever' : 'norwaySceptic', title, statistic, winners);
+  const most = end === 'most';
+  return {
+    ...memberCard(most ? 'norwayBeliever' : 'norwaySceptic', title, statistic, winners),
+    backgroundImageUrl: most ? NORWAY_BELIEVER_PICTURE : NORWAY_SCEPTIC_PICTURE,
+  };
 }
 
 /** Whose table has the Norwegian clubs highest. */
