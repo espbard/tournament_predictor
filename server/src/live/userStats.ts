@@ -1392,40 +1392,57 @@ export function worstPredictionCard(
   const title =
     lang === 'no' ? 'Det var nesten da!' : lang === 'de' ? 'Knapp daneben!' : 'Close enough!';
 
-  // One prediction is the story; a tie can only say that they are level, and a tie held by
-  // one member alone says how many of theirs it took. The number of goals is what the card
-  // ranks on rather than what it prints: "nobody has missed by more" is the claim, and it
-  // is the one a tie has to soften, since the others in it missed by exactly as much.
+  // One prediction is the story, and a tie between members is several of them: a line
+  // each, naming the member, what they predicted and how it finished, rather than one
+  // sentence that can only say they are level. A tie one member holds alone stays a
+  // count — the same name over two lines says less than the number of times they did it.
   const alone = tie.length === 1;
-  const worst = tie[0];
-  const named = alone ? teamNames(worst, indexTeams(teams)) : null;
-  const predicted = `${worst.predictedHome}-${worst.predictedAway}`;
-  const actual = `${worst.actualHome}-${worst.actualAway}`;
+  const byId = indexTeams(teams);
 
-  const statistic =
-    lang === 'no'
-      ? alone
-        ? `**${names}** tippet **${predicted}** ${
-            named ? `på **${named.home} mot ${named.away}**, som` : 'på en kamp som'
-          } endte **${actual}**. Ingen andre har bommet så stort på en kamp!`
-        : winners.length === 1
-          ? `**${names}** har **${tie.length}** tips som bommer like stort. Ingen andre har bommet så stort på en kamp!`
-          : `**${names}** har bommet like stort hver sin gang. Ingen andre har bommet mer på en kamp!`
+  /** "Alice predicted 0-4 in Arsenal vs Bayern, which finished 3-0." */
+  const missedBy = (p: LiveStatsScoredPrediction): string => {
+    const named = teamNames(p, byId);
+    const predicted = `${p.predictedHome}-${p.predictedAway}`;
+    const actual = `${p.actualHome}-${p.actualAway}`;
+
+    return lang === 'no'
+      ? `**${p.username}** tippet **${predicted}** ${
+          named ? `på **${named.home} mot ${named.away}**, som` : 'på en kamp som'
+        } endte **${actual}**.`
       : lang === 'de'
-        ? alone
-          ? `**${names}** hat **${predicted}** ${
-              named ? `bei **${named.home} gegen ${named.away}**` : 'bei einem Spiel'
-            } getippt, das **${actual}** endete. Niemand sonst hat bei einem Spiel so danebengelegen!`
-          : winners.length === 1
-            ? `**${names}** hat **${tie.length}** Tipps, die genauso weit danebenliegen. Niemand sonst hat bei einem Spiel so danebengelegen!`
-            : `**${names}** haben jeweils genauso weit danebengelegen. Niemand sonst hat bei einem Spiel weiter danebengelegen!`
-        : alone
-          ? `**${names}** predicted **${predicted}** ${
-              named ? `in **${named.home} vs ${named.away}**, which` : 'in a match that'
-            } finished **${actual}**. Nobody else has missed a match by that much!`
-          : winners.length === 1
-            ? `**${names}** has **${tie.length}** predictions that missed by just as much. Nobody else has missed a match by that much!`
-            : `**${names}** have each missed a match by just as much. Nobody else has missed one by more!`;
+        ? `**${p.username}** hat **${predicted}** ${
+            named ? `bei **${named.home} gegen ${named.away}**` : 'bei einem Spiel'
+          } getippt, das **${actual}** endete.`
+        : `**${p.username}** predicted **${predicted}** ${
+            named ? `in **${named.home} vs ${named.away}**, which` : 'in a match that'
+          } finished **${actual}**.`;
+  };
+
+  /** "Alice has 2 predictions that missed by just as much." */
+  const counted =
+    lang === 'no'
+      ? `**${names}** har **${tie.length}** tips som bommer like stort.`
+      : lang === 'de'
+        ? `**${names}** hat **${tie.length}** Tipps, die genauso weit danebenliegen.`
+        : `**${names}** has **${tie.length}** predictions that missed by just as much.`;
+
+  // The claim the card closes on survives a tie between members now that every one of
+  // them is named on a line above it: "nobody else" is everybody those lines leave out.
+  const closing =
+    lang === 'no'
+      ? 'Ingen andre har bommet så stort på en kamp!'
+      : lang === 'de'
+        ? 'Niemand sonst hat bei einem Spiel so danebengelegen!'
+        : 'Nobody else has missed a match by that much!';
+
+  // One prediction, or one member's tie, reads as a single breath; several members are a
+  // line each, for the same reason the last-believer card gives each team its own. See
+  // LiveUserStatCard, which keeps the breaks.
+  const statistic = alone
+    ? `${missedBy(tie[0])} ${closing}`
+    : winners.length === 1
+      ? `${counted} ${closing}`
+      : [...winners.map(missedBy), closing].join('\n');
 
   return memberCard('worstPrediction', title, statistic, winners);
 }

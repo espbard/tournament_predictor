@@ -1564,14 +1564,34 @@ describe('worstPredictionCard', () => {
     expect(card?.statistic).toContain('predicted **0-2**');
   });
 
-  it('shows every member level on the same miss', () => {
+  it('gives every member level on the same miss a line of their own', () => {
     const card = worstPredictionCard(
       [scored('u1', [0, 4], [3, 0], 'f1'), scored('u2', [4, 0], [0, 3], 'f2')],
       teams,
       'en',
     );
     expect(card?.statistic).toBe(
-      '**Alice and Bob** have each missed a match by just as much. Nobody else has missed one by more!',
+      '**Alice** predicted **0-4** in **Arsenal vs Bayern**, which finished **3-0**.' +
+        '\n**Bob** predicted **4-0** in **Bayern vs Barcelona**, which finished **0-3**.' +
+        '\nNobody else has missed a match by that much!',
+    );
+    expect(card?.subjects.map(s => s.id)).toEqual(['u1', 'u2']);
+  });
+
+  it('gives a member in the tie one line, on the first of their level misses', () => {
+    const card = worstPredictionCard(
+      [
+        scored('u1', [0, 4], [3, 0], 'f1'),
+        scored('u1', [4, 0], [0, 3], 'f2'),
+        scored('u2', [0, 4], [3, 0], 'f9'),
+      ],
+      teams,
+      'en',
+    );
+    expect(card?.statistic).toBe(
+      '**Alice** predicted **0-4** in **Arsenal vs Bayern**, which finished **3-0**.' +
+        '\n**Bob** predicted **0-4** in a match that finished **3-0**.' +
+        '\nNobody else has missed a match by that much!',
     );
     expect(card?.subjects.map(s => s.id)).toEqual(['u1', 'u2']);
   });
@@ -1617,6 +1637,20 @@ describe('worstPredictionCard', () => {
       statistic:
         '**Alice** hat **0-4** bei **Arsenal gegen Bayern** getippt, das **3-0** endete. Niemand sonst hat bei einem Spiel so danebengelegen!',
     });
+  });
+
+  it('translates the line each member level on the same miss gets', () => {
+    const tied = [scored('u1', [0, 4], [3, 0], 'f1'), scored('u2', [4, 0], [0, 3], 'f2')];
+    expect(worstPredictionCard(tied, teams, 'no')?.statistic).toBe(
+      '**Alice** tippet **0-4** på **Arsenal mot Bayern**, som endte **3-0**.' +
+        '\n**Bob** tippet **4-0** på **Bayern mot Barcelona**, som endte **0-3**.' +
+        '\nIngen andre har bommet så stort på en kamp!',
+    );
+    expect(worstPredictionCard(tied, teams, 'de')?.statistic).toBe(
+      '**Alice** hat **0-4** bei **Arsenal gegen Bayern** getippt, das **3-0** endete.' +
+        '\n**Bob** hat **4-0** bei **Bayern gegen Barcelona** getippt, das **0-3** endete.' +
+        '\nNiemand sonst hat bei einem Spiel so danebengelegen!',
+    );
   });
 });
 

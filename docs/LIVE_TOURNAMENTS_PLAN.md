@@ -1839,7 +1839,7 @@ its sentence now ends on the claim rather than on the arithmetic:
 | Decision | Why |
 |---|---|
 | The goal-difference distance is still what the card ranks on; it just stopped printing it | It is the only honest way to order the misses, but "seven goals out on the goal difference" was arithmetic where the card wanted a punchline. Nothing about which prediction wins changed |
-| The two tie sentences had to be reworded rather than just re-ended | "Nobody else has missed by that much" is false when somebody else missed by exactly that much. A tie between members now says they are level and that nobody has missed by *more*; a tie one member holds alone keeps the stronger claim, since there genuinely is no other member in it |
+| The two tie sentences had to be reworded rather than just re-ended | "Nobody else has missed by that much" is false when somebody else missed by exactly that much. A tie between members said they were level and that nobody had missed by *more*; a tie one member holds alone keeps the stronger claim, since there genuinely is no other member in it. §32 replaced the first of those with a line per member |
 | The English title avoids "Almost" and the German avoids "Fast" | Both are already the `almost` card's titles, and two cards in one deck answering to the same word is a card nobody can refer to |
 
 ---
@@ -1986,7 +1986,27 @@ route.
 
 ---
 
-## 32. References
+## 32. A tie on the worst prediction gets a line each *(added after the six phases, on request)*
+
+`worstPredictionCard` no longer flattens a tie between members into one sentence. Each of
+them gets the same line the card has always given a lone winner — who, what they predicted,
+which fixture, how it finished — and the claim closes the card underneath:
+
+> **Alice** tippet **0-2** på **FC Bayern München mot FK Bodø/Glimt**, som endte **2-0**.
+> **Bob** tippet **3-0** på **Real Madrid mot Inter Milan**, som endte **0-1**.
+> Ingen andre har bommet så stort på en kamp!
+
+| Decision | Why |
+|---|---|
+| The "they are level" sentence is gone | It named the members and then said nothing about them. The predictions are the story the card is for, and there is room to print every one of them |
+| The closing claim goes back to "nobody else has missed a match by that much" for a tie between members | It was softened to "by more" only because the sentence above it did not name who else was level. Now every member in the tie is on a line of their own, so "nobody **else**" is exactly the people those lines leave out |
+| One line per member, not per prediction | The lines are what the subjects of the card are, and a member who holds two of the level misses would otherwise appear twice under the same name. `dedupeByUser` already picks their first, and the tile draws one picture each |
+| A tie **one member** holds alone still counts their predictions instead | Their name over two identical-looking lines says less than "has **2** predictions that missed by just as much", which is the thing worth knowing about them |
+| The lines are joined with `\n`, uncapped | `LiveUserStatCard` renders the caption `whitespace-pre-line`, the way the last-believer card's line-per-team already relies on. A league with five members level on the same miss is a card worth printing in full |
+
+---
+
+## 33. References
 
 - [2026/27 Champions League: teams, dates, draws, format](https://www.uefa.com/uefachampionsleague/news/02a6-20d57cfcd03e-407c22a7f465-1000--2026-27-champions-league-teams-dates-draws-format-final/)
 - [UEFA confirms date for the 2026/27 Champions League league phase draw](https://www.besoccer.com/new/uefa-confirms-date-for-the-202627-champions-league-league-phase-draw-1421299)
