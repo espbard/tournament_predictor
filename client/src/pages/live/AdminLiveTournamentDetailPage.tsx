@@ -103,7 +103,7 @@ export default function AdminLiveTournamentDetailPage() {
         err instanceof ApiError
           ? [err.message, typeof err.details === 'string' ? err.details : null]
               .filter(Boolean)
-              .join(' — ')
+              .join(': ')
           : t('live.admin.syncFailed'),
       );
     },
@@ -508,7 +508,7 @@ function DiagnosisReport({ diagnosis }: { diagnosis: LiveFixtureDiagnosis }) {
             })}
           </>
         )}
-        {' — '}
+        {' · '}
         {t('live.admin.diagnoseStored', {
           fixtures: diagnosis.storedFixtures,
           teams: diagnosis.storedTeams,

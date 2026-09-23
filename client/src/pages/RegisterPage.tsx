@@ -190,9 +190,9 @@ export default function RegisterPage() {
         </div>
         <p className="text-xs text-muted-foreground -mt-3">
           {accountType === 'leaderboard'
-            ? 'View leaderboards only — no predictions, not on the scoreboard.'
+            ? 'View leaderboards only: no predictions, not on the scoreboard.'
             : accountType === 'lateAddition'
-              ? 'Join competitions already in progress — starts at last place, 24h to predict on remaining matches.'
+              ? 'Join competitions already in progress: starts at last place, 24h to predict on remaining matches.'
               : 'Make predictions and compete on the leaderboard.'}
         </p>
 

@@ -33,10 +33,14 @@ import { LIVE_SEASON_MILESTONE_IDS } from './progression';
 // scoreline. And a pair about one prediction rather than a season of them: the one nobody
 // else saw coming, and the one that missed by the most goals.
 //
-// Plus two off the bonus questions: how many goals the league expects of Norwegians
-// against how many they have actually scored, and whoever expects nothing at all of
-// Trøndelag. It reads the snapshot the scorer sync leaves on the tournament, so it
-// costs no provider request of its own.
+// Plus three off the bonus questions: how many goals the league expects of Norwegians
+// against how many they have actually scored, whoever expects nothing at all of
+// Trøndelag, and whoever has every English side surviving the league phase. The first of
+// them reads the snapshot the scorer sync leaves on the tournament, so it costs no
+// provider request of its own.
+//
+// And a pair off the table predictions about the same corner of the map: whose table has
+// the Norwegian clubs highest, and whose has them lowest.
 
 export type LiveStatsLang = 'en' | 'no' | 'de';
 
@@ -985,7 +989,7 @@ export function inHaalandWeTrustCard(
       : lang === 'no'
         ? ` ${one ? 'Brukeren' : 'Brukerne'} som har minst tro på Brauten er **${names}**, som tippet at Haaland ender på **${lowest}. plass** på toppscorerlisten.`
         : lang === 'de'
-          ? ` Am wenigsten ${one ? 'glaubt' : 'glauben'} **${names}** an ihn — auf **Platz ${lowest}** der Torjägerliste.`
+          ? ` Am wenigsten ${one ? 'glaubt' : 'glauben'} **${names}** an ihn: auf **Platz ${lowest}** der Torjägerliste.`
           : ` The ${one ? 'one' : 'ones'} with the least faith in him: **${names}**, who put him **${ordinal(lowest)}** on the top-scorer list.`;
 
   const statistic =
@@ -1034,6 +1038,17 @@ export interface LiveStatsScoredPrediction {
   actualAway: number;
   /** What it was awarded, multiplier bonus included: the leaderboard's own number. */
   points: number;
+  /**
+   * The fixture's point multiplier — an admin marking one match as worth more. 1 on an
+   * ordinary fixture, so "highlighted" is simply anything above it.
+   */
+  multiplier: number;
+  /**
+   * What that multiplier added on top of the tiers, and nothing else — the leaderboard's
+   * highlight column, stored per prediction by the scoring trigger. Carried rather than
+   * worked out from `points` and the multiplier: it is what the member was actually paid.
+   */
+  multiplierBonusPoints: number;
 }
 
 /** The three tiers, asked of one prediction. Nested, exactly as calculateLivePoints has them. */
@@ -1219,6 +1234,96 @@ export function almostCard(
 }
 
 
+// ── The highlighted matches ───────────────────────────────────────────────────
+
+/** What one member took out of the matches an admin marked as worth more. */
+interface HighlightTally extends CardMember {
+  /** The multiplier's share of their points, summed: the leaderboard's highlight column. */
+  bonus: number;
+}
+
+/**
+ * Who cashed in when the points were doubled: the member whose predictions on highlighted
+ * fixtures — the ones an admin put a multiplier on — earned the most on top of the tiers.
+ *
+ * It ranks on the bonus alone rather than on everything those matches paid, because the
+ * bonus is what the highlight itself was worth. The tiers underneath it were on offer to
+ * the whole league on every other fixture too, and counting them would make this a second
+ * telling of who predicts well in general. It is also the number the leaderboard already
+ * shows in its own column, so a member can check the card against the table.
+ *
+ * Ties are shown rather than broken, as everywhere else in the deck.
+ *
+ * Null where the competition has no highlighted match that has been played, and null
+ * again where every member came away from them with nothing: a card announcing that
+ * somebody was best at earning zero is not a statistic.
+ */
+export function bestWhenItCountsCard(
+  predictions: LiveStatsScoredPrediction[],
+  lang: LiveStatsLang,
+): UserStatCardData | null {
+  const onHighlights = predictions.filter(p => p.multiplier > 1);
+  if (onHighlights.length === 0) return null;
+
+  // The highlighted fixtures the deck can see, which is the ones somebody predicted: a
+  // match nobody in the league predicted paid nobody, and the sentence counts what was
+  // played for.
+  const played = new Set(onHighlights.map(p => p.fixtureId)).size;
+
+  const tallies = new Map<string, HighlightTally>();
+  for (const p of onHighlights) {
+    const tally: HighlightTally = tallies.get(p.userId) ?? {
+      userId: p.userId,
+      username: p.username,
+      imageUrl: p.imageUrl,
+      iconColor: p.iconColor,
+      bonus: 0,
+    };
+    tally.bonus += p.multiplierBonusPoints;
+    tallies.set(p.userId, tally);
+  }
+
+  const rows = [...tallies.values()];
+  const bonus = Math.max(...rows.map(r => r.bonus));
+  if (bonus <= 0) return null;
+
+  const winners = rows.filter(r => r.bonus === bonus).sort(byUsername);
+  const names = joinNames(winners.map(w => w.username), lang);
+  const tied = winners.length > 1;
+
+  const title =
+    lang === 'no'
+      ? 'Best når det gjelder'
+      : lang === 'de'
+        ? 'Wenn es drauf ankommt'
+        : 'Best when it counts';
+
+  // A league can be one highlighted match in, and "the 1 highlighted matches" is not a
+  // sentence — so the singular says "the one" and drops the number.
+  const one = played === 1;
+  const kampene = one ? 'den ene markerte kampen' : `de **${played}** markerte kampene`;
+  const spiele = one ? 'dem einen hervorgehobenen Spiel' : `den **${played}** hervorgehobenen Spielen`;
+  const matches = one ? 'the one highlighted match' : `the **${played}** highlighted matches`;
+  const punkt = bonus === 1 ? 'Zusatzpunkt' : 'Zusatzpunkte';
+  const points = bonus === 1 ? 'point' : 'points';
+
+  const statistic =
+    lang === 'no'
+      ? `**${names}** har hentet **${bonus}** bonuspoeng${tied ? ' hver' : ''} fra ${kampene}, ${
+          tied ? 'og ingen andre har hentet flere' : 'flere enn noen andre'
+        }!`
+      : lang === 'de'
+        ? `**${names}** ${tied ? 'haben je' : 'hat'} **${bonus}** ${punkt} aus ${spiele} geholt, ${
+            tied ? 'und niemand sonst hat mehr geholt' : 'mehr als alle anderen'
+          }!`
+        : `**${names}** ${tied ? 'have each' : 'has'} taken **${bonus}** extra ${points} from ${matches}, ${
+            tied ? 'and nobody else has taken more' : 'more than anybody else'
+          }!`;
+
+  return memberCard('bestWhenItCounts', title, statistic, winners);
+}
+
+
 // ── The prediction pair ───────────────────────────────────────────────────────
 //
 // The two cards about a single prediction rather than a member's season: the one nobody
@@ -1321,27 +1426,31 @@ export function bestPredictionCard(
   // yet. It is what they predicted and what happened, those being the same thing here.
   const what = named ? `**${named.home} ${score} ${named.away}**` : `**${score}**`;
 
-  // Three things can be said about how alone they were, and only one of them is true at a
-  // time: somebody else had the margin, or nobody did but somebody had the winner, or
-  // nobody managed even that.
+  // How alone they were, said in one of three ways. The goal difference is the tier this
+  // card is about, so the sentence stays on it — how many others reached it, or that
+  // none of them did — and drops to the outcome only for the one case that beats it:
+  // nobody else so much as calling the winner. That is the rarer and the better story,
+  // and it is why it takes priority rather than reading as the weaker claim it would be
+  // anywhere else. It also implies nobody else had the margin, a margin being impossible
+  // to get right while getting the winner wrong, so the two never contradict each other.
   const appendix =
     lang === 'no'
-      ? gd > 0
-        ? ` Bare **${gd}** ${gd === 1 ? 'annen' : 'andre'} tippet i det hele tatt riktig målforskjell!`
-        : outcome > 0
-          ? ` Bare **${outcome}** ${outcome === 1 ? 'annen' : 'andre'} tippet i det hele tatt riktig utfall!`
-          : ' Ingen andre tippet engang riktig utfall av kampen!'
+      ? outcome === 0
+        ? ' Ingen andre tippet engang riktig utfall av kampen!'
+        : gd === 0
+          ? ' Ingen andre tippet engang riktig målforskjell!'
+          : ` Bare **${gd}** ${gd === 1 ? 'annen' : 'andre'} tippet i det hele tatt riktig målforskjell!`
       : lang === 'de'
-        ? gd > 0
-          ? ` Nur **${gd}** ${gd === 1 ? 'andere Person hatte' : 'andere hatten'} überhaupt die Tordifferenz!`
-          : outcome > 0
-            ? ` Nur **${outcome}** ${outcome === 1 ? 'andere Person lag' : 'andere lagen'} überhaupt beim Ausgang richtig!`
-            : ' Niemand sonst lag auch nur beim Ausgang der Partie richtig!'
-        : gd > 0
-          ? ` Only **${gd}** ${gd === 1 ? 'other' : 'others'} even had the goal difference!`
-          : outcome > 0
-            ? ` Only **${outcome}** ${outcome === 1 ? 'other' : 'others'} even had the right outcome!`
-            : ' Nobody else even got the outcome of the match right!';
+        ? outcome === 0
+          ? ' Niemand sonst lag auch nur beim Ausgang der Partie richtig!'
+          : gd === 0
+            ? ' Niemand sonst hatte auch nur die Tordifferenz!'
+            : ` Nur **${gd}** ${gd === 1 ? 'andere Person hatte' : 'andere hatten'} überhaupt die Tordifferenz!`
+        : outcome === 0
+          ? ' Nobody else even got the outcome of the match right!'
+          : gd === 0
+            ? ' Nobody else even had the goal difference!'
+            : ` Only **${gd}** ${gd === 1 ? 'other' : 'others'} even had the goal difference!`;
 
   const statistic =
     lang === 'no'
@@ -1392,40 +1501,57 @@ export function worstPredictionCard(
   const title =
     lang === 'no' ? 'Det var nesten da!' : lang === 'de' ? 'Knapp daneben!' : 'Close enough!';
 
-  // One prediction is the story; a tie can only say that they are level, and a tie held by
-  // one member alone says how many of theirs it took. The number of goals is what the card
-  // ranks on rather than what it prints: "nobody has missed by more" is the claim, and it
-  // is the one a tie has to soften, since the others in it missed by exactly as much.
+  // One prediction is the story, and a tie between members is several of them: a line
+  // each, naming the member, what they predicted and how it finished, rather than one
+  // sentence that can only say they are level. A tie one member holds alone stays a
+  // count — the same name over two lines says less than the number of times they did it.
   const alone = tie.length === 1;
-  const worst = tie[0];
-  const named = alone ? teamNames(worst, indexTeams(teams)) : null;
-  const predicted = `${worst.predictedHome}-${worst.predictedAway}`;
-  const actual = `${worst.actualHome}-${worst.actualAway}`;
+  const byId = indexTeams(teams);
 
-  const statistic =
-    lang === 'no'
-      ? alone
-        ? `**${names}** tippet **${predicted}** ${
-            named ? `på **${named.home} mot ${named.away}**, som` : 'på en kamp som'
-          } endte **${actual}**. Ingen andre har bommet så stort på en kamp!`
-        : winners.length === 1
-          ? `**${names}** har **${tie.length}** tips som bommer like stort. Ingen andre har bommet så stort på en kamp!`
-          : `**${names}** har bommet like stort hver sin gang. Ingen andre har bommet mer på en kamp!`
+  /** "Alice predicted 0-4 in Arsenal vs Bayern, which finished 3-0." */
+  const missedBy = (p: LiveStatsScoredPrediction): string => {
+    const named = teamNames(p, byId);
+    const predicted = `${p.predictedHome}-${p.predictedAway}`;
+    const actual = `${p.actualHome}-${p.actualAway}`;
+
+    return lang === 'no'
+      ? `**${p.username}** tippet **${predicted}** ${
+          named ? `på **${named.home} mot ${named.away}**, som` : 'på en kamp som'
+        } endte **${actual}**.`
       : lang === 'de'
-        ? alone
-          ? `**${names}** hat **${predicted}** ${
-              named ? `bei **${named.home} gegen ${named.away}**` : 'bei einem Spiel'
-            } getippt, das **${actual}** endete. Niemand sonst hat bei einem Spiel so danebengelegen!`
-          : winners.length === 1
-            ? `**${names}** hat **${tie.length}** Tipps, die genauso weit danebenliegen. Niemand sonst hat bei einem Spiel so danebengelegen!`
-            : `**${names}** haben jeweils genauso weit danebengelegen. Niemand sonst hat bei einem Spiel weiter danebengelegen!`
-        : alone
-          ? `**${names}** predicted **${predicted}** ${
-              named ? `in **${named.home} vs ${named.away}**, which` : 'in a match that'
-            } finished **${actual}**. Nobody else has missed a match by that much!`
-          : winners.length === 1
-            ? `**${names}** has **${tie.length}** predictions that missed by just as much. Nobody else has missed a match by that much!`
-            : `**${names}** have each missed a match by just as much. Nobody else has missed one by more!`;
+        ? `**${p.username}** hat **${predicted}** ${
+            named ? `bei **${named.home} gegen ${named.away}**` : 'bei einem Spiel'
+          } getippt, das **${actual}** endete.`
+        : `**${p.username}** predicted **${predicted}** ${
+            named ? `in **${named.home} vs ${named.away}**, which` : 'in a match that'
+          } finished **${actual}**.`;
+  };
+
+  /** "Alice has 2 predictions that missed by just as much." */
+  const counted =
+    lang === 'no'
+      ? `**${names}** har **${tie.length}** tips som bommer like stort.`
+      : lang === 'de'
+        ? `**${names}** hat **${tie.length}** Tipps, die genauso weit danebenliegen.`
+        : `**${names}** has **${tie.length}** predictions that missed by just as much.`;
+
+  // The claim the card closes on survives a tie between members now that every one of
+  // them is named on a line above it: "nobody else" is everybody those lines leave out.
+  const closing =
+    lang === 'no'
+      ? 'Ingen andre har bommet så stort på en kamp!'
+      : lang === 'de'
+        ? 'Niemand sonst hat bei einem Spiel so danebengelegen!'
+        : 'Nobody else has missed a match by that much!';
+
+  // One prediction, or one member's tie, reads as a single breath; several members are a
+  // line each, for the same reason the last-believer card gives each team its own. See
+  // LiveUserStatCard, which keeps the breaks.
+  const statistic = alone
+    ? `${missedBy(tie[0])} ${closing}`
+    : winners.length === 1
+      ? `${counted} ${closing}`
+      : [...winners.map(missedBy), closing].join('\n');
 
   return memberCard('worstPrediction', title, statistic, winners);
 }
@@ -1653,7 +1779,7 @@ export function mostExpectedResultCard(
     (lang === 'no'
       ? `${round.home} mot ${round.away} (${round.actualHome}-${round.actualAway}) var det mest forutsigbare resultatet! Totalt tippet ${outcomes} ${outcomes === 1 ? 'spiller' : 'spillere'} riktig resultat, og ${exact} av dem tippet eksakt resultat! Hver spiller sanket i snitt ${average} poeng.`
       : lang === 'de'
-        ? `${round.home} gegen ${round.away} (${round.actualHome}-${round.actualAway}) — so offensichtlich, dass sogar ein Blindgänger es hätte tippen können! ${outcomes} Leute lagen richtig, ${exact} davon sogar mit exaktem Ergebnis. Im Schnitt ${average} Punkte pro Person.`
+        ? `${round.home} gegen ${round.away} (${round.actualHome}-${round.actualAway}): so offensichtlich, dass sogar ein Blindgänger es hätte tippen können! ${outcomes} Leute lagen richtig, ${exact} davon sogar mit exaktem Ergebnis. Im Schnitt ${average} Punkte pro Person.`
         : `${round.home} vs ${round.away} (${round.actualHome} - ${round.actualAway}) was the most predictable outcome! A total of ${outcomes} ${outcomes === 1 ? 'user' : 'users'} predicted the correct result, and ${exact} of those predicted the exact score! Each user scored on average ${average} points.`) +
     appendix;
 
@@ -1818,6 +1944,189 @@ export function nationalityGoalsCard(
   };
 }
 
+// ── The Norwegian clubs ───────────────────────────────────────────────────────
+
+/**
+ * The two clubs the pair below reads, found by the distinctive word in each name rather
+ * than by an id: a provider writes "FK Bodø/Glimt" and "Viking FK" this season and may
+ * write them differently the next, and an id changes with the provider. `glimt` survives
+ * a keyboard with no ø, and neither word belongs to any other club in the draw.
+ *
+ * In the order the sentence names them.
+ */
+const NORWEGIAN_CLUBS = ['glimt', 'viking'];
+
+/**
+ * The picture each end carries, in client/public. The believer gets Bodø/Glimt's "hello
+ * Europe, my old friend" tifo and the sceptic a Norwegian head in its hands, so the tile
+ * says which end of the pair it is before the sentence does.
+ */
+const NORWAY_BELIEVER_PICTURE = '/stat-norway-believer.webp';
+const NORWAY_SCEPTIC_PICTURE = '/stat-norway-sceptic.webp';
+
+/** One member's table prediction, read for the Norwegian clubs alone. */
+interface NorwegianPlacings extends CardMember {
+  /** Where they put each club, in the order `clubs` has them. */
+  places: number[];
+  /** The two positions added up. What the cards rank on, and what they never print. */
+  combined: number;
+}
+
+/**
+ * Which of the two clubs are in this tournament, and where each member's table has them.
+ *
+ * A club the draw does not contain is simply not part of the sum, so a season with only
+ * one of them in it still has a card: the question is how much faith a member has in the
+ * Norwegians who are actually there. A member whose table is missing a club that *is* in
+ * the draw is left out instead, since their total would be short a number and would beat
+ * everybody else's for no reason.
+ */
+function norwegianPlacings(
+  predictions: LiveStatsTablePrediction[],
+  teams: LiveStatsTeam[],
+): { clubs: Entrant[]; rows: NorwegianPlacings[] } {
+  const byId = indexTeams(teams);
+  const clubs: Entrant[] = [];
+  for (const word of NORWEGIAN_CLUBS) {
+    const found = teams.find(t => t.name.toLowerCase().includes(word));
+    if (found) clubs.push({ id: found.id, name: found.name, imageUrl: found.crestUrl });
+  }
+  if (clubs.length === 0) return { clubs, rows: [] };
+
+  const rows: NorwegianPlacings[] = [];
+  for (const prediction of predictions) {
+    // Teams the tournament no longer has are dropped before the positions are read, the
+    // same way countEnd drops them: a ranking still carrying one would otherwise push
+    // everything below it a place further down than the member ever predicted.
+    const ranked = prediction.orderedTeamIds.filter(teamId => byId.has(teamId));
+    const places: number[] = [];
+    for (const club of clubs) {
+      // A ranking saved before a club joined the draw does not place it at all.
+      const index = ranked.indexOf(club.id);
+      if (index >= 0) places.push(index + 1);
+    }
+    if (places.length !== clubs.length) continue;
+    rows.push({
+      userId: prediction.userId,
+      username: prediction.username,
+      imageUrl: prediction.imageUrl,
+      iconColor: prediction.iconColor,
+      places,
+      combined: places.reduce((sum, place) => sum + place, 0),
+    });
+  }
+  return { clubs, rows };
+}
+
+/** "Alice has FK Bodø/Glimt in 3rd and Viking FK in 9th." */
+function placingLine(row: NorwegianPlacings, clubs: Entrant[], lang: LiveStatsLang): string {
+  const parts = clubs.map((club, i) =>
+    lang === 'no'
+      ? `**${club.name}** på **${row.places[i]}. plass**`
+      : lang === 'de'
+        ? `**${club.name}** auf **Platz ${row.places[i]}**`
+        : `**${club.name}** in **${ordinal(row.places[i])}**`,
+  );
+  const where = joinNames(parts, lang);
+  return lang === 'no'
+    ? `**${row.username}** har ${where}.`
+    : lang === 'de'
+      ? `**${row.username}** hat ${where}.`
+      : `**${row.username}** has ${where}.`;
+}
+
+/**
+ * The two ends of the league's faith in the Norwegian clubs: whose table puts Bodø/Glimt
+ * and Viking highest, and whose puts them lowest.
+ *
+ * The two positions are added together and the sum is what ranks the members, but it is
+ * never printed: 12th is not a position anybody predicted, and two members level on it
+ * can have got there from 3rd and 9th or from 5th and 7th. Each member's own two
+ * positions are what the card shows, a line each where several are level.
+ *
+ * Each end carries its own picture as the tile, the way the Norway and England flag cards
+ * do: `LiveUserStatCard` draws a full-bleed `backgroundImageUrl` instead of the members'
+ * faces. They stay in the payload as the subjects, since they are who the card is about,
+ * and their names are in the sentence.
+ *
+ * Null where neither club is in the draw, where nobody has placed them, and where every
+ * member is level: with one number shared by the whole league there is no most and no
+ * least, only a league that agrees, and both ends would name everybody.
+ */
+function norwegianFaithCard(
+  predictions: LiveStatsTablePrediction[],
+  teams: LiveStatsTeam[],
+  lang: LiveStatsLang,
+  end: 'most' | 'least',
+): UserStatCardData | null {
+  const { clubs, rows } = norwegianPlacings(predictions, teams);
+  if (rows.length === 0) return null;
+
+  const totals = rows.map(r => r.combined);
+  const best = Math.min(...totals);
+  const worst = Math.max(...totals);
+  if (best === worst) return null;
+
+  const winners = rows.filter(r => r.combined === (end === 'most' ? best : worst)).sort(byUsername);
+
+  const title =
+    end === 'most'
+      ? lang === 'no'
+        ? 'Norgesvennen'
+        : lang === 'de'
+          ? 'Der Norwegen-Fan'
+          : 'The Norway believer'
+      : lang === 'no'
+        ? 'Norgesskeptikeren'
+        : lang === 'de'
+          ? 'Der Norwegen-Skeptiker'
+          : 'The Norway sceptic';
+
+  const claim =
+    end === 'most'
+      ? lang === 'no'
+        ? 'Ingen har større tro på de norske lagene!'
+        : lang === 'de'
+          ? 'Niemand glaubt mehr an die norwegischen Klubs!'
+          : 'Nobody has more faith in the Norwegian clubs!'
+      : lang === 'no'
+        ? 'Ingen har mindre tro på de norske lagene!'
+        : lang === 'de'
+          ? 'Niemand glaubt weniger an die norwegischen Klubs!'
+          : 'Nobody has less faith in the Norwegian clubs!';
+
+  // One member reads as a single breath; several are a line each, because members level
+  // on the sum need not have got there the same way, and the positions are the point.
+  const statistic =
+    winners.length === 1
+      ? `${placingLine(winners[0], clubs, lang)} ${claim}`
+      : [...winners.map(w => placingLine(w, clubs, lang)), claim].join('\n');
+
+  const most = end === 'most';
+  return {
+    ...memberCard(most ? 'norwayBeliever' : 'norwaySceptic', title, statistic, winners),
+    backgroundImageUrl: most ? NORWAY_BELIEVER_PICTURE : NORWAY_SCEPTIC_PICTURE,
+  };
+}
+
+/** Whose table has the Norwegian clubs highest. */
+export function norwayBelieverCard(
+  predictions: LiveStatsTablePrediction[],
+  teams: LiveStatsTeam[],
+  lang: LiveStatsLang,
+): UserStatCardData | null {
+  return norwegianFaithCard(predictions, teams, lang, 'most');
+}
+
+/** And whose has them lowest. */
+export function norwayScepticCard(
+  predictions: LiveStatsTablePrediction[],
+  teams: LiveStatsTeam[],
+  lang: LiveStatsLang,
+): UserStatCardData | null {
+  return norwegianFaithCard(predictions, teams, lang, 'least');
+}
+
 // ── Trøndelag ─────────────────────────────────────────────────────────────────
 
 /**
@@ -1872,6 +2181,69 @@ export function tronderHaterCard(
   return memberCard('tronderHater', title, statistic, haters);
 }
 
+// ── The English teams ─────────────────────────────────────────────────────────
+
+/** The card's own picture, in client/public. St George's cross, as the title asks. */
+const ENGLAND_FLAG = '/stat-flag-england.webp';
+
+/**
+ * The third bonus question the deck reads, matched on the words in it like the other two.
+ *
+ * "Ryker minst ett engelsk lag ut i ligaspillet?" is the wording today, typed in by an
+ * admin and free to change next season, so a question that mentions English sides and the
+ * league phase is the one. `engelsk` catches `engelske` as well, and `ligaspill` catches
+ * `ligaspillet`, which is how it is actually written.
+ */
+const ENGLISH_TEAMS_QUESTION = ['engelsk', 'ligaspill'];
+
+/**
+ * Whoever has every English side surviving the league phase: the members who answered No.
+ *
+ * The mirror of the Trøndelag card, and it reads the same way. Only ever a card when
+ * somebody has said No, because it is about the people who backed them rather than about
+ * how popular the answer was.
+ *
+ * The flag is the tile, as it is on the Norway card: the picture the card is named after.
+ * The members are still carried as subjects, since they are who the card is about, and
+ * the live tile draws the flag over them.
+ */
+export function godSaveTheKingCard(
+  bonusAnswers: LiveStatsBonusAnswer[],
+  lang: LiveStatsLang,
+): UserStatCardData | null {
+  const believers = dedupeByUser(
+    bonusAnswers.filter(answer => {
+      const question = answer.question.toLowerCase();
+      if (!ENGLISH_TEAMS_QUESTION.every(word => question.includes(word))) return false;
+      return answer.answer.trim().toLowerCase() === NO_ANSWER;
+    }),
+  );
+  if (believers.length === 0) return null;
+
+  const names = joinNames(believers.map(b => b.username), lang);
+  const alone = believers.length === 1;
+
+  // The one title that is the same in all three languages: it is a national anthem, and
+  // translating it would be translating a name.
+  const title = 'God save the king';
+
+  const statistic =
+    lang === 'no'
+      ? `**${names}** har trua på engelskmennene, og tror ikke at et eneste engelsk lag ryker ut i ligaspillet!`
+      : lang === 'de'
+        ? `**${names}** ${alone ? 'hält' : 'halten'} zu den Engländern und ${
+            alone ? 'glaubt' : 'glauben'
+          } nicht, dass ein einziges englisches Team in der Ligaphase ausscheidet!`
+        : `**${names}** ${alone ? 'is' : 'are'} backing the English, and ${
+            alone ? 'does' : 'do'
+          } not believe a single English team will go out in the league phase!`;
+
+  return {
+    ...memberCard('godSaveTheKing', title, statistic, believers),
+    backgroundImageUrl: ENGLAND_FLAG,
+  };
+}
+
 /** Every card that has something to say, in the order they should be shown. */
 export function buildLiveUserStats(
   input: {
@@ -1896,7 +2268,7 @@ export function buildLiveUserStats(
     scorerNationalities: LiveScorerNationalities | null;
     /**
      * Answers to the bonus questions the deck reads — how many goals Norwegians score,
-     * and whether a trønder scores at all.
+     * whether a trønder scores at all, and whether an English side goes out.
      */
     bonusAnswers: LiveStatsBonusAnswer[];
   },
@@ -1939,5 +2311,9 @@ export function buildLiveUserStats(
     mostUnexpectedResultCard(scoredPredictions, teams, progression, lang),
     bestPredictionCard(scoredPredictions, teams, lang),
     almostCard(scoredPredictions, lang),
+    bestWhenItCountsCard(scoredPredictions, lang),
+    godSaveTheKingCard(bonusAnswers, lang),
+    norwayBelieverCard(tablePredictions, teams, lang),
+    norwayScepticCard(tablePredictions, teams, lang),
   ].filter((c): c is UserStatCardData => c !== null);
 }

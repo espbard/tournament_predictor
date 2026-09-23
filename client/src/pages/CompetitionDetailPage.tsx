@@ -1183,7 +1183,7 @@ export default function CompetitionDetailPage() {
             <p className="text-sm font-medium">Knockout predictions needing a decision</p>
             <p className="mt-0.5 text-xs text-muted-foreground">
               These members predicted a draw for these matches with no valid "who advances"
-              pick — either they never chose one, or their pick no longer matches either team
+              pick: either they never chose one, or their pick no longer matches either team
               in the matchup. This leaves later rounds missing a team. Pick the team they meant.
             </p>
           </div>

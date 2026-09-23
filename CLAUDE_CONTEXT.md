@@ -747,6 +747,11 @@ reports the after-extra-time score, the adapter should target API-Football inste
 - **Open source only** — no paid services beyond Railway (football-data.org's free tier is the
   first choice for live data for this reason; a paid provider is a deliberate decision, not a
   default)
+- **No em dash in anything the page shows** — not in `translations.ts`, not in a JSX
+  string, not in a stat card's sentence from the server. Use a colon, a comma, a full
+  stop or brackets. `client/src/lib/translations.test.ts` and the live deck's own test
+  hold the line; code comments and this document are not the page, and the standalone
+  `'—'` that stands in for an empty score or answer is a placeholder glyph, not copy
 - **No React Native / mobile app** — responsive web only
 - **TypeScript everywhere** — client, server, and shared types
 - **The two tournament types stay separate** — the live type does not reuse the manual type's

@@ -773,6 +773,10 @@ liveCompetitionsRouter.get('/competitions/:id/user-stats', requireAuth, async (r
           actualHome: liveFixtures.normalTimeHome,
           actualAway: liveFixtures.normalTimeAway,
           points: livePredictions.points,
+          // The highlight card's two numbers: which matches were marked as worth more,
+          // and what that was worth to whoever predicted them.
+          multiplier: liveFixtures.multiplier,
+          multiplierBonusPoints: livePredictions.multiplierBonusPoints,
         })
         .from(livePredictions)
         .innerJoin(liveFixtures, eq(liveFixtures.id, livePredictions.liveFixtureId))
