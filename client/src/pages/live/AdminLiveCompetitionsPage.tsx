@@ -6,6 +6,7 @@ import { liveApi, liveKeys } from '@/lib/liveApi';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import ImageUpload from '@/components/ImageUpload';
 import { useT } from '@/lib/useT';
+import { PublicBadge, PublicToggle } from '@/components/PublicCompetition';
 import type { LiveCompetition } from '@tournament-predictor/shared';
 
 // ── Admin: live prediction leagues ────────────────────────────────────────────
@@ -13,15 +14,16 @@ import type { LiveCompetition } from '@tournament-predictor/shared';
 // Creating a league is admin-only, matching the manual type. The invite code is shown
 // here because handing it out is how members join.
 //
-// A league's name and logo are editable in place. Neither affects the game — they are
-// what members see at the top of the competition page and in their league list — so the
-// edit is a plain PATCH with nothing to recalculate, unlike a scoring-config change.
+// A league's name, logo and public flag are editable in place. None of them affects the
+// game — a public league is only readable by non-members, never playable — so the edit is
+// a plain PATCH with nothing to recalculate, unlike a scoring-config change.
 
 export default function AdminLiveCompetitionsPage() {
   const { t } = useT();
   const queryClient = useQueryClient();
   const [tournamentId, setTournamentId] = useState('');
   const [name, setName] = useState('');
+  const [isPublic, setIsPublic] = useState(false);
   const [error, setError] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -36,9 +38,11 @@ export default function AdminLiveCompetitionsPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: () => liveApi.createCompetition({ liveTournamentId: tournamentId, name: name.trim() }),
+    mutationFn: () =>
+      liveApi.createCompetition({ liveTournamentId: tournamentId, name: name.trim(), isPublic }),
     onSuccess: () => {
       setName('');
+      setIsPublic(false);
       setError('');
       queryClient.invalidateQueries({ queryKey: liveKeys.competitions });
     },
@@ -107,6 +111,10 @@ export default function AdminLiveCompetitionsPage() {
             >
               {createMutation.isPending ? t('common.creating') : t('common.create')}
             </button>
+
+            <div className="sm:col-span-3">
+              <PublicToggle id="live-create-is-public" checked={isPublic} onChange={setIsPublic} />
+            </div>
           </form>
         )}
 
@@ -149,6 +157,7 @@ export default function AdminLiveCompetitionsPage() {
                   >
                     {competition.name}
                   </Link>
+                  {competition.isPublic && <PublicBadge className="ml-2 align-middle" />}
                   <p className="truncate text-xs text-muted-foreground">
                     {tournamentById.get(competition.liveTournamentId)?.name ?? '—'}
                   </p>
@@ -201,11 +210,12 @@ function EditCompetitionForm({
   const queryClient = useQueryClient();
   const [name, setName] = useState(competition.name);
   const [imageUrl, setImageUrl] = useState<string | null>(competition.imageUrl ?? null);
+  const [isPublic, setIsPublic] = useState(competition.isPublic);
   const [error, setError] = useState('');
 
   const saveMutation = useMutation({
     mutationFn: () =>
-      liveApi.updateCompetition(competition.id, { name: name.trim(), imageUrl }),
+      liveApi.updateCompetition(competition.id, { name: name.trim(), imageUrl, isPublic }),
     onSuccess: () => {
       // The name and logo are shown on the competition page too, so both caches go.
       queryClient.invalidateQueries({ queryKey: liveKeys.competitions });
@@ -262,6 +272,14 @@ function EditCompetitionForm({
             className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
+      </div>
+
+      <div className="mt-4">
+        <PublicToggle
+          id={`public-${competition.id}`}
+          checked={isPublic}
+          onChange={setIsPublic}
+        />
       </div>
 
       {error && <p className="mt-3 text-sm text-destructive">{error}</p>}

@@ -141,6 +141,8 @@ export const competitions = pgTable('competitions', {
   scoringConfig: json('scoring_config').notNull().$type<ScoringConfig>(),
   predictionDeadline: timestamp('prediction_deadline'),
   allowLateAdditions: boolean('allow_late_additions').notNull().default(true),
+  // Public: readable (never playable) by every signed-in user, member or not.
+  isPublic: boolean('is_public').notNull().default(false),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 

@@ -57,6 +57,7 @@ import { buildLiveUserStats, type LiveStatsLang } from '../userStats';
 import { validateTableOrder } from '../tableScoring';
 import { joinLiveCompetition } from '../../lib/competitionJoin';
 import { ensureLiveInviteToken, inviteTokenPath } from '../../lib/inviteLinks';
+import { canViewLiveCompetition, isLiveMember } from '../../lib/competitionAccess';
 
 // ── Live competition API ──────────────────────────────────────────────────────
 //
@@ -84,16 +85,7 @@ async function assertMember(
   user: { id: string; isAdmin: boolean },
 ): Promise<boolean> {
   if (user.isAdmin) return true;
-  const [membership] = await db
-    .select({ id: liveCompetitionMembers.id })
-    .from(liveCompetitionMembers)
-    .where(
-      and(
-        eq(liveCompetitionMembers.liveCompetitionId, competitionId),
-        eq(liveCompetitionMembers.userId, user.id),
-      ),
-    );
-  return !!membership;
+  return isLiveMember(competitionId, user.id);
 }
 
 /**
@@ -128,29 +120,33 @@ liveCompetitionsRouter.get('/competitions', requireAuth, async (_req, res) => {
       liveTournamentId: liveCompetitions.liveTournamentId,
     };
 
-    const rows = user.isAdmin
-      ? await db
-          .select(base)
-          .from(liveCompetitions)
-          .leftJoin(liveTournaments, eq(liveCompetitions.liveTournamentId, liveTournaments.id))
-          .orderBy(asc(liveCompetitions.createdAt))
-      : await db
-          .select(base)
+    const rows = await db
+      .select(base)
+      .from(liveCompetitions)
+      .leftJoin(liveTournaments, eq(liveCompetitions.liveTournamentId, liveTournaments.id))
+      .orderBy(asc(liveCompetitions.createdAt));
+    const memberOf = new Set(
+      (
+        await db
+          .select({ id: liveCompetitionMembers.liveCompetitionId })
           .from(liveCompetitionMembers)
-          .innerJoin(
-            liveCompetitions,
-            eq(liveCompetitionMembers.liveCompetitionId, liveCompetitions.id),
-          )
-          .leftJoin(liveTournaments, eq(liveCompetitions.liveTournamentId, liveTournaments.id))
-          .where(eq(liveCompetitionMembers.userId, user.id));
+          .where(eq(liveCompetitionMembers.userId, user.id))
+      ).map(r => r.id),
+    );
+    // Admins see every competition; everybody else their own plus the public ones, which
+    // come back flagged isMember: false so the list can show them as view only.
+    const visible = rows.filter(
+      r => user.isAdmin || r.competition.isPublic || memberOf.has(r.competition.id),
+    );
 
     const firstKickoffs = await firstKickoffByTournament([
-      ...new Set(rows.map(r => r.liveTournamentId)),
+      ...new Set(visible.map(r => r.liveTournamentId)),
     ]);
 
     return res.json(
-      rows.map(r => ({
+      visible.map(r => ({
         ...r.competition,
+        isMember: memberOf.has(r.competition.id),
         tournamentStatus: r.tournamentStatus,
         firstKickoffAt: firstKickoffs.get(r.liveTournamentId) ?? null,
       })),
@@ -253,6 +249,7 @@ liveCompetitionsRouter.post('/competitions', requireAdmin, async (req, res) => {
         inviteCode,
         // Any tier the caller omitted falls back to the default rather than undefined.
         scoringConfig: withLiveScoringDefaults(parsed.data.scoringConfig),
+        isPublic: parsed.data.isPublic ?? false,
       })
       .returning();
 
@@ -269,7 +266,7 @@ liveCompetitionsRouter.get('/competitions/:id', requireAuth, async (req, res) =>
       .from(liveCompetitions)
       .where(eq(liveCompetitions.id, req.params.id));
     if (!competition) return res.status(404).json({ error: 'Not found' });
-    if (!(await assertMember(competition.id, res.locals.user))) {
+    if (!(await canViewLiveCompetition(competition.id, res.locals.user))) {
       return res.status(403).json({ error: 'Not a member of this competition' });
     }
 
@@ -282,6 +279,7 @@ liveCompetitionsRouter.get('/competitions/:id', requireAuth, async (req, res) =>
 
     return res.json({
       ...competition,
+      isMember: await isLiveMember(competition.id, res.locals.user.id),
       tournament: tournament ?? null,
       // The client renders its stage selector from this rather than a hardcoded list.
       stages: format?.stages ?? [],
@@ -305,6 +303,7 @@ liveCompetitionsRouter.patch('/competitions/:id', requireAdmin, async (req, res)
     if (parsed.data.scoringConfig !== undefined) {
       update.scoringConfig = withLiveScoringDefaults(parsed.data.scoringConfig);
     }
+    if (parsed.data.isPublic !== undefined) update.isPublic = parsed.data.isPublic;
     if (Object.keys(update).length === 0) return res.status(400).json({ error: 'Nothing to update' });
 
     const [row] = await db
@@ -395,7 +394,7 @@ liveCompetitionsRouter.delete('/competitions/:id/leave', requireAuth, async (req
 
 liveCompetitionsRouter.get('/competitions/:id/members', requireAuth, async (req, res) => {
   try {
-    if (!(await assertMember(req.params.id, res.locals.user))) {
+    if (!(await canViewLiveCompetition(req.params.id, res.locals.user))) {
       return res.status(403).json({ error: 'Not a member of this competition' });
     }
 
@@ -427,7 +426,7 @@ liveCompetitionsRouter.get('/competitions/:id/members', requireAuth, async (req,
  */
 liveCompetitionsRouter.get('/competitions/:id/leaderboard', requireAuth, async (req, res) => {
   try {
-    if (!(await assertMember(req.params.id, res.locals.user))) {
+    if (!(await canViewLiveCompetition(req.params.id, res.locals.user))) {
       return res.status(403).json({ error: 'Not a member of this competition' });
     }
 
@@ -617,7 +616,7 @@ liveCompetitionsRouter.get(
   async (req, res) => {
     try {
       const { id } = req.params;
-      if (!(await assertMember(id, res.locals.user))) {
+      if (!(await canViewLiveCompetition(id, res.locals.user))) {
         return res.status(403).json({ error: 'Not a member of this competition' });
       }
 
@@ -653,7 +652,7 @@ liveCompetitionsRouter.get(
 liveCompetitionsRouter.get('/competitions/:id/user-stats', requireAuth, async (req, res) => {
   try {
     const user = res.locals.user;
-    if (!(await assertMember(req.params.id, user))) {
+    if (!(await canViewLiveCompetition(req.params.id, user))) {
       return res.status(403).json({ error: 'Not a member of this competition' });
     }
     const lang: LiveStatsLang =
@@ -869,7 +868,7 @@ liveCompetitionsRouter.get('/competitions/:id/events', requireAuth, async (req, 
     .from(liveCompetitions)
     .where(eq(liveCompetitions.id, id));
   if (!competition) return res.status(404).json({ error: 'Not found' });
-  if (!(await assertMember(id, res.locals.user))) {
+  if (!(await canViewLiveCompetition(id, res.locals.user))) {
     return res.status(403).json({ error: 'Not a member of this competition' });
   }
 
@@ -906,7 +905,7 @@ liveCompetitionsRouter.get('/competitions/:id/fixtures', requireAuth, async (req
       .from(liveCompetitions)
       .where(eq(liveCompetitions.id, req.params.id));
     if (!competition) return res.status(404).json({ error: 'Not found' });
-    if (!(await assertMember(competition.id, user))) {
+    if (!(await canViewLiveCompetition(competition.id, user))) {
       return res.status(403).json({ error: 'Not a member of this competition' });
     }
 
@@ -1010,7 +1009,7 @@ liveCompetitionsRouter.get('/competitions/:id/table-prediction', requireAuth, as
       .from(liveCompetitions)
       .where(eq(liveCompetitions.id, req.params.id));
     if (!competition) return res.status(404).json({ error: 'Not found' });
-    if (!(await assertMember(competition.id, user))) {
+    if (!(await canViewLiveCompetition(competition.id, user))) {
       return res.status(403).json({ error: 'Not a member of this competition' });
     }
 
@@ -1298,7 +1297,7 @@ liveCompetitionsRouter.get(
   async (req, res) => {
     try {
       const { id, userId } = req.params;
-      if (!(await assertMember(id, res.locals.user))) {
+      if (!(await canViewLiveCompetition(id, res.locals.user))) {
         return res.status(403).json({ error: 'Not a member of this competition' });
       }
 
@@ -1454,7 +1453,7 @@ liveCompetitionsRouter.get(
   async (req, res) => {
     try {
       const { id, userId } = req.params;
-      if (!(await assertMember(id, res.locals.user))) {
+      if (!(await canViewLiveCompetition(id, res.locals.user))) {
         return res.status(403).json({ error: 'Not a member of this competition' });
       }
 
@@ -1519,7 +1518,7 @@ liveCompetitionsRouter.get('/competitions/:id/scorer-prediction', requireAuth, a
       .from(liveCompetitions)
       .where(eq(liveCompetitions.id, req.params.id));
     if (!competition) return res.status(404).json({ error: 'Not found' });
-    if (!(await assertMember(competition.id, user))) {
+    if (!(await canViewLiveCompetition(competition.id, user))) {
       return res.status(403).json({ error: 'Not a member of this competition' });
     }
 
@@ -1723,7 +1722,7 @@ liveCompetitionsRouter.get(
   async (req, res) => {
     try {
       const { id, userId } = req.params;
-      if (!(await assertMember(id, res.locals.user))) {
+      if (!(await canViewLiveCompetition(id, res.locals.user))) {
         return res.status(403).json({ error: 'Not a member of this competition' });
       }
 
@@ -1812,7 +1811,7 @@ liveCompetitionsRouter.get(
   async (req, res) => {
     try {
       const { id, fixtureId } = req.params;
-      if (!(await assertMember(id, res.locals.user))) {
+      if (!(await canViewLiveCompetition(id, res.locals.user))) {
         return res.status(403).json({ error: 'Not a member of this competition' });
       }
 
@@ -1952,7 +1951,7 @@ liveCompetitionsRouter.get('/competitions/:id/bonus-questions', requireAuth, asy
       .from(liveCompetitions)
       .where(eq(liveCompetitions.id, req.params.id));
     if (!competition) return res.status(404).json({ error: 'Not found' });
-    if (!(await assertMember(competition.id, user))) {
+    if (!(await canViewLiveCompetition(competition.id, user))) {
       return res.status(403).json({ error: 'Not a member of this competition' });
     }
 
@@ -1992,7 +1991,7 @@ liveCompetitionsRouter.get('/competitions/:id/bonus-questions', requireAuth, asy
 liveCompetitionsRouter.get('/competitions/:id/bonus-answers', requireAuth, async (req, res) => {
   try {
     const user = res.locals.user;
-    if (!(await assertMember(req.params.id, user))) {
+    if (!(await canViewLiveCompetition(req.params.id, user))) {
       return res.status(403).json({ error: 'Not a member of this competition' });
     }
 
@@ -2029,7 +2028,7 @@ liveCompetitionsRouter.get(
     try {
       const viewer = res.locals.user;
       const { id, userId } = req.params;
-      if (!(await assertMember(id, viewer))) {
+      if (!(await canViewLiveCompetition(id, viewer))) {
         return res.status(403).json({ error: 'Not a member of this competition' });
       }
 

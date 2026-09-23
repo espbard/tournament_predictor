@@ -522,10 +522,16 @@ export const liveApi = {
     name: string;
     imageUrl?: string | null;
     scoringConfig?: LiveScoringConfig;
+    isPublic?: boolean;
   }) => api.post<LiveCompetition>('/live/competitions', body),
   updateCompetition: (
     id: string,
-    body: { name?: string; imageUrl?: string | null; scoringConfig?: LiveScoringConfig },
+    body: {
+      name?: string;
+      imageUrl?: string | null;
+      scoringConfig?: LiveScoringConfig;
+      isPublic?: boolean;
+    },
   ) => api.patch<LiveCompetition>(`/live/competitions/${id}`, body),
   deleteCompetition: (id: string) => api.delete<{ ok: true }>(`/live/competitions/${id}`),
   join: (inviteCode: string) =>

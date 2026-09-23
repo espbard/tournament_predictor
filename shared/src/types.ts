@@ -94,6 +94,13 @@ export interface Competition {
   scoringConfig: ScoringConfig;
   predictionDeadline: string | null;
   allowLateAdditions: boolean;
+  /** Readable by every signed-in user; only members can predict. */
+  isPublic: boolean;
+  /**
+   * Whether the caller belongs to this competition. Set by the list and the single read;
+   * false means the caller is looking at a public competition from the outside, view only.
+   */
+  isMember?: boolean;
   createdAt: string;
   /**
    * The status of the tournament this competition plays, where the endpoint joined it in

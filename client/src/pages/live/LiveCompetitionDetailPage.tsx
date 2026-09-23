@@ -26,6 +26,7 @@ import LiveUserStatCard from '@/components/live/LiveUserStatCard';
 import LiveTablePredictionGate from '@/components/live/LiveTablePredictionGate';
 import LiveBonusQuestionsGate from '@/components/live/LiveBonusQuestionsGate';
 import InviteButton from '@/components/InviteButton';
+import { ViewOnlyBanner } from '@/components/PublicCompetition';
 import { useAuthStore } from '@/store/authStore';
 import type { Team } from '@tournament-predictor/shared';
 
@@ -58,6 +59,9 @@ type TabId = (typeof TABS)[number];
 
 const LIVE_STATUSES = new Set(['in_play', 'paused']);
 
+/** Tabs that only hold the viewer's own predictions — nothing there for a non-member. */
+const SPECTATOR_HIDDEN_TABS = new Set<TabId>(['table', 'scorers', 'bonus']);
+
 export default function LiveCompetitionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { t, language } = useT();
@@ -68,7 +72,6 @@ export default function LiveCompetitionDetailPage() {
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
 
   const tabParam = searchParams.get('tab') as TabId | null;
-  const activeTab: TabId = tabParam && TABS.includes(tabParam) ? tabParam : 'fixtures';
 
   const [stageKey, setStageKey] = useState<string | null>(null);
   const [matchday, setMatchday] = useState<number | null>(null);
@@ -83,6 +86,15 @@ export default function LiveCompetitionDetailPage() {
     queryFn: () => liveApi.competition(id!),
     enabled: !!id,
   });
+
+  // Somebody looking at a public competition they have not joined. They can follow the
+  // fixtures and every results tab, read only; the table, scorer and bonus tabs are the
+  // viewer's own predictions, so they have nothing to show there.
+  const isSpectator = !user?.isAdmin && competition?.isMember === false;
+  const activeTab: TabId =
+    tabParam && TABS.includes(tabParam) && !(isSpectator && SPECTATOR_HIDDEN_TABS.has(tabParam))
+      ? tabParam
+      : 'fixtures';
 
   // Every fixture is fetched once and filtered in memory. It is one request rather than
   // one per matchday, it makes switching stages instant, and it gives the SSE handler a
@@ -421,10 +433,11 @@ export default function LiveCompetitionDetailPage() {
       }) as Team,
   );
 
-  const canBeGated = !user?.isAdmin && !user?.isLeaderboardUser;
+  const canBeGated = !user?.isAdmin && !user?.isLeaderboardUser && !isSpectator;
 
   // The same group the gates apply to: an admin is a member of every competition
-  // implicitly and has nothing to leave, and a leaderboard viewer is not playing.
+  // implicitly and has nothing to leave, a leaderboard viewer is not playing, and a
+  // spectator of a public competition never joined.
   const canLeave = canBeGated;
 
   const mustPredictTable =
@@ -602,13 +615,17 @@ export default function LiveCompetitionDetailPage() {
               {t('competitionDetail.leave')}
             </button>
           )}
-          <InviteButton
-            kind="live"
-            competitionId={competition.id}
-            className="inline-flex items-center justify-center gap-1.5 rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
-          />
+          {!isSpectator && (
+            <InviteButton
+              kind="live"
+              competitionId={competition.id}
+              className="inline-flex items-center justify-center gap-1.5 rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+            />
+          )}
         </div>
       </header>
+
+      {isSpectator && <ViewOnlyBanner className="mb-6" />}
 
       {showLeaveConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -648,12 +665,14 @@ export default function LiveCompetitionDetailPage() {
 
       {activeTab === 'fixtures' && (
         <>
-          <LiveUpcomingChecklist
-            items={checklist}
-            deadline={checklistDeadline}
-            lateEntry={checklistIsLateEntry}
-            onOpen={openTab}
-          />
+          {!isSpectator && (
+            <LiveUpcomingChecklist
+              items={checklist}
+              deadline={checklistDeadline}
+              lateEntry={checklistIsLateEntry}
+              onOpen={openTab}
+            />
+          )}
 
           {loadingFixtures ? (
             <LoadingSpinner />
@@ -722,6 +741,7 @@ export default function LiveCompetitionDetailPage() {
                 savingFixtureId={savingFixtureId}
                 savedFixtures={savedFixtures}
                 errors={errors}
+                readOnly={isSpectator}
                 competitionId={id!}
               />
             </div>

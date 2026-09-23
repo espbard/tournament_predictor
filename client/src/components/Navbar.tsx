@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Moon, Sun, ChevronDown, LogOut, Settings, Home } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
+import { liveApi, liveKeys } from '@/lib/liveApi';
 import { useAuthStore } from '@/store/authStore';
 import { useLanguageStore } from '@/store/languageStore';
 import { useThemeStore } from '@/store/themeStore';
@@ -89,6 +90,17 @@ export default function Navbar() {
     : 'fixtures';
   const livePredictionsActive = LIVE_PREDICTION_TABS.some(tab => tab === liveActiveTab);
 
+  // Same cache entry the live competition page reads, so this costs no extra request there.
+  const { data: navLiveCompetition } = useQuery({
+    queryKey: liveKeys.competition(liveCompetitionId ?? ''),
+    queryFn: () => liveApi.competition(liveCompetitionId!),
+    enabled: !!liveCompetitionId && showLiveTabs,
+  });
+  // A non-member of a public live competition has fixtures to follow but no table, scorer
+  // ranking or bonus answers of their own, so those three drop out of the menu.
+  const liveSpectator = !user?.isAdmin && navLiveCompetition?.isMember === false;
+  const livePredictionTabs = liveSpectator ? (['fixtures'] as const) : LIVE_PREDICTION_TABS;
+
   const { data: navCompetition } = useQuery({
     queryKey: ['competitions', competitionId],
     queryFn: () => api.get<Competition>(`/competitions/${competitionId}`),
@@ -103,7 +115,10 @@ export default function Navbar() {
 
   const tournamentCompleted = navTournament?.status === 'completed';
 
-  const activeTab = searchParams.get('tab') ?? (user?.isLeaderboardUser || user?.isAdmin ? 'leaderboard' : 'group');
+  // A public competition the user has not joined: results only, nothing to predict.
+  const isSpectator = !user?.isAdmin && navCompetition?.isMember === false;
+
+  const activeTab = searchParams.get('tab') ?? (user?.isLeaderboardUser || user?.isAdmin || isSpectator ? 'leaderboard' : 'group');
 
   const setTab = (tab: string) => {
     setGroupsOpen(false);
@@ -165,7 +180,8 @@ export default function Navbar() {
           <div className={`flex items-center min-w-0 ${user?.isLeaderboardUser ? 'tv:hidden' : ''}`}>
             {!user?.isAdmin && !user?.isLeaderboardUser ? (
               <>
-                {/* Predictions dropdown */}
+                {/* Predictions dropdown — not for a spectator, who has none */}
+                {!isSpectator && (
                 <div ref={groupsRef} className="relative">
                   <button
                     onClick={() => { setGroupsOpen(o => !o); setStandingsOpen(false); }}
@@ -191,6 +207,7 @@ export default function Navbar() {
                     </div>
                   )}
                 </div>
+                )}
 
                 {/* Results dropdown */}
                 <div ref={standingsRef} className="relative">
@@ -253,7 +270,7 @@ export default function Navbar() {
               </button>
               {groupsOpen && (
                 <div className="absolute left-0 top-full z-[100] min-w-[190px] rounded-md border border-border bg-popover shadow-md py-1">
-                  {LIVE_PREDICTION_TABS.map(tab => (
+                  {livePredictionTabs.map(tab => (
                     <button key={tab} onClick={() => setTab(tab)} className={dropItemCls(liveActiveTab === tab)}>
                       {t(`live.tabs.${tab}`)}
                     </button>

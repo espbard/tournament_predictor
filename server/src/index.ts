@@ -87,6 +87,8 @@ async function start() {
   // state. Nullable — it is minted the first time somebody presses Invite.
   await db.execute(sql`ALTER TABLE competitions ADD COLUMN IF NOT EXISTS "invite_token" text`);
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "competitions_invite_token_unique" ON competitions ("invite_token")`);
+  // Defensive: the public flag — a public competition is readable by everyone signed in.
+  await db.execute(sql`ALTER TABLE competitions ADD COLUMN IF NOT EXISTS "is_public" boolean NOT NULL DEFAULT false`);
   // Defensive: the live-sync admin override. Nullable — NULL defers to LIVE_SYNC_ENABLED.
   // app_config itself is created here too: the migration that introduced it is one of the
   // files missing from the journal, so it cannot be assumed to exist.

@@ -5,6 +5,7 @@ import { api, ApiError } from '@/lib/api';
 import ImageUpload from '@/components/ImageUpload';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { useT } from '@/lib/useT';
+import { PublicBadge, PublicToggle } from '@/components/PublicCompetition';
 import type { Competition, Tournament } from '@tournament-predictor/shared';
 
 export default function CompetitionsPage() {
@@ -16,6 +17,7 @@ export default function CompetitionsPage() {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [tournamentId, setTournamentId] = useState('');
   const [deadline, setDeadline] = useState('');
+  const [isPublic, setIsPublic] = useState(false);
 
   const { data: competitions = [], isLoading } = useQuery({
     queryKey: ['competitions'],
@@ -33,6 +35,7 @@ export default function CompetitionsPage() {
       name: string;
       imageUrl?: string | null;
       predictionDeadline?: string | null;
+      isPublic?: boolean;
     }) => api.post<Competition>('/competitions', body),
     onSuccess: () => {
       setShowForm(false);
@@ -40,6 +43,7 @@ export default function CompetitionsPage() {
       setImageUrl(null);
       setTournamentId('');
       setDeadline('');
+      setIsPublic(false);
       setFormError('');
       queryClient.invalidateQueries({ queryKey: ['competitions'] });
     },
@@ -64,6 +68,7 @@ export default function CompetitionsPage() {
       imageUrl,
       tournamentId,
       predictionDeadline: deadline ? new Date(deadline).toISOString() : null,
+      isPublic,
     });
   }
 
@@ -132,6 +137,7 @@ export default function CompetitionsPage() {
               className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
+          <PublicToggle id="create-is-public" checked={isPublic} onChange={setIsPublic} />
           {formError && <p className="text-sm text-destructive">{formError}</p>}
           <div className="flex gap-2">
             <button
@@ -173,6 +179,7 @@ export default function CompetitionsPage() {
                   <Link to={`/competitions/${c.id}`} className="font-semibold hover:underline">
                     {c.name}
                   </Link>
+                  {c.isPublic && <PublicBadge className="ml-2 align-middle" />}
                   {tournament && (
                     <p className="text-sm text-muted-foreground">{tournament.name}</p>
                   )}

@@ -68,6 +68,7 @@ export const CreateCompetitionSchema = z.object({
   name: z.string().min(1).max(100),
   imageUrl: z.string().nullable().optional(),
   predictionDeadline: z.string().datetime().nullable().optional(),
+  isPublic: z.boolean().optional(),
 });
 
 export const UpdateCompetitionSchema = z.object({
@@ -75,6 +76,7 @@ export const UpdateCompetitionSchema = z.object({
   imageUrl: z.string().nullable().optional(),
   predictionDeadline: z.string().datetime().nullable().optional(),
   allowLateAdditions: z.boolean().optional(),
+  isPublic: z.boolean().optional(),
 });
 
 export const CreatePredictionSchema = z.object({

@@ -98,6 +98,15 @@ const translations = {
       noCompetitions: 'No competitions yet. Create one to get started.',
       invite: 'Invite',
     },
+    // Public competitions: readable by everyone signed in, playable by members only.
+    publicCompetition: {
+      label: 'Public',
+      hint: 'Everyone can view this competition, even without joining. Only members can make predictions.',
+      badge: 'Public',
+      viewOnly: 'View only',
+      viewOnlyBanner: 'This is a public competition. You can follow along, but only members can make predictions.',
+      sectionTitle: 'Public competitions',
+    },
     // Competition share links — see client/src/components/InviteButton.tsx.
     invite: {
       button: 'Invite',
@@ -1168,6 +1177,14 @@ const translations = {
       noCompetitions: 'Ingen konkurranser ennå. Opprett en for å komme i gang.',
       invite: 'Invitasjonskode',
     },
+    publicCompetition: {
+      label: 'Offentlig',
+      hint: 'Alle kan se konkurransen, også uten å bli med. Bare medlemmer kan tippe.',
+      badge: 'Offentlig',
+      viewOnly: 'Kun visning',
+      viewOnlyBanner: 'Dette er en offentlig konkurranse. Du kan følge med, men bare medlemmer kan tippe.',
+      sectionTitle: 'Offentlige konkurranser',
+    },
     invite: {
       button: 'Inviter',
       dialogTitle: 'Inviter folk til konkurransen',
@@ -2235,6 +2252,14 @@ const translations = {
       failedToCreate: 'Wettbewerb konnte nicht erstellt werden',
       noCompetitions: 'Noch keine Wettbewerbe. Erstelle einen um anzufangen.',
       invite: 'Einladungscode',
+    },
+    publicCompetition: {
+      label: 'Öffentlich',
+      hint: 'Alle können diesen Wettbewerb sehen, auch ohne beizutreten. Nur Mitglieder können tippen.',
+      badge: 'Öffentlich',
+      viewOnly: 'Nur ansehen',
+      viewOnlyBanner: 'Dies ist ein öffentlicher Wettbewerb. Du kannst mitverfolgen, aber nur Mitglieder können tippen.',
+      sectionTitle: 'Öffentliche Wettbewerbe',
     },
     invite: {
       button: 'Einladen',
