@@ -52,13 +52,7 @@ export const CreateGroupSchema = z.object({
 export const UpdateUserSchema = z.object({
   imageUrl: z.string().nullable().optional(),
   iconColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
-});
-
-// The email is where a password reset goes, so changing it asks for the password: a
-// borrowed, still-signed-in browser must not be enough to take over the account.
-export const UpdateEmailSchema = z.object({
-  email: EmailField,
-  currentPassword: z.string().min(1),
+  email: EmailField.optional(),
 });
 
 export const ForgotPasswordSchema = z.object({
@@ -117,7 +111,6 @@ export type CreateTeamInput = z.infer<typeof CreateTeamSchema>;
 export type UpdateTeamInput = z.infer<typeof UpdateTeamSchema>;
 export type CreateGroupInput = z.infer<typeof CreateGroupSchema>;
 export type UpdateUserInput = z.infer<typeof UpdateUserSchema>;
-export type UpdateEmailInput = z.infer<typeof UpdateEmailSchema>;
 export type ForgotPasswordInput = z.infer<typeof ForgotPasswordSchema>;
 export type ResetPasswordInput = z.infer<typeof ResetPasswordSchema>;
 export type CreateMatchInput = z.infer<typeof CreateMatchSchema>;

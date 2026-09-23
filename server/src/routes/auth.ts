@@ -9,7 +9,6 @@ import {
   LoginSchema,
   RegisterSchema,
   ResetPasswordSchema,
-  UpdateEmailSchema,
   UpdateUserSchema,
 } from '@tournament-predictor/shared';
 import { sendEmail } from '../lib/email';
@@ -166,37 +165,20 @@ authRouter.get('/me', requireAuth, async (_req, res) => {
 authRouter.patch('/me', requireAuth, async (req, res) => {
   try {
     const updates = UpdateUserSchema.parse(req.body);
+    const [before] = await db
+      .select({ email: users.email })
+      .from(users)
+      .where(eq(users.id, res.locals.user.id))
+      .limit(1);
     const [updated] = await db
       .update(users)
       .set(updates)
       .where(eq(users.id, res.locals.user.id))
       .returning(ownUserFields);
-    return res.json(updated);
-  } catch (err: any) {
-    if (err?.name === 'ZodError') return res.status(400).json({ error: 'Invalid input', details: err.errors });
-    console.error(err);
-    return res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-authRouter.patch('/me/email', requireAuth, async (req, res) => {
-  try {
-    const { email, currentPassword } = UpdateEmailSchema.parse(req.body);
-    const [user] = await db
-      .select({ hashedPassword: users.hashedPassword })
-      .from(users)
-      .where(eq(users.id, res.locals.user.id))
-      .limit(1);
-    if (!user || !(await bcrypt.compare(currentPassword, user.hashedPassword))) {
-      return res.status(403).json({ error: 'Wrong password' });
+    // A reset link already sent to the old address must not outlive the change.
+    if (updates.email !== undefined && updates.email !== before?.email) {
+      await deleteResetTokensForUser(res.locals.user.id);
     }
-    const [updated] = await db
-      .update(users)
-      .set({ email })
-      .where(eq(users.id, res.locals.user.id))
-      .returning(ownUserFields);
-    // A link already sent to the old address must not outlive the change.
-    await deleteResetTokensForUser(res.locals.user.id);
     return res.json(updated);
   } catch (err: any) {
     if (isUniqueViolation(err)) return res.status(409).json({ error: 'Email already in use' });

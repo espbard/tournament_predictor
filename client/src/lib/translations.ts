@@ -553,10 +553,6 @@ const translations = {
       saveChanges: 'Save changes',
       email: 'Email for password reset',
       emailHint: 'Optional. Only used to send you a reset link if you forget your password.',
-      currentPassword: 'Current password',
-      currentPasswordHint: 'Needed to change or remove your email.',
-      saveEmail: 'Save email',
-      removeEmail: 'Remove email',
     },
     maintenance: {
       title: 'Under Maintenance',
@@ -1649,10 +1645,6 @@ const translations = {
       saveChanges: 'Lagre endringer',
       email: 'E-post for tilbakestilling av passord',
       emailHint: 'Valgfritt. Brukes bare til å sende deg en lenke hvis du glemmer passordet.',
-      currentPassword: 'Nåværende passord',
-      currentPasswordHint: 'Trengs for å endre eller fjerne e-posten.',
-      saveEmail: 'Lagre e-post',
-      removeEmail: 'Fjern e-post',
     },
     maintenance: {
       title: 'Under vedlikehold',
@@ -2745,10 +2737,6 @@ const translations = {
       saveChanges: 'Änderungen speichern',
       email: 'E-Mail für das Passwort-Zurücksetzen',
       emailHint: 'Freiwillig. Nur für einen Link, falls du dein Passwort vergisst.',
-      currentPassword: 'Aktuelles Passwort',
-      currentPasswordHint: 'Wird gebraucht, um die E-Mail zu ändern oder zu entfernen.',
-      saveEmail: 'E-Mail speichern',
-      removeEmail: 'E-Mail entfernen',
     },
     maintenance: {
       title: 'In Reparatur',

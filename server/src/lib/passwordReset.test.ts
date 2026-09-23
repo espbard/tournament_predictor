@@ -4,7 +4,7 @@ import { describe, it, expect, vi } from 'vitest';
 vi.mock('../db/client', () => ({ db: {} }));
 
 import { appBaseUrl, buildResetEmail, generateResetToken, hashResetToken, resetPasswordPath } from './passwordReset';
-import { ForgotPasswordSchema, RegisterSchema, UpdateEmailSchema } from '@tournament-predictor/shared';
+import { ForgotPasswordSchema, RegisterSchema, UpdateUserSchema } from '@tournament-predictor/shared';
 
 describe('reset tokens', () => {
   it('are long, URL-safe and different every time', () => {
@@ -62,7 +62,8 @@ describe('email validation', () => {
   it('treats a blank email as none', () => {
     expect(RegisterSchema.parse({ username: 'ola', password: 'secret1', email: '' }).email).toBeNull();
     expect(RegisterSchema.parse({ username: 'ola', password: 'secret1' }).email).toBeUndefined();
-    expect(UpdateEmailSchema.parse({ email: '  ', currentPassword: 'x' }).email).toBeNull();
+    expect(UpdateUserSchema.parse({ email: '  ' }).email).toBeNull();
+    expect(UpdateUserSchema.parse({ iconColor: '#000000' }).email).toBeUndefined();
   });
 
   it('rejects something that is not an email', () => {
