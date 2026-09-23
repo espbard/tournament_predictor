@@ -242,20 +242,25 @@ function CompetitionCard({ c }: { c: MyCompetition }) {
       // and `group` lets the image answer a hover on the whole card.
       className="group flex items-stretch overflow-hidden rounded-xl border bg-card transition-all hover:border-foreground/20 hover:shadow-md"
     >
-      {c.imageUrl ? (
-        <img
-          src={c.imageUrl}
-          alt=""
-          aria-hidden
-          className="h-20 w-20 shrink-0 object-cover transition-transform duration-300 group-hover:scale-105 sm:h-24 sm:w-24"
-        />
-      ) : (
-        // Not an empty grey square: the initial gives a competition without a
-        // picture something of its own, the way an avatar does for a person.
-        <div className="flex h-20 w-20 shrink-0 items-center justify-center bg-muted text-2xl font-semibold text-muted-foreground/60 sm:h-24 sm:w-24">
-          {c.name.trim()[0]?.toUpperCase() ?? '?'}
-        </div>
-      )}
+      {/* The picture column is a minimum size, not a fixed one: when the tags wrap and
+          the card grows, it stretches with it. The image is absolutely positioned inside
+          so its own proportions never push the card taller. */}
+      <div className="relative min-h-20 w-20 shrink-0 overflow-hidden sm:min-h-24 sm:w-24">
+        {c.imageUrl ? (
+          <img
+            src={c.imageUrl}
+            alt=""
+            aria-hidden
+            className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+          />
+        ) : (
+          // Not an empty grey square: the initial gives a competition without a
+          // picture something of its own, the way an avatar does for a person.
+          <div className="absolute inset-0 flex items-center justify-center bg-muted text-2xl font-semibold text-muted-foreground/60">
+            {c.name.trim()[0]?.toUpperCase() ?? '?'}
+          </div>
+        )}
+      </div>
 
       <div className="flex min-w-0 flex-1 items-center justify-between gap-3 px-4 py-3">
         <div className="flex min-w-0 flex-col gap-1">
