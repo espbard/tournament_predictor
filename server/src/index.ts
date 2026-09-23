@@ -35,6 +35,17 @@ if (process.env.NODE_ENV !== 'production') {
   );
 }
 
+// Railway sits one proxy in front of the app. Without this every request looks like it
+// comes from that proxy, and the per-IP limits on password reset would be shared by all.
+app.set('trust proxy', 1);
+
+// Nothing on this site needs to tell other sites where a visitor came from, and the
+// password reset page carries its token in the URL.
+app.use((_req, res, next) => {
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  next();
+});
+
 app.use(express.json());
 
 // API routes
@@ -87,6 +98,20 @@ async function start() {
   // state. Nullable — it is minted the first time somebody presses Invite.
   await db.execute(sql`ALTER TABLE competitions ADD COLUMN IF NOT EXISTS "invite_token" text`);
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "competitions_invite_token_unique" ON competitions ("invite_token")`);
+  // Defensive: optional email + password reset tokens (drizzle/0038_user_email_password_reset.sql).
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS "email" text`);
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "users_email_unique" ON users ("email")`);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "password_reset_tokens" (
+      "id" text PRIMARY KEY,
+      "user_id" text NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+      "token_hash" text NOT NULL UNIQUE,
+      "expires_at" timestamp with time zone NOT NULL,
+      "used_at" timestamp with time zone,
+      "created_at" timestamp with time zone NOT NULL DEFAULT now()
+    )
+  `);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS "password_reset_tokens_user_id_idx" ON password_reset_tokens ("user_id")`);
   // Defensive: the live-sync admin override. Nullable — NULL defers to LIVE_SYNC_ENABLED.
   // app_config itself is created here too: the migration that introduced it is one of the
   // files missing from the journal, so it cannot be assumed to exist.
