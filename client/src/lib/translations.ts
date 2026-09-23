@@ -69,7 +69,9 @@ const translations = {
         intro: 'Enter the email saved on your account and we will send you a link to choose a new password.',
         submit: 'Send reset link',
         sending: 'Sending…',
-        sent: 'If an account has this email, a reset link is on its way. It expires in 30 minutes. Check your spam folder if it does not show up.',
+        sent: 'If an account has this email, a reset link is on its way. It expires in 30 minutes.',
+        spamTitle: 'Check your spam folder!',
+        spamBody: 'The email very often ends up in spam or junk mail. Look there if it is not in your inbox within a couple of minutes.',
         failed: 'Could not send the reset link',
       },
       reset: {
@@ -1163,7 +1165,9 @@ const translations = {
         intro: 'Skriv inn e-posten som er lagret på kontoen din, så sender vi deg en lenke for å velge nytt passord.',
         submit: 'Send lenke',
         sending: 'Sender…',
-        sent: 'Hvis en konto har denne e-posten, er en lenke på vei. Den utløper om 30 minutter. Sjekk søppelposten hvis den ikke dukker opp.',
+        sent: 'Hvis en konto har denne e-posten, er en lenke på vei. Den utløper om 30 minutter.',
+        spamTitle: 'Sjekk søppelposten!',
+        spamBody: 'E-posten havner veldig ofte i søppelpost eller spam. Se der hvis den ikke er i innboksen i løpet av et par minutter.',
         failed: 'Kunne ikke sende lenken',
       },
       reset: {
@@ -2254,7 +2258,9 @@ const translations = {
         intro: 'Gib die E-Mail-Adresse deines Kontos ein, und wir schicken dir einen Link für ein neues Passwort.',
         submit: 'Link jetzt verschicken',
         sending: 'Wird verschickt…',
-        sent: 'Falls ein Konto diese Adresse hat, ist ein Link unterwegs. Er läuft in 30 Minuten ab. Bitte auch im Spam-Ordner nachschauen.',
+        sent: 'Falls ein Konto diese Adresse hat, ist ein Link unterwegs. Er läuft in 30 Minuten ab.',
+        spamTitle: 'Unbedingt im Spam-Ordner nachschauen!',
+        spamBody: 'Die E-Mail landet sehr oft im Spam- oder Junk-Ordner. Schau dort nach, wenn sie nicht innerhalb von ein paar Minuten im Posteingang ist.',
         failed: 'Der Link konnte leider nicht verschickt werden',
       },
       reset: {

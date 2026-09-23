@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { AlertTriangle } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useT } from '@/lib/useT';
 
@@ -29,8 +30,22 @@ export default function ForgotPasswordPage() {
       <div className="w-full max-w-sm space-y-6 rounded-lg border bg-card p-8 shadow-sm">
         <h1 className="text-2xl font-bold">{t('auth.forgot.title')}</h1>
         {sent ? (
-          // Worded the same whether or not the address has an account, like the server's reply.
-          <p className="text-sm text-muted-foreground">{t('auth.forgot.sent')}</p>
+          <div className="space-y-4">
+            {/* Worded the same whether or not the address has an account, like the server's reply. */}
+            <p className="text-sm text-muted-foreground">{t('auth.forgot.sent')}</p>
+            {/* Sent from a free address through Brevo, the email often lands in spam — this
+                must be impossible to miss. */}
+            <div
+              role="alert"
+              className="flex gap-3 rounded-lg border-2 border-amber-500 bg-amber-100 p-4 text-amber-950 dark:border-amber-400 dark:bg-amber-900/60 dark:text-amber-50"
+            >
+              <AlertTriangle className="mt-0.5 h-7 w-7 shrink-0 text-amber-600 dark:text-amber-300" aria-hidden />
+              <div className="space-y-1">
+                <p className="text-lg font-bold leading-tight">{t('auth.forgot.spamTitle')}</p>
+                <p className="text-sm font-medium">{t('auth.forgot.spamBody')}</p>
+              </div>
+            </div>
+          </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <p className="text-sm text-muted-foreground">{t('auth.forgot.intro')}</p>
