@@ -12,7 +12,7 @@ import { computeGroupStandings, calculateMatchPoints, getUserPredictedTeamForKno
 import { subscribeLeaderboard, unsubscribeLeaderboard } from '../lib/leaderboardEvents.js';
 import { joinManualCompetition } from '../lib/competitionJoin.js';
 import { ensureManualInviteToken, inviteTokenPath } from '../lib/inviteLinks.js';
-import { canViewManualCompetition, isManualMember, seesPublicCompetitions } from '../lib/competitionAccess.js';
+import { canViewManualCompetition, isManualMember } from '../lib/competitionAccess.js';
 
 const router = Router();
 
@@ -68,11 +68,11 @@ router.get('/', requireAuth, async (_req, res) => {
         .where(eq(competitionMembers.userId, user.id))
       ).map(r => r.competitionId),
     );
-    // Admins see every competition; everybody else their own plus — for test accounts,
-    // for now — the public ones, flagged isMember: false so the list shows them as view only.
+    // Admins see every competition; everybody else their own plus the public ones, which
+    // come back flagged isMember: false so the list can show them as view only.
     return res.json(
       rows
-        .filter(r => user.isAdmin || (r.competition.isPublic && seesPublicCompetitions(user)) || memberOf.has(r.competition.id))
+        .filter(r => user.isAdmin || r.competition.isPublic || memberOf.has(r.competition.id))
         .map(r => ({
           ...r.competition,
           tournamentStatus: r.tournamentStatus,

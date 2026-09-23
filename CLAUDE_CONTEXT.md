@@ -353,8 +353,6 @@ POST   /api/invites/:token/accept          — join whatever the link points at
 > **Public competitions.** Both types carry an `is_public` flag, set by an admin on the
 > create and edit forms. A public competition is *readable* by every signed-in user, member
 > or not, and playable by members only; joining (code, link, deadlines) is unchanged.
-> **For now only test accounts (`isTestAccount`) are shown public competitions they have
-> not joined** — `seesPublicCompetitions()` is the single switch to widen that.
 > The rule lives in `server/src/lib/competitionAccess.ts`: read-only routes about the
 > competition as a whole check `canView*Competition` (admin, member, or public), while
 > writes and routes returning the caller's *own* predictions keep checking membership. The

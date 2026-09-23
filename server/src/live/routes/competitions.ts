@@ -57,7 +57,7 @@ import { buildLiveUserStats, type LiveStatsLang } from '../userStats';
 import { validateTableOrder } from '../tableScoring';
 import { joinLiveCompetition } from '../../lib/competitionJoin';
 import { ensureLiveInviteToken, inviteTokenPath } from '../../lib/inviteLinks';
-import { canViewLiveCompetition, isLiveMember, seesPublicCompetitions } from '../../lib/competitionAccess';
+import { canViewLiveCompetition, isLiveMember } from '../../lib/competitionAccess';
 
 // ── Live competition API ──────────────────────────────────────────────────────
 //
@@ -133,13 +133,10 @@ liveCompetitionsRouter.get('/competitions', requireAuth, async (_req, res) => {
           .where(eq(liveCompetitionMembers.userId, user.id))
       ).map(r => r.id),
     );
-    // Admins see every competition; everybody else their own plus — for test accounts,
-    // for now — the public ones, flagged isMember: false so the list shows them as view only.
+    // Admins see every competition; everybody else their own plus the public ones, which
+    // come back flagged isMember: false so the list can show them as view only.
     const visible = rows.filter(
-      r =>
-        user.isAdmin ||
-        (r.competition.isPublic && seesPublicCompetitions(user)) ||
-        memberOf.has(r.competition.id),
+      r => user.isAdmin || r.competition.isPublic || memberOf.has(r.competition.id),
     );
 
     const firstKickoffs = await firstKickoffByTournament([
