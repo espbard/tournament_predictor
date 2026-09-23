@@ -269,24 +269,33 @@ export default function LiveCompetitionDetailPage() {
 
   // One dot per gameweek: grey with nothing to predict, green once every selected match
   // of that week has this viewer's prediction, yellow while any is still missing.
+  //
+  // A spectator has no predictions, so their dots count results instead: green once every
+  // selected match of the week is over, yellow while any is still to be played. A
+  // cancelled match counts as over — it will never get a result, and waiting for one
+  // would leave its week yellow for good.
   const gameweekProgress = useMemo<LiveGameweekProgressItem[]>(
     () =>
       matchdays.map(matchday => {
         const selected = stageFixtures.filter(f => f.matchday === matchday);
-        const predicted = selected.filter(f => f.prediction !== null).length;
+        const done = selected.filter(f =>
+          isSpectator
+            ? f.status === 'finished' || f.status === 'cancelled'
+            : f.prediction !== null,
+        ).length;
         return {
           matchday,
           selected: selected.length,
-          predicted,
+          done,
           state:
             selected.length === 0
               ? 'empty'
-              : predicted === selected.length
+              : done === selected.length
                 ? 'complete'
                 : 'partial',
         };
       }),
-    [matchdays, stageFixtures],
+    [matchdays, stageFixtures, isSpectator],
   );
 
   // ── The next round ─────────────────────────────────────────────────────────
@@ -723,6 +732,7 @@ export default function LiveCompetitionDetailPage() {
               {stageDef?.kind === 'table' && matchdays.length > 0 && (
                 <>
                   <LiveGameweekProgress
+                    mode={isSpectator ? 'results' : 'predictions'}
                     items={gameweekProgress}
                     current={shownMatchday}
                     onSelect={setMatchday}

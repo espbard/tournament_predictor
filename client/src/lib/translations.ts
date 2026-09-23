@@ -617,6 +617,12 @@ const translations = {
         partial: 'Gameweek {{matchday}} — {{predicted}} of {{selected}} predicted',
         complete: 'Gameweek {{matchday}} — all {{selected}} predicted',
       },
+      // The same dots for a spectator of a public competition, who has nothing to predict.
+      gameweekDotResults: {
+        empty: 'Gameweek {{matchday}} — no matches picked yet',
+        partial: 'Gameweek {{matchday}} — {{done}} of {{selected}} played',
+        complete: 'Gameweek {{matchday}} — all {{selected}} played',
+      },
       noFixtures: 'No matches here yet.',
       noStandings: 'No table published yet.',
       noMembers: 'Nobody has joined yet.',
@@ -1693,6 +1699,11 @@ const translations = {
         partial: 'Runde {{matchday}} — {{predicted}} av {{selected}} tippet',
         complete: 'Runde {{matchday}} — alle {{selected}} tippet',
       },
+      gameweekDotResults: {
+        empty: 'Runde {{matchday}} — ingen kamper valgt ennå',
+        partial: 'Runde {{matchday}} — {{done}} av {{selected}} spilt',
+        complete: 'Runde {{matchday}} — alle {{selected}} spilt',
+      },
       noFixtures: 'Ingen kamper her ennå.',
       noStandings: 'Ingen tabell publisert ennå.',
       noMembers: 'Ingen har blitt med ennå.',
@@ -2768,6 +2779,11 @@ const translations = {
         empty: 'Spieltag {{matchday}} — noch keine Spiele ausgewählt',
         partial: 'Spieltag {{matchday}} — {{predicted}} von {{selected}} getippt',
         complete: 'Spieltag {{matchday}} — alle {{selected}} getippt',
+      },
+      gameweekDotResults: {
+        empty: 'Spieltag {{matchday}} — noch keine Spiele ausgewählt',
+        partial: 'Spieltag {{matchday}} — {{done}} von {{selected}} gespielt',
+        complete: 'Spieltag {{matchday}} — alle {{selected}} gespielt',
       },
       noFixtures: 'Noch keine Spiele hier.',
       noStandings: 'Noch keine Tabelle veröffentlicht.',
