@@ -77,11 +77,13 @@ export default function Navbar() {
   const isOnUserPredictionsPage = isOnPredictionsPage || isOnLivePredictionsPage;
   const liveCompetitionId = location.pathname.match(/^\/live\/competitions\/([^/]+)/)?.[1];
   const LIVE_PREDICTION_TABS = ['fixtures', 'table', 'scorers', 'bonus'] as const;
+  // The league table comes last: the other three are about the competition, the table is
+  // about the tournament it is played on.
   const LIVE_RESULT_TABS = [
-    'standings',
     'leaderboard',
     'pointProgression',
     'userStats',
+    'standings',
   ] as const;
   const liveTabParam = searchParams.get('tab') ?? '';
   const liveActiveTab = [...LIVE_PREDICTION_TABS, ...LIVE_RESULT_TABS].some(tab => tab === liveTabParam)
@@ -103,7 +105,10 @@ export default function Navbar() {
 
   const tournamentCompleted = navTournament?.status === 'completed';
 
-  const activeTab = searchParams.get('tab') ?? (user?.isLeaderboardUser || user?.isAdmin ? 'leaderboard' : 'group');
+  // A public competition the user has not joined: results only, nothing to predict.
+  const isSpectator = !user?.isAdmin && navCompetition?.isMember === false;
+
+  const activeTab = searchParams.get('tab') ?? (user?.isLeaderboardUser || user?.isAdmin || isSpectator ? 'leaderboard' : 'group');
 
   const setTab = (tab: string) => {
     setGroupsOpen(false);
@@ -165,7 +170,8 @@ export default function Navbar() {
           <div className={`flex items-center min-w-0 ${user?.isLeaderboardUser ? 'tv:hidden' : ''}`}>
             {!user?.isAdmin && !user?.isLeaderboardUser ? (
               <>
-                {/* Predictions dropdown */}
+                {/* Predictions dropdown — not for a spectator, who has none */}
+                {!isSpectator && (
                 <div ref={groupsRef} className="relative">
                   <button
                     onClick={() => { setGroupsOpen(o => !o); setStandingsOpen(false); }}
@@ -191,6 +197,7 @@ export default function Navbar() {
                     </div>
                   )}
                 </div>
+                )}
 
                 {/* Results dropdown */}
                 <div ref={standingsRef} className="relative">

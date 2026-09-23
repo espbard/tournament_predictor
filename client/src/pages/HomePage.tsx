@@ -8,6 +8,7 @@ import { liveApi, liveKeys } from '@/lib/liveApi';
 import { useAuthStore } from '@/store/authStore';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { useT } from '@/lib/useT';
+import { PublicBadge } from '@/components/PublicCompetition';
 import type { Competition } from '@tournament-predictor/shared';
 
 /** One row of the merged competition list — either tournament type, same card. */
@@ -26,6 +27,8 @@ interface MyCompetition {
    * is a league whose fixtures have not been published.
    */
   startsAt: string | null;
+  /** False for a public competition the user has not joined — they can only look. */
+  isMember: boolean;
 }
 
 export default function HomePage() {
@@ -98,6 +101,7 @@ function CompetitionsHome() {
           isCompleted: c.tournamentStatus === 'completed',
           isLive: false,
           startsAt: c.predictionDeadline,
+          isMember: c.isMember !== false,
         })),
         ...liveCompetitions.map(c => ({
           name: c.name,
@@ -111,6 +115,7 @@ function CompetitionsHome() {
           startsAt: c.firstKickoffAt
             ? (fixtureLockAt(c.firstKickoffAt)?.toISOString() ?? null)
             : null,
+          isMember: c.isMember !== false,
         })),
         // Finished leagues sink to the bottom whatever their age: the season somebody is
         // playing is the reason they opened this page, and last year's is an archive.
@@ -121,6 +126,10 @@ function CompetitionsHome() {
       ),
     [competitions, liveCompetitions, t],
   );
+  // Public competitions the user has not joined get their own section below, so "my
+  // competitions" keeps meaning the ones they play in.
+  const joined = myCompetitions.filter(c => c.isMember);
+  const publicOnly = myCompetitions.filter(c => !c.isMember);
 
   const joinMutation = useMutation({
     // One code box for both tournament types: try the manual endpoint, and fall back to
@@ -176,60 +185,23 @@ function CompetitionsHome() {
       <h2 className="mb-4 font-semibold">{t('home.myCompetitions')}</h2>
       {isLoading || loadingLive ? (
         <LoadingSpinner />
-      ) : myCompetitions.length === 0 ? (
+      ) : joined.length === 0 ? (
         <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
           {t('home.noCompetitions')}
         </p>
       ) : (
         <div className="grid gap-3">
-          {myCompetitions.map(c => (
-            <Link
-              key={c.to}
-              to={c.to}
-              // The picture is the card's left edge: no padding around it, and the card
-              // clips it to its own corners. `overflow-hidden` is what makes that work,
-              // and `group` lets the image answer a hover on the whole card.
-              className="group flex items-stretch overflow-hidden rounded-xl border bg-card transition-all hover:border-foreground/20 hover:shadow-md"
-            >
-              {c.imageUrl ? (
-                <img
-                  src={c.imageUrl}
-                  alt=""
-                  aria-hidden
-                  className="h-20 w-20 shrink-0 object-cover transition-transform duration-300 group-hover:scale-105 sm:h-24 sm:w-24"
-                />
-              ) : (
-                // Not an empty grey square: the initial gives a competition without a
-                // picture something of its own, the way an avatar does for a person.
-                <div className="flex h-20 w-20 shrink-0 items-center justify-center bg-muted text-2xl font-semibold text-muted-foreground/60 sm:h-24 sm:w-24">
-                  {c.name.trim()[0]?.toUpperCase() ?? '?'}
-                </div>
-              )}
-
-              <div className="flex min-w-0 flex-1 items-center justify-between gap-3 px-4 py-3">
-                <div className="flex min-w-0 flex-col gap-1">
-                  <h3 className="truncate font-semibold leading-tight">{c.name}</h3>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {/* What kind of league it is, then where it is up to. */}
-                    {c.isLive && <Tag tone="live">{t('home.tags.live')}</Tag>}
-                    {c.isCompleted ? (
-                      <Tag tone="finished">{t('home.tags.finished')}</Tag>
-                    ) : isUpcoming(c) ? (
-                      <Tag tone="upcoming">{t('home.tags.upcoming')}</Tag>
-                    ) : (
-                      <Tag tone="active">{t('home.tags.active')}</Tag>
-                    )}
-                  </div>
-                </div>
-                <ChevronRight
-                  size={18}
-                  aria-hidden
-                  className="shrink-0 text-muted-foreground/40 transition-transform group-hover:translate-x-0.5 group-hover:text-muted-foreground"
-                />
-              </div>
-            </Link>
-          ))}
+          {joined.map(c => <CompetitionCard key={c.to} c={c} />)}
         </div>
+      )}
+
+      {publicOnly.length > 0 && (
+        <>
+          <h2 className="mb-4 mt-8 font-semibold">{t('publicCompetition.sectionTitle')}</h2>
+          <div className="grid gap-3">
+            {publicOnly.map(c => <CompetitionCard key={c.to} c={c} />)}
+          </div>
+        </>
       )}
 
       <div className="mb-8 rounded-lg border p-5 mt-6">
@@ -257,5 +229,61 @@ function CompetitionsHome() {
         )}
       </div>
     </main>
+  );
+}
+
+function CompetitionCard({ c }: { c: MyCompetition }) {
+  const { t } = useT();
+  return (
+    <Link
+      to={c.to}
+      // The picture is the card's left edge: no padding around it, and the card
+      // clips it to its own corners. `overflow-hidden` is what makes that work,
+      // and `group` lets the image answer a hover on the whole card.
+      className="group flex items-stretch overflow-hidden rounded-xl border bg-card transition-all hover:border-foreground/20 hover:shadow-md"
+    >
+      {/* The picture column is a minimum size, not a fixed one: when the tags wrap and
+          the card grows, it stretches with it. The image is absolutely positioned inside
+          so its own proportions never push the card taller. */}
+      <div className="relative min-h-20 w-20 shrink-0 overflow-hidden sm:min-h-24 sm:w-24">
+        {c.imageUrl ? (
+          <img
+            src={c.imageUrl}
+            alt=""
+            aria-hidden
+            className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+          />
+        ) : (
+          // Not an empty grey square: the initial gives a competition without a
+          // picture something of its own, the way an avatar does for a person.
+          <div className="absolute inset-0 flex items-center justify-center bg-muted text-2xl font-semibold text-muted-foreground/60">
+            {c.name.trim()[0]?.toUpperCase() ?? '?'}
+          </div>
+        )}
+      </div>
+
+      <div className="flex min-w-0 flex-1 items-center justify-between gap-3 px-4 py-3">
+        <div className="flex min-w-0 flex-col gap-1">
+          <h3 className="truncate font-semibold leading-tight">{c.name}</h3>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {/* What kind of league it is, then where it is up to. */}
+            {c.isLive && <Tag tone="live">{t('home.tags.live')}</Tag>}
+            {!c.isMember && <PublicBadge viewOnly />}
+            {c.isCompleted ? (
+              <Tag tone="finished">{t('home.tags.finished')}</Tag>
+            ) : isUpcoming(c) ? (
+              <Tag tone="upcoming">{t('home.tags.upcoming')}</Tag>
+            ) : (
+              <Tag tone="active">{t('home.tags.active')}</Tag>
+            )}
+          </div>
+        </div>
+        <ChevronRight
+          size={18}
+          aria-hidden
+          className="shrink-0 text-muted-foreground/40 transition-transform group-hover:translate-x-0.5 group-hover:text-muted-foreground"
+        />
+      </div>
+    </Link>
   );
 }

@@ -115,6 +115,8 @@ async function start() {
     )
   `);
   await db.execute(sql`CREATE INDEX IF NOT EXISTS "password_reset_tokens_user_id_idx" ON password_reset_tokens ("user_id")`);
+  // Defensive: the public flag — a public competition is readable by everyone signed in.
+  await db.execute(sql`ALTER TABLE competitions ADD COLUMN IF NOT EXISTS "is_public" boolean NOT NULL DEFAULT false`);
   // Defensive: the live-sync admin override. Nullable — NULL defers to LIVE_SYNC_ENABLED.
   // app_config itself is created here too: the migration that introduced it is one of the
   // files missing from the journal, so it cannot be assumed to exist.

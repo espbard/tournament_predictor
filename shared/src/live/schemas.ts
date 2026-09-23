@@ -56,12 +56,14 @@ export const CreateLiveCompetitionSchema = z.object({
   name: z.string().min(1).max(100),
   imageUrl: z.string().nullable().optional(),
   scoringConfig: LiveScoringConfigSchema.optional(),
+  isPublic: z.boolean().optional(),
 });
 
 export const UpdateLiveCompetitionSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   imageUrl: z.string().nullable().optional(),
   scoringConfig: LiveScoringConfigSchema.optional(),
+  isPublic: z.boolean().optional(),
 });
 
 export const JoinLiveCompetitionSchema = z.object({

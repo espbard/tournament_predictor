@@ -127,6 +127,8 @@ interface Props {
   canManage: boolean;
   /** Set when looking at somebody else's answers, which turns the whole panel read-only. */
   viewUserId?: string;
+  /** Read-only with no answers of anybody's to show — a spectator who has picked nobody. */
+  readOnly?: boolean;
   api: BonusPanelApi;
   /** Called after a question changes, so the owner can refetch. */
   onQuestionsChanged: () => void;
@@ -151,6 +153,7 @@ export default function BonusQuestionsPanel({
   deadlinePassed,
   canManage,
   viewUserId,
+  readOnly = false,
   api,
   onQuestionsChanged,
   onAnswersChanged,
@@ -158,6 +161,9 @@ export default function BonusQuestionsPanel({
   supportsConstraints = false,
 }: Props) {
   const { t } = useT();
+  // Somebody else's answers, or a viewer who cannot answer at all (a spectator of a public
+  // competition): either way nothing on the panel can be changed.
+  const isReadOnly = !!viewUserId || readOnly;
   const CREATABLE_TYPES = answerTypes;
 
   const ANSWER_TYPE_LABELS: Record<PanelAnswerType, string> = {
@@ -204,7 +210,7 @@ export default function BonusQuestionsPanel({
     const q = questionMap[a.questionId];
     return q ? !(q.isLocked ?? deadlinePassed) : false;
   });
-  const canClearAnswers = !!api.clearAnswers && !viewUserId && hasClearableAnswers;
+  const canClearAnswers = !!api.clearAnswers && !isReadOnly && hasClearableAnswers;
 
   const addMutation = useMutation({
     mutationFn: (
@@ -352,7 +358,7 @@ export default function BonusQuestionsPanel({
   return (
     <div className="space-y-6">
       {/* Admin: add question form */}
-      {canManage && !viewUserId && (
+      {canManage && !isReadOnly && (
         <form onSubmit={handleAddQuestion} className="rounded-lg border p-5 space-y-4">
           <h2 className="font-semibold">{t('bonusQuestions.addTitle')}</h2>
           <div>
@@ -502,7 +508,7 @@ export default function BonusQuestionsPanel({
                       </p>
                       {!canManage && <ConstraintHints question={q} />}
                     </div>
-                    {canManage && !viewUserId && (
+                    {canManage && !isReadOnly && (
                       <div className="flex gap-2 flex-shrink-0">
                         <button
                           onClick={() => openEdit(q)}
@@ -538,7 +544,7 @@ export default function BonusQuestionsPanel({
                 )}
 
                 {/* Admin: edit question form */}
-                {canManage && !viewUserId && isEditing && (
+                {canManage && !isReadOnly && isEditing && (
                   <div className="space-y-3">
                     <div>
                       <label className="mb-1 block text-xs font-medium text-muted-foreground">{t('bonusQuestions.question')}</label>
@@ -606,7 +612,7 @@ export default function BonusQuestionsPanel({
                 )}
 
                 {/* Admin: set correct answer */}
-                {canManage && !viewUserId && isSettingAnswer && !isEditing && (
+                {canManage && !isReadOnly && isSettingAnswer && !isEditing && (
                   <div className="space-y-2 pt-1 border-t">
                     <label className="text-xs font-medium text-muted-foreground">{t('bonusQuestions.correctAnswer')}</label>
                     <div className="space-y-2">
@@ -778,12 +784,12 @@ export default function BonusQuestionsPanel({
                 )}
 
                 {/* Admin: show stored correct answer (idle state) */}
-                {canManage && !viewUserId && !isSettingAnswer && !isEditing && q.correctAnswer !== null && (
+                {canManage && !isReadOnly && !isSettingAnswer && !isEditing && q.correctAnswer !== null && (
                   <CorrectAnswerDisplay type={q.answerType} value={q.correctAnswer} teams={teams} correctAnswerLabel={t('bonusQuestions.correctAnswer')} />
                 )}
 
                 {/* Read-only view of another user's answer */}
-                {viewUserId && (
+                {isReadOnly && (
                   <div className="pt-1 border-t space-y-2">
                     <AnswerReadOnly
                       type={q.answerType}
@@ -806,7 +812,7 @@ export default function BonusQuestionsPanel({
                 )}
 
                 {/* User: answer input */}
-                {!viewUserId && !canManage && (
+                {!isReadOnly && !canManage && (
                   <div className="pt-1 border-t space-y-2">
                     {q.answerType === 'yes_no' ? (
                       <div className="flex items-center gap-3">

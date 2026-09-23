@@ -12,6 +12,7 @@ import { computeGroupStandings, calculateMatchPoints, getUserPredictedTeamForKno
 import { subscribeLeaderboard, unsubscribeLeaderboard } from '../lib/leaderboardEvents.js';
 import { joinManualCompetition } from '../lib/competitionJoin.js';
 import { ensureManualInviteToken, inviteTokenPath } from '../lib/inviteLinks.js';
+import { canViewManualCompetition, isManualMember } from '../lib/competitionAccess.js';
 
 const router = Router();
 
@@ -56,20 +57,28 @@ router.get('/', requireAuth, async (_req, res) => {
     const user = res.locals.user;
     // The tournament's status rides along so the competition list can put finished
     // leagues last without fetching a tournament per row.
-    if (user.isAdmin) {
-      const all = await db
-        .select({ competition: competitions, tournamentStatus: tournaments.status })
-        .from(competitions)
-        .leftJoin(tournaments, eq(competitions.tournamentId, tournaments.id));
-      return res.json(all.map(r => ({ ...r.competition, tournamentStatus: r.tournamentStatus })));
-    }
     const rows = await db
       .select({ competition: competitions, tournamentStatus: tournaments.status })
-      .from(competitionMembers)
-      .innerJoin(competitions, eq(competitionMembers.competitionId, competitions.id))
-      .leftJoin(tournaments, eq(competitions.tournamentId, tournaments.id))
-      .where(eq(competitionMembers.userId, user.id));
-    return res.json(rows.map(r => ({ ...r.competition, tournamentStatus: r.tournamentStatus })));
+      .from(competitions)
+      .leftJoin(tournaments, eq(competitions.tournamentId, tournaments.id));
+    const memberOf = new Set(
+      (await db
+        .select({ competitionId: competitionMembers.competitionId })
+        .from(competitionMembers)
+        .where(eq(competitionMembers.userId, user.id))
+      ).map(r => r.competitionId),
+    );
+    // Admins see every competition; everybody else their own plus the public ones, which
+    // come back flagged isMember: false so the list can show them as view only.
+    return res.json(
+      rows
+        .filter(r => user.isAdmin || r.competition.isPublic || memberOf.has(r.competition.id))
+        .map(r => ({
+          ...r.competition,
+          tournamentStatus: r.tournamentStatus,
+          isMember: memberOf.has(r.competition.id),
+        })),
+    );
   } catch {
     res.status(500).json({ error: 'Failed to fetch competitions' });
   }
@@ -81,7 +90,7 @@ router.post('/', requireAdmin, async (req, res) => {
     if (!result.success) {
       return res.status(400).json({ error: 'Validation failed', details: result.error.flatten() });
     }
-    const { tournamentId, name, imageUrl, predictionDeadline } = result.data;
+    const { tournamentId, name, imageUrl, predictionDeadline, isPublic } = result.data;
 
     const [tournament] = await db.select().from(tournaments).where(eq(tournaments.id, tournamentId));
     if (!tournament) return res.status(404).json({ error: 'Tournament not found' });
@@ -102,6 +111,7 @@ router.post('/', requireAdmin, async (req, res) => {
       inviteCode,
       scoringConfig: DEFAULT_SCORING_CONFIG,
       predictionDeadline: predictionDeadline ? new Date(predictionDeadline) : null,
+      isPublic: isPublic ?? false,
     });
 
     // Auto-add comparison users to competitions for "Fotball-VM 2026"
@@ -158,15 +168,11 @@ router.get('/:id', requireAuth, async (req, res) => {
     if (!competition) return res.status(404).json({ error: 'Competition not found' });
 
     const user = res.locals.user;
-    if (!user.isAdmin) {
-      const [membership] = await db
-        .select()
-        .from(competitionMembers)
-        .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
-      if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+    if (!(await canViewManualCompetition(id, user))) {
+      return res.status(403).json({ error: 'Not a member of this competition' });
     }
 
-    res.json(competition);
+    res.json({ ...competition, isMember: await isManualMember(id, user.id) });
   } catch (err) {
     console.error('Get competition error:', err);
     res.status(500).json({ error: 'Failed to fetch competition' });
@@ -179,7 +185,7 @@ router.patch('/:id', requireAdmin, async (req, res) => {
     const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
     if (!competition) return res.status(404).json({ error: 'Competition not found' });
 
-    const { name, imageUrl, predictionDeadline, allowLateAdditions } = req.body;
+    const { name, imageUrl, predictionDeadline, allowLateAdditions, isPublic } = req.body;
     const updates: Record<string, unknown> = {};
     if (name !== undefined) updates.name = name;
     if (imageUrl !== undefined) updates.imageUrl = imageUrl ?? null;
@@ -187,6 +193,7 @@ router.patch('/:id', requireAdmin, async (req, res) => {
       updates.predictionDeadline = predictionDeadline ? new Date(predictionDeadline) : null;
     }
     if (allowLateAdditions !== undefined) updates.allowLateAdditions = Boolean(allowLateAdditions);
+    if (isPublic !== undefined) updates.isPublic = Boolean(isPublic);
 
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({ error: 'No updates provided' });
@@ -194,7 +201,7 @@ router.patch('/:id', requireAdmin, async (req, res) => {
 
     await db.update(competitions).set(updates).where(eq(competitions.id, id));
     const [updated] = await db.select().from(competitions).where(eq(competitions.id, id));
-    res.json(updated);
+    res.json({ ...updated, isMember: await isManualMember(id, res.locals.user.id) });
   } catch (err) {
     console.error('Update competition error:', err);
     res.status(500).json({ error: 'Failed to update competition' });
@@ -281,12 +288,8 @@ router.get('/:id/members', requireAuth, async (req, res) => {
     if (!competition) return res.status(404).json({ error: 'Competition not found' });
 
     const user = res.locals.user;
-    if (!user.isAdmin) {
-      const [membership] = await db
-        .select()
-        .from(competitionMembers)
-        .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
-      if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+    if (!(await canViewManualCompetition(id, user))) {
+      return res.status(403).json({ error: 'Not a member of this competition' });
     }
 
     const members = await db
@@ -317,12 +320,8 @@ router.get('/:id/leaderboard', requireAuth, async (req, res) => {
     const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
     if (!competition) return res.status(404).json({ error: 'Competition not found' });
 
-    if (!user.isAdmin) {
-      const [membership] = await db
-        .select()
-        .from(competitionMembers)
-        .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
-      if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+    if (!(await canViewManualCompetition(id, user))) {
+      return res.status(403).json({ error: 'Not a member of this competition' });
     }
 
     const baseConditions = includeComparison
@@ -463,12 +462,8 @@ router.get('/:id/leaderboard-progression', requireAuth, async (req, res) => {
     const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
     if (!competition) return res.status(404).json({ error: 'Competition not found' });
 
-    if (!user.isAdmin) {
-      const [membership] = await db
-        .select()
-        .from(competitionMembers)
-        .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
-      if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+    if (!(await canViewManualCompetition(id, user))) {
+      return res.status(403).json({ error: 'Not a member of this competition' });
     }
 
     const [tournament] = await db.select().from(tournaments).where(eq(tournaments.id, competition.tournamentId));
@@ -839,12 +834,8 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
     const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
     if (!competition) return res.status(404).json({ error: 'Competition not found' });
 
-    if (!user.isAdmin) {
-      const [membership] = await db
-        .select()
-        .from(competitionMembers)
-        .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
-      if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+    if (!(await canViewManualCompetition(id, user))) {
+      return res.status(403).json({ error: 'Not a member of this competition' });
     }
 
     const scoringConfig = competition.scoringConfig as ScoringConfig;
@@ -1190,12 +1181,8 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     if (!competition) return res.status(404).json({ error: 'Competition not found' });
     const scoringConfig = competition.scoringConfig as ScoringConfig;
 
-    if (!user.isAdmin) {
-      const [membership] = await db
-        .select()
-        .from(competitionMembers)
-        .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
-      if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+    if (!(await canViewManualCompetition(id, user))) {
+      return res.status(403).json({ error: 'Not a member of this competition' });
     }
 
     const rows = await db
@@ -4201,12 +4188,8 @@ router.get('/:id/leaderboard/events', requireAuth, async (req, res) => {
   const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
   if (!competition) return res.status(404).json({ error: 'Competition not found' });
 
-  if (!user.isAdmin) {
-    const [membership] = await db
-      .select()
-      .from(competitionMembers)
-      .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
-    if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+  if (!(await canViewManualCompetition(id, user))) {
+    return res.status(403).json({ error: 'Not a member of this competition' });
   }
 
   res.setHeader('Content-Type', 'text/event-stream');
@@ -4737,12 +4720,8 @@ router.get('/:id/predictions/:userId', requireAuth, async (req, res) => {
     const { id, userId } = req.params;
     const viewer = res.locals.user;
 
-    if (!viewer.isAdmin) {
-      const [membership] = await db
-        .select()
-        .from(competitionMembers)
-        .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, viewer.id)));
-      if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+    if (!(await canViewManualCompetition(id, viewer))) {
+      return res.status(403).json({ error: 'Not a member of this competition' });
     }
 
     const [targetUser] = await db.select({ username: users.username, imageUrl: users.imageUrl, iconColor: users.iconColor }).from(users).where(eq(users.id, userId));
@@ -4765,12 +4744,8 @@ router.get('/:id/bracket-predictions/:userId', requireAuth, async (req, res) => 
     const { id, userId } = req.params;
     const viewer = res.locals.user;
 
-    if (!viewer.isAdmin) {
-      const [membership] = await db
-        .select()
-        .from(competitionMembers)
-        .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, viewer.id)));
-      if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+    if (!(await canViewManualCompetition(id, viewer))) {
+      return res.status(403).json({ error: 'Not a member of this competition' });
     }
 
     const [row] = await db
@@ -4790,12 +4765,8 @@ router.get('/:id/tiebreak-choices/:userId', requireAuth, async (req, res) => {
     const { id, userId } = req.params;
     const viewer = res.locals.user;
 
-    if (!viewer.isAdmin) {
-      const [membership] = await db
-        .select()
-        .from(competitionMembers)
-        .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, viewer.id)));
-      if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+    if (!(await canViewManualCompetition(id, viewer))) {
+      return res.status(403).json({ error: 'Not a member of this competition' });
     }
 
     const [targetMembership] = await db
@@ -4879,12 +4850,8 @@ router.get('/:id/bonus-questions', requireAuth, async (req, res) => {
     const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
     if (!competition) return res.status(404).json({ error: 'Competition not found' });
 
-    if (!user.isAdmin) {
-      const [membership] = await db
-        .select()
-        .from(competitionMembers)
-        .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
-      if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+    if (!(await canViewManualCompetition(id, user))) {
+      return res.status(403).json({ error: 'Not a member of this competition' });
     }
 
     const [tournament] = await db
@@ -4949,12 +4916,8 @@ router.get('/:id/bonus-answers/:userId', requireAuth, async (req, res) => {
     const { id, userId } = req.params;
     const viewer = res.locals.user;
 
-    if (!viewer.isAdmin) {
-      const [membership] = await db
-        .select()
-        .from(competitionMembers)
-        .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, viewer.id)));
-      if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+    if (!(await canViewManualCompetition(id, viewer))) {
+      return res.status(403).json({ error: 'Not a member of this competition' });
     }
 
     const answers = await db
@@ -4978,12 +4941,8 @@ router.get('/:id/all-bonus-answers', requireAuth, async (req, res) => {
     const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
     if (!competition) return res.status(404).json({ error: 'Competition not found' });
 
-    if (!user.isAdmin) {
-      const [membership] = await db
-        .select()
-        .from(competitionMembers)
-        .where(and(eq(competitionMembers.competitionId, id), eq(competitionMembers.userId, user.id)));
-      if (!membership) return res.status(403).json({ error: 'Not a member of this competition' });
+    if (!(await canViewManualCompetition(id, user))) {
+      return res.status(403).json({ error: 'Not a member of this competition' });
     }
 
     const rows = await db

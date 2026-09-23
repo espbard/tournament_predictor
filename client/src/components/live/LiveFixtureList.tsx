@@ -23,6 +23,11 @@ interface Props {
   savedFixtures: Record<string, number>;
   errors: Record<string, string>;
   readOnly?: boolean;
+  /**
+   * Leave out the viewer's own prediction row entirely — for somebody looking at a public
+   * competition they have not joined, who has no prediction to show.
+   */
+  hidePrediction?: boolean;
   /** Set to offer the league's predictions under each played match. */
   competitionId?: string;
   linkToUsers?: boolean;
@@ -39,6 +44,7 @@ export default function LiveFixtureList({
   savedFixtures,
   errors,
   readOnly = false,
+  hidePrediction = false,
   competitionId,
   linkToUsers = true,
 }: Props) {
@@ -73,6 +79,7 @@ export default function LiveFixtureList({
               savedFixtures={savedFixtures}
               errors={errors}
               readOnly={readOnly}
+              hidePrediction={hidePrediction}
               competitionId={competitionId}
               linkToUsers={linkToUsers}
             />
@@ -86,6 +93,7 @@ export default function LiveFixtureList({
             savedAt={savedFixtures[fixture.id] ?? null}
             error={errors[fixture.id] ?? null}
             readOnly={readOnly}
+            hidePrediction={hidePrediction}
             competitionId={competitionId}
             linkToUsers={linkToUsers}
           />
@@ -118,6 +126,7 @@ export default function LiveFixtureList({
           savedAt={savedFixtures[fixture.id] ?? null}
           error={errors[fixture.id] ?? null}
           readOnly={readOnly}
+          hidePrediction={hidePrediction}
           competitionId={competitionId}
           linkToUsers={linkToUsers}
         />

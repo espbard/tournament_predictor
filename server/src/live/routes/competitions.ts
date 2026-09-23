@@ -57,6 +57,7 @@ import { buildLiveUserStats, type LiveStatsLang } from '../userStats';
 import { validateTableOrder } from '../tableScoring';
 import { joinLiveCompetition } from '../../lib/competitionJoin';
 import { ensureLiveInviteToken, inviteTokenPath } from '../../lib/inviteLinks';
+import { canViewLiveCompetition, isLiveMember } from '../../lib/competitionAccess';
 
 // ── Live competition API ──────────────────────────────────────────────────────
 //
@@ -84,16 +85,7 @@ async function assertMember(
   user: { id: string; isAdmin: boolean },
 ): Promise<boolean> {
   if (user.isAdmin) return true;
-  const [membership] = await db
-    .select({ id: liveCompetitionMembers.id })
-    .from(liveCompetitionMembers)
-    .where(
-      and(
-        eq(liveCompetitionMembers.liveCompetitionId, competitionId),
-        eq(liveCompetitionMembers.userId, user.id),
-      ),
-    );
-  return !!membership;
+  return isLiveMember(competitionId, user.id);
 }
 
 /**
@@ -128,29 +120,33 @@ liveCompetitionsRouter.get('/competitions', requireAuth, async (_req, res) => {
       liveTournamentId: liveCompetitions.liveTournamentId,
     };
 
-    const rows = user.isAdmin
-      ? await db
-          .select(base)
-          .from(liveCompetitions)
-          .leftJoin(liveTournaments, eq(liveCompetitions.liveTournamentId, liveTournaments.id))
-          .orderBy(asc(liveCompetitions.createdAt))
-      : await db
-          .select(base)
+    const rows = await db
+      .select(base)
+      .from(liveCompetitions)
+      .leftJoin(liveTournaments, eq(liveCompetitions.liveTournamentId, liveTournaments.id))
+      .orderBy(asc(liveCompetitions.createdAt));
+    const memberOf = new Set(
+      (
+        await db
+          .select({ id: liveCompetitionMembers.liveCompetitionId })
           .from(liveCompetitionMembers)
-          .innerJoin(
-            liveCompetitions,
-            eq(liveCompetitionMembers.liveCompetitionId, liveCompetitions.id),
-          )
-          .leftJoin(liveTournaments, eq(liveCompetitions.liveTournamentId, liveTournaments.id))
-          .where(eq(liveCompetitionMembers.userId, user.id));
+          .where(eq(liveCompetitionMembers.userId, user.id))
+      ).map(r => r.id),
+    );
+    // Admins see every competition; everybody else their own plus the public ones, which
+    // come back flagged isMember: false so the list can show them as view only.
+    const visible = rows.filter(
+      r => user.isAdmin || r.competition.isPublic || memberOf.has(r.competition.id),
+    );
 
     const firstKickoffs = await firstKickoffByTournament([
-      ...new Set(rows.map(r => r.liveTournamentId)),
+      ...new Set(visible.map(r => r.liveTournamentId)),
     ]);
 
     return res.json(
-      rows.map(r => ({
+      visible.map(r => ({
         ...r.competition,
+        isMember: memberOf.has(r.competition.id),
         tournamentStatus: r.tournamentStatus,
         firstKickoffAt: firstKickoffs.get(r.liveTournamentId) ?? null,
       })),
@@ -253,6 +249,7 @@ liveCompetitionsRouter.post('/competitions', requireAdmin, async (req, res) => {
         inviteCode,
         // Any tier the caller omitted falls back to the default rather than undefined.
         scoringConfig: withLiveScoringDefaults(parsed.data.scoringConfig),
+        isPublic: parsed.data.isPublic ?? false,
       })
       .returning();
 
@@ -269,7 +266,7 @@ liveCompetitionsRouter.get('/competitions/:id', requireAuth, async (req, res) =>
       .from(liveCompetitions)
       .where(eq(liveCompetitions.id, req.params.id));
     if (!competition) return res.status(404).json({ error: 'Not found' });
-    if (!(await assertMember(competition.id, res.locals.user))) {
+    if (!(await canViewLiveCompetition(competition.id, res.locals.user))) {
       return res.status(403).json({ error: 'Not a member of this competition' });
     }
 
@@ -282,6 +279,7 @@ liveCompetitionsRouter.get('/competitions/:id', requireAuth, async (req, res) =>
 
     return res.json({
       ...competition,
+      isMember: await isLiveMember(competition.id, res.locals.user.id),
       tournament: tournament ?? null,
       // The client renders its stage selector from this rather than a hardcoded list.
       stages: format?.stages ?? [],
@@ -305,6 +303,7 @@ liveCompetitionsRouter.patch('/competitions/:id', requireAdmin, async (req, res)
     if (parsed.data.scoringConfig !== undefined) {
       update.scoringConfig = withLiveScoringDefaults(parsed.data.scoringConfig);
     }
+    if (parsed.data.isPublic !== undefined) update.isPublic = parsed.data.isPublic;
     if (Object.keys(update).length === 0) return res.status(400).json({ error: 'Nothing to update' });
 
     const [row] = await db
@@ -395,7 +394,7 @@ liveCompetitionsRouter.delete('/competitions/:id/leave', requireAuth, async (req
 
 liveCompetitionsRouter.get('/competitions/:id/members', requireAuth, async (req, res) => {
   try {
-    if (!(await assertMember(req.params.id, res.locals.user))) {
+    if (!(await canViewLiveCompetition(req.params.id, res.locals.user))) {
       return res.status(403).json({ error: 'Not a member of this competition' });
     }
 
@@ -427,7 +426,7 @@ liveCompetitionsRouter.get('/competitions/:id/members', requireAuth, async (req,
  */
 liveCompetitionsRouter.get('/competitions/:id/leaderboard', requireAuth, async (req, res) => {
   try {
-    if (!(await assertMember(req.params.id, res.locals.user))) {
+    if (!(await canViewLiveCompetition(req.params.id, res.locals.user))) {
       return res.status(403).json({ error: 'Not a member of this competition' });
     }
 
@@ -617,7 +616,7 @@ liveCompetitionsRouter.get(
   async (req, res) => {
     try {
       const { id } = req.params;
-      if (!(await assertMember(id, res.locals.user))) {
+      if (!(await canViewLiveCompetition(id, res.locals.user))) {
         return res.status(403).json({ error: 'Not a member of this competition' });
       }
 
@@ -653,7 +652,7 @@ liveCompetitionsRouter.get(
 liveCompetitionsRouter.get('/competitions/:id/user-stats', requireAuth, async (req, res) => {
   try {
     const user = res.locals.user;
-    if (!(await assertMember(req.params.id, user))) {
+    if (!(await canViewLiveCompetition(req.params.id, user))) {
       return res.status(403).json({ error: 'Not a member of this competition' });
     }
     const lang: LiveStatsLang =
@@ -873,7 +872,7 @@ liveCompetitionsRouter.get('/competitions/:id/events', requireAuth, async (req, 
     .from(liveCompetitions)
     .where(eq(liveCompetitions.id, id));
   if (!competition) return res.status(404).json({ error: 'Not found' });
-  if (!(await assertMember(id, res.locals.user))) {
+  if (!(await canViewLiveCompetition(id, res.locals.user))) {
     return res.status(403).json({ error: 'Not a member of this competition' });
   }
 
@@ -910,7 +909,7 @@ liveCompetitionsRouter.get('/competitions/:id/fixtures', requireAuth, async (req
       .from(liveCompetitions)
       .where(eq(liveCompetitions.id, req.params.id));
     if (!competition) return res.status(404).json({ error: 'Not found' });
-    if (!(await assertMember(competition.id, user))) {
+    if (!(await canViewLiveCompetition(competition.id, user))) {
       return res.status(403).json({ error: 'Not a member of this competition' });
     }
 
@@ -1014,7 +1013,7 @@ liveCompetitionsRouter.get('/competitions/:id/table-prediction', requireAuth, as
       .from(liveCompetitions)
       .where(eq(liveCompetitions.id, req.params.id));
     if (!competition) return res.status(404).json({ error: 'Not found' });
-    if (!(await assertMember(competition.id, user))) {
+    if (!(await canViewLiveCompetition(competition.id, user))) {
       return res.status(403).json({ error: 'Not a member of this competition' });
     }
 
@@ -1056,9 +1055,12 @@ liveCompetitionsRouter.get('/competitions/:id/table-prediction', requireAuth, as
       );
 
     // Locked for this member only if they have a table to lock. Without one the deadline
-    // has nothing to close and they may still enter — once.
+    // has nothing to close and they may still enter — once. Somebody outside the
+    // competition — a spectator of a public one — can never submit, so for them it is the
+    // plain deadline.
     const kickoffs = stageFixtures.map(f => f.kickoffAt);
-    const lock = seasonPredictionLock(kickoffs, !!prediction);
+    const canSubmit = await isLiveMember(competition.id, user.id);
+    const lock = seasonPredictionLock(kickoffs, !!prediction || !canSubmit);
 
     // The live table, so the UI can offer it as a starting order and show the result.
     const standings = await db
@@ -1086,6 +1088,11 @@ liveCompetitionsRouter.get('/competitions/:id/table-prediction', requireAuth, as
       isLateEntry: lock.isLateEntry,
       // Standings order, top first — the natural starting point for a new prediction.
       currentOrder: standings.map(s => s.teamId),
+      // A match of the stage has kicked off, so the standings are no longer the provider's
+      // pre-season zeros and the prediction can be read against them.
+      stageStarted: stageFixtures.some(
+        f => f.status === 'finished' || f.status === 'in_play' || f.status === 'paused',
+      ),
       scoringConfig: withLiveScoringDefaults(competition.scoringConfig),
     });
   } catch (err) {
@@ -1296,13 +1303,74 @@ liveCompetitionsRouter.delete('/competitions/:id/table-prediction', requireAuth,
  * Copying an order is the accepted cost — unlike a per-fixture prediction, which stays
  * closed until its own kickoff.
  */
+/**
+ * Who in the league has predicted the table — the avatars of the "see what others
+ * predicted" strip on the table tab. Each table itself is read one at a time through
+ * GET /competitions/:id/table-prediction/:userId, which is already open to the league.
+ */
+liveCompetitionsRouter.get(
+  '/competitions/:id/table-predictions',
+  requireAuth,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      if (!(await canViewLiveCompetition(id, res.locals.user))) {
+        return res.status(403).json({ error: 'Not a member of this competition' });
+      }
+
+      const [competition] = await db
+        .select()
+        .from(liveCompetitions)
+        .where(eq(liveCompetitions.id, id));
+      if (!competition) return res.status(404).json({ error: 'Not found' });
+
+      const [tournament] = await db
+        .select()
+        .from(liveTournaments)
+        .where(eq(liveTournaments.id, competition.liveTournamentId));
+      if (!tournament) return res.status(404).json({ error: 'Live tournament not found' });
+
+      const stage = tablePredictionStage(getLiveFormat(tournament.format), tournament.startStageKey);
+      if (!stage) return res.json([]);
+
+      // Joined to the member row so somebody who has since left drops out.
+      const rows = await db
+        .select({
+          userId: users.id,
+          username: users.username,
+          imageUrl: users.imageUrl,
+          iconColor: users.iconColor,
+        })
+        .from(liveTablePredictions)
+        .innerJoin(users, eq(users.id, liveTablePredictions.userId))
+        .innerJoin(
+          liveCompetitionMembers,
+          and(
+            eq(liveCompetitionMembers.liveCompetitionId, liveTablePredictions.liveCompetitionId),
+            eq(liveCompetitionMembers.userId, liveTablePredictions.userId),
+          ),
+        )
+        .where(
+          and(
+            eq(liveTablePredictions.liveCompetitionId, id),
+            eq(liveTablePredictions.stageKey, stage.key),
+          ),
+        )
+        .orderBy(asc(users.username));
+      return res.json(rows);
+    } catch (err) {
+      return fail(res, err);
+    }
+  },
+);
+
 liveCompetitionsRouter.get(
   '/competitions/:id/table-prediction/:userId',
   requireAuth,
   async (req, res) => {
     try {
       const { id, userId } = req.params;
-      if (!(await assertMember(id, res.locals.user))) {
+      if (!(await canViewLiveCompetition(id, res.locals.user))) {
         return res.status(403).json({ error: 'Not a member of this competition' });
       }
 
@@ -1458,7 +1526,7 @@ liveCompetitionsRouter.get(
   async (req, res) => {
     try {
       const { id, userId } = req.params;
-      if (!(await assertMember(id, res.locals.user))) {
+      if (!(await canViewLiveCompetition(id, res.locals.user))) {
         return res.status(403).json({ error: 'Not a member of this competition' });
       }
 
@@ -1523,7 +1591,7 @@ liveCompetitionsRouter.get('/competitions/:id/scorer-prediction', requireAuth, a
       .from(liveCompetitions)
       .where(eq(liveCompetitions.id, req.params.id));
     if (!competition) return res.status(404).json({ error: 'Not found' });
-    if (!(await assertMember(competition.id, user))) {
+    if (!(await canViewLiveCompetition(competition.id, user))) {
       return res.status(403).json({ error: 'Not a member of this competition' });
     }
 
@@ -1568,9 +1636,11 @@ liveCompetitionsRouter.get('/competitions/:id/scorer-prediction', requireAuth, a
       );
 
     // As with the table: a member who never ranked anybody has nothing for the deadline to
-    // close, so it stays open for them until they do.
+    // close, so it stays open for them until they do. Somebody outside the competition — a
+    // spectator of a public one — can never submit, so for them it is the plain deadline.
     const kickoffs = stageFixtures.map(f => f.kickoffAt);
-    const lock = seasonPredictionLock(kickoffs, !!prediction);
+    const canSubmit = await isLiveMember(competition.id, user.id);
+    const lock = seasonPredictionLock(kickoffs, !!prediction || !canSubmit);
 
     // The ranking as it stands today, by the same rule the final one is settled by. It
     // seeds a new prediction and, later, shows how the real thing is going.
@@ -1610,6 +1680,47 @@ liveCompetitionsRouter.get('/competitions/:id/scorer-prediction', requireAuth, a
  * partial or duplicated ranking would let somebody quietly stack the positions they are
  * confident about.
  */
+/**
+ * Who in the league has ranked the top scorers — the avatars of the "see what others
+ * predicted" strip on the scorer tab. Each ranking itself is read one at a time through
+ * GET /competitions/:id/scorer-prediction/:userId, which is already open to the league.
+ */
+liveCompetitionsRouter.get(
+  '/competitions/:id/scorer-predictions',
+  requireAuth,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      if (!(await canViewLiveCompetition(id, res.locals.user))) {
+        return res.status(403).json({ error: 'Not a member of this competition' });
+      }
+
+      // Joined to the member row so somebody who has since left drops out.
+      const rows = await db
+        .select({
+          userId: users.id,
+          username: users.username,
+          imageUrl: users.imageUrl,
+          iconColor: users.iconColor,
+        })
+        .from(liveScorerPredictions)
+        .innerJoin(users, eq(users.id, liveScorerPredictions.userId))
+        .innerJoin(
+          liveCompetitionMembers,
+          and(
+            eq(liveCompetitionMembers.liveCompetitionId, liveScorerPredictions.liveCompetitionId),
+            eq(liveCompetitionMembers.userId, liveScorerPredictions.userId),
+          ),
+        )
+        .where(eq(liveScorerPredictions.liveCompetitionId, id))
+        .orderBy(asc(users.username));
+      return res.json(rows);
+    } catch (err) {
+      return fail(res, err);
+    }
+  },
+);
+
 liveCompetitionsRouter.put('/competitions/:id/scorer-prediction', requireAuth, async (req, res) => {
   try {
     const parsed = SaveLiveScorerPredictionSchema.safeParse(req.body);
@@ -1727,7 +1838,7 @@ liveCompetitionsRouter.get(
   async (req, res) => {
     try {
       const { id, userId } = req.params;
-      if (!(await assertMember(id, res.locals.user))) {
+      if (!(await canViewLiveCompetition(id, res.locals.user))) {
         return res.status(403).json({ error: 'Not a member of this competition' });
       }
 
@@ -1816,7 +1927,7 @@ liveCompetitionsRouter.get(
   async (req, res) => {
     try {
       const { id, fixtureId } = req.params;
-      if (!(await assertMember(id, res.locals.user))) {
+      if (!(await canViewLiveCompetition(id, res.locals.user))) {
         return res.status(403).json({ error: 'Not a member of this competition' });
       }
 
@@ -1956,7 +2067,7 @@ liveCompetitionsRouter.get('/competitions/:id/bonus-questions', requireAuth, asy
       .from(liveCompetitions)
       .where(eq(liveCompetitions.id, req.params.id));
     if (!competition) return res.status(404).json({ error: 'Not found' });
-    if (!(await assertMember(competition.id, user))) {
+    if (!(await canViewLiveCompetition(competition.id, user))) {
       return res.status(403).json({ error: 'Not a member of this competition' });
     }
 
@@ -1996,7 +2107,7 @@ liveCompetitionsRouter.get('/competitions/:id/bonus-questions', requireAuth, asy
 liveCompetitionsRouter.get('/competitions/:id/bonus-answers', requireAuth, async (req, res) => {
   try {
     const user = res.locals.user;
-    if (!(await assertMember(req.params.id, user))) {
+    if (!(await canViewLiveCompetition(req.params.id, user))) {
       return res.status(403).json({ error: 'Not a member of this competition' });
     }
 
@@ -2026,6 +2137,47 @@ async function isTournamentCompletedFor(competitionId: string): Promise<boolean>
  * Points stay redacted until the tournament is completed, which is a separate rule and
  * applies to a member's own answers too.
  */
+/**
+ * Who in the league has answered at least one bonus question — the avatars of the "see
+ * other users' answers" strip on the bonus tab. The answers themselves are read one member
+ * at a time through GET /competitions/:id/bonus-answers/:userId.
+ */
+liveCompetitionsRouter.get(
+  '/competitions/:id/bonus-answerers',
+  requireAuth,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      if (!(await canViewLiveCompetition(id, res.locals.user))) {
+        return res.status(403).json({ error: 'Not a member of this competition' });
+      }
+
+      // Joined to the member row so somebody who has since left drops out.
+      const rows = await db
+        .selectDistinct({
+          userId: users.id,
+          username: users.username,
+          imageUrl: users.imageUrl,
+          iconColor: users.iconColor,
+        })
+        .from(liveBonusAnswers)
+        .innerJoin(users, eq(users.id, liveBonusAnswers.userId))
+        .innerJoin(
+          liveCompetitionMembers,
+          and(
+            eq(liveCompetitionMembers.liveCompetitionId, liveBonusAnswers.liveCompetitionId),
+            eq(liveCompetitionMembers.userId, liveBonusAnswers.userId),
+          ),
+        )
+        .where(eq(liveBonusAnswers.liveCompetitionId, id))
+        .orderBy(asc(users.username));
+      return res.json(rows);
+    } catch (err) {
+      return fail(res, err);
+    }
+  },
+);
+
 liveCompetitionsRouter.get(
   '/competitions/:id/bonus-answers/:userId',
   requireAuth,
@@ -2033,7 +2185,7 @@ liveCompetitionsRouter.get(
     try {
       const viewer = res.locals.user;
       const { id, userId } = req.params;
-      if (!(await assertMember(id, viewer))) {
+      if (!(await canViewLiveCompetition(id, viewer))) {
         return res.status(403).json({ error: 'Not a member of this competition' });
       }
 

@@ -18,6 +18,7 @@ import { buildFinalResultsPointSources } from '@/lib/pointSources';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import BackButton from '@/components/BackButton';
 import InviteButton from '@/components/InviteButton';
+import { PublicToggle } from '@/components/PublicCompetition';
 import { useT } from '@/lib/useT';
 import { useTeamName } from '@/lib/teamTranslations';
 import type { Competition, Tournament, Prediction, MatchStage, LeaderboardEntry, BracketPredictions, BracketMatchPrediction, UserStatCardData, LeaderboardProgressionResponse, BonusQuestion } from '@tournament-predictor/shared';
@@ -148,6 +149,7 @@ export default function CompetitionDetailPage() {
   const [editImageUrl, setEditImageUrl] = useState<string | null>(null);
   const [editDeadline, setEditDeadline] = useState('');
   const [editAllowLateAdditions, setEditAllowLateAdditions] = useState(true);
+  const [editIsPublic, setEditIsPublic] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [editError, setEditError] = useState('');
 
@@ -158,13 +160,23 @@ export default function CompetitionDetailPage() {
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [saveErrors, setSaveErrors] = useState<Record<string, string>>({});
 
+  const { data: competition, isLoading, error } = useQuery({
+    queryKey: ['competitions', id],
+    queryFn: () => api.get<Competition>(`/competitions/${id}`),
+  });
+
+  // Somebody looking at a public competition they have not joined. They get the admin's
+  // view of it — the results tabs only — since there are no predictions of their own to show.
+  const isSpectator = !user?.isAdmin && competition?.isMember === false;
+
   const [searchParams, setSearchParams] = useSearchParams();
   type TabId = 'group' | 'tables' | 'knockout' | 'bonus' | 'leaderboard' | 'pointProgression' | 'userStats' | 'finalResults';
   const VALID_TABS: TabId[] = ['group', 'tables', 'knockout', 'bonus', 'leaderboard', 'pointProgression', 'userStats', 'finalResults'];
   const tabParam = searchParams.get('tab') as TabId | null;
-  const activeTab: TabId = VALID_TABS.includes(tabParam!)
+  const PREDICTION_TABS: TabId[] = ['group', 'tables', 'knockout', 'bonus'];
+  const activeTab: TabId = VALID_TABS.includes(tabParam!) && !(isSpectator && PREDICTION_TABS.includes(tabParam!))
     ? tabParam!
-    : (user?.isLeaderboardUser || user?.isAdmin ? 'leaderboard' : 'group');
+    : (user?.isLeaderboardUser || user?.isAdmin || isSpectator ? 'leaderboard' : 'group');
   const setActiveTab = (tab: TabId) => {
     setSearchParams(prev => { const n = new URLSearchParams(prev); n.set('tab', tab); return n; }, { replace: true });
   };
@@ -199,11 +211,6 @@ export default function CompetitionDetailPage() {
     const timers = debounceTimers.current;
     return () => { Object.values(timers).forEach(clearTimeout); };
   }, []);
-
-  const { data: competition, isLoading, error } = useQuery({
-    queryKey: ['competitions', id],
-    queryFn: () => api.get<Competition>(`/competitions/${id}`),
-  });
 
   const { data: tournamentsData = [] } = useQuery({
     queryKey: ['tournaments'],
@@ -244,25 +251,25 @@ export default function CompetitionDetailPage() {
   const { data: savedPredictions = [], isFetched: predictionsFetched } = useQuery({
     queryKey: ['competitions', id, 'predictions'],
     queryFn: () => api.get<Prediction[]>(`/competitions/${id}/predictions`),
-    enabled: !!competition && !user?.isAdmin && !user?.isLeaderboardUser,
+    enabled: !!competition && !user?.isAdmin && !user?.isLeaderboardUser && !isSpectator,
   });
 
   const { data: savedTiebreakerChoices } = useQuery({
     queryKey: ['competitions', id, 'tiebreak-choices'],
     queryFn: () => api.get<{ groupChoices: DisciplinaryChoices; luckyLoserChoices: DisciplinaryChoices }>(`/competitions/${id}/tiebreak-choices`),
-    enabled: !!competition && !user?.isAdmin && !user?.isLeaderboardUser,
+    enabled: !!competition && !user?.isAdmin && !user?.isLeaderboardUser && !isSpectator,
   });
 
   const { data: myStatus } = useQuery({
     queryKey: ['competitions', id, 'my-status'],
     queryFn: () => api.get<{ groupStageLocked: boolean; knockoutCompleteSeen: boolean; lateAdditionWindowEndsAt: string | null }>(`/competitions/${id}/my-status`),
-    enabled: !!competition && !user?.isAdmin && !user?.isLeaderboardUser,
+    enabled: !!competition && !user?.isAdmin && !user?.isLeaderboardUser && !isSpectator,
   });
 
   const { data: bracketPreds } = useQuery({
     queryKey: ['competitions', id, 'bracket-predictions'],
     queryFn: () => api.get<BracketPredictions>(`/competitions/${id}/bracket-predictions`),
-    enabled: !!competition && !user?.isAdmin && !user?.isLeaderboardUser,
+    enabled: !!competition && !user?.isAdmin && !user?.isLeaderboardUser && !isSpectator,
   });
 
   const { data: leaderboard = [], isLoading: leaderboardLoading } = useQuery({
@@ -964,7 +971,7 @@ export default function CompetitionDetailPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: (body: { name?: string; imageUrl?: string | null; predictionDeadline?: string | null; allowLateAdditions?: boolean }) =>
+    mutationFn: (body: { name?: string; imageUrl?: string | null; predictionDeadline?: string | null; allowLateAdditions?: boolean; isPublic?: boolean }) =>
       api.patch<Competition>(`/competitions/${id}`, body),
     onSuccess: () => {
       setShowEdit(false);
@@ -987,6 +994,7 @@ export default function CompetitionDetailPage() {
         : ''
     );
     setEditAllowLateAdditions(competition.allowLateAdditions);
+    setEditIsPublic(competition.isPublic);
     setShowEdit(true);
   }
 
@@ -997,6 +1005,7 @@ export default function CompetitionDetailPage() {
       imageUrl: editImageUrl,
       predictionDeadline: editDeadline ? new Date(editDeadline).toISOString() : null,
       allowLateAdditions: editAllowLateAdditions,
+      isPublic: editIsPublic,
     });
   }
 
@@ -1148,7 +1157,7 @@ export default function CompetitionDetailPage() {
                     {t('common.edit')}
                   </button>
                 )}
-                {!user?.isAdmin && (
+                {!user?.isAdmin && !isSpectator && (
                   <button
                     onClick={() => setShowLeaveConfirm(true)}
                     className="rounded-md border border-red-600 bg-red-600 px-3 py-1.5 text-sm text-white hover:bg-red-700 hover:border-red-700 transition-colors"
@@ -1156,11 +1165,13 @@ export default function CompetitionDetailPage() {
                     {t('competitionDetail.leave')}
                   </button>
                 )}
-                <InviteButton
-                  kind="manual"
-                  competitionId={competition.id}
-                  className="inline-flex items-center justify-center gap-1.5 rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
-                />
+                {!isSpectator && (
+                  <InviteButton
+                    kind="manual"
+                    competitionId={competition.id}
+                    className="inline-flex items-center justify-center gap-1.5 rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+                  />
+                )}
               </div>
             </div>
           </div>
@@ -1269,6 +1280,7 @@ export default function CompetitionDetailPage() {
               Allow Late Additions
             </label>
           </div>
+          <PublicToggle id="edit-is-public" checked={editIsPublic} onChange={setEditIsPublic} />
           {editError && <p className="text-sm text-destructive">{editError}</p>}
           <div className="flex gap-2">
             <button
@@ -1289,7 +1301,7 @@ export default function CompetitionDetailPage() {
         </form>
       )}
 
-      {!user?.isAdmin && (<>
+      {!user?.isAdmin && !isSpectator && (<>
 
       {activeTab === 'tables' && (
         <div>

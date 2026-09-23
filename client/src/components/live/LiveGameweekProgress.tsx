@@ -14,21 +14,30 @@ import { useT } from '@/lib/useT';
 // A locked match you never predicted keeps its week yellow: the dot reports what is
 // predicted, not what could still be, and quietly turning green on a deadline you missed
 // would be a lie.
+//
+// A spectator of a public competition predicts nothing, so for them (`mode="results"`)
+// the same three colours track the matches instead: yellow while any selected match of the
+// week is still without a result, green once all of them have one.
 
 export type LiveGameweekState = 'empty' | 'partial' | 'complete';
 
 export interface LiveGameweekProgressItem {
   matchday: number;
   state: LiveGameweekState;
-  /** Selected matches in this gameweek, and how many the viewer has predicted. */
+  /**
+   * Selected matches in this gameweek, and how many of them are done — predicted by the
+   * viewer, or in results mode, played.
+   */
   selected: number;
-  predicted: number;
+  done: number;
 }
 
 interface Props {
   items: LiveGameweekProgressItem[];
   current: number | null;
   onSelect: (matchday: number) => void;
+  /** What a dot counts: the viewer's predictions (default) or the matches' results. */
+  mode?: 'predictions' | 'results';
 }
 
 const DOT_CLASS: Record<LiveGameweekState, string> = {
@@ -37,9 +46,15 @@ const DOT_CLASS: Record<LiveGameweekState, string> = {
   complete: 'bg-green-600 dark:bg-green-500',
 };
 
-export default function LiveGameweekProgress({ items, current, onSelect }: Props) {
+export default function LiveGameweekProgress({
+  items,
+  current,
+  onSelect,
+  mode = 'predictions',
+}: Props) {
   const { t } = useT();
   if (items.length === 0) return null;
+  const labelBase = mode === 'results' ? 'live.gameweekDotResults' : 'live.gameweekDot';
 
   return (
     <div className="mb-4">
@@ -54,14 +69,16 @@ export default function LiveGameweekProgress({ items, current, onSelect }: Props
                 aria-current={isCurrent ? 'true' : undefined}
                 // The count is in the label rather than only the colour, so the state is
                 // not carried by hue alone.
-                aria-label={t(`live.gameweekDot.${item.state}`, {
+                aria-label={t(`${labelBase}.${item.state}`, {
                   matchday: item.matchday,
-                  predicted: item.predicted,
+                  predicted: item.done,
+                  done: item.done,
                   selected: item.selected,
                 })}
-                title={t(`live.gameweekDot.${item.state}`, {
+                title={t(`${labelBase}.${item.state}`, {
                   matchday: item.matchday,
-                  predicted: item.predicted,
+                  predicted: item.done,
+                  done: item.done,
                   selected: item.selected,
                 })}
                 className={`flex h-6 w-6 items-center justify-center rounded-full transition-transform hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${

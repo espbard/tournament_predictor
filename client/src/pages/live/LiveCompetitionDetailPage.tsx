@@ -18,6 +18,7 @@ import LiveTablePrediction from '@/components/live/LiveTablePrediction';
 import LiveBonusQuestionsTab from '@/components/live/LiveBonusQuestionsTab';
 import LiveScorerPrediction from '@/components/live/LiveScorerPrediction';
 import LiveScorerPredictionGate from '@/components/live/LiveScorerPredictionGate';
+import LivePredictorPicker from '@/components/live/LivePredictorPicker';
 import LiveUpcomingChecklist, {
   type ChecklistItem,
   type ChecklistKey,
@@ -68,7 +69,6 @@ export default function LiveCompetitionDetailPage() {
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
 
   const tabParam = searchParams.get('tab') as TabId | null;
-  const activeTab: TabId = tabParam && TABS.includes(tabParam) ? tabParam : 'fixtures';
 
   const [stageKey, setStageKey] = useState<string | null>(null);
   const [matchday, setMatchday] = useState<number | null>(null);
@@ -83,6 +83,12 @@ export default function LiveCompetitionDetailPage() {
     queryFn: () => liveApi.competition(id!),
     enabled: !!id,
   });
+
+  // Somebody looking at a public competition they have not joined. Every tab is open to
+  // them, read only: the fixtures and results as they are, and on the table, scorer and
+  // bonus tabs what the members predicted, once those have closed.
+  const isSpectator = !user?.isAdmin && competition?.isMember === false;
+  const activeTab: TabId = tabParam && TABS.includes(tabParam) ? tabParam : 'fixtures';
 
   // Every fixture is fetched once and filtered in memory. It is one request rather than
   // one per matchday, it makes switching stages instant, and it gives the SSE handler a
@@ -205,18 +211,30 @@ export default function LiveCompetitionDetailPage() {
 
   // Default to whatever is happening next — the stage and matchday of the earliest
   // fixture still to be played, falling back to the last one for a finished season.
+  //
+  // A spectator has nothing to predict, so "next" means nothing to them: they land on the
+  // latest gameweek with a result in it instead — the most recent shown match that has
+  // kicked off — and only fall back to the member's default before a ball is kicked.
+  // Waits for the competition, since that is what says whether this is a spectator.
   useEffect(() => {
-    if (stageKey !== null || fixtures.length === 0) return;
+    if (stageKey !== null || fixtures.length === 0 || !competition) return;
 
+    const latestResult = isSpectator
+      ? [...fixtures]
+          .filter(
+            f => f.isSelected && (f.status === 'finished' || LIVE_STATUSES.has(f.status)),
+          )
+          .sort((a, b) => (b.kickoffAt ?? '').localeCompare(a.kickoffAt ?? ''))[0]
+      : undefined;
     const upcoming = [...fixtures]
       .filter(f => f.status !== 'finished' && f.status !== 'cancelled')
       .sort((a, b) => (a.kickoffAt ?? '').localeCompare(b.kickoffAt ?? ''))[0];
     const fallback = [...fixtures].sort((a, b) => (b.kickoffAt ?? '').localeCompare(a.kickoffAt ?? ''))[0];
-    const chosen = upcoming ?? fallback;
+    const chosen = latestResult ?? upcoming ?? fallback;
 
     if (chosen?.stageKey) setStageKey(chosen.stageKey);
     if (chosen?.matchday != null) setMatchday(chosen.matchday);
-  }, [fixtures, stageKey]);
+  }, [fixtures, stageKey, competition, isSpectator]);
 
   const stageDef = stages.find(s => s.key === stageKey) ?? null;
 
@@ -245,24 +263,33 @@ export default function LiveCompetitionDetailPage() {
 
   // One dot per gameweek: grey with nothing to predict, green once every selected match
   // of that week has this viewer's prediction, yellow while any is still missing.
+  //
+  // A spectator has no predictions, so their dots count results instead: green once every
+  // selected match of the week is over, yellow while any is still to be played. A
+  // cancelled match counts as over — it will never get a result, and waiting for one
+  // would leave its week yellow for good.
   const gameweekProgress = useMemo<LiveGameweekProgressItem[]>(
     () =>
       matchdays.map(matchday => {
         const selected = stageFixtures.filter(f => f.matchday === matchday);
-        const predicted = selected.filter(f => f.prediction !== null).length;
+        const done = selected.filter(f =>
+          isSpectator
+            ? f.status === 'finished' || f.status === 'cancelled'
+            : f.prediction !== null,
+        ).length;
         return {
           matchday,
           selected: selected.length,
-          predicted,
+          done,
           state:
             selected.length === 0
               ? 'empty'
-              : predicted === selected.length
+              : done === selected.length
                 ? 'complete'
                 : 'partial',
         };
       }),
-    [matchdays, stageFixtures],
+    [matchdays, stageFixtures, isSpectator],
   );
 
   // ── The next round ─────────────────────────────────────────────────────────
@@ -402,6 +429,64 @@ export default function LiveCompetitionDetailPage() {
       setClearScorerError(err instanceof ApiError ? err.message : t('live.scorers.clearFailed')),
   });
 
+  // ── Other people's top-scorer rankings ──────────────────────────────────────
+  //
+  // Once the ranking has closed and the goals have started, the scorer tab puts a strip of
+  // everybody who ranked above the predicted-against-actual comparison, and picking a face
+  // swaps whose ranking the comparison shows. A spectator has none of their own, so they
+  // start on the first person in the strip instead.
+  const [scorerViewUserId, setScorerViewUserId] = useState<string | null>(null);
+  const scorerComparisonOpen =
+    !!scorerView?.available &&
+    scorerView.isLocked &&
+    scorerView.players.some(player => (player.goals ?? 0) > 0);
+
+  const { data: scorerPredictors = [] } = useQuery({
+    queryKey: liveKeys.scorerPredictors(id!),
+    queryFn: () => liveApi.scorerPredictors(id!),
+    enabled: !!id && activeTab === 'scorers' && scorerComparisonOpen,
+  });
+
+  const shownScorerUserId = scorerComparisonOpen
+    ? (scorerViewUserId ?? (isSpectator ? (scorerPredictors[0]?.userId ?? null) : null))
+    : null;
+  const viewingOtherScorers = !!shownScorerUserId && shownScorerUserId !== user?.id;
+  const shownScorerUsername =
+    scorerPredictors.find(p => p.userId === shownScorerUserId)?.username ?? '';
+
+  const { data: otherScorerPrediction, isLoading: loadingOtherScorers } = useQuery({
+    queryKey: liveKeys.userScorerPrediction(id!, shownScorerUserId ?? ''),
+    queryFn: () => liveApi.otherUserScorerPrediction(id!, shownScorerUserId!),
+    enabled: !!id && viewingOtherScorers,
+  });
+
+  // ── Other people's table predictions ────────────────────────────────────────
+  //
+  // The same strip and swap as the scorer tab above, once the table has closed and the
+  // stage has kicked off.
+  const [tableViewUserId, setTableViewUserId] = useState<string | null>(null);
+  const tableComparisonOpen =
+    !!tableView?.available && tableView.isLocked && tableView.stageStarted;
+
+  const { data: tablePredictors = [] } = useQuery({
+    queryKey: liveKeys.tablePredictors(id!),
+    queryFn: () => liveApi.tablePredictors(id!),
+    enabled: !!id && activeTab === 'table' && tableComparisonOpen,
+  });
+
+  const shownTableUserId = tableComparisonOpen
+    ? (tableViewUserId ?? (isSpectator ? (tablePredictors[0]?.userId ?? null) : null))
+    : null;
+  const viewingOtherTable = !!shownTableUserId && shownTableUserId !== user?.id;
+  const shownTableUsername =
+    tablePredictors.find(p => p.userId === shownTableUserId)?.username ?? '';
+
+  const { data: otherTablePrediction, isLoading: loadingOtherTable } = useQuery({
+    queryKey: liveKeys.userTablePrediction(id!, shownTableUserId ?? ''),
+    queryFn: () => liveApi.otherUserTablePrediction(id!, shownTableUserId!),
+    enabled: !!id && viewingOtherTable,
+  });
+
   // ── The table-prediction gate ───────────────────────────────────────────────
   //
   // A member who has not submitted a table prediction sees only that, full screen, until
@@ -421,10 +506,11 @@ export default function LiveCompetitionDetailPage() {
       }) as Team,
   );
 
-  const canBeGated = !user?.isAdmin && !user?.isLeaderboardUser;
+  const canBeGated = !user?.isAdmin && !user?.isLeaderboardUser && !isSpectator;
 
   // The same group the gates apply to: an admin is a member of every competition
-  // implicitly and has nothing to leave, and a leaderboard viewer is not playing.
+  // implicitly and has nothing to leave, a leaderboard viewer is not playing, and a
+  // spectator of a public competition never joined.
   const canLeave = canBeGated;
 
   const mustPredictTable =
@@ -578,6 +664,24 @@ export default function LiveCompetitionDetailPage() {
     );
   }
 
+  const tablePicker = tableComparisonOpen ? (
+    <LivePredictorPicker
+      predictors={tablePredictors}
+      selectedUserId={shownTableUserId ?? user?.id ?? null}
+      onSelect={setTableViewUserId}
+      viewerId={isSpectator ? null : (user?.id ?? null)}
+    />
+  ) : null;
+
+  const scorerPicker = scorerComparisonOpen ? (
+    <LivePredictorPicker
+      predictors={scorerPredictors}
+      selectedUserId={shownScorerUserId ?? user?.id ?? null}
+      onSelect={setScorerViewUserId}
+      viewerId={isSpectator ? null : (user?.id ?? null)}
+    />
+  ) : null;
+
   return (
     <main className="mx-auto max-w-2xl md:max-w-4xl lg:max-w-[80%] px-4 pt-2.5 pb-12 sm:pt-8">
       <header className="mb-6 flex items-start gap-4">
@@ -602,13 +706,16 @@ export default function LiveCompetitionDetailPage() {
               {t('competitionDetail.leave')}
             </button>
           )}
-          <InviteButton
-            kind="live"
-            competitionId={competition.id}
-            className="inline-flex items-center justify-center gap-1.5 rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
-          />
+          {!isSpectator && (
+            <InviteButton
+              kind="live"
+              competitionId={competition.id}
+              className="inline-flex items-center justify-center gap-1.5 rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+            />
+          )}
         </div>
       </header>
+
 
       {showLeaveConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -648,12 +755,14 @@ export default function LiveCompetitionDetailPage() {
 
       {activeTab === 'fixtures' && (
         <>
-          <LiveUpcomingChecklist
-            items={checklist}
-            deadline={checklistDeadline}
-            lateEntry={checklistIsLateEntry}
-            onOpen={openTab}
-          />
+          {!isSpectator && (
+            <LiveUpcomingChecklist
+              items={checklist}
+              deadline={checklistDeadline}
+              lateEntry={checklistIsLateEntry}
+              onOpen={openTab}
+            />
+          )}
 
           {loadingFixtures ? (
             <LoadingSpinner />
@@ -692,6 +801,7 @@ export default function LiveCompetitionDetailPage() {
               {stageDef?.kind === 'table' && matchdays.length > 0 && (
                 <>
                   <LiveGameweekProgress
+                    mode={isSpectator ? 'results' : 'predictions'}
                     items={gameweekProgress}
                     current={shownMatchday}
                     onSelect={setMatchday}
@@ -722,6 +832,8 @@ export default function LiveCompetitionDetailPage() {
                 savingFixtureId={savingFixtureId}
                 savedFixtures={savedFixtures}
                 errors={errors}
+                readOnly={isSpectator}
+                hidePrediction={isSpectator}
                 competitionId={id!}
               />
             </div>
@@ -737,6 +849,27 @@ export default function LiveCompetitionDetailPage() {
         ) : tableView.teams.length === 0 ? (
           // Before the draw there are no teams to order yet.
           <LiveQualifiedTeamsPanel teams={teams} expectedTeamCount={null} note={null} />
+        ) : viewingOtherTable ? (
+          // Somebody else's table, read only, with the strip kept on top.
+          loadingOtherTable ? (
+            <>
+              {tablePicker}
+              <LoadingSpinner />
+            </>
+          ) : (
+            <LiveTablePrediction
+              key={shownTableUserId}
+              view={{ ...tableView, prediction: otherTablePrediction ?? null }}
+              onSave={() => {}}
+              isSaving={false}
+              savedAt={null}
+              error={null}
+              readOnly
+              comparisonHeader={tablePicker}
+              hideIntro={isSpectator}
+              predictedLabel={t('live.table.compare.predictedBy', { name: shownTableUsername })}
+            />
+          )
         ) : (
           <LiveTablePrediction
             view={tableView}
@@ -747,6 +880,9 @@ export default function LiveCompetitionDetailPage() {
             onClear={() => clearTableMutation.mutate()}
             isClearing={clearTableMutation.isPending}
             clearError={clearTableError}
+            readOnly={isSpectator}
+            comparisonHeader={tablePicker}
+            hideIntro={isSpectator}
           />
         ))}
 
@@ -755,6 +891,32 @@ export default function LiveCompetitionDetailPage() {
           <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
             {t('live.scorers.unavailable')}
           </p>
+        ) : viewingOtherScorers ? (
+          // Somebody else's ranking, read only. The strip stays on top so the viewer can
+          // move on to the next person or back to their own.
+          <>
+            {loadingOtherScorers ? (
+              <>
+                {scorerPicker}
+                <LoadingSpinner />
+              </>
+            ) : (
+              <LiveScorerPrediction
+                key={shownScorerUserId}
+                view={{ ...scorerView, prediction: otherScorerPrediction ?? null }}
+                onSave={() => {}}
+                isSaving={false}
+                savedAt={null}
+                error={null}
+                readOnly
+                comparisonHeader={scorerPicker}
+                hideIntro={isSpectator}
+                predictedLabel={t('live.scorers.compare.predictedBy', {
+                  name: shownScorerUsername,
+                })}
+              />
+            )}
+          </>
         ) : (
           <LiveScorerPrediction
             view={scorerView}
@@ -765,6 +927,9 @@ export default function LiveCompetitionDetailPage() {
             onClear={() => clearScorerMutation.mutate()}
             isClearing={clearScorerMutation.isPending}
             clearError={clearScorerError}
+            readOnly={isSpectator}
+            comparisonHeader={scorerPicker}
+            hideIntro={isSpectator}
           />
         ))}
 
@@ -773,6 +938,8 @@ export default function LiveCompetitionDetailPage() {
           <LiveBonusQuestionsTab
             competitionId={id!}
             liveTournamentId={competition.tournament.id}
+            showOthers
+            spectator={isSpectator}
           />
         ) : (
           <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
@@ -785,11 +952,6 @@ export default function LiveCompetitionDetailPage() {
           rows={standings}
           tableScope={competition.tableScope}
           stages={competition.stages}
-          teams={teams}
-          predictedOrder={
-            tableView?.available ? tableView.prediction?.orderedTeamIds ?? null : null
-          }
-          predictedStageKey={tableView?.available ? tableView.stageKey : null}
         />
       )}
 

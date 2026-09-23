@@ -264,6 +264,8 @@ export async function ensureLiveSchema(): Promise<void> {
   await db.execute(sql`ALTER TABLE "live_fixtures" ADD COLUMN IF NOT EXISTS "multiplier" integer NOT NULL DEFAULT 1`);
   // Share-link token. Nullable: minted the first time somebody presses Invite.
   await db.execute(sql`ALTER TABLE "live_competitions" ADD COLUMN IF NOT EXISTS "invite_token" text`);
+  // Public: readable (never playable) by every signed-in user, member or not.
+  await db.execute(sql`ALTER TABLE "live_competitions" ADD COLUMN IF NOT EXISTS "is_public" boolean NOT NULL DEFAULT false`);
 
   // ── Indexes ─────────────────────────────────────────────────────────────────
   await db.execute(sql`ALTER TABLE "live_tournaments" ADD COLUMN IF NOT EXISTS "fixture_provider" "live_provider"`);

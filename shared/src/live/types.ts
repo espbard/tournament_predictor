@@ -247,6 +247,13 @@ export interface LiveCompetition {
   imageUrl: string | null;
   inviteCode: string;
   scoringConfig: LiveScoringConfig;
+  /** Readable by every signed-in user; only members can predict. */
+  isPublic: boolean;
+  /**
+   * Whether the caller belongs to this competition. Set by the list and the single read;
+   * false means the caller is looking at a public competition from the outside, view only.
+   */
+  isMember?: boolean;
   createdAt: string;
 }
 

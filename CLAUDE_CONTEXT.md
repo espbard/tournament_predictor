@@ -163,7 +163,7 @@ configured, so shared-package specs go under `server/src/` too. Existing example
 | `groups` | Named groups in a tournament | |
 | `teams` | Participating teams | `groupId` FK, `imageUrl` |
 | `matches` | Fixtures | `stage` enum, `scheduledAt`, `homeScore`/`awayScore`, `progressingTeamId`, `bracketIndex`, self-referencing `nextMatchId` |
-| `competitions` | A private prediction league on one tournament | `inviteCode`, `inviteToken` (nullable share-link token, minted on first Invite), `scoringConfig` JSON, `predictionDeadline`, `allowLateAdditions` |
+| `competitions` | A private prediction league on one tournament | `inviteCode`, `inviteToken` (nullable share-link token, minted on first Invite), `scoringConfig` JSON, `predictionDeadline`, `allowLateAdditions`, `isPublic` |
 | `competition_members` | Membership **and** the per-user score aggregate | 8 denormalised `*_points` columns, `groupStageLocked`, tiebreak choice JSON, late-addition fields. **Has no primary key** |
 | `predictions` | Per-match score predictions | **No unique constraint** on (competition, user, match) — enforced only in app code |
 | `bracket_predictions` | Whole knockout bracket as one JSON blob | PK `(competitionId, userId)`; keys are `${stage}_${index}` |
@@ -198,7 +198,7 @@ the data requires, unlike their manual counterparts:
 | `live_teams` | Unique on `(tournament, provider_team_id)`; `qualification_status` derived by the sync engine |
 | `live_fixtures` | Unique on `(tournament, provider_fixture_id)`. Nullable team FKs — knockout fixtures exist before the draw. Scores split into `normal_time_*` (the only score that awards points), `half_time_*`, `extra_time_*`, `penalties_*`, `final_*` |
 | `live_standings` | Stored verbatim from the provider, never recomputed. Unique on `(tournament, stage_key, team_id)` — `group_name` is excluded on purpose, being nullable |
-| `live_competitions` | **No `prediction_deadline` column** — the live type locks per fixture only. `inviteToken` mirrors the manual column |
+| `live_competitions` | **No `prediction_deadline` column** — the live type locks per fixture only. `inviteToken` and `isPublic` mirror the manual columns |
 | `live_competition_members` | Membership + denormalised 3-source score aggregate |
 | `live_predictions` | Unique on `(competition, user, fixture)` — the constraint the manual `predictions` table lacks |
 | `live_gameweek_selections` | One row per gameweek (`(tournament, stage_key, matchday)`, unique) holding the fixture ids users predict on, as a single `json` array. **No row means every fixture in that gameweek counts** — the default — so a row is never stored empty |
@@ -349,6 +349,16 @@ POST   /api/invites/:token/accept          — join whatever the link points at
 > user through register/login with `?redirect=` pointing back at the link. The join rules
 > themselves (a closed tournament, a passed deadline, the late-addition handling) live in
 > `server/src/lib/competitionJoin.ts` so the code and the link can never drift apart.
+
+> **Public competitions.** Both types carry an `is_public` flag, set by an admin on the
+> create and edit forms. A public competition is *readable* by every signed-in user, member
+> or not, and playable by members only; joining (code, link, deadlines) is unchanged.
+> The rule lives in `server/src/lib/competitionAccess.ts`: read-only routes about the
+> competition as a whole check `canView*Competition` (admin, member, or public), while
+> writes and routes returning the caller's *own* predictions keep checking membership. The
+> competition lists return public competitions too, and both the lists and
+> `GET …/competitions/:id` add `isMember`; `isMember === false` puts the client in its
+> view-only spectator mode (results tabs, read-only fixtures, no gates, no Leave/Invite).
 
 > This map is **partial**. `routes/competitions.ts` alone exposes ~40 endpoints (bracket
 > predictions, leaderboard progression, user stats, tiebreak choices, bonus answers, an SSE
@@ -572,7 +582,12 @@ by itself once a match has started, but never into `completed`.
 
 - Sessions managed by Lucia Auth, stored in the database
 - Session cookie: `http-only`, no `secure` flag needed (dev speed priority)
-- No email verification, no password reset flow (out of scope)
+- No email verification. An email address is optional (stored encrypted, see
+  `server/src/lib/emailCrypto.ts`) and is what a "forgot password" reset link is sent to
+  (`server/src/lib/passwordReset.ts`, `/forgot-password`, `/reset-password/:token`)
+- A user who never entered an email can still be let back in: an admin sets one on the
+  admin page's user list (`PATCH /api/auth/users/:id` with `email`), and "Save and reset
+  password" (`sendResetLink: true`) sends the ordinary reset link to it in the same request
 - Admin role: a boolean `is_admin` column on the `users` table
 - Only admins can: create tournaments, add teams/matches, enter results, trigger scoring, add bonus questions
 

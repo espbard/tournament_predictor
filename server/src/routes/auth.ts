@@ -5,6 +5,7 @@ import { db } from '../db/client';
 import { users } from '../db/schema';
 import { lucia, requireAuth, requireAdmin } from '../middleware/auth';
 import {
+  AdminUpdateUserSchema,
   ForgotPasswordSchema,
   LoginSchema,
   RegisterSchema,
@@ -52,8 +53,8 @@ function generateIconColor(): string {
 export const authRouter = Router();
 
 // What the signed-in user sees of their own account. Includes the email, which is private:
-// the admin user list and every other endpoint leave it out. Select these, then pass the
-// row through toOwnUser to decrypt the address.
+// only the admin user list shows it to anybody else, and every other endpoint leaves it
+// out. Select these, then pass the row through toOwnUser to decrypt the address.
 const ownUserFields = { id: users.id, username: users.username, isAdmin: users.isAdmin, isTestAccount: users.isTestAccount, isLeaderboardUser: users.isLeaderboardUser, isComparisonUser: users.isComparisonUser, isLateAddition: users.isLateAddition, imageUrl: users.imageUrl, iconColor: users.iconColor, emailEncrypted: users.emailEncrypted };
 
 function toOwnUser<T extends { emailEncrypted: string | null }>(row: T) {
@@ -270,29 +271,87 @@ authRouter.post('/reset-password', async (req, res) => {
   }
 });
 
+// The admin's view of every account. Carries each email (decrypted) so an admin can set one
+// for somebody who never entered it and has lost their password — see PATCH /users/:id.
+const adminUserFields = { id: users.id, username: users.username, isAdmin: users.isAdmin, isTestAccount: users.isTestAccount, isLeaderboardUser: users.isLeaderboardUser, isComparisonUser: users.isComparisonUser, isLateAddition: users.isLateAddition, imageUrl: users.imageUrl, iconColor: users.iconColor, emailEncrypted: users.emailEncrypted };
+
 authRouter.get('/users', requireAdmin, async (_req, res) => {
-  const allUsers = await db
-    .select({ id: users.id, username: users.username, isAdmin: users.isAdmin, isTestAccount: users.isTestAccount, isLeaderboardUser: users.isLeaderboardUser, isComparisonUser: users.isComparisonUser, isLateAddition: users.isLateAddition, imageUrl: users.imageUrl, iconColor: users.iconColor })
-    .from(users)
-    .orderBy(users.username);
-  return res.json(allUsers);
+  try {
+    const allUsers = await db
+      .select(adminUserFields)
+      .from(users)
+      .orderBy(users.username);
+    return res.json(allUsers.map(toOwnUser));
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
+/**
+ * Change another account: the admin flags, and the email address.
+ *
+ * The email is the way back in for somebody who forgot their password without ever having
+ * entered one: the admin sets it here, and with `sendResetLink` a reset link goes to it in
+ * the same request — the normal "forgot password" email, one use and 30 minutes, like any
+ * other. Changing the address voids links already sent to the old one.
+ *
+ * The save happens first. If the email then cannot be sent, the answer is a 502 that says
+ * the address was saved, so the admin knows to retry the send rather than the save.
+ */
 authRouter.patch('/users/:id', requireAdmin, async (req, res) => {
-  const { isTestAccount, isLeaderboardUser, isComparisonUser, isLateAddition } = req.body;
-  const updates: Record<string, unknown> = {};
-  if (typeof isTestAccount === 'boolean') updates.isTestAccount = isTestAccount;
-  if (typeof isLeaderboardUser === 'boolean') updates.isLeaderboardUser = isLeaderboardUser;
-  if (typeof isComparisonUser === 'boolean') updates.isComparisonUser = isComparisonUser;
-  if (typeof isLateAddition === 'boolean') updates.isLateAddition = isLateAddition;
-  if (Object.keys(updates).length === 0) {
+  let input;
+  try {
+    input = AdminUpdateUserSchema.parse(req.body);
+  } catch (err: any) {
+    return res.status(400).json({ error: 'Invalid input', details: err?.errors });
+  }
+  const { email, sendResetLink, language, ...flags } = input;
+  if (Object.keys(flags).length === 0 && email === undefined && !sendResetLink) {
     return res.status(400).json({ error: 'No valid fields to update' });
   }
-  const [updated] = await db
-    .update(users)
-    .set(updates)
-    .where(eq(users.id, req.params.id))
-    .returning({ id: users.id, username: users.username, isAdmin: users.isAdmin, isTestAccount: users.isTestAccount, isLeaderboardUser: users.isLeaderboardUser, isComparisonUser: users.isComparisonUser, isLateAddition: users.isLateAddition, imageUrl: users.imageUrl, iconColor: users.iconColor });
-  if (!updated) return res.status(404).json({ error: 'User not found' });
-  return res.json(updated);
+
+  let updated;
+  try {
+    const [before] = await db
+      .select({ emailHash: users.emailHash })
+      .from(users)
+      .where(eq(users.id, req.params.id))
+      .limit(1);
+    if (!before) return res.status(404).json({ error: 'User not found' });
+
+    const emailUpdate = email === undefined ? null : emailColumns(email);
+    const changes = { ...flags, ...(emailUpdate ?? {}) };
+    [updated] = Object.keys(changes).length
+      ? await db.update(users).set(changes).where(eq(users.id, req.params.id)).returning(adminUserFields)
+      : await db.select(adminUserFields).from(users).where(eq(users.id, req.params.id)).limit(1);
+    // A reset link already sent to the old address must not outlive the change.
+    if (emailUpdate && emailUpdate.emailHash !== before.emailHash) {
+      await deleteResetTokensForUser(req.params.id);
+    }
+  } catch (err) {
+    if (isUniqueViolation(err)) return res.status(409).json({ error: 'Email already in use' });
+    if (err instanceof EmailNotConfiguredError) {
+      return res.status(503).json({ error: 'Email addresses cannot be saved right now. Try again later.' });
+    }
+    console.error(err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+
+  const user = toOwnUser(updated);
+  if (!sendResetLink) return res.json(user);
+
+  if (!user.email) {
+    return res.status(400).json({ error: 'This user has no email address to send a reset link to' });
+  }
+  try {
+    const token = await createResetToken(user.id);
+    const link = `${appBaseUrl()}${resetPasswordPath(token)}`;
+    await sendEmail({ to: user.email, ...buildResetEmail(user.username, link, language) });
+  } catch (err) {
+    // Never log the address or the link: the error message alone says what went wrong.
+    console.error('Admin password reset email failed:', err instanceof Error ? err.message : err);
+    return res.status(502).json({ error: 'The email address was saved, but the reset email could not be sent.' });
+  }
+  return res.json({ ...user, resetLinkSent: true });
 });

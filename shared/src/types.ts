@@ -8,7 +8,10 @@ export interface User {
   isLateAddition: boolean;
   imageUrl?: string | null;
   iconColor?: string | null;
-  /** Only ever present on the signed-in user's own record — never on other members. */
+  /**
+   * Present on the signed-in user's own record, and on the admin user list so an admin can
+   * set it for somebody who has lost their password. Never on other members.
+   */
   email?: string | null;
 }
 
@@ -96,6 +99,13 @@ export interface Competition {
   scoringConfig: ScoringConfig;
   predictionDeadline: string | null;
   allowLateAdditions: boolean;
+  /** Readable by every signed-in user; only members can predict. */
+  isPublic: boolean;
+  /**
+   * Whether the caller belongs to this competition. Set by the list and the single read;
+   * false means the caller is looking at a public competition from the outside, view only.
+   */
+  isMember?: boolean;
   createdAt: string;
   /**
    * The status of the tournament this competition plays, where the endpoint joined it in

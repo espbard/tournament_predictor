@@ -192,7 +192,7 @@ export default function LiveUserPredictionsPage() {
         return {
           matchday,
           selected: selected.length,
-          predicted,
+          done: predicted,
           state:
             selected.length === 0
               ? 'empty'

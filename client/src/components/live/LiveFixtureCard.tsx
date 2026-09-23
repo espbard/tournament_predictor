@@ -29,6 +29,11 @@ interface Props {
   error: string | null;
   readOnly?: boolean;
   /**
+   * Leave out the viewer's own prediction row entirely — for somebody looking at a public
+   * competition they have not joined, who has no prediction to show.
+   */
+  hidePrediction?: boolean;
+  /**
    * The competition this fixture is being predicted in. Set it to offer the league's
    * predictions under a played match; omit it where there is no league context.
    */
@@ -77,6 +82,7 @@ export default function LiveFixtureCard({
   savedAt,
   error,
   readOnly = false,
+  hidePrediction = false,
   competitionId,
   linkToUsers = true,
 }: Props) {
@@ -225,7 +231,7 @@ export default function LiveFixtureCard({
       )}
 
       {/* Prediction row */}
-      {!inPredictionGame ? (
+      {hidePrediction ? null : !inPredictionGame ? (
         <p className="mt-2 text-center text-xs text-muted-foreground">
           {fixture.isPredictable ? t('live.notSelected') : t('live.notPredictable')}
         </p>
@@ -327,7 +333,7 @@ export default function LiveFixtureCard({
           "multiplied by 2", in every language this app speaks. */}
       {isMultiplied && (
         <p className="mt-2 text-center text-xs font-medium text-amber-700 dark:text-amber-300">
-          {t(multiplierExplainerKey(multiplier, fixture.prediction?.points != null), { multiplier })}
+          {t(multiplierExplainerKey(multiplier, hidePrediction ? isFinished : fixture.prediction?.points != null), { multiplier })}
         </p>
       )}
 
