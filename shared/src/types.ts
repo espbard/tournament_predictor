@@ -8,7 +8,10 @@ export interface User {
   isLateAddition: boolean;
   imageUrl?: string | null;
   iconColor?: string | null;
-  /** Only ever present on the signed-in user's own record — never on other members. */
+  /**
+   * Present on the signed-in user's own record, and on the admin user list so an admin can
+   * set it for somebody who has lost their password. Never on other members.
+   */
   email?: string | null;
 }
 

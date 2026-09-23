@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import { useT } from '@/lib/useT';
 import type { User } from '@tournament-predictor/shared';
 
@@ -24,6 +24,7 @@ export default function AdminHomePage({ maintenanceMode }: Props) {
   const { t } = useT();
   const queryClient = useQueryClient();
   const [pending, setPending] = useState(false);
+  const [editingEmailFor, setEditingEmailFor] = useState<string | null>(null);
   const [copyReport, setCopyReport] = useState<CopyReport[] | null>(null);
 
   const copyPredictionsMutation = useMutation({
@@ -168,12 +169,25 @@ export default function AdminHomePage({ maintenanceMode }: Props) {
           <h2 className="mb-4 font-semibold">{t('adminUsers.title')}</h2>
           <ul className="space-y-3">
             {userList.map((u) => (
-              <li key={u.id} className="flex items-center justify-between gap-4">
-                <div>
+              <li key={u.id}>
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
                   <span className="text-sm font-medium">{u.username}</span>
                   {u.isAdmin && (
                     <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">admin</span>
                   )}
+                  <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+                    <span className="truncate">{u.email || t('adminUsers.noEmail')}</span>
+                    {editingEmailFor !== u.id && (
+                      <button
+                        type="button"
+                        onClick={() => setEditingEmailFor(u.id)}
+                        className="underline hover:text-foreground"
+                      >
+                        {t('adminUsers.editEmail')}
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-muted-foreground">{t('adminUsers.testAccount')}</span>
@@ -194,11 +208,118 @@ export default function AdminHomePage({ maintenanceMode }: Props) {
                     />
                   </button>
                 </div>
+              </div>
+              {editingEmailFor === u.id && (
+                <UserEmailForm user={u} onDone={() => setEditingEmailFor(null)} />
+              )}
               </li>
             ))}
           </ul>
         </div>
       )}
     </main>
+  );
+}
+
+// ── An admin setting somebody's email ─────────────────────────────────────────
+//
+// For a user who forgot their password and never entered an email: the admin puts one on
+// the account, and "Save and reset password" also sends them the ordinary reset link in the
+// same request. Its own component so each row's draft is its own, and a half-typed address
+// cannot leak into the next row that gets opened.
+
+function UserEmailForm({ user, onDone }: { user: User; onDone: () => void }) {
+  const { t, language } = useT();
+  const queryClient = useQueryClient();
+  const [email, setEmail] = useState(user.email ?? '');
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+
+  const saveMutation = useMutation({
+    mutationFn: (sendResetLink: boolean) =>
+      api.patch<User & { resetLinkSent?: boolean }>(`/auth/users/${user.id}`, {
+        email: email.trim() || null,
+        sendResetLink,
+        language,
+      }),
+    onMutate: () => {
+      setError('');
+      setNotice('');
+    },
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] });
+      if (updated.resetLinkSent) {
+        // Stays open so the admin sees where the link went.
+        setNotice(t('adminUsers.resetSent', { email: updated.email ?? '' }));
+      } else {
+        onDone();
+      }
+    },
+    onError: (err) => {
+      // A failed send still saved the address, so the list is refreshed either way.
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] });
+      setError(err instanceof ApiError ? err.message : t('adminUsers.failed'));
+    },
+  });
+
+  function submit(sendResetLink: boolean) {
+    if (sendResetLink && !email.trim()) {
+      setError(t('adminUsers.needEmailForReset'));
+      return;
+    }
+    saveMutation.mutate(sendResetLink);
+  }
+
+  return (
+    <form
+      onSubmit={e => {
+        e.preventDefault();
+        submit(false);
+      }}
+      className="mt-2 rounded-md border bg-muted/20 p-3"
+    >
+      <label htmlFor={`email-${user.id}`} className="mb-1 block text-xs font-medium">
+        {t('adminUsers.email')}
+      </label>
+      <input
+        id={`email-${user.id}`}
+        type="email"
+        value={email}
+        onChange={e => setEmail(e.target.value)}
+        placeholder={t('adminUsers.emailPlaceholder')}
+        autoComplete="off"
+        className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+      />
+      <p className="mt-1 text-xs text-muted-foreground">{t('adminUsers.emailHelp')}</p>
+
+      {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
+      {notice && <p className="mt-2 text-sm text-green-600 dark:text-green-400">{notice}</p>}
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          type="submit"
+          disabled={saveMutation.isPending}
+          className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+        >
+          {saveMutation.isPending && saveMutation.variables === false ? t('common.saving') : t('common.save')}
+        </button>
+        <button
+          type="button"
+          onClick={() => submit(true)}
+          disabled={saveMutation.isPending}
+          className="rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-muted disabled:opacity-50"
+        >
+          {saveMutation.isPending && saveMutation.variables === true ? t('common.saving') : t('adminUsers.saveAndReset')}
+        </button>
+        <button
+          type="button"
+          onClick={onDone}
+          disabled={saveMutation.isPending}
+          className="rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted disabled:opacity-50"
+        >
+          {notice ? t('adminUsers.close') : t('common.cancel')}
+        </button>
+      </div>
+    </form>
   );
 }

@@ -55,6 +55,22 @@ export const UpdateUserSchema = z.object({
   email: EmailField.optional(),
 });
 
+/**
+ * What an admin may change on somebody else's account. `email` sets or clears their
+ * address (for a user who never entered one and has lost their password), and
+ * `sendResetLink` then mails a password reset link to the address the account ends up with.
+ */
+export const AdminUpdateUserSchema = z.object({
+  isTestAccount: z.boolean().optional(),
+  isLeaderboardUser: z.boolean().optional(),
+  isComparisonUser: z.boolean().optional(),
+  isLateAddition: z.boolean().optional(),
+  email: EmailField.optional(),
+  sendResetLink: z.boolean().optional(),
+  /** Language of the reset email. */
+  language: z.enum(['en', 'no', 'de']).optional(),
+});
+
 export const ForgotPasswordSchema = z.object({
   email: z.string().trim().toLowerCase().email().max(254),
   language: z.enum(['en', 'no', 'de']).optional(),
@@ -113,6 +129,7 @@ export type CreateTeamInput = z.infer<typeof CreateTeamSchema>;
 export type UpdateTeamInput = z.infer<typeof UpdateTeamSchema>;
 export type CreateGroupInput = z.infer<typeof CreateGroupSchema>;
 export type UpdateUserInput = z.infer<typeof UpdateUserSchema>;
+export type AdminUpdateUserInput = z.infer<typeof AdminUpdateUserSchema>;
 export type ForgotPasswordInput = z.infer<typeof ForgotPasswordSchema>;
 export type ResetPasswordInput = z.infer<typeof ResetPasswordSchema>;
 export type CreateMatchInput = z.infer<typeof CreateMatchSchema>;

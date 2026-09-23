@@ -582,7 +582,12 @@ by itself once a match has started, but never into `completed`.
 
 - Sessions managed by Lucia Auth, stored in the database
 - Session cookie: `http-only`, no `secure` flag needed (dev speed priority)
-- No email verification, no password reset flow (out of scope)
+- No email verification. An email address is optional (stored encrypted, see
+  `server/src/lib/emailCrypto.ts`) and is what a "forgot password" reset link is sent to
+  (`server/src/lib/passwordReset.ts`, `/forgot-password`, `/reset-password/:token`)
+- A user who never entered an email can still be let back in: an admin sets one on the
+  admin page's user list (`PATCH /api/auth/users/:id` with `email`), and "Save and reset
+  password" (`sendResetLink: true`) sends the ordinary reset link to it in the same request
 - Admin role: a boolean `is_admin` column on the `users` table
 - Only admins can: create tournaments, add teams/matches, enter results, trigger scoring, add bonus questions
 
