@@ -62,6 +62,11 @@ interface Props {
   comparisonHeader?: ReactNode;
   /** Heading for the predicted column, when the ranking on screen is somebody else's. */
   predictedLabel?: string;
+  /**
+   * Leave out the card at the top — the "predict the …" heading, how it scores and when
+   * it closes. For a spectator of a public competition, who is not predicting anything.
+   */
+  hideIntro?: boolean;
 }
 
 export default function LiveScorerPrediction({
@@ -77,6 +82,7 @@ export default function LiveScorerPrediction({
   readOnly = false,
   comparisonHeader,
   predictedLabel,
+  hideIntro = false,
 }: Props) {
   const { t } = useT();
   const playerById = useMemo(
@@ -153,46 +159,48 @@ export default function LiveScorerPrediction({
 
   return (
     <div>
-      <div className="mb-4 rounded-lg border p-4">
-        {!isGate && <h2 className="font-semibold">{t('live.scorers.title')}</h2>}
-        <p className={`text-sm text-muted-foreground${isGate ? '' : ' mt-1'}`}>
-          {t('live.scorers.explainer', { exact: view.scoringConfig.scorer_exact_position })}
-        </p>
-        {/* Only where the numbers it explains are on screen. */}
-        {!isGate && (
-          <p className="mt-1 text-xs text-muted-foreground">{t('live.scorers.tieBreak')}</p>
-        )}
-
-        <div className="mt-3 flex flex-wrap items-center gap-3">
-          {view.isLocked ? (
-            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-              <Lock size={12} />
-              {t('live.scorers.locked')}
-            </span>
-          ) : view.isLateEntry ? (
-            // Past the deadline with no ranking of their own: one submission, so a date
-            // already gone by would be the wrong thing to put on screen.
-            <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
-              <Lock size={12} />
-              {t('live.scorers.lateEntry')}
-            </span>
-          ) : view.lockedAt ? (
-            <span className="text-xs text-muted-foreground">
-              {t('live.scorers.deadline', { when: new Date(view.lockedAt).toLocaleString() })}
-            </span>
-          ) : (
-            <span className="text-xs text-muted-foreground">{t('live.scorers.noDeadlineYet')}</span>
+      {!hideIntro && (
+        <div className="mb-4 rounded-lg border p-4">
+          {!isGate && <h2 className="font-semibold">{t('live.scorers.title')}</h2>}
+          <p className={`text-sm text-muted-foreground${isGate ? '' : ' mt-1'}`}>
+            {t('live.scorers.explainer', { exact: view.scoringConfig.scorer_exact_position })}
+          </p>
+          {/* Only where the numbers it explains are on screen. */}
+          {!isGate && (
+            <p className="mt-1 text-xs text-muted-foreground">{t('live.scorers.tieBreak')}</p>
           )}
 
-          {scored ? (
-            <span className="rounded bg-green-500/15 px-2 py-0.5 text-xs font-semibold text-green-700 dark:text-green-400">
-              {t('live.scorers.scored', { points: view.prediction!.points ?? 0 })}
-            </span>
-          ) : (
-            <span className="text-xs text-muted-foreground">{t('live.scorers.pointsAtEnd')}</span>
-          )}
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            {view.isLocked ? (
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                <Lock size={12} />
+                {t('live.scorers.locked')}
+              </span>
+            ) : view.isLateEntry ? (
+              // Past the deadline with no ranking of their own: one submission, so a date
+              // already gone by would be the wrong thing to put on screen.
+              <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+                <Lock size={12} />
+                {t('live.scorers.lateEntry')}
+              </span>
+            ) : view.lockedAt ? (
+              <span className="text-xs text-muted-foreground">
+                {t('live.scorers.deadline', { when: new Date(view.lockedAt).toLocaleString() })}
+              </span>
+            ) : (
+              <span className="text-xs text-muted-foreground">{t('live.scorers.noDeadlineYet')}</span>
+            )}
+
+            {scored ? (
+              <span className="rounded bg-green-500/15 px-2 py-0.5 text-xs font-semibold text-green-700 dark:text-green-400">
+                {t('live.scorers.scored', { points: view.prediction!.points ?? 0 })}
+              </span>
+            ) : (
+              <span className="text-xs text-muted-foreground">{t('live.scorers.pointsAtEnd')}</span>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {editable && !isGate && (
         <div className="mb-3 flex items-center gap-3">

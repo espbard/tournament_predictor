@@ -18,7 +18,7 @@ import { buildFinalResultsPointSources } from '@/lib/pointSources';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import BackButton from '@/components/BackButton';
 import InviteButton from '@/components/InviteButton';
-import { PublicToggle, ViewOnlyBanner } from '@/components/PublicCompetition';
+import { PublicToggle } from '@/components/PublicCompetition';
 import { useT } from '@/lib/useT';
 import { useTeamName } from '@/lib/teamTranslations';
 import type { Competition, Tournament, Prediction, MatchStage, LeaderboardEntry, BracketPredictions, BracketMatchPrediction, UserStatCardData, LeaderboardProgressionResponse, BonusQuestion } from '@tournament-predictor/shared';
@@ -1177,8 +1177,6 @@ export default function CompetitionDetailPage() {
           </div>
         </div>
       )}
-
-      {isSpectator && <ViewOnlyBanner className="mb-6" />}
 
       {/* Admin: invite code */}
       {user?.isAdmin && (

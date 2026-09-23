@@ -27,7 +27,6 @@ import LiveUserStatCard from '@/components/live/LiveUserStatCard';
 import LiveTablePredictionGate from '@/components/live/LiveTablePredictionGate';
 import LiveBonusQuestionsGate from '@/components/live/LiveBonusQuestionsGate';
 import InviteButton from '@/components/InviteButton';
-import { ViewOnlyBanner } from '@/components/PublicCompetition';
 import { useAuthStore } from '@/store/authStore';
 import type { Team } from '@tournament-predictor/shared';
 
@@ -717,7 +716,6 @@ export default function LiveCompetitionDetailPage() {
         </div>
       </header>
 
-      {isSpectator && <ViewOnlyBanner className="mb-6" />}
 
       {showLeaveConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -868,6 +866,7 @@ export default function LiveCompetitionDetailPage() {
               error={null}
               readOnly
               comparisonHeader={tablePicker}
+              hideIntro={isSpectator}
               predictedLabel={t('live.table.compare.predictedBy', { name: shownTableUsername })}
             />
           )
@@ -883,6 +882,7 @@ export default function LiveCompetitionDetailPage() {
             clearError={clearTableError}
             readOnly={isSpectator}
             comparisonHeader={tablePicker}
+            hideIntro={isSpectator}
           />
         ))}
 
@@ -910,6 +910,7 @@ export default function LiveCompetitionDetailPage() {
                 error={null}
                 readOnly
                 comparisonHeader={scorerPicker}
+                hideIntro={isSpectator}
                 predictedLabel={t('live.scorers.compare.predictedBy', {
                   name: shownScorerUsername,
                 })}
@@ -928,6 +929,7 @@ export default function LiveCompetitionDetailPage() {
             clearError={clearScorerError}
             readOnly={isSpectator}
             comparisonHeader={scorerPicker}
+            hideIntro={isSpectator}
           />
         ))}
 

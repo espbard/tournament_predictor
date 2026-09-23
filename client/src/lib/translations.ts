@@ -104,7 +104,6 @@ const translations = {
       hint: 'Test accounts can view this competition without joining (everyone, once public competitions are rolled out). Only members can make predictions.',
       badge: 'Public',
       viewOnly: 'View only',
-      viewOnlyBanner: 'This is a public competition. You can follow along, but only members can make predictions.',
       sectionTitle: 'Public competitions',
     },
     // Competition share links — see client/src/components/InviteButton.tsx.
@@ -1207,7 +1206,6 @@ const translations = {
       hint: 'Testkontoer kan se konkurransen uten å bli med (alle, når offentlige konkurranser rulles ut). Bare medlemmer kan tippe.',
       badge: 'Offentlig',
       viewOnly: 'Kun visning',
-      viewOnlyBanner: 'Dette er en offentlig konkurranse. Du kan følge med, men bare medlemmer kan tippe.',
       sectionTitle: 'Offentlige konkurranser',
     },
     invite: {
@@ -2307,7 +2305,6 @@ const translations = {
       hint: 'Testkonten können diesen Wettbewerb ohne Beitritt sehen (alle, sobald öffentliche Wettbewerbe freigegeben sind). Nur Mitglieder können tippen.',
       badge: 'Öffentlich',
       viewOnly: 'Nur ansehen',
-      viewOnlyBanner: 'Dies ist ein öffentlicher Wettbewerb. Du kannst mitverfolgen, aber nur Mitglieder können tippen.',
       sectionTitle: 'Öffentliche Wettbewerbe',
     },
     invite: {

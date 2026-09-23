@@ -64,6 +64,11 @@ interface Props {
   comparisonHeader?: ReactNode;
   /** Heading for the predicted column, when the table on screen is somebody else's. */
   predictedLabel?: string;
+  /**
+   * Leave out the card at the top — the "predict the …" heading, how it scores and when
+   * it closes. For a spectator of a public competition, who is not predicting anything.
+   */
+  hideIntro?: boolean;
 }
 
 export default function LiveTablePrediction({
@@ -79,6 +84,7 @@ export default function LiveTablePrediction({
   readOnly = false,
   comparisonHeader,
   predictedLabel,
+  hideIntro = false,
 }: Props) {
   const { t } = useT();
   const teamById = useMemo(() => new Map(view.teams.map(team => [team.id, team])), [view.teams]);
@@ -147,55 +153,57 @@ export default function LiveTablePrediction({
 
   return (
     <div>
-      <div className="mb-4 rounded-lg border p-4">
-        {/* The gate's own heading already says this, so the card leads with the scoring. */}
-        {!isGate && <h2 className="font-semibold">{t('live.table.title')}</h2>}
-        <p className={`text-sm text-muted-foreground${isGate ? '' : ' mt-1'}`}>
-          {view.bands.length > 0
-            ? t('live.table.explainerWithBands', {
-                exact: view.scoringConfig.table_exact_position,
-                band: view.scoringConfig.table_correct_band,
-                total:
-                  view.scoringConfig.table_exact_position +
-                  view.scoringConfig.table_correct_band,
-              })
-            : t('live.table.explainer', { exact: view.scoringConfig.table_exact_position })}
-        </p>
+      {!hideIntro && (
+        <div className="mb-4 rounded-lg border p-4">
+          {/* The gate's own heading already says this, so the card leads with the scoring. */}
+          {!isGate && <h2 className="font-semibold">{t('live.table.title')}</h2>}
+          <p className={`text-sm text-muted-foreground${isGate ? '' : ' mt-1'}`}>
+            {view.bands.length > 0
+              ? t('live.table.explainerWithBands', {
+                  exact: view.scoringConfig.table_exact_position,
+                  band: view.scoringConfig.table_correct_band,
+                  total:
+                    view.scoringConfig.table_exact_position +
+                    view.scoringConfig.table_correct_band,
+                })
+              : t('live.table.explainer', { exact: view.scoringConfig.table_exact_position })}
+          </p>
 
-        <LiveTableBandLegend bands={view.bands} className="mt-3" />
+          <LiveTableBandLegend bands={view.bands} className="mt-3" />
 
-        <div className="mt-3 flex flex-wrap items-center gap-3">
-          {view.isLocked ? (
-            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-              <Lock size={12} />
-              {t('live.table.locked')}
-            </span>
-          ) : view.isLateEntry ? (
-            // The deadline is behind us and this member never entered a table. Showing it
-            // as a date would read as a mistake, so say what actually applies to them.
-            <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
-              <Lock size={12} />
-              {t('live.table.lateEntry')}
-            </span>
-          ) : view.lockedAt ? (
-            <span className="text-xs text-muted-foreground">
-              {t('live.table.deadline', { when: new Date(view.lockedAt).toLocaleString() })}
-            </span>
-          ) : (
-            <span className="text-xs text-muted-foreground">{t('live.table.noDeadlineYet')}</span>
-          )}
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            {view.isLocked ? (
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                <Lock size={12} />
+                {t('live.table.locked')}
+              </span>
+            ) : view.isLateEntry ? (
+              // The deadline is behind us and this member never entered a table. Showing it
+              // as a date would read as a mistake, so say what actually applies to them.
+              <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+                <Lock size={12} />
+                {t('live.table.lateEntry')}
+              </span>
+            ) : view.lockedAt ? (
+              <span className="text-xs text-muted-foreground">
+                {t('live.table.deadline', { when: new Date(view.lockedAt).toLocaleString() })}
+              </span>
+            ) : (
+              <span className="text-xs text-muted-foreground">{t('live.table.noDeadlineYet')}</span>
+            )}
 
-          {scored && (
-            <span className="rounded bg-green-500/15 px-2 py-0.5 text-xs font-semibold text-green-700 dark:text-green-400">
-              {t('live.table.scored', {
-                points: view.prediction!.points ?? 0,
-                exact: view.prediction!.exactPositionPoints,
-                band: view.prediction!.bandPoints,
-              })}
-            </span>
-          )}
+            {scored && (
+              <span className="rounded bg-green-500/15 px-2 py-0.5 text-xs font-semibold text-green-700 dark:text-green-400">
+                {t('live.table.scored', {
+                  points: view.prediction!.points ?? 0,
+                  exact: view.prediction!.exactPositionPoints,
+                  band: view.prediction!.bandPoints,
+                })}
+              </span>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {editable && !isGate && (
         <div className="mb-3 flex items-center gap-3">

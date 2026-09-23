@@ -2,8 +2,8 @@ import { Globe } from 'lucide-react';
 import { useT } from '@/lib/useT';
 
 // Public competitions, for both tournament types: readable by everyone signed in, playable
-// by members only. These are the three pieces of UI the flag needs — the admin checkbox,
-// the badge on a card, and the banner a non-member sees inside one.
+// by members only. These are the two pieces of UI the flag needs — the admin checkbox and
+// the badge on a card.
 
 /** The admin's "Public" checkbox, on the create and edit forms. */
 export function PublicToggle({
@@ -45,18 +45,5 @@ export function PublicBadge({ viewOnly = false, className = '' }: { viewOnly?: b
       <Globe size={11} aria-hidden />
       {viewOnly ? t('publicCompetition.viewOnly') : t('publicCompetition.badge')}
     </span>
-  );
-}
-
-/** Shown to a non-member inside a public competition. */
-export function ViewOnlyBanner({ className = '' }: { className?: string }) {
-  const { t } = useT();
-  return (
-    <div
-      className={`flex items-start gap-2 rounded-lg border bg-muted/30 px-4 py-2.5 text-sm text-muted-foreground ${className}`}
-    >
-      <Globe size={16} className="mt-0.5 flex-shrink-0" aria-hidden />
-      <span>{t('publicCompetition.viewOnlyBanner')}</span>
-    </div>
   );
 }
