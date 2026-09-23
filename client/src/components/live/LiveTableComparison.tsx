@@ -6,14 +6,14 @@ import { bandBarClasses } from '@/lib/liveBands';
 // ── Predicted table against the real one ──────────────────────────────────────
 //
 // The table counterpart of LiveScorerComparison: the order a member submitted, and beside
-// it — under it, on a narrow screen — the table as it stands. Shown once the prediction
+// it — side by side at every width — the table as it stands. Shown once the prediction
 // has closed and the stage has kicked off; see LiveTablePrediction.
 //
 // Rows are coloured by exactly the two things the table prediction scores (see
 // server/src/live/tableScoring.ts): green where a team is in exactly the position it was
 // predicted, amber where it is elsewhere but in the same band. Both columns carry the same
-// colour for the same team, and every other row says where the team sits on the other
-// list, so reading across a row always answers "and where is this one over there?".
+// colour for the same team. Where a team stands on the other list is only a hover title,
+// to keep the two narrow columns uncluttered.
 //
 // The band bar down the left of each row is where that *position* falls, the same bar the
 // ranking itself draws — so the green, amber and grey sections line up across the two.
@@ -101,7 +101,7 @@ export default function LiveTableComparison({
             })}
       </p>
 
-      <div className="grid gap-x-4 gap-y-4 md:grid-cols-2">
+      <div className="grid grid-cols-2 gap-x-2 sm:gap-x-4">
         <section>
           <h3 className={COLUMN_HEADING}>{predictedLabel ?? t('live.table.compare.predicted')}</h3>
           <ol className="grid grid-cols-1 gap-1">
@@ -115,7 +115,6 @@ export default function LiveTableComparison({
                   position={index + 1}
                   bandKey={bandAt(index + 1)}
                   match={matchFor(teamId)}
-                  counterpartPosition={actualPosition}
                   counterpartLabel={
                     actualPosition === null
                       ? t('live.table.compare.notInTable')
@@ -144,7 +143,6 @@ export default function LiveTableComparison({
                   position={index + 1}
                   bandKey={bandAt(index + 1)}
                   match={matchFor(teamId)}
-                  counterpartPosition={predictedPosition}
                   counterpartLabel={
                     predictedPosition === null
                       ? t('live.table.compare.notPredicted')
@@ -184,9 +182,7 @@ interface RowProps {
   /** The band of that position, for the bar down the left. */
   bandKey: string | null;
   match: Match;
-  /** Where the same team sits in the other column, or null if it does not hold it. */
-  counterpartPosition: number | null;
-  /** What that position means, spelled out for a title and for screen readers. */
+  /** Where the same row sits on the other list, as a hover title and for screen readers. */
   counterpartLabel: string;
 }
 
@@ -196,17 +192,16 @@ function ComparisonRow({
   position,
   bandKey,
   match,
-  counterpartPosition,
   counterpartLabel,
 }: RowProps) {
   const name = team?.shortName ?? team?.name ?? teamId;
-  const exact = match === 'exact';
 
   return (
     <li
-      className={`flex items-center gap-2 rounded-md border bg-background px-2 py-1.5 ${bandBarClasses(bandKey)} ${MATCH_ROW[match]}`}
+      className={`flex items-center gap-1.5 rounded-md border bg-background px-1.5 py-1.5 sm:gap-2 sm:px-2 ${bandBarClasses(bandKey)} ${MATCH_ROW[match]}`}
+      title={counterpartLabel}
     >
-      <span className="w-6 shrink-0 text-right text-sm tabular-nums text-muted-foreground">
+      <span className="w-5 shrink-0 sm:w-6 text-right text-sm tabular-nums text-muted-foreground">
         {position}
       </span>
 
@@ -218,17 +213,7 @@ function ComparisonRow({
 
       <span className="min-w-0 flex-1 truncate text-sm">{name}</span>
 
-      {/* Where the same team sits on the other list. A green row is in both places at
-          once, so it gets the tick instead of a number it would only repeat. */}
-      <span
-        className={`w-8 shrink-0 text-right text-xs tabular-nums ${
-          exact ? 'font-semibold text-green-700 dark:text-green-400' : 'text-muted-foreground'
-        }`}
-        title={counterpartLabel}
-      >
-        {exact ? '✓' : counterpartPosition !== null ? `#${counterpartPosition}` : '–'}
-        <span className="sr-only"> {counterpartLabel}</span>
-      </span>
+      <span className="sr-only">{counterpartLabel}</span>
     </li>
   );
 }

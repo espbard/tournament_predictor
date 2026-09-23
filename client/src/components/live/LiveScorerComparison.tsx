@@ -4,9 +4,10 @@ import { useT } from '@/lib/useT';
 
 // ── Predicted against actual ──────────────────────────────────────────────────
 //
-// Two rankings of the same shortlist: the order the member submitted, and beside it —
-// under it, on a narrow screen, where a full-width row is worth more than the
-// side-by-side — the order the goals have actually put the players in. Shown once the
+// Two rankings of the same shortlist, side by side at every width: the order the member
+// submitted, and beside it the order the goals have actually put the players in. On a
+// narrow screen the rows shed the player's photo and the goal tally so the names still
+// fit two to a line. Shown once the
 // ranking has closed and somebody has scored: see LiveScorerPrediction for why it takes
 // both.
 //
@@ -15,9 +16,8 @@ import { useT } from '@/lib/useT';
 //
 // The columns hold the same players in different orders, so the comparison is carried by
 // the rows themselves rather than by lines drawn between them: a player in exactly the
-// position the member gave them is green on both sides, and every other row carries the
-// position it holds in the other column. Reading across a row therefore always answers
-// "and where is this one on the other list?".
+// position the member gave them is green on both sides. Where a player stands on the
+// other list is only a hover title, to keep the two narrow columns uncluttered.
 //
 // The glow an admin gave a player is drawn here as it is in the ranking, and gives way to
 // green for the same reason: two glows on one row fight, and the exact hit is what the
@@ -74,7 +74,7 @@ export default function LiveScorerComparison({
         {t('live.scorers.compare.exactCount', { count: exactCount, total: predictedOrder.length })}
       </p>
 
-      <div className="grid gap-x-4 gap-y-4 md:grid-cols-2">
+      <div className="grid grid-cols-2 gap-x-2 sm:gap-x-4">
         <section>
           <h3 className={COLUMN_HEADING}>{predictedLabel ?? t('live.scorers.compare.predicted')}</h3>
           <ol className="grid grid-cols-1 gap-1">
@@ -88,7 +88,6 @@ export default function LiveScorerComparison({
                   team={teamById.get(playerById.get(playerId)?.teamId ?? '') ?? null}
                   position={index + 1}
                   showTally={false}
-                  counterpartPosition={actualPosition}
                   counterpartLabel={
                     actualPosition === null
                       ? t('live.scorers.noFinish')
@@ -121,7 +120,6 @@ export default function LiveScorerComparison({
                   team={teamById.get(playerById.get(playerId)?.teamId ?? '') ?? null}
                   position={index + 1}
                   showTally
-                  counterpartPosition={predictedPosition}
                   counterpartLabel={
                     predictedPosition === null
                       ? t('live.scorers.compare.notPredicted')
@@ -148,9 +146,7 @@ interface RowProps {
   position: number;
   /** Goals and assists, carried by the real ranking only. */
   showTally: boolean;
-  /** Where the same player sits in the other column, or null if it does not hold them. */
-  counterpartPosition: number | null;
-  /** What that position means, spelled out for a title and for screen readers. */
+  /** Where the same row sits on the other list, as a hover title and for screen readers. */
   counterpartLabel: string;
   exact: boolean;
 }
@@ -161,7 +157,6 @@ function ComparisonRow({
   team,
   position,
   showTally,
-  counterpartPosition,
   counterpartLabel,
   exact,
 }: RowProps) {
@@ -171,9 +166,10 @@ function ComparisonRow({
 
   return (
     <li
-      className={`flex items-center gap-2 rounded-md border bg-background px-2 py-1.5 ${
+      className={`flex items-center gap-1.5 rounded-md border bg-background px-1.5 py-1.5 sm:gap-2 sm:px-2 ${
         exact ? 'border-green-500/60 bg-green-500/5' : ''
       }`}
+      title={counterpartLabel}
       // Inline because the colour is per player and arbitrary — the same glow the ranking
       // draws, so a player is recognisable across both views.
       style={
@@ -185,7 +181,7 @@ function ComparisonRow({
           : undefined
       }
     >
-      <span className="w-6 shrink-0 text-right text-sm tabular-nums text-muted-foreground">
+      <span className="w-5 shrink-0 text-right text-sm tabular-nums text-muted-foreground sm:w-6">
         {position}
       </span>
 
@@ -194,10 +190,10 @@ function ComparisonRow({
           src={player.imageUrl}
           alt=""
           aria-hidden
-          className="h-7 w-7 shrink-0 rounded-full object-cover"
+          className="hidden h-7 w-7 shrink-0 rounded-full object-cover sm:block"
         />
       ) : (
-        <span className="h-7 w-7 shrink-0 rounded-full bg-muted" aria-hidden />
+        <span className="hidden h-7 w-7 shrink-0 rounded-full bg-muted sm:block" aria-hidden />
       )}
 
       {team?.crestUrl ? (
@@ -209,23 +205,12 @@ function ComparisonRow({
       <span className="min-w-0 flex-1 truncate text-sm">{name}</span>
 
       {showTally && (
-        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+        <span className="hidden shrink-0 text-xs tabular-nums text-muted-foreground sm:inline">
           {t('live.scorers.tally', { goals: player?.goals ?? 0, assists: player?.assists ?? 0 })}
         </span>
       )}
 
-      {/* Where the same player sits on the other list — the one thing that makes reading
-          across a row worth doing. A row already green is in both places at once, so it
-          gets the tick instead of a number it would only repeat. */}
-      <span
-        className={`w-8 shrink-0 text-right text-xs tabular-nums ${
-          exact ? 'font-semibold text-green-700 dark:text-green-400' : 'text-muted-foreground'
-        }`}
-        title={counterpartLabel}
-      >
-        {exact ? '✓' : counterpartPosition !== null ? `#${counterpartPosition}` : '–'}
-        <span className="sr-only"> {counterpartLabel}</span>
-      </span>
+      <span className="sr-only">{counterpartLabel}</span>
     </li>
   );
 }
