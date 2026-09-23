@@ -18,6 +18,7 @@ import LiveTablePrediction from '@/components/live/LiveTablePrediction';
 import LiveBonusQuestionsTab from '@/components/live/LiveBonusQuestionsTab';
 import LiveScorerPrediction from '@/components/live/LiveScorerPrediction';
 import LiveScorerPredictionGate from '@/components/live/LiveScorerPredictionGate';
+import LiveScorerPredictorPicker from '@/components/live/LiveScorerPredictorPicker';
 import LiveUpcomingChecklist, {
   type ChecklistItem,
   type ChecklistKey,
@@ -59,8 +60,11 @@ type TabId = (typeof TABS)[number];
 
 const LIVE_STATUSES = new Set(['in_play', 'paused']);
 
-/** Tabs that only hold the viewer's own predictions — nothing there for a non-member. */
-const SPECTATOR_HIDDEN_TABS = new Set<TabId>(['table', 'scorers', 'bonus']);
+/**
+ * Tabs that only hold the viewer's own predictions — nothing there for a non-member. The
+ * scorer tab is not one of them: once the ranking closes it shows everybody's.
+ */
+const SPECTATOR_HIDDEN_TABS = new Set<TabId>(['table', 'bonus']);
 
 export default function LiveCompetitionDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -435,6 +439,37 @@ export default function LiveCompetitionDetailPage() {
       setClearScorerError(err instanceof ApiError ? err.message : t('live.scorers.clearFailed')),
   });
 
+  // ── Other people's top-scorer rankings ──────────────────────────────────────
+  //
+  // Once the ranking has closed and the goals have started, the scorer tab puts a strip of
+  // everybody who ranked above the predicted-against-actual comparison, and picking a face
+  // swaps whose ranking the comparison shows. A spectator has none of their own, so they
+  // start on the first person in the strip instead.
+  const [scorerViewUserId, setScorerViewUserId] = useState<string | null>(null);
+  const scorerComparisonOpen =
+    !!scorerView?.available &&
+    scorerView.isLocked &&
+    scorerView.players.some(player => (player.goals ?? 0) > 0);
+
+  const { data: scorerPredictors = [] } = useQuery({
+    queryKey: liveKeys.scorerPredictors(id!),
+    queryFn: () => liveApi.scorerPredictors(id!),
+    enabled: !!id && activeTab === 'scorers' && scorerComparisonOpen,
+  });
+
+  const shownScorerUserId = scorerComparisonOpen
+    ? (scorerViewUserId ?? (isSpectator ? (scorerPredictors[0]?.userId ?? null) : null))
+    : null;
+  const viewingOtherScorers = !!shownScorerUserId && shownScorerUserId !== user?.id;
+  const shownScorerUsername =
+    scorerPredictors.find(p => p.userId === shownScorerUserId)?.username ?? '';
+
+  const { data: otherScorerPrediction, isLoading: loadingOtherScorers } = useQuery({
+    queryKey: liveKeys.userScorerPrediction(id!, shownScorerUserId ?? ''),
+    queryFn: () => liveApi.otherUserScorerPrediction(id!, shownScorerUserId!),
+    enabled: !!id && viewingOtherScorers,
+  });
+
   // ── The table-prediction gate ───────────────────────────────────────────────
   //
   // A member who has not submitted a table prediction sees only that, full screen, until
@@ -611,6 +646,15 @@ export default function LiveCompetitionDetailPage() {
       />
     );
   }
+
+  const scorerPicker = scorerComparisonOpen ? (
+    <LiveScorerPredictorPicker
+      predictors={scorerPredictors}
+      selectedUserId={shownScorerUserId ?? user?.id ?? null}
+      onSelect={setScorerViewUserId}
+      viewerId={isSpectator ? null : (user?.id ?? null)}
+    />
+  ) : null;
 
   return (
     <main className="mx-auto max-w-2xl md:max-w-4xl lg:max-w-[80%] px-4 pt-2.5 pb-12 sm:pt-8">
@@ -798,6 +842,31 @@ export default function LiveCompetitionDetailPage() {
           <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
             {t('live.scorers.unavailable')}
           </p>
+        ) : viewingOtherScorers ? (
+          // Somebody else's ranking, read only. The strip stays on top so the viewer can
+          // move on to the next person or back to their own.
+          <>
+            {loadingOtherScorers ? (
+              <>
+                {scorerPicker}
+                <LoadingSpinner />
+              </>
+            ) : (
+              <LiveScorerPrediction
+                key={shownScorerUserId}
+                view={{ ...scorerView, prediction: otherScorerPrediction ?? null }}
+                onSave={() => {}}
+                isSaving={false}
+                savedAt={null}
+                error={null}
+                readOnly
+                comparisonHeader={scorerPicker}
+                predictedLabel={t('live.scorers.compare.predictedBy', {
+                  name: shownScorerUsername,
+                })}
+              />
+            )}
+          </>
         ) : (
           <LiveScorerPrediction
             view={scorerView}
@@ -808,6 +877,8 @@ export default function LiveCompetitionDetailPage() {
             onClear={() => clearScorerMutation.mutate()}
             isClearing={clearScorerMutation.isPending}
             clearError={clearScorerError}
+            readOnly={isSpectator}
+            comparisonHeader={scorerPicker}
           />
         ))}
 

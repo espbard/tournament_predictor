@@ -788,6 +788,10 @@ const translations = {
         tally: '{{goals}}g · {{assists}}a',
         compare: {
           predicted: 'Predicted',
+          predictedBy: "{{name}}'s prediction",
+          seeOthers: 'See what other users predicted',
+          seeUsers: 'See what users predicted',
+          you: 'You',
           actual: 'As it stands',
           actualFinal: 'Final ranking',
           exactCount: '{{count}} of {{total}} in exactly the right place.',
@@ -1869,6 +1873,10 @@ const translations = {
         tally: '{{goals}}m · {{assists}}a',
         compare: {
           predicted: 'Tippet',
+          predictedBy: '{{name}} sitt tips',
+          seeOthers: 'Se hva andre brukere tippet',
+          seeUsers: 'Se hva brukerne tippet',
+          you: 'Deg',
           actual: 'Slik det står',
           actualFinal: 'Endelig rangering',
           exactCount: '{{count}} av {{total}} på helt riktig plass.',
@@ -2950,6 +2958,10 @@ const translations = {
         tally: '{{goals}}T · {{assists}}V',
         compare: {
           predicted: 'Getippt',
+          predictedBy: 'Tipp von {{name}}',
+          seeOthers: 'Sieh dir an, was andere getippt haben',
+          seeUsers: 'Sieh dir an, was die Nutzer getippt haben',
+          you: 'Du',
           actual: 'Aktueller Stand',
           actualFinal: 'Endstand',
           exactCount: '{{count}} von {{total}} genau richtig platziert.',

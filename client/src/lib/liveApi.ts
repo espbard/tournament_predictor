@@ -337,6 +337,14 @@ export interface LiveSyncStatus {
   tournaments: LiveSyncTournamentStatus[];
 }
 
+/** One avatar in the "see what others predicted" strip on the scorer tab. */
+export interface LiveScorerPredictor {
+  userId: string;
+  username: string;
+  imageUrl: string | null;
+  iconColor: string | null;
+}
+
 export interface LiveMember {
   userId: string;
   username: string;
@@ -581,6 +589,9 @@ export const liveApi = {
   /** Drops the caller's ranking. Refused once it has locked. */
   clearScorerPrediction: (competitionId: string) =>
     api.delete<{ ok: boolean }>(`/live/competitions/${competitionId}/scorer-prediction`),
+  /** Everybody in the league who has ranked the top scorers, by name. */
+  scorerPredictors: (competitionId: string) =>
+    api.get<LiveScorerPredictor[]>(`/live/competitions/${competitionId}/scorer-predictions`),
   otherUserScorerPrediction: (competitionId: string, userId: string) =>
     api.get<LiveScorerPrediction | null>(
       `/live/competitions/${competitionId}/scorer-prediction/${userId}`,
@@ -654,6 +665,8 @@ export const liveKeys = {
   tablePrediction: (competitionId: string) => ['live', 'table-prediction', competitionId] as const,
   scorerPrediction: (competitionId: string) =>
     ['live', 'scorer-prediction', competitionId] as const,
+  scorerPredictors: (competitionId: string) =>
+    ['live', 'scorer-predictors', competitionId] as const,
   members: (competitionId: string) => ['live', 'members', competitionId] as const,
   standings: (tournamentId: string, stageKey?: string) =>
     ['live', 'standings', tournamentId, stageKey ?? null] as const,

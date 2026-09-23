@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -55,6 +55,13 @@ interface Props {
   clearError?: string | null;
   /** Show somebody else's ranking without offering to change it. */
   readOnly?: boolean;
+  /**
+   * Rendered above the predicted-against-actual comparison, and only while it is shown —
+   * the competition page puts its "see what others predicted" strip here.
+   */
+  comparisonHeader?: ReactNode;
+  /** Heading for the predicted column, when the ranking on screen is somebody else's. */
+  predictedLabel?: string;
 }
 
 export default function LiveScorerPrediction({
@@ -68,6 +75,8 @@ export default function LiveScorerPrediction({
   isClearing = false,
   clearError = null,
   readOnly = false,
+  comparisonHeader,
+  predictedLabel,
 }: Props) {
   const { t } = useT();
   const playerById = useMemo(
@@ -246,8 +255,11 @@ export default function LiveScorerPrediction({
         <p className="mb-2 text-xs text-muted-foreground">{t('live.scorers.compare.noGoalsYet')}</p>
       )}
 
+      {showComparison && comparisonHeader}
+
       {showComparison ? (
         <LiveScorerComparison
+          predictedLabel={predictedLabel}
           players={view.players}
           teams={view.teams}
           predictedOrder={order}

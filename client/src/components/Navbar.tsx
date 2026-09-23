@@ -96,10 +96,13 @@ export default function Navbar() {
     queryFn: () => liveApi.competition(liveCompetitionId!),
     enabled: !!liveCompetitionId && showLiveTabs,
   });
-  // A non-member of a public live competition has fixtures to follow but no table, scorer
-  // ranking or bonus answers of their own, so those three drop out of the menu.
+  // A non-member of a public live competition has no table or bonus answers of their own,
+  // so those drop out of the menu. The scorer tab stays: once the ranking closes it shows
+  // what everybody predicted.
   const liveSpectator = !user?.isAdmin && navLiveCompetition?.isMember === false;
-  const livePredictionTabs = liveSpectator ? (['fixtures'] as const) : LIVE_PREDICTION_TABS;
+  const livePredictionTabs = liveSpectator
+    ? (['fixtures', 'scorers'] as const)
+    : LIVE_PREDICTION_TABS;
 
   const { data: navCompetition } = useQuery({
     queryKey: ['competitions', competitionId],

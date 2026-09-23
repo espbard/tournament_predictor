@@ -1566,9 +1566,11 @@ liveCompetitionsRouter.get('/competitions/:id/scorer-prediction', requireAuth, a
       );
 
     // As with the table: a member who never ranked anybody has nothing for the deadline to
-    // close, so it stays open for them until they do.
+    // close, so it stays open for them until they do. Somebody outside the competition — a
+    // spectator of a public one — can never submit, so for them it is the plain deadline.
     const kickoffs = stageFixtures.map(f => f.kickoffAt);
-    const lock = seasonPredictionLock(kickoffs, !!prediction);
+    const canSubmit = await isLiveMember(competition.id, user.id);
+    const lock = seasonPredictionLock(kickoffs, !!prediction || !canSubmit);
 
     // The ranking as it stands today, by the same rule the final one is settled by. It
     // seeds a new prediction and, later, shows how the real thing is going.
@@ -1608,6 +1610,47 @@ liveCompetitionsRouter.get('/competitions/:id/scorer-prediction', requireAuth, a
  * partial or duplicated ranking would let somebody quietly stack the positions they are
  * confident about.
  */
+/**
+ * Who in the league has ranked the top scorers — the avatars of the "see what others
+ * predicted" strip on the scorer tab. Each ranking itself is read one at a time through
+ * GET /competitions/:id/scorer-prediction/:userId, which is already open to the league.
+ */
+liveCompetitionsRouter.get(
+  '/competitions/:id/scorer-predictions',
+  requireAuth,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      if (!(await canViewLiveCompetition(id, res.locals.user))) {
+        return res.status(403).json({ error: 'Not a member of this competition' });
+      }
+
+      // Joined to the member row so somebody who has since left drops out.
+      const rows = await db
+        .select({
+          userId: users.id,
+          username: users.username,
+          imageUrl: users.imageUrl,
+          iconColor: users.iconColor,
+        })
+        .from(liveScorerPredictions)
+        .innerJoin(users, eq(users.id, liveScorerPredictions.userId))
+        .innerJoin(
+          liveCompetitionMembers,
+          and(
+            eq(liveCompetitionMembers.liveCompetitionId, liveScorerPredictions.liveCompetitionId),
+            eq(liveCompetitionMembers.userId, liveScorerPredictions.userId),
+          ),
+        )
+        .where(eq(liveScorerPredictions.liveCompetitionId, id))
+        .orderBy(asc(users.username));
+      return res.json(rows);
+    } catch (err) {
+      return fail(res, err);
+    }
+  },
+);
+
 liveCompetitionsRouter.put('/competitions/:id/scorer-prediction', requireAuth, async (req, res) => {
   try {
     const parsed = SaveLiveScorerPredictionSchema.safeParse(req.body);

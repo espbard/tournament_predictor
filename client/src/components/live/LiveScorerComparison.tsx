@@ -33,6 +33,8 @@ interface Props {
   actualOrder: string[];
   /** Points have been awarded, so the right-hand column is a finishing order, not a snapshot. */
   scored: boolean;
+  /** Heading for the left-hand column, when it is somebody else's ranking. */
+  predictedLabel?: string;
 }
 
 const COLUMN_HEADING = 'mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground';
@@ -43,6 +45,7 @@ export default function LiveScorerComparison({
   predictedOrder,
   actualOrder,
   scored,
+  predictedLabel,
 }: Props) {
   const { t } = useT();
 
@@ -73,7 +76,7 @@ export default function LiveScorerComparison({
 
       <div className="grid gap-x-4 gap-y-4 md:grid-cols-2">
         <section>
-          <h3 className={COLUMN_HEADING}>{t('live.scorers.compare.predicted')}</h3>
+          <h3 className={COLUMN_HEADING}>{predictedLabel ?? t('live.scorers.compare.predicted')}</h3>
           <ol className="grid grid-cols-1 gap-1">
             {predictedOrder.map((playerId, index) => {
               const actualPosition = actualPositionById.get(playerId) ?? null;
