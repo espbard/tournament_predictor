@@ -78,11 +78,13 @@ export default function Navbar() {
   const isOnUserPredictionsPage = isOnPredictionsPage || isOnLivePredictionsPage;
   const liveCompetitionId = location.pathname.match(/^\/live\/competitions\/([^/]+)/)?.[1];
   const LIVE_PREDICTION_TABS = ['fixtures', 'table', 'scorers', 'bonus'] as const;
+  // The league table comes last: the other three are about the competition, the table is
+  // about the tournament it is played on.
   const LIVE_RESULT_TABS = [
-    'standings',
     'leaderboard',
     'pointProgression',
     'userStats',
+    'standings',
   ] as const;
   const liveTabParam = searchParams.get('tab') ?? '';
   const liveActiveTab = [...LIVE_PREDICTION_TABS, ...LIVE_RESULT_TABS].some(tab => tab === liveTabParam)
@@ -96,12 +98,12 @@ export default function Navbar() {
     queryFn: () => liveApi.competition(liveCompetitionId!),
     enabled: !!liveCompetitionId && showLiveTabs,
   });
-  // A non-member of a public live competition has no table or bonus answers of their own,
-  // so those drop out of the menu. The scorer tab stays: once the ranking closes it shows
+  // A non-member of a public live competition has no bonus answers of their own, so that
+  // tab drops out of the menu. The table and scorer tabs stay: once they close they show
   // what everybody predicted.
   const liveSpectator = !user?.isAdmin && navLiveCompetition?.isMember === false;
   const livePredictionTabs = liveSpectator
-    ? (['fixtures', 'scorers'] as const)
+    ? (['fixtures', 'table', 'scorers'] as const)
     : LIVE_PREDICTION_TABS;
 
   const { data: navCompetition } = useQuery({

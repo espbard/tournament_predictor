@@ -1,24 +1,25 @@
 import { UserAvatar } from '@/components/UserAvatar';
 import { useT } from '@/lib/useT';
-import type { LiveScorerPredictor } from '@/lib/liveApi';
+import type { LivePredictor } from '@/lib/liveApi';
 
 // ── "See what others predicted" ───────────────────────────────────────────────
 //
-// A horizontally scrolling strip of everybody who has ranked the top scorers. Picking a
-// face swaps whose ranking the comparison below shows; the viewer's own face (first, and
-// labelled "You") swaps back. A spectator of a public competition has no ranking of their
-// own, so for them the strip is simply everybody and the heading drops the "other".
+// A horizontally scrolling strip of everybody who has made a season-long prediction — the
+// top-scorer ranking or the league table, whichever tab it sits on. Picking a face swaps
+// whose prediction the comparison below shows; the viewer's own face (first, and labelled
+// "You") swaps back. A spectator of a public competition has no prediction of their own,
+// so for them the strip is simply everybody and the heading drops the "other".
 
 interface Props {
-  predictors: LiveScorerPredictor[];
-  /** Whose ranking is on screen. */
+  predictors: LivePredictor[];
+  /** Whose prediction is on screen. */
   selectedUserId: string | null;
   onSelect: (userId: string) => void;
-  /** The viewer, when they have a ranking of their own; null for a spectator. */
+  /** The viewer, when they can have a prediction of their own; null for a spectator. */
   viewerId: string | null;
 }
 
-export default function LiveScorerPredictorPicker({
+export default function LivePredictorPicker({
   predictors,
   selectedUserId,
   onSelect,
@@ -33,14 +34,14 @@ export default function LiveScorerPredictorPicker({
   return (
     <section className="mb-4 rounded-lg border p-3">
       <h3 className="mb-2 text-sm font-semibold">
-        {t(viewerId ? 'live.scorers.compare.seeOthers' : 'live.scorers.compare.seeUsers')}
+        {t(viewerId ? 'live.predictorPicker.seeOthers' : 'live.predictorPicker.seeUsers')}
       </h3>
       {/* Negative margin + padding lets the row scroll edge to edge inside the card while
           the rings on the first and last avatar are not clipped. */}
       <ul className="-mx-3 flex gap-3 overflow-x-auto px-3 pb-1 pt-1">
         {ordered.map(p => {
           const selected = p.userId === selectedUserId;
-          const label = p.userId === viewerId ? t('live.scorers.compare.you') : p.username;
+          const label = p.userId === viewerId ? t('live.predictorPicker.you') : p.username;
           return (
             <li key={p.userId} className="shrink-0">
               <button

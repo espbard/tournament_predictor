@@ -126,6 +126,8 @@ export type LiveTablePredictionView =
       isLateEntry: boolean;
       /** Current standings order, top first. The natural starting point for a new table. */
       currentOrder: string[];
+      /** A match of the stage has kicked off, so the standings mean something. */
+      stageStarted: boolean;
       scoringConfig: LiveScoringConfig;
     };
 
@@ -337,8 +339,8 @@ export interface LiveSyncStatus {
   tournaments: LiveSyncTournamentStatus[];
 }
 
-/** One avatar in the "see what others predicted" strip on the scorer tab. */
-export interface LiveScorerPredictor {
+/** One avatar in the "see what others predicted" strip on the scorer and table tabs. */
+export interface LivePredictor {
   userId: string;
   username: string;
   imageUrl: string | null;
@@ -591,7 +593,10 @@ export const liveApi = {
     api.delete<{ ok: boolean }>(`/live/competitions/${competitionId}/scorer-prediction`),
   /** Everybody in the league who has ranked the top scorers, by name. */
   scorerPredictors: (competitionId: string) =>
-    api.get<LiveScorerPredictor[]>(`/live/competitions/${competitionId}/scorer-predictions`),
+    api.get<LivePredictor[]>(`/live/competitions/${competitionId}/scorer-predictions`),
+  /** Everybody in the league who has predicted the table, by name. */
+  tablePredictors: (competitionId: string) =>
+    api.get<LivePredictor[]>(`/live/competitions/${competitionId}/table-predictions`),
   otherUserScorerPrediction: (competitionId: string, userId: string) =>
     api.get<LiveScorerPrediction | null>(
       `/live/competitions/${competitionId}/scorer-prediction/${userId}`,
@@ -667,6 +672,8 @@ export const liveKeys = {
     ['live', 'scorer-prediction', competitionId] as const,
   scorerPredictors: (competitionId: string) =>
     ['live', 'scorer-predictors', competitionId] as const,
+  tablePredictors: (competitionId: string) =>
+    ['live', 'table-predictors', competitionId] as const,
   members: (competitionId: string) => ['live', 'members', competitionId] as const,
   standings: (tournamentId: string, stageKey?: string) =>
     ['live', 'standings', tournamentId, stageKey ?? null] as const,

@@ -18,7 +18,7 @@ import LiveTablePrediction from '@/components/live/LiveTablePrediction';
 import LiveBonusQuestionsTab from '@/components/live/LiveBonusQuestionsTab';
 import LiveScorerPrediction from '@/components/live/LiveScorerPrediction';
 import LiveScorerPredictionGate from '@/components/live/LiveScorerPredictionGate';
-import LiveScorerPredictorPicker from '@/components/live/LiveScorerPredictorPicker';
+import LivePredictorPicker from '@/components/live/LivePredictorPicker';
 import LiveUpcomingChecklist, {
   type ChecklistItem,
   type ChecklistKey,
@@ -62,9 +62,9 @@ const LIVE_STATUSES = new Set(['in_play', 'paused']);
 
 /**
  * Tabs that only hold the viewer's own predictions — nothing there for a non-member. The
- * scorer tab is not one of them: once the ranking closes it shows everybody's.
+ * table and scorer tabs are not among them: once those close they show everybody's.
  */
-const SPECTATOR_HIDDEN_TABS = new Set<TabId>(['table', 'bonus']);
+const SPECTATOR_HIDDEN_TABS = new Set<TabId>(['bonus']);
 
 export default function LiveCompetitionDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -470,6 +470,33 @@ export default function LiveCompetitionDetailPage() {
     enabled: !!id && viewingOtherScorers,
   });
 
+  // ── Other people's table predictions ────────────────────────────────────────
+  //
+  // The same strip and swap as the scorer tab above, once the table has closed and the
+  // stage has kicked off.
+  const [tableViewUserId, setTableViewUserId] = useState<string | null>(null);
+  const tableComparisonOpen =
+    !!tableView?.available && tableView.isLocked && tableView.stageStarted;
+
+  const { data: tablePredictors = [] } = useQuery({
+    queryKey: liveKeys.tablePredictors(id!),
+    queryFn: () => liveApi.tablePredictors(id!),
+    enabled: !!id && activeTab === 'table' && tableComparisonOpen,
+  });
+
+  const shownTableUserId = tableComparisonOpen
+    ? (tableViewUserId ?? (isSpectator ? (tablePredictors[0]?.userId ?? null) : null))
+    : null;
+  const viewingOtherTable = !!shownTableUserId && shownTableUserId !== user?.id;
+  const shownTableUsername =
+    tablePredictors.find(p => p.userId === shownTableUserId)?.username ?? '';
+
+  const { data: otherTablePrediction, isLoading: loadingOtherTable } = useQuery({
+    queryKey: liveKeys.userTablePrediction(id!, shownTableUserId ?? ''),
+    queryFn: () => liveApi.otherUserTablePrediction(id!, shownTableUserId!),
+    enabled: !!id && viewingOtherTable,
+  });
+
   // ── The table-prediction gate ───────────────────────────────────────────────
   //
   // A member who has not submitted a table prediction sees only that, full screen, until
@@ -647,8 +674,17 @@ export default function LiveCompetitionDetailPage() {
     );
   }
 
+  const tablePicker = tableComparisonOpen ? (
+    <LivePredictorPicker
+      predictors={tablePredictors}
+      selectedUserId={shownTableUserId ?? user?.id ?? null}
+      onSelect={setTableViewUserId}
+      viewerId={isSpectator ? null : (user?.id ?? null)}
+    />
+  ) : null;
+
   const scorerPicker = scorerComparisonOpen ? (
-    <LiveScorerPredictorPicker
+    <LivePredictorPicker
       predictors={scorerPredictors}
       selectedUserId={shownScorerUserId ?? user?.id ?? null}
       onSelect={setScorerViewUserId}
@@ -824,6 +860,26 @@ export default function LiveCompetitionDetailPage() {
         ) : tableView.teams.length === 0 ? (
           // Before the draw there are no teams to order yet.
           <LiveQualifiedTeamsPanel teams={teams} expectedTeamCount={null} note={null} />
+        ) : viewingOtherTable ? (
+          // Somebody else's table, read only, with the strip kept on top.
+          loadingOtherTable ? (
+            <>
+              {tablePicker}
+              <LoadingSpinner />
+            </>
+          ) : (
+            <LiveTablePrediction
+              key={shownTableUserId}
+              view={{ ...tableView, prediction: otherTablePrediction ?? null }}
+              onSave={() => {}}
+              isSaving={false}
+              savedAt={null}
+              error={null}
+              readOnly
+              comparisonHeader={tablePicker}
+              predictedLabel={t('live.table.compare.predictedBy', { name: shownTableUsername })}
+            />
+          )
         ) : (
           <LiveTablePrediction
             view={tableView}
@@ -834,6 +890,8 @@ export default function LiveCompetitionDetailPage() {
             onClear={() => clearTableMutation.mutate()}
             isClearing={clearTableMutation.isPending}
             clearError={clearTableError}
+            readOnly={isSpectator}
+            comparisonHeader={tablePicker}
           />
         ))}
 
@@ -899,11 +957,6 @@ export default function LiveCompetitionDetailPage() {
           rows={standings}
           tableScope={competition.tableScope}
           stages={competition.stages}
-          teams={teams}
-          predictedOrder={
-            tableView?.available ? tableView.prediction?.orderedTeamIds ?? null : null
-          }
-          predictedStageKey={tableView?.available ? tableView.stageKey : null}
         />
       )}
 

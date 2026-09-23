@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -13,6 +13,7 @@ import { bandDefForPosition, type LiveTableBand, type LiveTeam } from '@tourname
 import { useT } from '@/lib/useT';
 import { bandBarClasses } from '@/lib/liveBands';
 import LiveTableBandLegend from '@/components/live/LiveTableBandLegend';
+import LiveTableComparison from '@/components/live/LiveTableComparison';
 import { initialOrder, moveItem } from '@/lib/liveTableOrder';
 import type { LiveTablePredictionView } from '@/lib/liveApi';
 
@@ -25,6 +26,11 @@ import type { LiveTablePredictionView } from '@/lib/liveApi';
 // Reordering works three ways on purpose: drag, the up/down buttons, and keyboard via
 // those buttons. A 36-row table is miserable to drag on a phone, and drag alone would be
 // unusable with a keyboard.
+//
+// Once the table has closed and the stage has kicked off there is nothing left to
+// reorder, and the question becomes "how is it going?" — so, as on the top-scorer tab,
+// the single list gives way to the submitted table and the real one side by side. See
+// LiveTableComparison.
 
 interface Props {
   view: Extract<LiveTablePredictionView, { available: true }>;
@@ -51,6 +57,13 @@ interface Props {
    * still be open for them even though the viewer has no business editing it.
    */
   readOnly?: boolean;
+  /**
+   * Rendered above the predicted-against-actual comparison, and only while it is shown —
+   * the competition page puts its "see what others predicted" strip here.
+   */
+  comparisonHeader?: ReactNode;
+  /** Heading for the predicted column, when the table on screen is somebody else's. */
+  predictedLabel?: string;
 }
 
 export default function LiveTablePrediction({
@@ -64,6 +77,8 @@ export default function LiveTablePrediction({
   isClearing = false,
   clearError = null,
   readOnly = false,
+  comparisonHeader,
+  predictedLabel,
 }: Props) {
   const { t } = useT();
   const teamById = useMemo(() => new Map(view.teams.map(team => [team.id, team])), [view.teams]);
@@ -83,6 +98,12 @@ export default function LiveTablePrediction({
   }, [view.prediction, view.currentOrder, view.teams, touched]);
 
   const editable = !readOnly && !view.isLocked;
+  const isGate = variant === 'gate';
+
+  // Side by side once the table has closed and a match of the stage has kicked off: until
+  // then the standings are the provider's pre-season zeros, and a comparison against them
+  // would only be a list compared with the alphabet.
+  const showComparison = !isGate && view.isLocked && view.stageStarted;
 
   // The stage definition is only needed for its bands, so a synthetic one will do.
   const stageForBands = useMemo(
@@ -118,7 +139,6 @@ export default function LiveTablePrediction({
 
   // In the gate the standings order on screen is already a valid prediction, so accepting
   // it untouched has to be possible — otherwise a user who agrees with it cannot get past.
-  const isGate = variant === 'gate';
   const canSave = isGate ? order.length > 0 : dirty;
 
   // Withdrawing is offered only while the table is still open and there is a submitted
@@ -232,46 +252,59 @@ export default function LiveTablePrediction({
         </div>
       )}
 
-      <DndContext
-        onDragStart={(e: DragStartEvent) => setDragging(String(e.active.id))}
-        onDragEnd={handleDragEnd}
-        onDragCancel={() => setDragging(null)}
-      >
-        <ol className="grid gap-1">
-          {order.map((teamId, index) => (
-            <TableRow
-              key={teamId}
-              teamId={teamId}
-              team={teamById.get(teamId) ?? null}
-              position={index + 1}
-              bandKey={bandDefForPosition(stageForBands as never, index + 1)?.key ?? null}
-              editable={editable}
-              isFirst={index === 0}
-              isLast={index === order.length - 1}
-              onMoveUp={() => reorder(index, index - 1)}
-              onMoveDown={() => reorder(index, index + 1)}
-              actualPosition={scored ? (actualPositionById.get(teamId) ?? null) : null}
-              scored={scored}
-              scoredBandKey={
-                scored
-                  ? (bandDefForPosition(
-                      stageForBands as never,
-                      actualPositionById.get(teamId) ?? 0,
-                    )?.key ?? null)
-                  : null
-              }
-            />
-          ))}
-        </ol>
+      {showComparison && comparisonHeader}
 
-        <DragOverlay>
-          {dragging ? (
-            <div className="rounded-md border bg-background px-3 py-2 text-sm font-medium shadow-lg">
-              {teamById.get(dragging)?.shortName ?? teamById.get(dragging)?.name ?? ''}
-            </div>
-          ) : null}
-        </DragOverlay>
-      </DndContext>
+      {showComparison ? (
+        <LiveTableComparison
+          teams={view.teams}
+          bands={view.bands}
+          predictedOrder={order}
+          actualOrder={view.currentOrder}
+          scored={scored}
+          predictedLabel={predictedLabel}
+        />
+      ) : (
+        <DndContext
+          onDragStart={(e: DragStartEvent) => setDragging(String(e.active.id))}
+          onDragEnd={handleDragEnd}
+          onDragCancel={() => setDragging(null)}
+        >
+          <ol className="grid gap-1">
+            {order.map((teamId, index) => (
+              <TableRow
+                key={teamId}
+                teamId={teamId}
+                team={teamById.get(teamId) ?? null}
+                position={index + 1}
+                bandKey={bandDefForPosition(stageForBands as never, index + 1)?.key ?? null}
+                editable={editable}
+                isFirst={index === 0}
+                isLast={index === order.length - 1}
+                onMoveUp={() => reorder(index, index - 1)}
+                onMoveDown={() => reorder(index, index + 1)}
+                actualPosition={scored ? (actualPositionById.get(teamId) ?? null) : null}
+                scored={scored}
+                scoredBandKey={
+                  scored
+                    ? (bandDefForPosition(
+                        stageForBands as never,
+                        actualPositionById.get(teamId) ?? 0,
+                      )?.key ?? null)
+                    : null
+                }
+              />
+            ))}
+          </ol>
+
+          <DragOverlay>
+            {dragging ? (
+              <div className="rounded-md border bg-background px-3 py-2 text-sm font-medium shadow-lg">
+                {teamById.get(dragging)?.shortName ?? teamById.get(dragging)?.name ?? ''}
+              </div>
+            ) : null}
+          </DragOverlay>
+        </DndContext>
+      )}
 
       {/* A 36-row table pushes the top of the screen a long way up, so the gate keeps its
           one action within reach at the bottom rather than back where the list began. */}

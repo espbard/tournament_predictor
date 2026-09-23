@@ -1054,9 +1054,12 @@ liveCompetitionsRouter.get('/competitions/:id/table-prediction', requireAuth, as
       );
 
     // Locked for this member only if they have a table to lock. Without one the deadline
-    // has nothing to close and they may still enter — once.
+    // has nothing to close and they may still enter — once. Somebody outside the
+    // competition — a spectator of a public one — can never submit, so for them it is the
+    // plain deadline.
     const kickoffs = stageFixtures.map(f => f.kickoffAt);
-    const lock = seasonPredictionLock(kickoffs, !!prediction);
+    const canSubmit = await isLiveMember(competition.id, user.id);
+    const lock = seasonPredictionLock(kickoffs, !!prediction || !canSubmit);
 
     // The live table, so the UI can offer it as a starting order and show the result.
     const standings = await db
@@ -1084,6 +1087,11 @@ liveCompetitionsRouter.get('/competitions/:id/table-prediction', requireAuth, as
       isLateEntry: lock.isLateEntry,
       // Standings order, top first — the natural starting point for a new prediction.
       currentOrder: standings.map(s => s.teamId),
+      // A match of the stage has kicked off, so the standings are no longer the provider's
+      // pre-season zeros and the prediction can be read against them.
+      stageStarted: stageFixtures.some(
+        f => f.status === 'finished' || f.status === 'in_play' || f.status === 'paused',
+      ),
       scoringConfig: withLiveScoringDefaults(competition.scoringConfig),
     });
   } catch (err) {
@@ -1294,6 +1302,67 @@ liveCompetitionsRouter.delete('/competitions/:id/table-prediction', requireAuth,
  * Copying an order is the accepted cost — unlike a per-fixture prediction, which stays
  * closed until its own kickoff.
  */
+/**
+ * Who in the league has predicted the table — the avatars of the "see what others
+ * predicted" strip on the table tab. Each table itself is read one at a time through
+ * GET /competitions/:id/table-prediction/:userId, which is already open to the league.
+ */
+liveCompetitionsRouter.get(
+  '/competitions/:id/table-predictions',
+  requireAuth,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      if (!(await canViewLiveCompetition(id, res.locals.user))) {
+        return res.status(403).json({ error: 'Not a member of this competition' });
+      }
+
+      const [competition] = await db
+        .select()
+        .from(liveCompetitions)
+        .where(eq(liveCompetitions.id, id));
+      if (!competition) return res.status(404).json({ error: 'Not found' });
+
+      const [tournament] = await db
+        .select()
+        .from(liveTournaments)
+        .where(eq(liveTournaments.id, competition.liveTournamentId));
+      if (!tournament) return res.status(404).json({ error: 'Live tournament not found' });
+
+      const stage = tablePredictionStage(getLiveFormat(tournament.format), tournament.startStageKey);
+      if (!stage) return res.json([]);
+
+      // Joined to the member row so somebody who has since left drops out.
+      const rows = await db
+        .select({
+          userId: users.id,
+          username: users.username,
+          imageUrl: users.imageUrl,
+          iconColor: users.iconColor,
+        })
+        .from(liveTablePredictions)
+        .innerJoin(users, eq(users.id, liveTablePredictions.userId))
+        .innerJoin(
+          liveCompetitionMembers,
+          and(
+            eq(liveCompetitionMembers.liveCompetitionId, liveTablePredictions.liveCompetitionId),
+            eq(liveCompetitionMembers.userId, liveTablePredictions.userId),
+          ),
+        )
+        .where(
+          and(
+            eq(liveTablePredictions.liveCompetitionId, id),
+            eq(liveTablePredictions.stageKey, stage.key),
+          ),
+        )
+        .orderBy(asc(users.username));
+      return res.json(rows);
+    } catch (err) {
+      return fail(res, err);
+    }
+  },
+);
+
 liveCompetitionsRouter.get(
   '/competitions/:id/table-prediction/:userId',
   requireAuth,
