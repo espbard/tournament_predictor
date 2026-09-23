@@ -217,18 +217,30 @@ export default function LiveCompetitionDetailPage() {
 
   // Default to whatever is happening next — the stage and matchday of the earliest
   // fixture still to be played, falling back to the last one for a finished season.
+  //
+  // A spectator has nothing to predict, so "next" means nothing to them: they land on the
+  // latest gameweek with a result in it instead — the most recent shown match that has
+  // kicked off — and only fall back to the member's default before a ball is kicked.
+  // Waits for the competition, since that is what says whether this is a spectator.
   useEffect(() => {
-    if (stageKey !== null || fixtures.length === 0) return;
+    if (stageKey !== null || fixtures.length === 0 || !competition) return;
 
+    const latestResult = isSpectator
+      ? [...fixtures]
+          .filter(
+            f => f.isSelected && (f.status === 'finished' || LIVE_STATUSES.has(f.status)),
+          )
+          .sort((a, b) => (b.kickoffAt ?? '').localeCompare(a.kickoffAt ?? ''))[0]
+      : undefined;
     const upcoming = [...fixtures]
       .filter(f => f.status !== 'finished' && f.status !== 'cancelled')
       .sort((a, b) => (a.kickoffAt ?? '').localeCompare(b.kickoffAt ?? ''))[0];
     const fallback = [...fixtures].sort((a, b) => (b.kickoffAt ?? '').localeCompare(a.kickoffAt ?? ''))[0];
-    const chosen = upcoming ?? fallback;
+    const chosen = latestResult ?? upcoming ?? fallback;
 
     if (chosen?.stageKey) setStageKey(chosen.stageKey);
     if (chosen?.matchday != null) setMatchday(chosen.matchday);
-  }, [fixtures, stageKey]);
+  }, [fixtures, stageKey, competition, isSpectator]);
 
   const stageDef = stages.find(s => s.key === stageKey) ?? null;
 
@@ -742,6 +754,7 @@ export default function LiveCompetitionDetailPage() {
                 savedFixtures={savedFixtures}
                 errors={errors}
                 readOnly={isSpectator}
+                hidePrediction={isSpectator}
                 competitionId={id!}
               />
             </div>
