@@ -17,6 +17,8 @@ interface Props {
   onSelect: (userId: string) => void;
   /** The viewer, when they can have a prediction of their own; null for a spectator. */
   viewerId: string | null;
+  /** What is being picked between, which only changes the heading. */
+  kind?: 'predictions' | 'answers';
 }
 
 export default function LivePredictorPicker({
@@ -24,6 +26,7 @@ export default function LivePredictorPicker({
   selectedUserId,
   onSelect,
   viewerId,
+  kind = 'predictions',
 }: Props) {
   const { t } = useT();
   const mine = viewerId ? predictors.find(p => p.userId === viewerId) : undefined;
@@ -34,7 +37,9 @@ export default function LivePredictorPicker({
   return (
     <section className="mb-4 rounded-lg border p-3">
       <h3 className="mb-2 text-sm font-semibold">
-        {t(viewerId ? 'live.predictorPicker.seeOthers' : 'live.predictorPicker.seeUsers')}
+        {kind === 'answers'
+          ? t(viewerId ? 'live.predictorPicker.seeOthersAnswers' : 'live.predictorPicker.seeUsersAnswers')
+          : t(viewerId ? 'live.predictorPicker.seeOthers' : 'live.predictorPicker.seeUsers')}
       </h3>
       {/* Negative margin + padding lets the row scroll edge to edge inside the card while
           the rings on the first and last avatar are not clipped. */}

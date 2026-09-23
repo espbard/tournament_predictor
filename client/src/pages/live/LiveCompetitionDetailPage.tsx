@@ -60,12 +60,6 @@ type TabId = (typeof TABS)[number];
 
 const LIVE_STATUSES = new Set(['in_play', 'paused']);
 
-/**
- * Tabs that only hold the viewer's own predictions — nothing there for a non-member. The
- * table and scorer tabs are not among them: once those close they show everybody's.
- */
-const SPECTATOR_HIDDEN_TABS = new Set<TabId>(['bonus']);
-
 export default function LiveCompetitionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { t, language } = useT();
@@ -91,14 +85,11 @@ export default function LiveCompetitionDetailPage() {
     enabled: !!id,
   });
 
-  // Somebody looking at a public competition they have not joined. They can follow the
-  // fixtures and every results tab, read only; the table, scorer and bonus tabs are the
-  // viewer's own predictions, so they have nothing to show there.
+  // Somebody looking at a public competition they have not joined. Every tab is open to
+  // them, read only: the fixtures and results as they are, and on the table, scorer and
+  // bonus tabs what the members predicted, once those have closed.
   const isSpectator = !user?.isAdmin && competition?.isMember === false;
-  const activeTab: TabId =
-    tabParam && TABS.includes(tabParam) && !(isSpectator && SPECTATOR_HIDDEN_TABS.has(tabParam))
-      ? tabParam
-      : 'fixtures';
+  const activeTab: TabId = tabParam && TABS.includes(tabParam) ? tabParam : 'fixtures';
 
   // Every fixture is fetched once and filtered in memory. It is one request rather than
   // one per matchday, it makes switching stages instant, and it gives the SSE handler a
@@ -945,6 +936,8 @@ export default function LiveCompetitionDetailPage() {
           <LiveBonusQuestionsTab
             competitionId={id!}
             liveTournamentId={competition.tournament.id}
+            showOthers
+            spectator={isSpectator}
           />
         ) : (
           <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">

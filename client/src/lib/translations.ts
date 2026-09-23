@@ -592,6 +592,9 @@ const translations = {
       predictorPicker: {
         seeOthers: 'See what other users predicted',
         seeUsers: 'See what users predicted',
+        seeOthersAnswers: "See other users' answers",
+        seeUsersAnswers: 'See what users answered',
+        showingAnswers: "Showing {{name}}'s answers",
         you: 'You',
       },
       myLiveCompetitions: 'Live competitions',
@@ -1690,6 +1693,9 @@ const translations = {
       predictorPicker: {
         seeOthers: 'Se hva andre brukere tippet',
         seeUsers: 'Se hva brukerne tippet',
+        seeOthersAnswers: 'Se andre brukeres svar',
+        seeUsersAnswers: 'Se hva brukerne svarte',
+        showingAnswers: 'Viser svarene til {{name}}',
         you: 'Deg',
       },
       myLiveCompetitions: 'Live-konkurranser',
@@ -2787,6 +2793,9 @@ const translations = {
       predictorPicker: {
         seeOthers: 'Sieh dir an, was andere getippt haben',
         seeUsers: 'Sieh dir an, was die Nutzer getippt haben',
+        seeOthersAnswers: 'Antworten anderer Nutzer ansehen',
+        seeUsersAnswers: 'Sieh dir an, was die Nutzer geantwortet haben',
+        showingAnswers: 'Antworten von {{name}}',
         you: 'Du',
       },
       myLiveCompetitions: 'Live-Wettbewerbe',

@@ -3,7 +3,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Moon, Sun, ChevronDown, LogOut, Settings, Home } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
-import { liveApi, liveKeys } from '@/lib/liveApi';
 import { useAuthStore } from '@/store/authStore';
 import { useLanguageStore } from '@/store/languageStore';
 import { useThemeStore } from '@/store/themeStore';
@@ -91,20 +90,6 @@ export default function Navbar() {
     ? liveTabParam
     : 'fixtures';
   const livePredictionsActive = LIVE_PREDICTION_TABS.some(tab => tab === liveActiveTab);
-
-  // Same cache entry the live competition page reads, so this costs no extra request there.
-  const { data: navLiveCompetition } = useQuery({
-    queryKey: liveKeys.competition(liveCompetitionId ?? ''),
-    queryFn: () => liveApi.competition(liveCompetitionId!),
-    enabled: !!liveCompetitionId && showLiveTabs,
-  });
-  // A non-member of a public live competition has no bonus answers of their own, so that
-  // tab drops out of the menu. The table and scorer tabs stay: once they close they show
-  // what everybody predicted.
-  const liveSpectator = !user?.isAdmin && navLiveCompetition?.isMember === false;
-  const livePredictionTabs = liveSpectator
-    ? (['fixtures', 'table', 'scorers'] as const)
-    : LIVE_PREDICTION_TABS;
 
   const { data: navCompetition } = useQuery({
     queryKey: ['competitions', competitionId],
@@ -275,7 +260,7 @@ export default function Navbar() {
               </button>
               {groupsOpen && (
                 <div className="absolute left-0 top-full z-[100] min-w-[190px] rounded-md border border-border bg-popover shadow-md py-1">
-                  {livePredictionTabs.map(tab => (
+                  {LIVE_PREDICTION_TABS.map(tab => (
                     <button key={tab} onClick={() => setTab(tab)} className={dropItemCls(liveActiveTab === tab)}>
                       {t(`live.tabs.${tab}`)}
                     </button>

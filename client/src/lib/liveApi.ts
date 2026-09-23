@@ -606,6 +606,9 @@ export const liveApi = {
     api.get<LiveBonusQuestionView[]>(`/live/competitions/${competitionId}/bonus-questions`),
   bonusAnswers: (competitionId: string) =>
     api.get<LiveBonusAnswer[]>(`/live/competitions/${competitionId}/bonus-answers`),
+  /** Everybody in the league who has answered at least one bonus question, by name. */
+  bonusAnswerers: (competitionId: string) =>
+    api.get<LivePredictor[]>(`/live/competitions/${competitionId}/bonus-answerers`),
   otherUserBonusAnswers: (competitionId: string, userId: string) =>
     api.get<LiveBonusAnswer[]>(`/live/competitions/${competitionId}/bonus-answers/${userId}`),
   saveBonusAnswer: (competitionId: string, body: { questionId: string; answer: string }) =>
@@ -674,6 +677,8 @@ export const liveKeys = {
     ['live', 'scorer-predictors', competitionId] as const,
   tablePredictors: (competitionId: string) =>
     ['live', 'table-predictors', competitionId] as const,
+  bonusAnswerers: (competitionId: string) =>
+    ['live', 'bonus-answerers', competitionId] as const,
   members: (competitionId: string) => ['live', 'members', competitionId] as const,
   standings: (tournamentId: string, stageKey?: string) =>
     ['live', 'standings', tournamentId, stageKey ?? null] as const,

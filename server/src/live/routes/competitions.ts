@@ -2136,6 +2136,47 @@ async function isTournamentCompletedFor(competitionId: string): Promise<boolean>
  * Points stay redacted until the tournament is completed, which is a separate rule and
  * applies to a member's own answers too.
  */
+/**
+ * Who in the league has answered at least one bonus question — the avatars of the "see
+ * other users' answers" strip on the bonus tab. The answers themselves are read one member
+ * at a time through GET /competitions/:id/bonus-answers/:userId.
+ */
+liveCompetitionsRouter.get(
+  '/competitions/:id/bonus-answerers',
+  requireAuth,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      if (!(await canViewLiveCompetition(id, res.locals.user))) {
+        return res.status(403).json({ error: 'Not a member of this competition' });
+      }
+
+      // Joined to the member row so somebody who has since left drops out.
+      const rows = await db
+        .selectDistinct({
+          userId: users.id,
+          username: users.username,
+          imageUrl: users.imageUrl,
+          iconColor: users.iconColor,
+        })
+        .from(liveBonusAnswers)
+        .innerJoin(users, eq(users.id, liveBonusAnswers.userId))
+        .innerJoin(
+          liveCompetitionMembers,
+          and(
+            eq(liveCompetitionMembers.liveCompetitionId, liveBonusAnswers.liveCompetitionId),
+            eq(liveCompetitionMembers.userId, liveBonusAnswers.userId),
+          ),
+        )
+        .where(eq(liveBonusAnswers.liveCompetitionId, id))
+        .orderBy(asc(users.username));
+      return res.json(rows);
+    } catch (err) {
+      return fail(res, err);
+    }
+  },
+);
+
 liveCompetitionsRouter.get(
   '/competitions/:id/bonus-answers/:userId',
   requireAuth,
