@@ -8,6 +8,8 @@ export interface User {
   isLateAddition: boolean;
   imageUrl?: string | null;
   iconColor?: string | null;
+  /** Only ever present on the signed-in user's own record — never on other members. */
+  email?: string | null;
 }
 
 export type KnockoutFirstRound = 'round_of_32' | 'round_of_16' | 'quarter_final' | 'semi_final' | 'final';

@@ -1778,7 +1778,7 @@ treatment aside — no card changed what it counts.
 | Two typos in the supplied Norwegian were corrected — *Forventingene* → *Forventningene*, *scoret* → *scorer*, and the `Synsk` replacement title read *Hvordan hviste du et?* | They are spellings, not wording. The sentences are otherwise the owner's, word for word |
 | "Spot on" keeps its ranking and gains a second sentence naming whoever has the fewest, counted over everyone who has predicted at all | Nobody has fewer perfect scorelines than the member who has never managed one, so the trailing end is only interesting if it includes them. The sentence is dropped when everybody is level — naming one member as both the best and the worst of them is the same fact twice, and it is what a league of one would otherwise print |
 | Its denominator ("from **38** scored predictions") is gone with the old sentence | The new copy does not ask for it, and the contrast with the trailing member says more than a rate did |
-| The best-prediction card's three tails map exactly onto the ranking underneath it | "Only **N** others even had the goal difference" is the first key, "only **N** others even had the right outcome" the second, and "nobody else even got the outcome right" the case the second key was invented for. The card now says out loud what it sorted on |
+| The best-prediction card's three tails map exactly onto the ranking underneath it | "Only **N** others even had the goal difference" is the first key, "only **N** others even had the right outcome" the second, and "nobody else even got the outcome right" the case the second key was invented for. The card now says out loud what it sorted on. §33 later took the middle tail off the outcome and put it back on the goal difference, the ranking itself unchanged |
 | The flag became `backgroundImageUrl` on the card rather than a subject, and `LiveUserStatCard` grew a full-bleed branch for it | A rectangle of solid colour fills a tile better than any cropping could, and unlike a crest or a face there is nothing in it to cut in half. The branch is keyed off the payload field rather than off the card's id, so the next card that wants to be its own picture needs no client change |
 
 ---
@@ -1839,7 +1839,7 @@ its sentence now ends on the claim rather than on the arithmetic:
 | Decision | Why |
 |---|---|
 | The goal-difference distance is still what the card ranks on; it just stopped printing it | It is the only honest way to order the misses, but "seven goals out on the goal difference" was arithmetic where the card wanted a punchline. Nothing about which prediction wins changed |
-| The two tie sentences had to be reworded rather than just re-ended | "Nobody else has missed by that much" is false when somebody else missed by exactly that much. A tie between members now says they are level and that nobody has missed by *more*; a tie one member holds alone keeps the stronger claim, since there genuinely is no other member in it |
+| The two tie sentences had to be reworded rather than just re-ended | "Nobody else has missed by that much" is false when somebody else missed by exactly that much. A tie between members said they were level and that nobody had missed by *more*; a tie one member holds alone keeps the stronger claim, since there genuinely is no other member in it. §32 replaced the first of those with a line per member |
 | The English title avoids "Almost" and the German avoids "Fast" | Both are already the `almost` card's titles, and two cards in one deck answering to the same word is a card nobody can refer to |
 
 ---
@@ -1924,7 +1924,8 @@ made of. It lives in `buildLiveUserStats()` and nowhere else:
 6. Best form · 7. Worst form · 8. The people's favourite · 9. The bottom of the barrel ·
 10. In Haaland we trust · 11. Holding the answer key · 12. A dead cert · 13. The last believer ·
 14. Go Norway! · 15. The Climber · 16. I'm falling! · 17. The most expected result ·
-18. Most unexpected result · 19. How did you know? · 20. Almost
+18. Most unexpected result · 19. How did you know? · 20. Almost · 21. Best when it counts (§34) ·
+22. God save the king (§35) · 23. The Norway believer · 24. The Norway sceptic (§37)
 
 | Decision | Why |
 |---|---|
@@ -1986,7 +1987,130 @@ route.
 
 ---
 
-## 32. References
+## 32. A tie on the worst prediction gets a line each *(added after the six phases, on request)*
+
+`worstPredictionCard` no longer flattens a tie between members into one sentence. Each of
+them gets the same line the card has always given a lone winner — who, what they predicted,
+which fixture, how it finished — and the claim closes the card underneath:
+
+> **Alice** tippet **0-2** på **FC Bayern München mot FK Bodø/Glimt**, som endte **2-0**.
+> **Bob** tippet **3-0** på **Real Madrid mot Inter Milan**, som endte **0-1**.
+> Ingen andre har bommet så stort på en kamp!
+
+| Decision | Why |
+|---|---|
+| The "they are level" sentence is gone | It named the members and then said nothing about them. The predictions are the story the card is for, and there is room to print every one of them |
+| The closing claim goes back to "nobody else has missed a match by that much" for a tie between members | It was softened to "by more" only because the sentence above it did not name who else was level. Now every member in the tie is on a line of their own, so "nobody **else**" is exactly the people those lines leave out |
+| One line per member, not per prediction | The lines are what the subjects of the card are, and a member who holds two of the level misses would otherwise appear twice under the same name. `dedupeByUser` already picks their first, and the tile draws one picture each |
+| A tie **one member** holds alone still counts their predictions instead | Their name over two identical-looking lines says less than "has **2** predictions that missed by just as much", which is the thing worth knowing about them |
+| The lines are joined with `\n`, uncapped | `LiveUserStatCard` renders the caption `whitespace-pre-line`, the way the last-believer card's line-per-team already relies on. A league with five members level on the same miss is a card worth printing in full |
+
+---
+
+## 33. "How did you know?" stays on the goal difference *(added after the six phases, on request)*
+
+The card's middle tail counted the others who had the **outcome** right. It now counts the
+others on the **goal difference**, like the tail above it, and the outcome is left to the one
+case that beats it outright:
+
+| Others on the margin | Others on the outcome | Tail |
+|---|---|---|
+| **N** > 0 | any | Only **N** others even had the goal difference! |
+| 0 | > 0 | Nobody else even had the goal difference! *(was: only **N** others even had the right outcome)* |
+| 0 | 0 | Nobody else even got the outcome of the match right! |
+
+| Decision | Why |
+|---|---|
+| The goal difference is what the tail talks about | Requested. It is the tier this card is about — the one the fixture is picked on — and "how many got within a goal of it" is the measure of how alone the winner was. How many merely picked the winner is a weaker fact standing in the same place |
+| Nobody else on the **outcome** still takes priority over it | Requested, and it is the rarer thing: a fixture where nobody else so much as called the winner beats one where they called it and missed the margin. It is the better story, so it is the one that gets told |
+| The two can never contradict each other | A margin cannot be right while the winner is wrong, so "nobody else had the outcome" already means nobody else had the margin. The priority only ever chooses the stronger of two true sentences |
+| The ranking underneath is untouched — fewest others on the margin, then fewest on the outcome | Which fixture wins was never the complaint, and the outcome count still separates two fixtures level on the margin. It is only what the sentence *prints* that moved |
+
+---
+
+## 34. "Best når det gjelder" *(added after the six phases, on request)*
+
+A card about the matches an admin marked as worth more: who took the most out of them.
+`bestWhenItCountsCard()` in `server/src/live/userStats.ts`, last in the running order.
+
+> **Alice** har hentet **8** bonuspoeng fra de **2** markerte kampene — flere enn noen andre!
+>
+> *Best when it counts* — "**Alice** has taken **8** extra points from the **2** highlighted
+> matches — more than anybody else!" · *Wenn es drauf ankommt*
+
+| Decision | Why |
+|---|---|
+| It ranks on the **multiplier bonus** — what the highlight added — rather than on everything those fixtures paid | It is the number the leaderboard already shows in its own **Markert** column, so a member can check the card against the table. The tiers underneath the bonus were on offer on every ordinary fixture too; counting them would make this a second telling of who predicts well in general, which the deck has cards for already |
+| The bonus travels on the prediction, alongside the fixture's multiplier | `live_predictions.multiplier_bonus_points` is what the member was actually paid, written by the scoring trigger. The multiplier comes too, because "which matches were highlighted" cannot be read off a bonus: one everybody got wrong paid nobody anything and would otherwise vanish from the count |
+| The count in the sentence is of highlighted fixtures **somebody predicted** | It is what the deck can see, and a highlighted match nobody in the league predicted paid nobody. The card counts what was played for |
+| Null with no highlighted match played, and null again when every member came away from them empty | The deck's own rule: a card that names nobody, or names somebody with nothing to their name, is not a statistic. "Best at earning zero" is the second of those |
+| A tie is shown rather than broken, and the sentence switches to "hver" / "each" | As everywhere else in the deck. Two members level on the only number the card counts are level |
+| Last in the running order | Where a new card goes unless the league says otherwise; moving it is moving a line in `buildLiveUserStats()` |
+
+---
+
+## 35. "God save the king" *(added after the six phases, on request)*
+
+The third card off a bonus question, and the mirror of Trønderhateren: whoever answered **No**
+to "Ryker minst ett engelsk lag ut i ligaspillet?", which is to say whoever has every English
+side surviving the league phase. `godSaveTheKingCard()` in `server/src/live/userStats.ts`.
+
+> **Alice og Bob** har trua på engelskmennene, og tror ikke at et eneste engelsk lag ryker ut
+> i ligaspillet!
+
+| Decision | Why |
+|---|---|
+| One title, `God save the king`, in all three languages | Requested. It is an anthem, so translating it would be translating a name |
+| The question is found by the words `engelsk` and `ligaspill` | Same rule as the other two bonus cards: an admin types the question and next season's wording will differ. `engelsk` catches `engelske`, `ligaspill` catches `ligaspillet`, and a question about a different country fails the first word |
+| Only the No answers, and null when there are none | The card is about the members who backed the English, not about how popular the answer was. The Trøndelag card is built the same way |
+| The flag is the tile (`backgroundImageUrl`), with the members still carried as subjects | Requested. `LiveUserStatCard` draws a full-bleed picture instead of the faces when a card sends one, exactly as the Norway card does; the members stay in the payload because they are who the card is about, and their names are in the sentence |
+| `client/public/stat-flag-england.webp`, beside `stat-flag-no.webp` | The same shape of asset for the same job. Named `england` rather than `en`, which everywhere else in the app means the English *language* |
+
+---
+
+## 36. No em dash in the copy *(added after the six phases, on request)*
+
+Nothing the page prints uses an em dash any more: 202 strings across the three locales in
+`client/src/lib/translations.ts`, both stat decks' sentences, and the prose in the pages and
+panels that do not go through the translation file.
+
+| Decision | Why |
+|---|---|
+| A colon where the dash set off an explanation, a comma where it set off a conjunction, brackets where it was a pair of them | They are what the dash was standing in for. A blanket substitution would have left comma splices where one clause simply followed another |
+| Code comments, this document and the CLI scripts keep theirs | They are not the page. The rule is about what a member reads |
+| The standalone `'—'` placeholder for an empty score or answer is left alone | It is a glyph standing in for "nothing here", not a sentence, and changing it would change how the score tables look rather than how they read |
+| Two tests hold the line: `client/src/lib/translations.test.ts` walks every string in the copy, and the live deck's own suite builds the whole deck in all three languages | The rule is easy to break by hand a season from now, and both tests fail loudly rather than quietly letting one back in |
+
+---
+
+## 37. The Norway pair *(added after the six phases, on request)*
+
+Two cards off the table predictions, about the two Norwegian clubs in the draw: whose table
+has **Bodø/Glimt** and **Viking** highest, and whose has them lowest.
+`norwayBelieverCard()` and `norwayScepticCard()` in `server/src/live/userStats.ts`, both onto
+one private `norwegianFaithCard()`.
+
+> **Norgesvennen** — "**Alice** har **FK Bodø/Glimt** på **1. plass** og **Viking FK** på
+> **2. plass**. Ingen har større tro på de norske lagene!"
+>
+> **Norgesskeptikeren** — "**Chris** har **FK Bodø/Glimt** på **4. plass** og **Viking FK** på
+> **5. plass**. Ingen har mindre tro på de norske lagene!"
+
+| Decision | Why |
+|---|---|
+| The two positions are added up to rank the members, and the sum is never printed | Requested. 12th is not a position anybody predicted, and two members level on it need not have got there the same way: 3rd and 9th is one story, 5th and 7th another. The card prints what each member actually predicted |
+| Members level on the sum get a line each | For that same reason. One sentence could not say who had which positions, and the deck already does this on **Close enough!** (§32) |
+| The clubs are found by the word `glimt` or `viking` in the team name | An id belongs to a provider and changes with it, and the name is written "FK Bodø/Glimt" by one and "Bodo/Glimt" by another. `glimt` survives a keyboard with no ø, and neither word belongs to another club in the draw |
+| A season with only one of them in the draw still gets a card | The question is how much faith a member has in the Norwegians who are actually there. Neither club in the draw is where the card has nothing to say |
+| A member whose table is missing a club that *is* in the draw is left out | Their sum would be short a number and would beat everybody else's for nothing. It is a ranking saved before the club joined the shortlist, not a member with an opinion about it |
+| Positions are read after dropping teams the tournament no longer has | A ranking still carrying one would push everything below it a place further down than the member ever predicted. `countEnd` and the dead-cert card drop them the same way |
+| Each end is its own picture (`backgroundImageUrl`): Bodø/Glimt's "hello Europe, my old friend" tifo on the believer, a Norwegian head in its hands on the sceptic | Requested. `LiveUserStatCard` already draws a full-bleed picture instead of the faces when a card sends one, as the Norway and England flag cards do, and the tile says which end of the pair it is before the sentence does. The members stay in the payload as the subjects and their names are in the text |
+| `client/public/stat-norway-believer.webp` and `stat-norway-sceptic.webp`, beside the two flags | The same shape of asset for the same job. Photographs rather than flat colour, so they are 71 KB and 34 KB rather than the flags' 2 KB, and the screenshot is kept at the width it came in at rather than upscaled |
+| Both cards are null when every member is level | There is no most and no least in a league that agrees, and both ends would name everybody. It is the rule **Holding the answer key** already uses for its second sentence |
+
+---
+
+## 38. References
 
 - [2026/27 Champions League: teams, dates, draws, format](https://www.uefa.com/uefachampionsleague/news/02a6-20d57cfcd03e-407c22a7f465-1000--2026-27-champions-league-teams-dates-draws-format-final/)
 - [UEFA confirms date for the 2026/27 Champions League league phase draw](https://www.besoccer.com/new/uefa-confirms-date-for-the-202627-champions-league-league-phase-draw-1421299)

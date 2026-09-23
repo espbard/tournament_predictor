@@ -1,6 +1,14 @@
 import { z } from 'zod';
 
+// Optional on every form that has it: a blank field means "no email", not an invalid one.
+// Stored trimmed and lowercased so lookups for a password reset are case-insensitive.
+export const EmailField = z.preprocess(
+  (v) => (typeof v === 'string' && v.trim() === '' ? null : v),
+  z.string().trim().toLowerCase().email().max(254).nullable(),
+);
+
 export const RegisterSchema = z.object({
+  email: EmailField.optional(),
   username: z.string().min(3).max(30).regex(/^[a-zA-Z0-9_]+$/, 'Only letters, numbers, and underscores'),
   password: z.string().min(6),
   imageUrl: z.string().nullable().optional(),
@@ -44,6 +52,17 @@ export const CreateGroupSchema = z.object({
 export const UpdateUserSchema = z.object({
   imageUrl: z.string().nullable().optional(),
   iconColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
+  email: EmailField.optional(),
+});
+
+export const ForgotPasswordSchema = z.object({
+  email: z.string().trim().toLowerCase().email().max(254),
+  language: z.enum(['en', 'no', 'de']).optional(),
+});
+
+export const ResetPasswordSchema = z.object({
+  token: z.string().min(20).max(100),
+  password: z.string().min(6),
 });
 
 export const CreateMatchSchema = z.object({
@@ -94,6 +113,8 @@ export type CreateTeamInput = z.infer<typeof CreateTeamSchema>;
 export type UpdateTeamInput = z.infer<typeof UpdateTeamSchema>;
 export type CreateGroupInput = z.infer<typeof CreateGroupSchema>;
 export type UpdateUserInput = z.infer<typeof UpdateUserSchema>;
+export type ForgotPasswordInput = z.infer<typeof ForgotPasswordSchema>;
+export type ResetPasswordInput = z.infer<typeof ResetPasswordSchema>;
 export type CreateMatchInput = z.infer<typeof CreateMatchSchema>;
 export type UpdateMatchInput = z.infer<typeof UpdateMatchSchema>;
 export type CreateCompetitionInput = z.infer<typeof CreateCompetitionSchema>;

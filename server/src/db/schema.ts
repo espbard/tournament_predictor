@@ -61,6 +61,11 @@ export const appConfig = pgTable('app_config', {
 export const users = pgTable('users', {
   id: text('id').primaryKey(),
   username: text('username').notNull().unique(),
+  // Optional email, only used for password resets. Never stored readable: the address is
+  // AES-256-GCM encrypted, and a keyed hash is kept for lookup and uniqueness. See
+  // server/src/lib/emailCrypto.ts.
+  emailEncrypted: text('email_encrypted'),
+  emailHash: text('email_hash').unique(),
   hashedPassword: text('hashed_password').notNull(),
   isAdmin: boolean('is_admin').notNull().default(false),
   isTestAccount: boolean('is_test_account').notNull().default(false),
@@ -70,6 +75,19 @@ export const users = pgTable('users', {
   imageUrl: text('image_url'),
   iconColor: text('icon_color'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+// One row per outstanding "forgot password" link. Only the SHA-256 of the token is kept, so
+// a leaked database cannot be turned into working reset links.
+export const passwordResetTokens = pgTable('password_reset_tokens', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  tokenHash: text('token_hash').notNull().unique(),
+  expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }).notNull(),
+  usedAt: timestamp('used_at', { withTimezone: true, mode: 'date' }),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
 });
 
 // Lucia v3 sessions table

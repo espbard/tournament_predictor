@@ -21,6 +21,8 @@ import { ensureLiveSchema } from './live/ensureSchema';
 import { liveTournamentsRouter } from './live/routes/tournaments';
 import { liveCompetitionsRouter } from './live/routes/competitions';
 import { startLiveScheduler } from './live/scheduler';
+import { missingEmailSettings } from './lib/email';
+import { emailEncryptionConfigured } from './lib/emailCrypto';
 
 const app = express();
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
@@ -34,6 +36,17 @@ if (process.env.NODE_ENV !== 'production') {
     })
   );
 }
+
+// Railway sits one proxy in front of the app. Without this every request looks like it
+// comes from that proxy, and the per-IP limits on password reset would be shared by all.
+app.set('trust proxy', 1);
+
+// Nothing on this site needs to tell other sites where a visitor came from, and the
+// password reset page carries its token in the URL.
+app.use((_req, res, next) => {
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  next();
+});
 
 app.use(express.json());
 
@@ -87,6 +100,21 @@ async function start() {
   // state. Nullable — it is minted the first time somebody presses Invite.
   await db.execute(sql`ALTER TABLE competitions ADD COLUMN IF NOT EXISTS "invite_token" text`);
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "competitions_invite_token_unique" ON competitions ("invite_token")`);
+  // Defensive: optional email + password reset tokens (drizzle/0038_user_email_password_reset.sql).
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS "email_encrypted" text`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS "email_hash" text`);
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "users_email_hash_unique" ON users ("email_hash")`);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "password_reset_tokens" (
+      "id" text PRIMARY KEY,
+      "user_id" text NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+      "token_hash" text NOT NULL UNIQUE,
+      "expires_at" timestamp with time zone NOT NULL,
+      "used_at" timestamp with time zone,
+      "created_at" timestamp with time zone NOT NULL DEFAULT now()
+    )
+  `);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS "password_reset_tokens_user_id_idx" ON password_reset_tokens ("user_id")`);
   // Defensive: the public flag — a public competition is readable by everyone signed in.
   await db.execute(sql`ALTER TABLE competitions ADD COLUMN IF NOT EXISTS "is_public" boolean NOT NULL DEFAULT false`);
   // Defensive: the live-sync admin override. Nullable — NULL defers to LIVE_SYNC_ENABLED.
@@ -278,6 +306,19 @@ async function start() {
   // when a provider key is configured; off in development, so a dev server does not
   // quietly spend the shared provider request budget. See live/scheduler.ts.
   startLiveScheduler();
+
+  // Throws on a malformed EMAIL_ENCRYPTION_KEY, so a typo stops the deploy instead of
+  // surfacing on the first profile save.
+  emailEncryptionConfigured();
+  if (process.env.NODE_ENV === 'production') {
+    const missing = missingEmailSettings();
+    if (missing.includes('EMAIL_ENCRYPTION_KEY')) {
+      console.warn('[email] EMAIL_ENCRYPTION_KEY is not set: users cannot save an email address.');
+    }
+    if (missing.includes('BREVO_API_KEY') || missing.includes('EMAIL_FROM')) {
+      console.warn(`[email] Not configured (missing ${missing.filter((m) => m !== 'EMAIL_ENCRYPTION_KEY').join(', ')}): password reset emails are not sent.`);
+    }
+  }
 
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);

@@ -28,6 +28,8 @@ import AdminLiveTournamentsPage from '@/pages/live/AdminLiveTournamentsPage';
 import AdminLiveTournamentDetailPage from '@/pages/live/AdminLiveTournamentDetailPage';
 import AdminLiveCompetitionsPage from '@/pages/live/AdminLiveCompetitionsPage';
 import InvitePage from '@/pages/InvitePage';
+import ForgotPasswordPage from '@/pages/ForgotPasswordPage';
+import ResetPasswordPage from '@/pages/ResetPasswordPage';
 
 function PrivateRoute({ children, maintenanceMode }: { children: React.ReactNode; maintenanceMode: boolean }) {
   const { user, isLoading } = useAuthStore();
@@ -72,6 +74,8 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
       {/* Competition share link. Outside PrivateRoute: whoever follows an invite may not
           have an account yet, and the page walks them through getting one. */}
       <Route path="/invite/:token" element={<InvitePage />} />

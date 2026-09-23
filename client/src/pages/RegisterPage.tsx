@@ -12,6 +12,7 @@ type AccountType = 'predictor' | 'leaderboard' | 'lateAddition';
 export default function RegisterPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('');
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [accountType, setAccountType] = useState<AccountType>('predictor');
   const [showLeaderboardConfirm, setShowLeaderboardConfirm] = useState(false);
@@ -41,6 +42,7 @@ export default function RegisterPage() {
       const user = await api.post<User>('/auth/register', {
         username,
         password,
+        email: email.trim() || null,
         imageUrl,
         isLeaderboardUser,
         isLateAddition,
@@ -190,9 +192,9 @@ export default function RegisterPage() {
         </div>
         <p className="text-xs text-muted-foreground -mt-3">
           {accountType === 'leaderboard'
-            ? 'View leaderboards only — no predictions, not on the scoreboard.'
+            ? 'View leaderboards only: no predictions, not on the scoreboard.'
             : accountType === 'lateAddition'
-              ? 'Join competitions already in progress — starts at last place, 24h to predict on remaining matches.'
+              ? 'Join competitions already in progress: starts at last place, 24h to predict on remaining matches.'
               : 'Make predictions and compete on the leaderboard.'}
         </p>
 
@@ -225,6 +227,20 @@ export default function RegisterPage() {
               autoComplete="new-password"
             />
             <p className="text-xs text-muted-foreground">{t('auth.passwordHint')}</p>
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium" htmlFor="email">
+              {t('auth.emailOptional')}
+            </label>
+            <input
+              id="email"
+              type="email"
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+            />
+            <p className="text-xs text-muted-foreground">{t('auth.emailHint')}</p>
           </div>
           <div className="space-y-1">
             <label className="text-sm font-medium">{t('auth.profilePicture')}</label>
