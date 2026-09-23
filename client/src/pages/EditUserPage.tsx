@@ -17,6 +17,7 @@ export default function EditUserPage() {
 
   const [imageUrl, setImageUrl] = useState<string | null>(user?.imageUrl ?? null);
   const [iconColor, setIconColor] = useState<string>(user?.iconColor ?? '#4b5563');
+  const [email, setEmail] = useState(user?.email ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -25,7 +26,7 @@ export default function EditUserPage() {
     setSaving(true);
     setError('');
     try {
-      const updated = await api.patch<User>('/auth/me', { imageUrl, iconColor });
+      const updated = await api.patch<User>('/auth/me', { imageUrl, iconColor, email: email.trim() || null });
       setUser(updated);
       queryClient.setQueryData(['me'], updated);
       navigate('/');
@@ -73,6 +74,21 @@ export default function EditUserPage() {
           </div>
         )}
 
+        <div>
+          <label className="mb-2 block text-sm font-medium" htmlFor="email">
+            {t('editUser.email')}
+          </label>
+          <input
+            id="email"
+            type="email"
+            className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            autoComplete="email"
+          />
+          <p className="mt-1 text-xs text-muted-foreground">{t('editUser.emailHint')}</p>
+        </div>
+
         {error && <p className="text-sm text-red-600">{error}</p>}
 
         <div className="flex gap-2">
@@ -94,3 +110,4 @@ export default function EditUserPage() {
     </main>
   );
 }
+
