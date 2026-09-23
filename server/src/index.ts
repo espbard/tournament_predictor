@@ -21,6 +21,8 @@ import { ensureLiveSchema } from './live/ensureSchema';
 import { liveTournamentsRouter } from './live/routes/tournaments';
 import { liveCompetitionsRouter } from './live/routes/competitions';
 import { startLiveScheduler } from './live/scheduler';
+import { missingEmailSettings } from './lib/email';
+import { emailEncryptionConfigured } from './lib/emailCrypto';
 
 const app = express();
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
@@ -99,8 +101,9 @@ async function start() {
   await db.execute(sql`ALTER TABLE competitions ADD COLUMN IF NOT EXISTS "invite_token" text`);
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "competitions_invite_token_unique" ON competitions ("invite_token")`);
   // Defensive: optional email + password reset tokens (drizzle/0038_user_email_password_reset.sql).
-  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS "email" text`);
-  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "users_email_unique" ON users ("email")`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS "email_encrypted" text`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS "email_hash" text`);
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "users_email_hash_unique" ON users ("email_hash")`);
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS "password_reset_tokens" (
       "id" text PRIMARY KEY,
@@ -301,6 +304,19 @@ async function start() {
   // when a provider key is configured; off in development, so a dev server does not
   // quietly spend the shared provider request budget. See live/scheduler.ts.
   startLiveScheduler();
+
+  // Throws on a malformed EMAIL_ENCRYPTION_KEY, so a typo stops the deploy instead of
+  // surfacing on the first profile save.
+  emailEncryptionConfigured();
+  if (process.env.NODE_ENV === 'production') {
+    const missing = missingEmailSettings();
+    if (missing.includes('EMAIL_ENCRYPTION_KEY')) {
+      console.warn('[email] EMAIL_ENCRYPTION_KEY is not set: users cannot save an email address.');
+    }
+    if (missing.includes('BREVO_API_KEY') || missing.includes('EMAIL_FROM')) {
+      console.warn(`[email] Not configured (missing ${missing.filter((m) => m !== 'EMAIL_ENCRYPTION_KEY').join(', ')}): password reset emails are not sent.`);
+    }
+  }
 
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);

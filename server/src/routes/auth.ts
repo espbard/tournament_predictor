@@ -13,6 +13,7 @@ import {
 } from '@tournament-predictor/shared';
 import { sendEmail } from '../lib/email';
 import { RateLimiter } from '../lib/rateLimit';
+import { decryptEmail, EmailNotConfiguredError, emailLookupHash, encryptEmail } from '../lib/emailCrypto';
 import {
   appBaseUrl,
   buildResetEmail,
@@ -51,8 +52,21 @@ function generateIconColor(): string {
 export const authRouter = Router();
 
 // What the signed-in user sees of their own account. Includes the email, which is private:
-// the admin user list and every other endpoint leave it out.
-const ownUserFields = { id: users.id, username: users.username, isAdmin: users.isAdmin, isTestAccount: users.isTestAccount, isLeaderboardUser: users.isLeaderboardUser, isComparisonUser: users.isComparisonUser, isLateAddition: users.isLateAddition, imageUrl: users.imageUrl, iconColor: users.iconColor, email: users.email };
+// the admin user list and every other endpoint leave it out. Select these, then pass the
+// row through toOwnUser to decrypt the address.
+const ownUserFields = { id: users.id, username: users.username, isAdmin: users.isAdmin, isTestAccount: users.isTestAccount, isLeaderboardUser: users.isLeaderboardUser, isComparisonUser: users.isComparisonUser, isLateAddition: users.isLateAddition, imageUrl: users.imageUrl, iconColor: users.iconColor, emailEncrypted: users.emailEncrypted };
+
+function toOwnUser<T extends { emailEncrypted: string | null }>(row: T) {
+  const { emailEncrypted, ...rest } = row;
+  return { ...rest, email: decryptEmail(emailEncrypted) };
+}
+
+// The stored form of an address: encrypted, plus the keyed hash used to find it again.
+function emailColumns(email: string | null) {
+  return email
+    ? { emailEncrypted: encryptEmail(email), emailHash: emailLookupHash(email) }
+    : { emailEncrypted: null, emailHash: null };
+}
 
 authRouter.post('/register', async (req, res) => {
   try {
@@ -69,7 +83,7 @@ authRouter.post('/register', async (req, res) => {
     }
 
     if (email) {
-      const [emailTaken] = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
+      const [emailTaken] = await db.select({ id: users.id }).from(users).where(eq(users.emailHash, emailLookupHash(email))).limit(1);
       if (emailTaken) return res.status(409).json({ error: 'Email already in use' });
     }
 
@@ -80,7 +94,7 @@ authRouter.post('/register', async (req, res) => {
     await db.insert(users).values({
       id: userId,
       username,
-      email: email ?? null,
+      ...emailColumns(email ?? null),
       hashedPassword,
       isLeaderboardUser: isLeaderboardUser ?? false,
       isLateAddition: isLateAddition ?? false,
@@ -106,6 +120,9 @@ authRouter.post('/register', async (req, res) => {
   } catch (err: any) {
     if (isUniqueViolation(err)) {
       return res.status(409).json({ error: 'Username or email already in use' });
+    }
+    if (err instanceof EmailNotConfiguredError) {
+      return res.status(503).json({ error: 'Email addresses cannot be saved right now. Leave the email empty, or try again later.' });
     }
     if (err?.name === 'ZodError') {
       return res.status(400).json({ error: 'Invalid input', details: err.errors });
@@ -137,7 +154,7 @@ authRouter.post('/login', async (req, res) => {
     const session = await lucia.createSession(user.id, {});
     res.setHeader('Set-Cookie', lucia.createSessionCookie(session.id).serialize());
 
-    return res.json({ id: user.id, username: user.username, isAdmin: user.isAdmin, isTestAccount: user.isTestAccount, isLeaderboardUser: user.isLeaderboardUser, isComparisonUser: user.isComparisonUser, isLateAddition: user.isLateAddition, imageUrl: user.imageUrl, iconColor: user.iconColor, email: user.email });
+    return res.json({ id: user.id, username: user.username, isAdmin: user.isAdmin, isTestAccount: user.isTestAccount, isLeaderboardUser: user.isLeaderboardUser, isComparisonUser: user.isComparisonUser, isLateAddition: user.isLateAddition, imageUrl: user.imageUrl, iconColor: user.iconColor, email: decryptEmail(user.emailEncrypted) });
   } catch (err: any) {
     if (err?.name === 'ZodError') {
       return res.status(400).json({ error: 'Invalid input', details: err.errors });
@@ -159,29 +176,33 @@ authRouter.get('/me', requireAuth, async (_req, res) => {
     .from(users)
     .where(eq(users.id, res.locals.user.id))
     .limit(1);
-  return res.json(user);
+  return res.json(user && toOwnUser(user));
 });
 
 authRouter.patch('/me', requireAuth, async (req, res) => {
   try {
-    const updates = UpdateUserSchema.parse(req.body);
+    const { email, ...updates } = UpdateUserSchema.parse(req.body);
     const [before] = await db
-      .select({ email: users.email })
+      .select({ emailHash: users.emailHash })
       .from(users)
       .where(eq(users.id, res.locals.user.id))
       .limit(1);
+    const emailUpdate = email === undefined ? null : emailColumns(email);
     const [updated] = await db
       .update(users)
-      .set(updates)
+      .set({ ...updates, ...(emailUpdate ?? {}) })
       .where(eq(users.id, res.locals.user.id))
       .returning(ownUserFields);
     // A reset link already sent to the old address must not outlive the change.
-    if (updates.email !== undefined && updates.email !== before?.email) {
+    if (emailUpdate && emailUpdate.emailHash !== before?.emailHash) {
       await deleteResetTokensForUser(res.locals.user.id);
     }
-    return res.json(updated);
+    return res.json(toOwnUser(updated));
   } catch (err: any) {
     if (isUniqueViolation(err)) return res.status(409).json({ error: 'Email already in use' });
+    if (err instanceof EmailNotConfiguredError) {
+      return res.status(503).json({ error: 'Email addresses cannot be saved right now. Try again later.' });
+    }
     if (err?.name === 'ZodError') return res.status(400).json({ error: 'Invalid input', details: err.errors });
     console.error(err);
     return res.status(500).json({ error: 'Internal server error' });
@@ -208,14 +229,15 @@ authRouter.post('/forgot-password', async (req, res) => {
     const [user] = await db
       .select({ id: users.id, username: users.username })
       .from(users)
-      .where(eq(users.email, input.email))
+      .where(eq(users.emailHash, emailLookupHash(input.email)))
       .limit(1);
     if (!user) return;
     const token = await createResetToken(user.id);
     const link = `${appBaseUrl()}${resetPasswordPath(token)}`;
     await sendEmail({ to: input.email, ...buildResetEmail(user.username, link, input.language) });
   } catch (err) {
-    console.error('Password reset email failed:', err);
+    // Never log the address or the link: the error message alone says what went wrong.
+    console.error('Password reset email failed:', err instanceof Error ? err.message : err);
   }
 });
 
@@ -240,7 +262,7 @@ authRouter.post('/reset-password', async (req, res) => {
     await lucia.invalidateUserSessions(userId);
     const session = await lucia.createSession(userId, {});
     res.setHeader('Set-Cookie', lucia.createSessionCookie(session.id).serialize());
-    return res.json(user);
+    return res.json(toOwnUser(user));
   } catch (err: any) {
     if (err?.name === 'ZodError') return res.status(400).json({ error: 'Invalid input', details: err.errors });
     console.error(err);
