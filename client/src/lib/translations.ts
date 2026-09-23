@@ -101,7 +101,7 @@ const translations = {
     // Public competitions: readable by everyone signed in, playable by members only.
     publicCompetition: {
       label: 'Public',
-      hint: 'Everyone can view this competition, even without joining. Only members can make predictions.',
+      hint: 'Test accounts can view this competition without joining (everyone, once public competitions are rolled out). Only members can make predictions.',
       badge: 'Public',
       viewOnly: 'View only',
       viewOnlyBanner: 'This is a public competition. You can follow along, but only members can make predictions.',
@@ -1179,7 +1179,7 @@ const translations = {
     },
     publicCompetition: {
       label: 'Offentlig',
-      hint: 'Alle kan se konkurransen, også uten å bli med. Bare medlemmer kan tippe.',
+      hint: 'Testkontoer kan se konkurransen uten å bli med (alle, når offentlige konkurranser rulles ut). Bare medlemmer kan tippe.',
       badge: 'Offentlig',
       viewOnly: 'Kun visning',
       viewOnlyBanner: 'Dette er en offentlig konkurranse. Du kan følge med, men bare medlemmer kan tippe.',
@@ -2255,7 +2255,7 @@ const translations = {
     },
     publicCompetition: {
       label: 'Öffentlich',
-      hint: 'Alle können diesen Wettbewerb sehen, auch ohne beizutreten. Nur Mitglieder können tippen.',
+      hint: 'Testkonten können diesen Wettbewerb ohne Beitritt sehen (alle, sobald öffentliche Wettbewerbe freigegeben sind). Nur Mitglieder können tippen.',
       badge: 'Öffentlich',
       viewOnly: 'Nur ansehen',
       viewOnlyBanner: 'Dies ist ein öffentlicher Wettbewerb. Du kannst mitverfolgen, aber nur Mitglieder können tippen.',

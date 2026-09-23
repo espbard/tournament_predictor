@@ -9,14 +9,24 @@ import { liveCompetitionMembers, liveCompetitions } from '../db/liveSchema.js';
 //
 // - **Member** (or admin): may read everything and — members only — predict. Every route
 //   that writes, or that reads the caller's *own* predictions, keeps checking membership.
-// - **Viewer**: a member, an admin, or any signed-in user when the competition is public.
+// - **Viewer**: a member, an admin, or — when the competition is public — any signed-in
+//   user shown public competitions (see seesPublicCompetitions below).
 //   Read-only routes about the competition as a whole (leaderboard, members, other
 //   people's predictions, stats) check this instead.
 //
 // Being public changes nothing about joining: the invite code, the share link and the
 // deadlines in competitionJoin.ts decide that, exactly as before.
+//
+// For now public competitions are only shown to test accounts, while the feature is
+// tried out. `seesPublicCompetitions` is the one switch: widen it to everybody by
+// returning true.
 
-type Viewer = { id: string; isAdmin: boolean };
+type Viewer = { id: string; isAdmin: boolean; isTestAccount: boolean };
+
+/** Whether this user is shown public competitions they have not joined. */
+export function seesPublicCompetitions(user: { isTestAccount: boolean }): boolean {
+  return user.isTestAccount;
+}
 
 export async function isManualMember(competitionId: string, userId: string): Promise<boolean> {
   const [membership] = await db
@@ -27,10 +37,14 @@ export async function isManualMember(competitionId: string, userId: string): Pro
   return !!membership;
 }
 
-/** Admin, member, or the competition is public. A missing competition is not viewable. */
+/**
+ * Admin, member, or the competition is public (and the user is shown public competitions).
+ * A missing competition is not viewable.
+ */
 export async function canViewManualCompetition(competitionId: string, user: Viewer): Promise<boolean> {
   if (user.isAdmin) return true;
   if (await isManualMember(competitionId, user.id)) return true;
+  if (!seesPublicCompetitions(user)) return false;
   const [row] = await db
     .select({ isPublic: competitions.isPublic })
     .from(competitions)
@@ -53,10 +67,11 @@ export async function isLiveMember(competitionId: string, userId: string): Promi
   return !!membership;
 }
 
-/** Admin, member, or the live competition is public. */
+/** Admin, member, or the live competition is public (and the user is shown public ones). */
 export async function canViewLiveCompetition(competitionId: string, user: Viewer): Promise<boolean> {
   if (user.isAdmin) return true;
   if (await isLiveMember(competitionId, user.id)) return true;
+  if (!seesPublicCompetitions(user)) return false;
   const [row] = await db
     .select({ isPublic: liveCompetitions.isPublic })
     .from(liveCompetitions)
