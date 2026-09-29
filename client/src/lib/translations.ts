@@ -3538,7 +3538,7 @@ const translations = {
     },
     publicCompetition: {
       label: 'Offentlig',
-      hint: 'Everybody can se this konkurranse, also without to bli med. Only the medlemmer can tippe.',
+      hint: 'Everybody can se this konkurranse, also without to bli med. Only the medlemmer can tipp.',
       badge: 'Offentlig',
       viewOnly: 'Only se',
       sectionTitle: 'Offentlige konkurranser',
@@ -3654,7 +3654,7 @@ const translations = {
         actualResults: 'The real resultater',
         labelPredicted: 'Tippet',
         labelActual: 'Faktisk',
-        predictionsFilled: '{{filled}} / {{total}} tippings fylt ut: the tabeller update as you tipper.',
+        predictionsFilled: '{{filled}} / {{total}} tippings fylt ut: the tabeller update as you tipp.',
         qualifying: 'Går videre',
         luckyLoser: 'Heldig taper (best 3rd plass)',
         luckyLosersTable: 'Heldige tapere',
@@ -3911,10 +3911,10 @@ const translations = {
       saveFailed: 'Could not lagre',
       tiebreakerWarning: 'The tiebreakers must be løst.',
       tiebreakerNote:
-        'Go to the gruppetabeller to rangere the like lag before you tipper the sluttspill.',
+        'Go to the gruppetabeller to rangere the like lag before you tipp the sluttspill.',
       bracketNotConfigured: 'The sluttspill bracket is not satt opp yet.',
       tiebreakerBlur:
-        'Go to the gruppetabeller to løse the tiebreakers before you tipper the sluttspill.',
+        'Go to the gruppetabeller to løse the tiebreakers before you tipp the sluttspill.',
       matchOf: 'Kamp {{n}} of {{total}}',
       bronzeFinal: 'Bronsefinale',
       yourPrediction: 'Your tipping',
@@ -4097,7 +4097,7 @@ const translations = {
         },
       },
       userPredictions: {
-        noTable: '{{name}} did not tippe the tabell.',
+        noTable: '{{name}} did not tipp the tabell.',
         noScorers: '{{name}} did not rangere the toppscorere.',
       },
       saveFailed: 'Could not lagre your tipping.',
@@ -4204,7 +4204,7 @@ const translations = {
         explainerWithBands: 'Put the lag in the order you think they finish the ligaspill. Every lag on exactly the plass you tipp is worth {{total}} poeng, and a lag in the riktig part of the tabell is worth {{band}}.',
         save: 'Lagre the tabell',
         submit: 'Send inn my tabell',
-        gateTitle: 'First, tippe the sluttabell',
+        gateTitle: 'First, tipp the sluttabell',
         gateSubtitle: 'Put the lag in the order you think they finish. This is the one tipping that stenger at the first avspark, so it must be inne before you can spille.',
         gateSubtitleLate: 'The first kamp is already spilt, so this should be stengt, but you never sent in a tabell. Put the lag in the order you think they finish. This one goes in as it is: you cannot come back and change it.',
         gateHint: 'You can change your tabell until the first kamp starts.',
@@ -4247,7 +4247,7 @@ const translations = {
         moveDown: 'Flytt {{team}} ned',
       },
       scorers: {
-        title: 'Tippe the toppscorere',
+        title: 'Tipp the toppscorere',
         explainer: 'Put the spillere in the order you think they finish on mål. Every spiller on exactly the riktig plass is worth {{exact}} poeng.',
         tieBreak: 'Spillere with like many mål are skilt by målgivende, and then by navn.',
         tally: '{{goals}}m · {{assists}}mg',
@@ -4478,7 +4478,7 @@ const translations = {
         },
         selection: {
           title: 'Valgte kamper',
-          explainer: 'Choose which kamper of a runde the spillere tipper. Nothing counts until you choose: a runde you have not gått through shows no kamper at all.',
+          explainer: 'Choose which kamper of a runde the spillere tipp. Nothing counts until you choose: a runde you have not gått through shows no kamper at all.',
           noGameweeks: 'No runder yet: sync the turnering first.',
           stage: 'Fase',
           gameweek: 'Runde',
