@@ -24,7 +24,7 @@ type Lang = 'en' | 'no' | 'de' | 'jk';
 
 function formatUserList(names: string[], lang: Lang): string {
   const bolded = names.map(n => `**${n}**`);
-  const and = lang === 'no' ? 'og' : lang === 'de' ? 'und' : lang === 'jk' ? 'og' : 'and';
+  const and = lang === 'no' ? 'og' : lang === 'de' ? 'und' : 'and';
   if (bolded.length === 1) return bolded[0];
   if (bolded.length === 2) return `${bolded[0]} ${and} ${bolded[1]}`;
   return `${bolded.slice(0, -1).join(', ')}, ${and} ${bolded[bolded.length - 1]}`;
@@ -3233,7 +3233,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       let featuredTeamIds: Set<string>;
 
       if (isTieWithNorway) {
-        const andWord = lang === 'no' ? 'og' : lang === 'de' ? 'und' : lang === 'jk' ? 'og' : 'and';
+        const andWord = lang === 'no' ? 'og' : lang === 'de' ? 'und' : 'and';
         const tiedNames = tiedForFirst.map(([teamId]) => `**${teamName(teamId)}**`);
         const teamsString =
           tiedNames.length === 2
@@ -3314,7 +3314,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
                   ? `**${predictors[0].username}** is the only one to tipp **${teamName(teamId)}** to go all the way`
                   : `**${predictors[0].username}** is the only player to predict **${teamName(teamId)}** to go all the way`
         );
-        const andWord = lang === 'no' ? 'og' : lang === 'de' ? 'und' : lang === 'jk' ? 'og' : 'and';
+        const andWord = lang === 'no' ? 'og' : lang === 'de' ? 'und' : 'and';
         let soloText: string;
         if (soloClauses.length === 1) {
           soloText = `${soloClauses[0]}!`;
@@ -4110,7 +4110,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
       const joinTeamNames = (tIds: string[]): string => {
         const bolded = tIds.map(id => `**${teamName(id)}**`);
-        const andWord = lang === 'no' ? 'og' : lang === 'de' ? 'und' : lang === 'jk' ? 'og' : 'and';
+        const andWord = lang === 'no' ? 'og' : lang === 'de' ? 'und' : 'and';
         if (bolded.length === 1) return bolded[0];
         if (bolded.length === 2) return `${bolded[0]} ${andWord} ${bolded[1]}`;
         return `${bolded.slice(0, -1).join(', ')}, ${andWord} ${bolded[bolded.length - 1]}`;

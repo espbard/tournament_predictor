@@ -79,7 +79,7 @@ interface Entrant {
 /** "A", "A and B", "A, B and C" — and the same in the other two locales. */
 function joinNames(names: string[], lang: LiveStatsLang): string {
   if (names.length <= 1) return names[0] ?? '';
-  const and = lang === 'no' ? 'og' : lang === 'de' ? 'und' : lang === 'jk' ? 'og' : 'and';
+  const and = lang === 'no' ? 'og' : lang === 'de' ? 'und' : 'and';
   return `${names.slice(0, -1).join(', ')} ${and} ${names[names.length - 1]}`;
 }
 
@@ -217,7 +217,7 @@ const indexPlayers = (players: LiveStatsPlayer[]): Map<string, Entrant> =>
  */
 function formatUserList(names: string[], lang: LiveStatsLang): string {
   const bolded = names.map(n => `**${n}**`);
-  const and = lang === 'no' ? 'og' : lang === 'de' ? 'und' : lang === 'jk' ? 'og' : 'and';
+  const and = lang === 'no' ? 'og' : lang === 'de' ? 'und' : 'and';
   if (bolded.length === 1) return bolded[0];
   if (bolded.length === 2) return `${bolded[0]} ${and} ${bolded[1]}`;
   return `${bolded.slice(0, -1).join(', ')}, ${and} ${bolded[bolded.length - 1]}`;
