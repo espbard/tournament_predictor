@@ -2363,7 +2363,7 @@ export function godSaveTheKingCard(
             alone ? 'glaubt' : 'glauben'
           } nicht, dass ein einziges englisches Team in der Ligaphase ausscheidet!`
         : lang === 'jk'
-            ? (`**${names}** ${alone ? 'is' : 'are'} backing the engelske, and ${
+            ? (`**${names}** ${alone ? 'is' : 'are'} backing the engelsk, and ${
             alone ? 'does' : 'do'
           } not tro a single engelsk lag will go ut in the ligaspill!`)
             : `**${names}** ${alone ? 'is' : 'are'} backing the English, and ${
