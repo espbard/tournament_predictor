@@ -143,7 +143,7 @@ export default function CompetitionDetailPage() {
   const navigate = useNavigate();
   const { t, language } = useT();
   const { tn } = useTeamName();
-  const dateLocale = { no: 'nb-NO', en: 'en-GB', de: 'de-DE' }[language];
+  const dateLocale = { no: 'nb-NO', en: 'en-GB', de: 'de-DE', jk: 'en-GB' }[language];
 
   const [editName, setEditName] = useState('');
   const [editImageUrl, setEditImageUrl] = useState<string | null>(null);
@@ -2166,7 +2166,7 @@ export default function CompetitionDetailPage() {
                                   {t('competitionDetail.predictions.actualResult')}: {match.homeScore}–{match.awayScore}
                                 </p>
                                 <p className="text-xs text-muted-foreground italic">
-                                  {language === 'no' ? 'Kopiert tips (gir ikke poeng)' : 'Copied prediction (no points)'}
+                                  {language === 'no' ? 'Kopiert tips (gir ikke poeng)' : language === 'jk' ? 'Kopiert tipping (no poeng)' : 'Copied prediction (no points)'}
                                 </p>
                               </div>
                             );
@@ -2705,7 +2705,7 @@ export default function CompetitionDetailPage() {
                                 <span className="flex-1 truncate font-medium text-xs">
                                   {pred.username}
                                   {pred.isComparisonUser && <span className="ml-1 font-normal text-muted-foreground not-italic">(AI)</span>}
-                                  {pred.isReplacement && <span className="ml-1 font-normal text-muted-foreground not-italic">{language === 'no' ? '(kopiert)' : '(copied)'}</span>}
+                                  {pred.isReplacement && <span className="ml-1 font-normal text-muted-foreground not-italic">{language === 'no' ? '(kopiert)' : language === 'jk' ? '(kopiert)' : '(copied)'}</span>}
                                 </span>
 
                                 <div className="flex items-center gap-1 flex-shrink-0">
@@ -2813,7 +2813,7 @@ export default function CompetitionDetailPage() {
             <LeaderboardLineGraph data={leaderboardProgression} />
           ) : (
             <p className="text-sm text-muted-foreground py-4 text-center">
-              {language === 'no' ? 'Ingen kamper er fullført ennå.' : 'No matches completed yet.'}
+              {language === 'no' ? 'Ingen kamper er fullført ennå.' : language === 'jk' ? 'No kamper are ferdig yet.' : 'No matches completed yet.'}
             </p>
           )}
         </div>

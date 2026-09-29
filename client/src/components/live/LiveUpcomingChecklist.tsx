@@ -177,7 +177,7 @@ export default function LiveUpcomingChecklist({
 
             <span className="relative px-1.5 pb-1.5 sm:px-2 sm:pb-2">
               <span
-                lang={language}
+                lang={language === 'jk' ? 'en' : language}
                 className="block hyphens-auto break-words text-[0.7rem] font-semibold leading-tight text-white drop-shadow sm:text-[0.8rem]"
               >
                 {t(`live.checklist.items.${item.key}`)}

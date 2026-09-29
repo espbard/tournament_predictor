@@ -14,6 +14,7 @@ const LANGUAGES = [
   { code: 'no', label: 'Norsk', flag: '/flag-no.png' },
   { code: 'en', label: 'English', flag: '/flag-en.png' },
   { code: 'de', label: 'Deutsch', flag: '/flag-de.png' },
+  { code: 'jk', label: "The Julekalender (Shit! It's på norsk!)", flag: '/flag-jk.jpg' },
 ] as const;
 
 export default function Navbar() {
