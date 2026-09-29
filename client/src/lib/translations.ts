@@ -4199,9 +4199,9 @@ const translations = {
         eliminated: 'Ute',
       },
       table: {
-        title: 'Tippe the sluttabell',
+        title: 'Tipp the sluttabell',
         explainer: 'Put the lag in the order you think they finish. Every lag on exactly the riktig plass is worth {{exact}} poeng.',
-        explainerWithBands: 'Put the lag in the order you think they finish the ligaspill. Every lag on exactly the plass you tipper is worth {{total}} poeng, and a lag in the riktig part of the tabell is worth {{band}}.',
+        explainerWithBands: 'Put the lag in the order you think they finish the ligaspill. Every lag on exactly the plass you tipp is worth {{total}} poeng, and a lag in the riktig part of the tabell is worth {{band}}.',
         save: 'Lagre the tabell',
         submit: 'Send inn my tabell',
         gateTitle: 'First, tippe the sluttabell',
