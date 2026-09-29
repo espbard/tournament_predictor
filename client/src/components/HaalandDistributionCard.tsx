@@ -31,11 +31,13 @@ export default function HaalandDistributionCard({ data }: Props) {
   const heading =
     language === 'no' ? 'Haalands tippede mål' :
     language === 'de' ? 'Haalands getippte Tore' :
+    language === 'jk' ? "Haaland's tippede mål" :
     "Haaland's predicted goals";
 
   const actualGoalsLabel = (n: number) =>
     language === 'no' ? `Haaland har scoret ${n} mål så langt` :
     language === 'de' ? `Haaland hat bisher ${n} Tor${n === 1 ? '' : 'e'} erzielt` :
+    language === 'jk' ? `Haaland has scoret ${n} mål so far` :
     `Haaland has scored ${n} goal${n === 1 ? '' : 's'} so far`;
 
   return (

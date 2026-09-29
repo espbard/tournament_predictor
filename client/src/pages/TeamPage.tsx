@@ -34,7 +34,7 @@ export default function TeamPage() {
   const { user } = useAuthStore();
   const { t, language } = useT();
   const { tn } = useTeamName();
-  const dateLocale = { no: 'nb-NO', en: 'en-GB', de: 'de-DE' }[language];
+  const dateLocale = { no: 'nb-NO', en: 'en-GB', de: 'de-DE', jk: 'en-GB' }[language];
 
   const effectiveUserId = searchParams.get('userId') ?? user?.id ?? '';
 

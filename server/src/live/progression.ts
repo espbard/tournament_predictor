@@ -31,7 +31,7 @@ import type {
 //
 // See docs/LIVE_TOURNAMENTS_PLAN.md §2 and §9.
 
-export type LiveProgressionLang = 'en' | 'no' | 'de';
+export type LiveProgressionLang = 'en' | 'no' | 'de' | 'jk';
 
 export interface LiveProgressionMember {
   userId: string;
@@ -95,6 +95,7 @@ const SEASON_LABELS: Record<LiveProgressionLang, { table: string; scorers: strin
   en: { table: 'Table', scorers: 'Top scorers', bonus: 'Bonus' },
   no: { table: 'Tabell', scorers: 'Toppscorere', bonus: 'Bonus' },
   de: { table: 'Tabelle', scorers: 'Torjäger', bonus: 'Bonus' },
+  jk: { table: 'Table', scorers: 'Toppskårers', bonus: 'Bonus' },
 };
 
 /** "ARS", "BAY" — the provider's three-letter code where there is one, else a stub. */

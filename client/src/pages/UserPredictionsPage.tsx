@@ -34,7 +34,7 @@ export default function UserPredictionsPage() {
   const [searchParams] = useSearchParams();
   const { t, language } = useT();
   const { tn } = useTeamName();
-  const dateLocale = { no: 'nb-NO', en: 'en-GB', de: 'de-DE' }[language];
+  const dateLocale = { no: 'nb-NO', en: 'en-GB', de: 'de-DE', jk: 'en-GB' }[language];
 
   function stageLabel(stage: MatchStage, groupName?: string | null): string {
     if (stage === 'group' && groupName) return `${t('common.group')} ${groupName}`;

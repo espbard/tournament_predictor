@@ -66,7 +66,7 @@ export async function deleteResetTokensForUser(userId: string): Promise<void> {
   await db.delete(passwordResetTokens).where(eq(passwordResetTokens.userId, userId));
 }
 
-export type EmailLanguage = 'en' | 'no' | 'de';
+export type EmailLanguage = 'en' | 'no' | 'de' | 'jk';
 
 const COPY: Record<EmailLanguage, {
   subject: string;
@@ -99,6 +99,15 @@ const COPY: Record<EmailLanguage, {
     button: 'Neues Passwort wählen',
     expiry: 'Der Link funktioniert einmal und läuft in 30 Minuten ab.',
     ignore: 'Wenn du das nicht warst, kannst du diese E-Mail ignorieren. Dein Passwort bleibt unverändert.',
+  },
+  // Norwenglish, a joke language: English with Norwegian words mixed in.
+  jk: {
+    subject: 'Reset your passord',
+    greeting: (u) => `Hei hei ${u},`,
+    body: 'Somebody asked to reset the passord for your Tournament Predictor konto. Use the lenke below to choose a new one.',
+    button: 'Choose a new passord',
+    expiry: 'The lenke works one gang and goes ut in 30 minutter.',
+    ignore: 'If it was not you, just forget this e-post. Your passord stays the same.',
   },
 };
 

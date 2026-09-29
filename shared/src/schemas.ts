@@ -68,12 +68,12 @@ export const AdminUpdateUserSchema = z.object({
   email: EmailField.optional(),
   sendResetLink: z.boolean().optional(),
   /** Language of the reset email. */
-  language: z.enum(['en', 'no', 'de']).optional(),
+  language: z.enum(['en', 'no', 'de', 'jk']).optional(),
 });
 
 export const ForgotPasswordSchema = z.object({
   email: z.string().trim().toLowerCase().email().max(254),
-  language: z.enum(['en', 'no', 'de']).optional(),
+  language: z.enum(['en', 'no', 'de', 'jk']).optional(),
 });
 
 export const ResetPasswordSchema = z.object({

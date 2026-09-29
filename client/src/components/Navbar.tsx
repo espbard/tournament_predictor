@@ -14,6 +14,8 @@ const LANGUAGES = [
   { code: 'no', label: 'Norsk', flag: '/flag-no.png' },
   { code: 'en', label: 'English', flag: '/flag-en.png' },
   { code: 'de', label: 'Deutsch', flag: '/flag-de.png' },
+  // A joke language: English with Norwegian words mixed in.
+  { code: 'jk', label: 'Norwenglish', flag: '/flag-jk.jpg' },
 ] as const;
 
 export default function Navbar() {

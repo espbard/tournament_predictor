@@ -42,7 +42,7 @@ import { LIVE_SEASON_MILESTONE_IDS } from './progression';
 // And a pair off the table predictions about the same corner of the map: whose table has
 // the Norwegian clubs highest, and whose has them lowest.
 
-export type LiveStatsLang = 'en' | 'no' | 'de';
+export type LiveStatsLang = 'en' | 'no' | 'de' | 'jk';
 
 export interface LiveStatsTeam {
   id: string;
@@ -306,14 +306,16 @@ export function theLeaderCard(
   const names = formatUserList(kings.map(k => k.username), lang);
   const gameCount = longest;
 
-  const title = lang === 'no' ? 'Kongen på haugen' : lang === 'de' ? 'Der Platzhirsch' : 'The Leader';
+  const title = lang === 'no' ? 'Kongen på haugen' : lang === 'de' ? 'Der Platzhirsch' : lang === 'jk' ? 'The leder' : 'The Leader';
 
   const statistic =
     lang === 'no'
       ? `${names} har regjert på toppen i ${gameCount} kamp${gameCount === 1 ? '' : 'er'}!`
       : lang === 'de'
         ? `${names} thront seit ${gameCount} Spiel${gameCount === 1 ? '' : 'en'} an der Spitze wie eine sehr wackelige Krone!`
-        : `${names} ${kings.length === 1 ? 'has' : 'have'} reigned supreme for the last ${gameCount} game${gameCount === 1 ? '' : 's'}!`;
+        : lang === 'jk'
+            ? `${names} ${kings.length === 1 ? 'has' : 'have'} been on the topp for the last ${gameCount} kamp${gameCount === 1 ? '' : 'er'}!`
+            : `${names} ${kings.length === 1 ? 'has' : 'have'} reigned supreme for the last ${gameCount} game${gameCount === 1 ? '' : 's'}!`;
 
   return memberCard('theLeader', title, statistic, kings);
 }
@@ -401,14 +403,16 @@ export function bestFormCard(
     .sort(byUsername);
 
   const names = formatUserList(inForm.map(m => m.username), lang);
-  const title = lang === 'no' ? 'I fyr og flamme 🔥' : lang === 'de' ? 'Formrakete 🔥' : 'Best form';
+  const title = lang === 'no' ? 'I fyr og flamme 🔥' : lang === 'de' ? 'Formrakete 🔥' : lang === 'jk' ? 'Best formkurve' : 'Best form';
 
   const statistic =
     lang === 'no'
       ? `${names} har sanket ${most} poeng de siste 5 kampene!`
       : lang === 'de'
         ? `${names} hat in den letzten 5 Spielen ${most} Punkte eingesammelt! Heiß wie eine Bratwurst auf dem Grill.`
-        : `${names} ${inForm.length === 1 ? 'has' : 'have'} gained ${most} points in the last 5 matches!`;
+        : lang === 'jk'
+            ? `${names} ${inForm.length === 1 ? 'has' : 'have'} tatt ${most} points in the last 5 kamper!`
+            : `${names} ${inForm.length === 1 ? 'has' : 'have'} gained ${most} points in the last 5 matches!`;
 
   return memberCard('bestForm', title, statistic, inForm);
 }
@@ -454,14 +458,16 @@ export function worstFormCard(
     .sort(byUsername);
 
   const names = formatUserList(outOfForm.map(m => m.username), lang);
-  const title = lang === 'no' ? 'Send Hjelp' : lang === 'de' ? 'Hilfe senden' : 'Worst form';
+  const title = lang === 'no' ? 'Send Hjelp' : lang === 'de' ? 'Hilfe senden' : lang === 'jk' ? 'Worst formkurve' : 'Worst form';
 
   const statistic =
     lang === 'no'
       ? `${names} har gått ${longest} kamper på rad uten å sanke et eneste poeng!`
       : lang === 'de'
         ? `${names} hat ${longest} Spiele in Folge keinen einzigen Punkt geholt! Bitte ruft professionelle Hilfe!`
-        : `${names} ${outOfForm.length === 1 ? 'has' : 'have'} gone ${longest} matches without gaining a single point!`;
+        : lang === 'jk'
+            ? `${names} ${outOfForm.length === 1 ? 'has' : 'have'} gått ${longest} kamper without a single point!`
+            : `${names} ${outOfForm.length === 1 ? 'has' : 'have'} gone ${longest} matches without gaining a single point!`;
 
   return memberCard('worstForm', title, statistic, outOfForm);
 }
@@ -530,14 +536,16 @@ export function theClimberCard(
 
   const { places, members } = climbed;
   const names = formatUserList(members.map(m => m.username), lang);
-  const title = lang === 'no' ? 'Det klatres!' : lang === 'de' ? 'Der Aufsteiger' : 'The Climber';
+  const title = lang === 'no' ? 'Det klatres!' : lang === 'de' ? 'Der Aufsteiger' : lang === 'jk' ? 'The klatrer' : 'The Climber';
 
   const statistic =
     lang === 'no'
       ? `${names} har klatret ${places} ${places === 1 ? 'plass' : 'plasser'} på tabellen de siste 10 kampene!`
       : lang === 'de'
         ? `${names} ist in den letzten 10 Spielen um ${places} ${places === 1 ? 'Platz' : 'Plätze'} aufgestiegen!`
-        : `${names} ${members.length === 1 ? 'has' : 'have'} climbed ${places} ${places === 1 ? 'spot' : 'spots'} on the leaderboard over the last 10 games!`;
+        : lang === 'jk'
+            ? `${names} ${members.length === 1 ? 'has' : 'have'} klatret ${places} ${places === 1 ? 'plass' : 'plasser'} on the leader tavle over the last 10 kamper!`
+            : `${names} ${members.length === 1 ? 'has' : 'have'} climbed ${places} ${places === 1 ? 'spot' : 'spots'} on the leaderboard over the last 10 games!`;
 
   return memberCard('theClimber', title, statistic, members);
 }
@@ -552,14 +560,16 @@ export function theFallerCard(
 
   const { places, members } = fell;
   const names = formatUserList(members.map(m => m.username), lang);
-  const title = lang === 'no' ? 'Rett åt skogen' : lang === 'de' ? 'Tabellenabsteiger' : "I'm falling!";
+  const title = lang === 'no' ? 'Rett åt skogen' : lang === 'de' ? 'Tabellenabsteiger' : lang === 'jk' ? "I'm falling rett åt skogen!" : "I'm falling!";
 
   const statistic =
     lang === 'no'
       ? `${names} har falt ${places} ${places === 1 ? 'plass' : 'plasser'} på tabellen de siste 10 kampene!`
       : lang === 'de'
         ? `${names} ist in den letzten 10 Spielen um ${places} ${places === 1 ? 'Platz' : 'Plätze'} abgefallen!`
-        : `${names} ${members.length === 1 ? 'has' : 'have'} dropped ${places} ${places === 1 ? 'spot' : 'spots'} on the leaderboard over the last 10 games!`;
+        : lang === 'jk'
+            ? `${names} ${members.length === 1 ? 'has' : 'have'} dropped ${places} ${places === 1 ? 'plass' : 'plasser'} on the leader tavle over the last 10 kamper!`
+            : `${names} ${members.length === 1 ? 'has' : 'have'} dropped ${places} ${places === 1 ? 'spot' : 'spots'} on the leaderboard over the last 10 games!`;
 
   return memberCard('theFaller', title, statistic, members);
 }
@@ -581,7 +591,7 @@ export function peoplesFavouriteCard(
   const tied = winners.length > 1;
 
   const title =
-    lang === 'no' ? 'Folkefavoritten' : lang === 'de' ? 'Der Publikumsliebling' : "The people's favourite";
+    lang === 'no' ? 'Folkefavoritten' : lang === 'de' ? 'Der Publikumsliebling' : lang === 'jk' ? 'The folkefavoritt' : "The people's favourite";
 
   const statistic =
     lang === 'no'
@@ -592,7 +602,11 @@ export function peoplesFavouriteCard(
         ? tied
           ? `**${names}** sind die Publikumslieblinge! **${count}** von **${total}** haben sie jeweils ganz oben im Tabellentipp.`
           : `**${names}** ist der Publikumsliebling! **${count}** von **${total}** haben sie ganz oben im Tabellentipp.`
-        : tied
+        : lang === 'jk'
+            ? (tied
+          ? `**${names}** are the folkefavoritter! **${count}** of **${total}** have each of them on topp of their table tipping.`
+          : `**${names}** are the folkefavoritt! **${count}** of **${total}** have them on topp of their table tipping.`)
+            : tied
           ? `**${names}** are the people's favourites! **${count}** of **${total}** have each of them top of their table prediction.`
           : `**${names}** are the people's favourite! **${count}** of **${total}** have them top of their table prediction.`;
 
@@ -612,7 +626,7 @@ export function woodenSpoonCard(
   const names = joinNames(winners.map(w => w.name), lang);
   const tied = winners.length > 1;
 
-  const title = lang === 'no' ? 'Bunnslammet' : lang === 'de' ? 'Der Bodensatz' : 'The bottom of the barrel';
+  const title = lang === 'no' ? 'Bunnslammet' : lang === 'de' ? 'Der Bodensatz' : lang === 'jk' ? 'The bunnslam' : 'The bottom of the barrel';
 
   const statistic =
     lang === 'no'
@@ -623,7 +637,11 @@ export function woodenSpoonCard(
         ? tied
           ? `Niemand glaubt an **${names}**! **${count}** von **${total}** tippen jede von ihnen auf den letzten Tabellenplatz.`
           : `Niemand glaubt an **${names}**! **${count}** von **${total}** tippen sie auf den letzten Tabellenplatz.`
-        : tied
+        : lang === 'jk'
+            ? (tied
+          ? `Nobody tror on **${names}**! **${count}** of **${total}** have each of them on the very bunn.`
+          : `Nobody tror on **${names}**! **${count}** of **${total}** have them on the very bunn.`)
+            : tied
           ? `Nobody believes in **${names}**! **${count}** of **${total}** have each of them finishing dead last.`
           : `Nobody believes in **${names}**! **${count}** of **${total}** have them finishing dead last.`;
 
@@ -692,7 +710,7 @@ export function deadCertCard(
   const names = joinNames(winners.map(w => w.team.name), lang);
 
   const title =
-    lang === 'no' ? 'Sikkerstikket' : lang === 'de' ? 'So gut wie durch' : 'A dead cert';
+    lang === 'no' ? 'Sikkerstikket' : lang === 'de' ? 'So gut wie durch' : lang === 'jk' ? 'The sikkerstikk' : 'A dead cert';
 
   const opening =
     lang === 'no'
@@ -703,7 +721,11 @@ export function deadCertCard(
         ? everyone
           ? `Alle **${ranked}** haben **${names}** unter den **${directPlaces}**, die direkt weiterkommen.`
           : `**${most}** von **${ranked}** haben **${names}** unter den **${directPlaces}**, die direkt weiterkommen.`
-        : everyone
+        : lang === 'jk'
+            ? (everyone
+          ? `Every one of **${ranked}** has **${names}** in the **${directPlaces}** that go direkte videre.`
+          : `**${most}** of **${ranked}** have **${names}** in the **${directPlaces}** that go direkte videre.`)
+            : everyone
           ? `Every one of **${ranked}** has **${names}** in the **${directPlaces}** that go straight through.`
           : `**${most}** of **${ranked}** have **${names}** in the **${directPlaces}** that go straight through.`;
 
@@ -723,7 +745,9 @@ export function deadCertCard(
         ? 'dem'
         : lang === 'de'
           ? 'sie'
-          : 'them'
+          : lang === 'jk'
+              ? 'dem'
+              : 'them'
       : `**${backing.team.name}**`;
 
     return lang === 'no'
@@ -734,7 +758,11 @@ export function deadCertCard(
         ? alone
           ? `**${who}** war die einzige Person, die ${team} außerhalb der Top **${directPlaces}** getippt hat.`
           : `**${who}** waren die Einzigen, die ${team} außerhalb der Top **${directPlaces}** getippt haben.`
-        : alone
+        : lang === 'jk'
+            ? (alone
+          ? `**${who}** was the only one to tipp ${team} outside the topp **${directPlaces}**.`
+          : `**${who}** were the only ones to tipp ${team} outside the topp **${directPlaces}**.`)
+            : alone
           ? `**${who}** was the only one to predict ${team} outside the top **${directPlaces}**.`
           : `**${who}** were the only ones to predict ${team} outside the top **${directPlaces}**.`;
   };
@@ -829,7 +857,11 @@ export function lastBelieverCard(
         ? alone
           ? `**${who}** ist die einzige Person, die ${team} weiterkommen sieht.`
           : `Nur **${who}** sehen ${team} weiterkommen.`
-        : alone
+        : lang === 'jk'
+            ? (alone
+          ? `**${who}** is the only one with ${team} going videre.`
+          : `Only **${who}** have ${team} going videre.`)
+            : alone
           ? `**${who}** is the only one with ${team} going through.`
           : `Only **${who}** have ${team} going through.`;
   };
@@ -839,14 +871,18 @@ export function lastBelieverCard(
       ? 'I hvert fall noen som har trua'
       : lang === 'de'
         ? 'Der letzte Gläubige'
-        : 'The last believer';
+        : lang === 'jk'
+            ? 'The last troende'
+            : 'The last believer';
 
   const opening =
     lang === 'no'
       ? `**${writtenOff}** av **${ranked}** har tippet at **${names}** ryker rett ut.`
       : lang === 'de'
         ? `**${writtenOff}** von **${ranked}** tippen **${names}** auf den direkten Abgang.`
-        : `**${writtenOff}** of **${ranked}** have **${names}** dropping straight out.`;
+        : lang === 'jk'
+            ? `**${writtenOff}** of **${ranked}** have **${names}** going rett ut.`
+            : `**${writtenOff}** of **${ranked}** have **${names}** dropping straight out.`;
 
   // A line each, because these are several stories and a paragraph of them runs together.
   // See LiveUserStatCard, which keeps the breaks.
@@ -871,7 +907,7 @@ export function goldenBootCard(
   const names = joinNames(winners.map(w => w.name), lang);
   const tied = winners.length > 1;
 
-  const title = lang === 'no' ? 'Gullstøvelen' : lang === 'de' ? 'Der Goldene Schuh' : 'The golden boot';
+  const title = lang === 'no' ? 'Gullstøvelen' : lang === 'de' ? 'Der Goldene Schuh' : lang === 'jk' ? 'The gullstøvel' : 'The golden boot';
 
   const statistic =
     lang === 'no'
@@ -882,7 +918,11 @@ export function goldenBootCard(
         ? tied
           ? `**${names}** stehen in je **${count}** von **${total}** Torjägerlisten ganz oben.`
           : `**${names}** steht in **${count}** von **${total}** Torjägerlisten ganz oben.`
-        : tied
+        : lang === 'jk'
+            ? (tied
+          ? `**${names}** each topper the toppskårer list in **${count}** of **${total}** rangeringer.`
+          : `**${names}** topper the toppskårer list in **${count}** of **${total}** rangeringer.`)
+            : tied
           ? `**${names}** each top the scorer list in **${count}** of **${total}** rankings.`
           : `**${names}** tops the scorer list in **${count}** of **${total}** rankings.`;
 
@@ -902,7 +942,7 @@ export function goalDroughtCard(
   const names = joinNames(winners.map(w => w.name), lang);
   const tied = winners.length > 1;
 
-  const title = lang === 'no' ? 'Null tillit' : lang === 'de' ? 'Kein Vertrauen' : 'No confidence';
+  const title = lang === 'no' ? 'Null tillit' : lang === 'de' ? 'Kein Vertrauen' : lang === 'jk' ? 'No tillit' : 'No confidence';
 
   const statistic =
     lang === 'no'
@@ -913,7 +953,11 @@ export function goalDroughtCard(
         ? tied
           ? `Die Erwartungen an **${names}** sind gering. **${count}** von **${total}** tippen jeden von ihnen auf die wenigsten Tore der Torjägerliste.`
           : `Die Erwartungen an **${names}** sind gering. **${count}** von **${total}** tippen ihn auf die wenigsten Tore der Torjägerliste.`
-        : tied
+        : lang === 'jk'
+            ? (tied
+          ? `The forventninger are low for **${names}**. **${count}** of **${total}** have each of them scoring the fewest mål on the toppskårer list.`
+          : `The forventninger are low for **${names}**. **${count}** of **${total}** have him scoring the fewest mål on the toppskårer list.`)
+            : tied
           ? `Expectations are low for **${names}**. **${count}** of **${total}** have each of them scoring the fewest goals on the top-scorer list.`
           : `Expectations are low for **${names}**. **${count}** of **${total}** have him scoring the fewest goals on the top-scorer list.`;
 
@@ -990,14 +1034,18 @@ export function inHaalandWeTrustCard(
         ? ` ${one ? 'Brukeren' : 'Brukerne'} som har minst tro på Brauten er **${names}**, som tippet at Haaland ender på **${lowest}. plass** på toppscorerlisten.`
         : lang === 'de'
           ? ` Am wenigsten ${one ? 'glaubt' : 'glauben'} **${names}** an ihn: auf **Platz ${lowest}** der Torjägerliste.`
-          : ` The ${one ? 'one' : 'ones'} with the least faith in him: **${names}**, who put him **${ordinal(lowest)}** on the top-scorer list.`;
+          : lang === 'jk'
+              ? ` The ${one ? 'one' : 'ones'} with the least tro on him: **${names}**, who put him **${ordinal(lowest)}** on the toppskårer list.`
+              : ` The ${one ? 'one' : 'ones'} with the least faith in him: **${names}**, who put him **${ordinal(lowest)}** on the top-scorer list.`;
 
   const statistic =
     (lang === 'no'
       ? `**${believers}** av **${total}** har tippet at Haaland blir toppscorer!`
       : lang === 'de'
         ? `**${believers}** von **${total}** tippen Haaland als Torschützenkönig!`
-        : `**${believers}** of **${total}** have Haaland finishing as top scorer!`) + doubt;
+        : lang === 'jk'
+            ? `**${believers}** of **${total}** have Haaland as the toppskårer!`
+            : `**${believers}** of **${total}** have Haaland finishing as top scorer!`) + doubt;
 
   // The same title everywhere, because it is a slogan rather than a sentence.
   return card('inHaalandWeTrust', 'In Haaland we trust', statistic, [
@@ -1138,7 +1186,9 @@ export function spotOnCard(
       ? 'Sitter med fasiten i hånden'
       : lang === 'de'
         ? 'Mit dem Lösungsblatt in der Hand'
-        : 'Holding the answer key';
+        : lang === 'jk'
+            ? 'With the fasit in the hånd'
+            : 'Holding the answer key';
 
   // One exact scoreline is a real card — somebody has to be first — so every sentence
   // below has to read in the singular as well as the plural.
@@ -1163,7 +1213,12 @@ export function spotOnCard(
           (trailers.length > 0
             ? ` **${trailerNames}** ${trailers.length > 1 ? 'haben' : 'hat'} mit **${fewest}** ${fewestErgebnisse} die wenigsten.`
             : '')
-        : `**${names}** ${tied ? 'have each' : 'has'} predicted a full **${exactScores}** ${scorelines}!` +
+        : lang === 'jk'
+            ? (`**${names}** ${tied ? 'have each' : 'has'} tippet a full **${exactScores}** ${one ? 'perfekt resultat' : 'perfekte resultats'}!` +
+          (trailers.length > 0
+            ? ` **${trailerNames}** ${trailers.length > 1 ? 'have' : 'has'} the fewest with **${fewest}** ${fewestOne ? 'fulltreffer' : 'fulltreffers'}.`
+            : ''))
+            : `**${names}** ${tied ? 'have each' : 'has'} predicted a full **${exactScores}** ${scorelines}!` +
           (trailers.length > 0
             ? ` **${trailerNames}** ${trailers.length > 1 ? 'have' : 'has'} the fewest with **${fewest}** ${fewestScorelines}.`
             : '');
@@ -1202,7 +1257,7 @@ export function almostCard(
   const tied = winners.length > 1;
   const none = exactScores === 0;
 
-  const title = lang === 'no' ? 'Nesten' : lang === 'de' ? 'Fast' : 'Almost';
+  const title = lang === 'no' ? 'Nesten' : lang === 'de' ? 'Fast' : lang === 'jk' ? 'Nesten' : 'Almost';
 
   const one = exactScores === 1;
   const kamper = goalDifferences === 1 ? 'kamp' : 'kamper';
@@ -1225,7 +1280,12 @@ export function almostCard(
           (none
             ? 'aber kein einziges exaktes Ergebnis.'
             : `aber nur ${tied ? 'je ' : ''}**${exactScores}** ${ergebnisse}.`)
-        : `**${names}** ${tied ? 'each have' : 'has'} the goal difference right in **${goalDifferences}** ${matches}, ` +
+        : lang === 'jk'
+            ? (`**${names}** ${tied ? 'each have' : 'has'} the målforskjell riktig in **${goalDifferences}** ${goalDifferences === 1 ? 'kamp' : 'kamper'}, ` +
+          (none
+            ? 'without a single exact resultat.'
+            : `but only **${exactScores}** exact ${one ? 'resultat' : 'resultats'}${tied ? ' each' : ''}.`))
+            : `**${names}** ${tied ? 'each have' : 'has'} the goal difference right in **${goalDifferences}** ${matches}, ` +
           (none
             ? 'without a single exact scoreline.'
             : `with only **${exactScores}** ${scorelines}${tied ? ' each' : ''}.`);
@@ -1296,7 +1356,9 @@ export function bestWhenItCountsCard(
       ? 'Best når det gjelder'
       : lang === 'de'
         ? 'Wenn es drauf ankommt'
-        : 'Best when it counts';
+        : lang === 'jk'
+            ? 'Best when it teller'
+            : 'Best when it counts';
 
   // A league can be one highlighted match in, and "the 1 highlighted matches" is not a
   // sentence — so the singular says "the one" and drops the number.
@@ -1316,7 +1378,11 @@ export function bestWhenItCountsCard(
         ? `**${names}** ${tied ? 'haben je' : 'hat'} **${bonus}** ${punkt} aus ${spiele} geholt, ${
             tied ? 'und niemand sonst hat mehr geholt' : 'mehr als alle anderen'
           }!`
-        : `**${names}** ${tied ? 'have each' : 'has'} taken **${bonus}** extra ${points} from ${matches}, ${
+        : lang === 'jk'
+            ? (`**${names}** ${tied ? 'have each' : 'has'} tatt **${bonus}** ekstra ${bonus === 1 ? 'point' : 'points'} from ${one ? 'the one høydepunkt-kamp' : `the **${played}** høydepunkt-kamper`}, ${
+            tied ? 'and nobody else has tatt mer' : 'mer than anybody else'
+          }!`)
+            : `**${names}** ${tied ? 'have each' : 'has'} taken **${bonus}** extra ${points} from ${matches}, ${
             tied ? 'and nobody else has taken more' : 'more than anybody else'
           }!`;
 
@@ -1414,7 +1480,9 @@ export function bestPredictionCard(
       ? 'Hvordan visste du det?'
       : lang === 'de'
         ? 'Woher wusstest du das?'
-        : 'How did you know?';
+        : lang === 'jk'
+            ? 'How did you vit that?'
+            : 'How did you know?';
 
   // Two fixtures level on both counts are two different stories, so a tie names no
   // fixture: only what every one of them has in common. And a tie can be one member
@@ -1446,7 +1514,13 @@ export function bestPredictionCard(
           : gd === 0
             ? ' Niemand sonst hatte auch nur die Tordifferenz!'
             : ` Nur **${gd}** ${gd === 1 ? 'andere Person hatte' : 'andere hatten'} überhaupt die Tordifferenz!`
-        : outcome === 0
+        : lang === 'jk'
+            ? (outcome === 0
+          ? ' Nobody else even got the utfall riktig!'
+          : gd === 0
+            ? ' Nobody else even had the målforskjell!'
+            : ` Only **${gd}** ${gd === 1 ? 'other' : 'others'} even had the målforskjell!`)
+            : outcome === 0
           ? ' Nobody else even got the outcome of the match right!'
           : gd === 0
             ? ' Nobody else even had the goal difference!'
@@ -1466,7 +1540,13 @@ export function bestPredictionCard(
               ? `**${names}** hat in **${tie.length}** Spielen das perfekte Ergebnis getippt, das sonst niemand hatte!`
               : `**${names}** haben jeweils ein perfektes Ergebnis getippt, das sonst niemand hatte!`) +
           appendix
-        : (alone
+        : lang === 'jk'
+            ? ((alone
+            ? `**${names}** was the only one to tipp the perfekt resultat for ${what}!`
+            : winners.length === 1
+              ? `**${names}** tippet the perfekt resultat in **${tie.length}** kamper nobody else got!`
+              : `**${names}** each tippet a perfekt resultat nobody else got!`) + appendix)
+            : (alone
             ? `**${names}** was the only one to predict the perfect score for ${what}!`
             : winners.length === 1
               ? `**${names}** predicted the perfect score in **${tie.length}** matches nobody else got!`
@@ -1499,7 +1579,7 @@ export function worstPredictionCard(
   const names = joinNames(winners.map(w => w.username), lang);
 
   const title =
-    lang === 'no' ? 'Det var nesten da!' : lang === 'de' ? 'Knapp daneben!' : 'Close enough!';
+    lang === 'no' ? 'Det var nesten da!' : lang === 'de' ? 'Knapp daneben!' : lang === 'jk' ? 'Close nok!' : 'Close enough!';
 
   // One prediction is the story, and a tie between members is several of them: a line
   // each, naming the member, what they predicted and how it finished, rather than one
@@ -1522,7 +1602,11 @@ export function worstPredictionCard(
         ? `**${p.username}** hat **${predicted}** ${
             named ? `bei **${named.home} gegen ${named.away}**` : 'bei einem Spiel'
           } getippt, das **${actual}** endete.`
-        : `**${p.username}** predicted **${predicted}** ${
+        : lang === 'jk'
+            ? (`**${p.username}** tippet **${predicted}** ${
+            named ? `in **${named.home} vs ${named.away}**, which` : 'in a kamp that'
+          } ended **${actual}**.`)
+            : `**${p.username}** predicted **${predicted}** ${
             named ? `in **${named.home} vs ${named.away}**, which` : 'in a match that'
           } finished **${actual}**.`;
   };
@@ -1533,7 +1617,9 @@ export function worstPredictionCard(
       ? `**${names}** har **${tie.length}** tips som bommer like stort.`
       : lang === 'de'
         ? `**${names}** hat **${tie.length}** Tipps, die genauso weit danebenliegen.`
-        : `**${names}** has **${tie.length}** predictions that missed by just as much.`;
+        : lang === 'jk'
+            ? `**${names}** has **${tie.length}** tippings that bommet by just as much.`
+            : `**${names}** has **${tie.length}** predictions that missed by just as much.`;
 
   // The claim the card closes on survives a tie between members now that every one of
   // them is named on a line above it: "nobody else" is everybody those lines leave out.
@@ -1542,7 +1628,9 @@ export function worstPredictionCard(
       ? 'Ingen andre har bommet så stort på en kamp!'
       : lang === 'de'
         ? 'Niemand sonst hat bei einem Spiel so danebengelegen!'
-        : 'Nobody else has missed a match by that much!';
+        : lang === 'jk'
+            ? 'Nobody else has bommet on a kamp by that much!'
+            : 'Nobody else has missed a match by that much!';
 
   // One prediction, or one member's tie, reads as a single breath; several members are a
   // line each, for the same reason the last-believer card gives each team its own. See
@@ -1580,6 +1668,11 @@ function describeOutcome(
     if (homeScore > awayScore) return `dass ${home} gegen ${away} gewinnt`;
     if (awayScore > homeScore) return `dass ${away} gegen ${home} gewinnt`;
     return `ein Unentschieden zwischen ${home} und ${away}`;
+  }
+  if (lang === 'jk') {
+    if (homeScore > awayScore) return `${home} to slå ${away}`;
+    if (awayScore > homeScore) return `${away} to slå ${home}`;
+    return `${home} to spille uavgjort against ${away}`;
   }
   if (homeScore > awayScore) return `${home} to beat ${away}`;
   if (awayScore > homeScore) return `${away} to beat ${home}`;
@@ -1700,14 +1793,16 @@ export function mostUnexpectedResultCard(
   const { predictedHome, predictedAway } = worst[0];
 
   const title =
-    lang === 'no' ? 'Sjokkresultat' : lang === 'de' ? 'Schockresultat' : 'Most unexpected result';
+    lang === 'no' ? 'Sjokkresultat' : lang === 'de' ? 'Schockresultat' : lang === 'jk' ? 'Most uventet resultat' : 'Most unexpected result';
 
   const statistic =
     lang === 'no'
       ? `Ingen tippet ${actual}! ${names} tippet til og med ${predicted} (${predictedHome}-${predictedAway})!`
       : lang === 'de'
         ? `Niemand hat ${actual} vorhergesagt! ${names} hat sogar ${predicted} (${predictedHome}-${predictedAway}) getippt!`
-        : `No one predicted ${actual}! ${names} even predicted ${predicted} (${predictedHome} - ${predictedAway})!`;
+        : lang === 'jk'
+            ? `No one tippet ${actual}! ${names} even tippet ${predicted} (${predictedHome} - ${predictedAway})!`
+            : `No one predicted ${actual}! ${names} even predicted ${predicted} (${predictedHome} - ${predictedAway})!`;
 
   return {
     id: 'mostUnexpectedResult',
@@ -1763,24 +1858,30 @@ export function mostExpectedResultCard(
         ? ` Likevel sanket ${formatUserList(withNothing.map(u => u.username), lang)} 0 poeng.`
         : lang === 'de'
           ? ` Und trotzdem hat ${formatUserList(withNothing.map(u => u.username), lang)} 0 Punkte geholt. Wie?`
-          : ` Still ${formatUserList(withNothing.map(u => u.username), lang)} earned 0 points.`
+          : lang === 'jk'
+              ? ` Still ${formatUserList(withNothing.map(u => u.username), lang)} got 0 points.`
+              : ` Still ${formatUserList(withNothing.map(u => u.username), lang)} earned 0 points.`
       : withOne.length >= 1 && withOne.length <= 4
         ? lang === 'no'
           ? ` Likevel sanket ${formatUserList(withOne.map(u => u.username), lang)} bare 1 poeng.`
           : lang === 'de'
             ? ` Und trotzdem hat ${formatUserList(withOne.map(u => u.username), lang)} nur 1 Punkt geholt. Traurig.`
-            : ` Still ${formatUserList(withOne.map(u => u.username), lang)} earned only 1 point.`
+            : lang === 'jk'
+                ? ` Still ${formatUserList(withOne.map(u => u.username), lang)} got only 1 point.`
+                : ` Still ${formatUserList(withOne.map(u => u.username), lang)} earned only 1 point.`
         : '';
 
   const title =
-    lang === 'no' ? 'Forventet resultat' : lang === 'de' ? 'Na klar!' : 'The most expected result';
+    lang === 'no' ? 'Forventet resultat' : lang === 'de' ? 'Na klar!' : lang === 'jk' ? 'The most forventede resultat' : 'The most expected result';
 
   const statistic =
     (lang === 'no'
       ? `${round.home} mot ${round.away} (${round.actualHome}-${round.actualAway}) var det mest forutsigbare resultatet! Totalt tippet ${outcomes} ${outcomes === 1 ? 'spiller' : 'spillere'} riktig resultat, og ${exact} av dem tippet eksakt resultat! Hver spiller sanket i snitt ${average} poeng.`
       : lang === 'de'
         ? `${round.home} gegen ${round.away} (${round.actualHome}-${round.actualAway}): so offensichtlich, dass sogar ein Blindgänger es hätte tippen können! ${outcomes} Leute lagen richtig, ${exact} davon sogar mit exaktem Ergebnis. Im Schnitt ${average} Punkte pro Person.`
-        : `${round.home} vs ${round.away} (${round.actualHome} - ${round.actualAway}) was the most predictable outcome! A total of ${outcomes} ${outcomes === 1 ? 'user' : 'users'} predicted the correct result, and ${exact} of those predicted the exact score! Each user scored on average ${average} points.`) +
+        : lang === 'jk'
+            ? `${round.home} vs ${round.away} (${round.actualHome} - ${round.actualAway}) was the most forutsigbare utfall! A total of ${outcomes} ${outcomes === 1 ? 'bruker' : 'brukere'} tippet the correct resultat, and ${exact} of them tippet the exact resultat! Every bruker got on average ${average} points.`
+            : `${round.home} vs ${round.away} (${round.actualHome} - ${round.actualAway}) was the most predictable outcome! A total of ${outcomes} ${outcomes === 1 ? 'user' : 'users'} predicted the correct result, and ${exact} of those predicted the exact score! Each user scored on average ${average} points.`) +
     appendix;
 
   return {
@@ -1871,7 +1972,7 @@ export function nationalityGoalsCard(
   const guesses = norwegianGoalGuesses(bonusAnswers);
   if (guesses.length === 0 && !scored) return null;
 
-  const title = lang === 'no' ? 'Heia Norge!' : lang === 'de' ? 'Los, Norwegen!' : 'Go Norway!';
+  const title = lang === 'no' ? 'Heia Norge!' : lang === 'de' ? 'Los, Norwegen!' : lang === 'jk' ? 'Heia Norge!' : 'Go Norway!';
 
   let statistic = '';
 
@@ -1897,7 +1998,12 @@ export function nationalityGoalsCard(
             (split
               ? ` **${doubterNames}** hingegen ${doubters.length === 1 ? 'glaubt' : 'glauben'} nur an **${least}** norwegische Tore.`
               : '')
-          : `**${believerNames}** ${believers.length === 1 ? 'has' : 'have'} the most faith in the Norwegian players! They have them scoring **${most}** goals in total this tournament!` +
+          : lang === 'jk'
+              ? (`**${believerNames}** ${believers.length === 1 ? 'has' : 'have'} the most tro on the norske spillere! They have them scoring **${most}** mål in total this turnering!` +
+            (split
+              ? ` **${doubterNames}**, meanwhile, ${doubters.length === 1 ? 'believes' : 'believe'} there will only be **${least}** norske mål.`
+              : ''))
+              : `**${believerNames}** ${believers.length === 1 ? 'has' : 'have'} the most faith in the Norwegian players! They have them scoring **${most}** goals in total this tournament!` +
             (split
               ? ` **${doubterNames}**, meanwhile, ${doubters.length === 1 ? 'believes' : 'believe'} there will only be **${least}** Norwegian goals scored.`
               : '');
@@ -1923,7 +2029,13 @@ export function nationalityGoalsCard(
             (players === 1
               ? ' Alle von **1** norwegischen Torschützen.'
               : ` Verteilt auf **${players}** verschiedene norwegische Torschützen.`)
-          : gap +
+          : lang === 'jk'
+              ? (gap +
+            `So far the nordmenn have scored **${floor ? `at least ${goals}` : goals}** mål between them!` +
+            (players === 1
+              ? ' All of them by **1** norsk skårer.'
+              : ` Spread over **${players}** different norske skårere.`))
+              : gap +
             `So far Norwegians have scored **${floor ? `at least ${goals}` : goals}** goals between them!` +
             (players === 1
               ? ' All of them by **1** Norwegian scorer.'
@@ -2025,14 +2137,18 @@ function placingLine(row: NorwegianPlacings, clubs: Entrant[], lang: LiveStatsLa
       ? `**${club.name}** på **${row.places[i]}. plass**`
       : lang === 'de'
         ? `**${club.name}** auf **Platz ${row.places[i]}**`
-        : `**${club.name}** in **${ordinal(row.places[i])}**`,
+        : lang === 'jk'
+            ? `**${club.name}** on **${ordinal(row.places[i])}** plass`
+            : `**${club.name}** in **${ordinal(row.places[i])}**`,
   );
   const where = joinNames(parts, lang);
   return lang === 'no'
     ? `**${row.username}** har ${where}.`
     : lang === 'de'
       ? `**${row.username}** hat ${where}.`
-      : `**${row.username}** has ${where}.`;
+      : lang === 'jk'
+          ? `**${row.username}** has ${where}.`
+          : `**${row.username}** has ${where}.`;
 }
 
 /**
@@ -2075,12 +2191,16 @@ function norwegianFaithCard(
         ? 'Norgesvennen'
         : lang === 'de'
           ? 'Der Norwegen-Fan'
-          : 'The Norway believer'
+          : lang === 'jk'
+              ? 'The Norge believer'
+              : 'The Norway believer'
       : lang === 'no'
         ? 'Norgesskeptikeren'
         : lang === 'de'
           ? 'Der Norwegen-Skeptiker'
-          : 'The Norway sceptic';
+          : lang === 'jk'
+              ? 'The Norge skeptiker'
+              : 'The Norway sceptic';
 
   const claim =
     end === 'most'
@@ -2088,12 +2208,16 @@ function norwegianFaithCard(
         ? 'Ingen har større tro på de norske lagene!'
         : lang === 'de'
           ? 'Niemand glaubt mehr an die norwegischen Klubs!'
-          : 'Nobody has more faith in the Norwegian clubs!'
+          : lang === 'jk'
+              ? 'Nobody has mer tro on the norske klubber!'
+              : 'Nobody has more faith in the Norwegian clubs!'
       : lang === 'no'
         ? 'Ingen har mindre tro på de norske lagene!'
         : lang === 'de'
           ? 'Niemand glaubt weniger an die norwegischen Klubs!'
-          : 'Nobody has less faith in the Norwegian clubs!';
+          : lang === 'jk'
+              ? 'Nobody has less tro on the norske klubber!'
+              : 'Nobody has less faith in the Norwegian clubs!';
 
   // One member reads as a single breath; several are a line each, because members level
   // on the sum need not have got there the same way, and the positions are the point.
@@ -2169,14 +2293,18 @@ export function tronderHaterCard(
       ? 'Trønderhateren'
       : lang === 'de'
         ? 'Der Trøndelag-Hasser'
-        : 'The Trøndelag hater';
+        : lang === 'jk'
+            ? 'The Trøndelag hater'
+            : 'The Trøndelag hater';
 
   const statistic =
     lang === 'no'
       ? `**${names}** hater Trøndelag! De tror ikke at en eneste trønder scorer mål i løpet av turneringen!`
       : lang === 'de'
         ? `**${names}** ${alone ? 'hasst' : 'hassen'} Trøndelag! Sie glauben nicht, dass ein einziger Trønder im ganzen Turnier trifft!`
-        : `**${names}** ${alone ? 'hates' : 'hate'} Trøndelag! They do not believe a single trønder will score in the whole tournament!`;
+        : lang === 'jk'
+            ? `**${names}** ${alone ? 'hates' : 'hate'} Trøndelag! They do not tro a single trønder will score in the whole turnering!`
+            : `**${names}** ${alone ? 'hates' : 'hate'} Trøndelag! They do not believe a single trønder will score in the whole tournament!`;
 
   return memberCard('tronderHater', title, statistic, haters);
 }
@@ -2234,7 +2362,11 @@ export function godSaveTheKingCard(
         ? `**${names}** ${alone ? 'hält' : 'halten'} zu den Engländern und ${
             alone ? 'glaubt' : 'glauben'
           } nicht, dass ein einziges englisches Team in der Ligaphase ausscheidet!`
-        : `**${names}** ${alone ? 'is' : 'are'} backing the English, and ${
+        : lang === 'jk'
+            ? (`**${names}** ${alone ? 'is' : 'are'} backing the engelsk, and ${
+            alone ? 'does' : 'do'
+          } not tro a single engelsk lag will go ut in the ligaspill!`)
+            : `**${names}** ${alone ? 'is' : 'are'} backing the English, and ${
             alone ? 'does' : 'do'
           } not believe a single English team will go out in the league phase!`;
 
