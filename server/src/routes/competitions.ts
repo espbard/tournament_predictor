@@ -20,11 +20,11 @@ function generateInviteCode(): string {
   return Math.floor(10000 + Math.random() * 90000).toString();
 }
 
-type Lang = 'en' | 'no' | 'de';
+type Lang = 'en' | 'no' | 'de' | 'jk';
 
 function formatUserList(names: string[], lang: Lang): string {
   const bolded = names.map(n => `**${n}**`);
-  const and = lang === 'no' ? 'og' : lang === 'de' ? 'und' : 'and';
+  const and = lang === 'no' ? 'og' : lang === 'de' ? 'und' : lang === 'jk' ? 'og' : 'and';
   if (bolded.length === 1) return bolded[0];
   if (bolded.length === 2) return `${bolded[0]} ${and} ${bolded[1]}`;
   return `${bolded.slice(0, -1).join(', ')}, ${and} ${bolded[bolded.length - 1]}`;
@@ -46,6 +46,11 @@ function describeOutcome(
     if (homeScore > awayScore) return `dass ${homeTeamName} gegen ${awayTeamName} gewinnt`;
     if (awayScore > homeScore) return `dass ${awayTeamName} gegen ${homeTeamName} gewinnt`;
     return `ein Unentschieden zwischen ${homeTeamName} und ${awayTeamName}`;
+  }
+  if (lang === 'jk') {
+    if (homeScore > awayScore) return `${homeTeamName} to slå ${awayTeamName}`;
+    if (awayScore > homeScore) return `${awayTeamName} to slå ${homeTeamName}`;
+    return `${homeTeamName} to spille uavgjort against ${awayTeamName}`;
   }
   if (homeScore > awayScore) return `${homeTeamName} to beat ${awayTeamName}`;
   if (awayScore > homeScore) return `${awayTeamName} to beat ${homeTeamName}`;
@@ -1174,7 +1179,7 @@ router.get('/:id/all-match-predictions', requireAuth, async (req, res) => {
 router.get('/:id/user-stats', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const lang: Lang = req.query.lang === 'no' ? 'no' : req.query.lang === 'de' ? 'de' : 'en';
+    const lang: Lang = req.query.lang === 'no' ? 'no' : req.query.lang === 'de' ? 'de' : req.query.lang === 'jk' ? 'jk' : 'en';
     const user = res.locals.user;
 
     const [competition] = await db.select().from(competitions).where(eq(competitions.id, id));
@@ -1974,13 +1979,15 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       const gameCount = kingGroup[0].streak;
       theLeaderCard = {
         id: 'theLeader',
-        title: lang === 'no' ? 'Kongen på haugen' : lang === 'de' ? 'Der Platzhirsch' : 'The Leader',
+        title: lang === 'no' ? 'Kongen på haugen' : lang === 'de' ? 'Der Platzhirsch' : lang === 'jk' ? 'The leder' : 'The Leader',
         statistic:
           lang === 'no'
             ? `${formatUserList(kingGroup.map(u => u.username), lang)} har regjert på toppen i ${gameCount} kamp${gameCount === 1 ? '' : 'er'}!`
             : lang === 'de'
               ? `${formatUserList(kingGroup.map(u => u.username), lang)} thront seit ${gameCount} Spiel${gameCount === 1 ? '' : 'en'} an der Spitze wie eine sehr wackelige Krone!`
-              : `${formatUserList(kingGroup.map(u => u.username), lang)} ${kingGroup.length === 1 ? 'has' : 'have'} reigned supreme for the last ${gameCount} game${gameCount === 1 ? '' : 's'}!`,
+              : lang === 'jk'
+                  ? `${formatUserList(kingGroup.map(u => u.username), lang)} ${kingGroup.length === 1 ? 'has' : 'have'} been on the topp for the last ${gameCount} kamp${gameCount === 1 ? '' : 'er'}!`
+                  : `${formatUserList(kingGroup.map(u => u.username), lang)} ${kingGroup.length === 1 ? 'has' : 'have'} reigned supreme for the last ${gameCount} game${gameCount === 1 ? '' : 's'}!`,
         subjects: kingGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
         linkType: 'leaderboard',
       };
@@ -2020,13 +2027,15 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
       bottomOfTheLeagueCard = {
         id: 'bottomOfTheLeague',
-        title: lang === 'no' ? 'Kan Bare Bli Bedre' : lang === 'de' ? 'Tabellenleuchte' : 'Bottom of the league',
+        title: lang === 'no' ? 'Kan Bare Bli Bedre' : lang === 'de' ? 'Tabellenleuchte' : lang === 'jk' ? 'Bunn of the liga' : 'Bottom of the league',
         statistic:
           lang === 'no'
             ? `${formatUserList(bottomGroup.map(u => u.username), lang)} er sist på tabellen med bare ${minPoints} poeng! ${gap} poeng bak ${formatUserList(topGroup.map(u => u.username), lang)} på topp!`
             : lang === 'de'
               ? `${formatUserList(bottomGroup.map(u => u.username), lang)} hockt mit kläglichen ${minPoints} Punkt${minPoints === 1 ? '' : 'en'} ganz unten! Satte ${gap} Punkt${gap === 1 ? '' : 'e'} hinter ${formatUserList(topGroup.map(u => u.username), lang)} da oben!`
-              : `${formatUserList(bottomGroup.map(u => u.username), lang)} ${bottomGroup.length === 1 ? 'is' : 'are'} bottom of the table with only ${minPoints} point${minPoints === 1 ? '' : 's'}! ${gap} point${gap === 1 ? '' : 's'} behind ${formatUserList(topGroup.map(u => u.username), lang)} in first place!`,
+              : lang === 'jk'
+                  ? `${formatUserList(bottomGroup.map(u => u.username), lang)} ${bottomGroup.length === 1 ? 'is' : 'are'} on the bunn of the tabell with only ${minPoints} point${minPoints === 1 ? '' : 's'}! ${gap} point${gap === 1 ? '' : 's'} behind ${formatUserList(topGroup.map(u => u.username), lang)} on first plass!`
+                  : `${formatUserList(bottomGroup.map(u => u.username), lang)} ${bottomGroup.length === 1 ? 'is' : 'are'} bottom of the table with only ${minPoints} point${minPoints === 1 ? '' : 's'}! ${gap} point${gap === 1 ? '' : 's'} behind ${formatUserList(topGroup.map(u => u.username), lang)} in first place!`,
         subjects: bottomGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
         linkType: 'leaderboard',
       };
@@ -2077,6 +2086,8 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
               suffixLine = `Det har lønnet seg, for ${names} ${isPlural ? 'leder' : 'leder'} tabellen!`;
             } else if (lang === 'de') {
               suffixLine = `Das zahlt sich aus – ${names} ${isPlural ? 'führen' : 'führt'} die Tabelle an!`;
+            } else if (lang === 'jk') {
+              suffixLine = `And it is paying off: ${names} ${isPlural ? 'are' : 'is'} leading the tabell right now!`;
             } else {
               suffixLine = `And it's paying off – ${names} ${isPlural ? 'are' : 'is'} currently leading the table!`;
             }
@@ -2087,6 +2098,9 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
             } else if (lang === 'de') {
               const posText = longestLeaders.length === 1 ? `auf Platz ${bestRank}` : 'nicht an der Spitze';
               suffixLine = `Das hilft gerade nicht – ${names} ${isPlural ? 'sind' : 'ist'} ${posText} gerade.`;
+            } else if (lang === 'jk') {
+              const posText = longestLeaders.length === 1 ? `on ${bestRank}. plass` : 'not on the topp right now';
+              suffixLine = `But it is not hjelping right now: ${names} ${isPlural ? 'are' : 'is'} ${posText}.`;
             } else {
               const ordinalEn = (n: number) => n === 2 ? '2nd' : n === 3 ? '3rd' : `${n}th`;
               const posText = longestLeaders.length === 1 ? `in ${ordinalEn(bestRank)} place` : 'not currently leading the table';
@@ -2099,13 +2113,15 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
             statistic = `${names} har tronet øverst på tabellen i totalt ${maxTimeInLead} kamp${maxTimeInLead === 1 ? '' : 'er'}. Det er flere enn noen annen! ${suffixLine}`;
           } else if (lang === 'de') {
             statistic = `${names} ${isPlural ? 'lagen' : 'lag'} nach ${maxTimeInLead} Spiel${maxTimeInLead === 1 ? '' : 'en'} vorne. ${suffixLine}`;
+          } else if (lang === 'jk') {
+            statistic = `${names} ${isPlural ? 'have' : 'has'} been on the topp of the tabell after ${maxTimeInLead} kamp${maxTimeInLead === 1 ? '' : 'er'}. That is mer than anybody else! ${suffixLine}`;
           } else {
             statistic = `${names} ${isPlural ? 'have' : 'has'} led the table after ${maxTimeInLead} game${maxTimeInLead === 1 ? '' : 's'}. ${suffixLine}`;
           }
 
           longestInLeadCard = {
             id: 'longestInLead',
-            title: lang === 'no' ? 'Lengst på Toppen' : lang === 'de' ? 'Dauergipfelstürmer' : 'Marathon Leader',
+            title: lang === 'no' ? 'Lengst på Toppen' : lang === 'de' ? 'Dauergipfelstürmer' : lang === 'jk' ? 'Marathon leder' : 'Marathon Leader',
             statistic,
             subjects: longestLeaders.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
             linkType: 'leaderboard',
@@ -2154,13 +2170,15 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           .sort((a, b) => a.username.localeCompare(b.username));
         theClimberCard = {
           id: 'theClimber',
-          title: lang === 'no' ? 'Det klatres!' : lang === 'de' ? 'Der Aufsteiger' : 'The Climber',
+          title: lang === 'no' ? 'Det klatres!' : lang === 'de' ? 'Der Aufsteiger' : lang === 'jk' ? 'The klatrer' : 'The Climber',
           statistic:
             lang === 'no'
               ? `${formatUserList(climbers.map(u => u.username), lang)} har klatret ${maxClimbed} ${maxClimbed === 1 ? 'plass' : 'plasser'} på tabellen de siste 10 kampene!`
               : lang === 'de'
                 ? `${formatUserList(climbers.map(u => u.username), lang)} ist in den letzten 10 Spielen um ${maxClimbed} ${maxClimbed === 1 ? 'Platz' : 'Plätze'} aufgestiegen!`
-                : `${formatUserList(climbers.map(u => u.username), lang)} ${climbers.length === 1 ? 'has' : 'have'} climbed ${maxClimbed} ${maxClimbed === 1 ? 'spot' : 'spots'} on the leaderboard over the last 10 games!`,
+                : lang === 'jk'
+                    ? `${formatUserList(climbers.map(u => u.username), lang)} ${climbers.length === 1 ? 'has' : 'have'} klatret ${maxClimbed} ${maxClimbed === 1 ? 'plass' : 'plasser'} on the leader tavle over the last 10 kamper!`
+                    : `${formatUserList(climbers.map(u => u.username), lang)} ${climbers.length === 1 ? 'has' : 'have'} climbed ${maxClimbed} ${maxClimbed === 1 ? 'spot' : 'spots'} on the leaderboard over the last 10 games!`,
           subjects: climbers.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
           linkType: 'leaderboard',
           backgroundImageUrl: '/climber.png',
@@ -2176,13 +2194,15 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           .sort((a, b) => a.username.localeCompare(b.username));
         theFallerCard = {
           id: 'theFaller',
-          title: lang === 'no' ? 'Rett åt skogen' : lang === 'de' ? 'Tabellenabsteiger' : "I'm falling!",
+          title: lang === 'no' ? 'Rett åt skogen' : lang === 'de' ? 'Tabellenabsteiger' : lang === 'jk' ? "I'm falling rett åt skogen!" : "I'm falling!",
           statistic:
             lang === 'no'
               ? `${formatUserList(fallers.map(u => u.username), lang)} har falt ${maxFell} ${maxFell === 1 ? 'plass' : 'plasser'} på tabellen de siste 10 kampene!`
               : lang === 'de'
                 ? `${formatUserList(fallers.map(u => u.username), lang)} ist in den letzten 10 Spielen um ${maxFell} ${maxFell === 1 ? 'Platz' : 'Plätze'} abgefallen!`
-                : `${formatUserList(fallers.map(u => u.username), lang)} ${fallers.length === 1 ? 'has' : 'have'} dropped ${maxFell} ${maxFell === 1 ? 'spot' : 'spots'} on the leaderboard over the last 10 games!`,
+                : lang === 'jk'
+                    ? `${formatUserList(fallers.map(u => u.username), lang)} ${fallers.length === 1 ? 'has' : 'have'} dropped ${maxFell} ${maxFell === 1 ? 'plass' : 'plasser'} on the leader tavle over the last 10 kamper!`
+                    : `${formatUserList(fallers.map(u => u.username), lang)} ${fallers.length === 1 ? 'has' : 'have'} dropped ${maxFell} ${maxFell === 1 ? 'spot' : 'spots'} on the leaderboard over the last 10 games!`,
           subjects: fallers.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
           linkType: 'leaderboard',
           backgroundImageUrl: '/arrow-down.png',
@@ -2279,13 +2299,15 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
             knockoutSpecialistCard = {
               id: 'knockoutSpecialist',
-              title: lang === 'no' ? 'Best når det gjelder' : lang === 'de' ? 'K.O.-Spezialist' : 'The Knockout Specialist',
+              title: lang === 'no' ? 'Best når det gjelder' : lang === 'de' ? 'K.O.-Spezialist' : lang === 'jk' ? 'The sluttspill-spesialist' : 'The Knockout Specialist',
               statistic:
                 lang === 'no'
                   ? `${formatUserList(displayNames, lang)} har vist størst framgang fra gruppespillet til utslagsrundene! I gruppespillet hadde de et snitt på ${fmt(repGroupAvg)} poeng per kamp, sammenlignet med snittet som var ${fmt(groupOverallAvg)}. Men i sluttspillet har de sanket hele ${fmt(repKoAvg)} poeng i snitt per kamp! Mens snittet ligger på ${fmt(koOverallAvg)}.`
                   : lang === 'de'
                     ? `${formatUserList(displayNames, lang)} ${specialists.length === 1 ? 'hat' : 'haben'} den größten Sprung vom Gruppenspiel zu den K.O.-Runden gemacht! In der Gruppenphase: ${fmt(repGroupAvg)} Punkte pro Spiel (Schnitt: ${fmt(groupOverallAvg)}). In der K.O.-Runde hingegen ganze ${fmt(repKoAvg)} Punkte pro Spiel (Schnitt: ${fmt(koOverallAvg)})!`
-                    : `${formatUserList(displayNames, lang)} showed the biggest improvement from the group stage to the knockout rounds! In the group stage ${specialists.length === 1 ? 'they' : 'they'} averaged ${fmt(repGroupAvg)} points per game, compared to the overall average of ${fmt(groupOverallAvg)}. But in the knockout stage ${specialists.length === 1 ? "they've" : "they've"} racked up ${fmt(repKoAvg)} points per game on average! While the average sits at ${fmt(koOverallAvg)}.`,
+                    : lang === 'jk'
+                        ? `${formatUserList(displayNames, lang)} showed the biggest forbedring from the gruppespill to the sluttspill! In the gruppespill they got on average ${fmt(repGroupAvg)} points per kamp, against the total average of ${fmt(groupOverallAvg)}. But in the sluttspill they have tatt ${fmt(repKoAvg)} points per kamp on average! While the average is on ${fmt(koOverallAvg)}.`
+                        : `${formatUserList(displayNames, lang)} showed the biggest improvement from the group stage to the knockout rounds! In the group stage ${specialists.length === 1 ? 'they' : 'they'} averaged ${fmt(repGroupAvg)} points per game, compared to the overall average of ${fmt(groupOverallAvg)}. But in the knockout stage ${specialists.length === 1 ? "they've" : "they've"} racked up ${fmt(repKoAvg)} points per game on average! While the average sits at ${fmt(koOverallAvg)}.`,
               subjects: specialists.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
               linkType: 'leaderboard',
             };
@@ -2322,32 +2344,36 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
               .filter(u => u.correct === minCorrect)
               .sort((a, b) => a.username.localeCompare(b.username));
 
-            const STAGE_LABELS: Record<string, { no: string; en: string; de: string }> = {
-              round_of_32: { no: 'sekstendelsfinalen', en: 'the round of 32', de: 'der Runde der 32' },
-              round_of_16: { no: 'åttendelsfinalen', en: 'the round of 16', de: 'dem Achtelfinale' },
-              quarter_final: { no: 'kvartfinalen', en: 'the quarterfinals', de: 'dem Viertelfinale' },
-              semi_final: { no: 'semifinalen', en: 'the semifinals', de: 'dem Halbfinale' },
-              final: { no: 'finalen', en: 'the final', de: 'dem Finale' },
+            const STAGE_LABELS: Record<string, { no: string; en: string; de: string; jk: string }> = {
+              round_of_32: { no: 'sekstendelsfinalen', en: 'the round of 32', de: 'der Runde der 32', jk: 'the sekstendelsfinale' },
+              round_of_16: { no: 'åttendelsfinalen', en: 'the round of 16', de: 'dem Achtelfinale', jk: 'the åttendelsfinale' },
+              quarter_final: { no: 'kvartfinalen', en: 'the quarterfinals', de: 'dem Viertelfinale', jk: 'the kvartfinaler' },
+              semi_final: { no: 'semifinalen', en: 'the semifinals', de: 'dem Halbfinale', jk: 'the semifinaler' },
+              final: { no: 'finalen', en: 'the final', de: 'dem Finale', jk: 'the finale' },
             };
-            const stageLabel = STAGE_LABELS[justAsIPredictedStage] ?? { no: justAsIPredictedStage, en: justAsIPredictedStage, de: justAsIPredictedStage };
+            const stageLabel = STAGE_LABELS[justAsIPredictedStage] ?? { no: justAsIPredictedStage, en: justAsIPredictedStage, de: justAsIPredictedStage, jk: justAsIPredictedStage };
             const totalTeams = justAsIPredictedRoundTeamIds.size;
             const topNames = formatUserList(topGroup.map(u => u.username), lang);
             const sameGroup = maxCorrect === minCorrect;
 
             justAsIPredictedCard = {
               id: 'justAsIPredicted',
-              title: lang === 'no' ? 'Akkurat Som Jeg Spådde' : lang === 'de' ? 'Genau Wie Vorhergesagt' : 'Just As I Predicted',
+              title: lang === 'no' ? 'Akkurat Som Jeg Spådde' : lang === 'de' ? 'Genau Wie Vorhergesagt' : lang === 'jk' ? 'Just as I tippet' : 'Just As I Predicted',
               statistic: sameGroup
                 ? lang === 'no'
                   ? `${topNames} traff på ${maxCorrect} av ${totalTeams} lag i ${stageLabel.no}, akkurat som alle andre!`
                   : lang === 'de'
                     ? `${topNames} ${topGroup.length === 1 ? 'hat' : 'haben'} ${maxCorrect} von ${totalTeams} Mannschaften in ${stageLabel.de} richtig vorhergesagt, genau wie alle anderen!`
-                    : `${topNames} correctly predicted ${maxCorrect} of the ${totalTeams} teams in ${stageLabel.en}, same as everyone else!`
+                    : lang === 'jk'
+                        ? `${topNames} tippet ${maxCorrect} of the ${totalTeams} lag in ${stageLabel.jk} riktig, same as everybody else!`
+                        : `${topNames} correctly predicted ${maxCorrect} of the ${totalTeams} teams in ${stageLabel.en}, same as everyone else!`
                 : lang === 'no'
                   ? `${topNames} traff på hele ${maxCorrect} av ${totalTeams} lag i ${stageLabel.no}! ${formatUserList(bottomGroup.map(u => u.username), lang)} hadde færrest, med bare ${minCorrect}.`
                   : lang === 'de'
                     ? `${topNames} ${topGroup.length === 1 ? 'hat' : 'haben'} ganze ${maxCorrect} von ${totalTeams} Mannschaften in ${stageLabel.de} richtig vorhergesagt! ${formatUserList(bottomGroup.map(u => u.username), lang)} hatte${bottomGroup.length === 1 ? '' : 'n'} die wenigsten, nur ${minCorrect}.`
-                    : `${topNames} correctly predicted a whopping ${maxCorrect} of the ${totalTeams} teams in ${stageLabel.en}! ${formatUserList(bottomGroup.map(u => u.username), lang)} had the fewest, with just ${minCorrect}.`,
+                    : lang === 'jk'
+                        ? `${topNames} tippet a whopping ${maxCorrect} of the ${totalTeams} lag in ${stageLabel.jk} riktig! ${formatUserList(bottomGroup.map(u => u.username), lang)} had the fewest, with just ${minCorrect}.`
+                        : `${topNames} correctly predicted a whopping ${maxCorrect} of the ${totalTeams} teams in ${stageLabel.en}! ${formatUserList(bottomGroup.map(u => u.username), lang)} had the fewest, with just ${minCorrect}.`,
               subjects: topGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
               linkType: 'leaderboard',
               backgroundImageUrl: '/just-as-i-predicted.png',
@@ -2417,13 +2443,15 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
             howDidYouKnowCard = {
               id: 'howDidYouKnow',
-              title: lang === 'no' ? 'Hvordan visste du det?' : lang === 'de' ? 'Wie wusstest du das?' : 'How did you know?',
+              title: lang === 'no' ? 'Hvordan visste du det?' : lang === 'de' ? 'Wie wusstest du das?' : lang === 'jk' ? 'How did you vite that?' : 'How did you know?',
               statistic:
                 lang === 'no'
                   ? `${formatUserList(subjects.map(s => s.name), lang)} trodde at **${teamNameStr}** ville ta seg til sluttspillet! Ingen andre så den komme!`
                   : lang === 'de'
                     ? `${formatUserList(subjects.map(s => s.name), lang)} ${subjects.length === 1 ? 'hat' : 'haben'} **${teamNameStr}** in der K.O.-Runde gesehen! Niemand sonst hat das kommen sehen!`
-                    : `${formatUserList(subjects.map(s => s.name), lang)} predicted **${teamNameStr}** to make it to the knockouts! No one else saw that coming!`,
+                    : lang === 'jk'
+                        ? `${formatUserList(subjects.map(s => s.name), lang)} tippet **${teamNameStr}** to go to the sluttspill! No one else saw that coming!`
+                        : `${formatUserList(subjects.map(s => s.name), lang)} predicted **${teamNameStr}** to make it to the knockouts! No one else saw that coming!`,
               subjects,
               linkType: 'leaderboard',
               overlayImageUrl: team?.imageUrl ?? null,
@@ -2502,7 +2530,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
             paperTigerCard = {
               id: 'paperTiger',
-              title: lang === 'no' ? 'Sjokk-exit' : lang === 'de' ? 'Papiertiger' : 'Paper Tiger',
+              title: lang === 'no' ? 'Sjokk-exit' : lang === 'de' ? 'Papiertiger' : lang === 'jk' ? 'Papirtiger' : 'Paper Tiger',
               statistic:
                 lang === 'no'
                   ? noOneCorrect
@@ -2512,7 +2540,11 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
                     ? noOneCorrect
                       ? `${wrongCount} von ${totalCount} Nutzern glaubten, **${teamNameStr}** würde die K.O.-Runde erreichen, aber sie schieden in der Gruppenphase aus! Niemand hat das kommen sehen.`
                       : `${wrongCount} von ${totalCount} Nutzern glaubten, **${teamNameStr}** würde die K.O.-Runde erreichen, aber sie schieden in der Gruppenphase aus! ${correctNames} ${correctPredictors.length === 1 ? 'hat' : 'haben'} es kommen sehen.`
-                    : noOneCorrect
+                    : lang === 'jk'
+                        ? (noOneCorrect
+                      ? `${wrongCount} of ${totalCount} brukere tippet **${teamNameStr}** to the sluttspill, but they went ut in the gruppespill! No one saw it coming.`
+                      : `${wrongCount} of ${totalCount} brukere tippet **${teamNameStr}** to the sluttspill, but they went ut in the gruppespill! ${correctNames} ${correctPredictors.length === 1 ? 'was' : 'were'} the only one${correctPredictors.length === 1 ? '' : 's'} who saw it coming.`)
+                        : noOneCorrect
                       ? `${wrongCount} out of ${totalCount} users predicted **${teamNameStr}** to make the knockouts, but they were eliminated in the group stage! No one saw it coming.`
                       : `${wrongCount} out of ${totalCount} users predicted **${teamNameStr}** to make the knockouts, but they were eliminated in the group stage! ${correctNames} ${correctPredictors.length === 1 ? 'was' : 'were'} the only one${correctPredictors.length === 1 ? '' : 's'} who saw it coming.`,
               subjects: correctPredictors,
@@ -2574,13 +2606,15 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
           xpertenCard = {
             id: 'xperten',
-            title: lang === 'no' ? 'X-perten' : lang === 'de' ? 'Unentschieden-Experte' : "It's a tie!",
+            title: lang === 'no' ? 'X-perten' : lang === 'de' ? 'Unentschieden-Experte' : lang === 'jk' ? "It's uavgjort!" : "It's a tie!",
             statistic:
               lang === 'no'
                 ? `${highNames} har en tydelig strategi! De har tippet uavgjort i ${fmtPct(maxPct)} av kampene! ${lowNames}, til sammenligning, har tippet færrest uavgjort med bare ${fmtPct(minPct)} uavgjorte tips.`
                 : lang === 'de'
                   ? `${highNames} ${mostDrawish.length === 1 ? 'tippt' : 'tippen'} die meisten Unentschieden! ${fmtPct(maxPct)} ihrer Tipps enden remis. ${lowNames} hingegen hat nur ${fmtPct(minPct)} Unentschieden-Tipps.`
-                  : `${highNames} ${mostDrawish.length === 1 ? 'is' : 'are'} the draw specialist${mostDrawish.length === 1 ? '' : 's'}! ${fmtPct(maxPct)} of their predictions end in a draw. ${lowNames} on the other hand ${leastDrawish.length === 1 ? 'has' : 'have'} just ${fmtPct(minPct)} draw predictions.`,
+                  : lang === 'jk'
+                      ? `${highNames} ${mostDrawish.length === 1 ? 'is' : 'are'} the uavgjort-spesialist${mostDrawish.length === 1 ? '' : 'er'}! ${fmtPct(maxPct)} of their tippings end uavgjort. ${lowNames} on the other hånd ${leastDrawish.length === 1 ? 'has' : 'have'} just ${fmtPct(minPct)} uavgjort-tippings.`
+                      : `${highNames} ${mostDrawish.length === 1 ? 'is' : 'are'} the draw specialist${mostDrawish.length === 1 ? '' : 's'}! ${fmtPct(maxPct)} of their predictions end in a draw. ${lowNames} on the other hand ${leastDrawish.length === 1 ? 'has' : 'have'} just ${fmtPct(minPct)} draw predictions.`,
             subjects: mostDrawish.map(u => ({
               type: 'user' as const,
               id: u.userId,
@@ -2713,18 +2747,22 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
                 ? ` ${formatUserList(worstGroup.map(u => u.username), lang)} hadde færrest riktige, med bare ${minCorrect}.`
                 : lang === 'de'
                   ? ` ${formatUserList(worstGroup.map(u => u.username), lang)} hatte nur ${minCorrect} richtig. Peinlich.`
-                  : ` ${formatUserList(worstGroup.map(u => u.username), lang)} had the fewest correct, with only ${minCorrect}.`;
+                  : lang === 'jk'
+                      ? ` ${formatUserList(worstGroup.map(u => u.username), lang)} had the fewest riktig, with only ${minCorrect}.`
+                      : ` ${formatUserList(worstGroup.map(u => u.username), lang)} had the fewest correct, with only ${minCorrect}.`;
           }
 
           groupStageGuruCard = {
             id: 'groupStageGuru',
-            title: lang === 'no' ? 'Gruppespill-Geni' : lang === 'de' ? 'Gruppenphase-Genie' : 'Group Stage Guru',
+            title: lang === 'no' ? 'Gruppespill-Geni' : lang === 'de' ? 'Gruppenphase-Genie' : lang === 'jk' ? 'Gruppespill-guru' : 'Group Stage Guru',
             statistic:
               (lang === 'no'
                 ? `${formatUserList(bestGroup.map(u => u.username), lang)} tippet ${maxCorrect} av ${totalTeamCount} lag i riktig posisjon i gruppespillet!`
                 : lang === 'de'
                   ? `${formatUserList(bestGroup.map(u => u.username), lang)} hat ${maxCorrect} von ${totalTeamCount} Teams in der richtigen Gruppenposition getippt! Beeindruckend für jemanden ohne Kristallkugel.`
-                  : `${formatUserList(bestGroup.map(u => u.username), lang)} predicted ${maxCorrect} out of ${totalTeamCount} teams in their correct final group position!`) +
+                  : lang === 'jk'
+                      ? `${formatUserList(bestGroup.map(u => u.username), lang)} tippet ${maxCorrect} of ${totalTeamCount} lag on the riktig plass in their gruppe!`
+                      : `${formatUserList(bestGroup.map(u => u.username), lang)} predicted ${maxCorrect} out of ${totalTeamCount} teams in their correct final group position!`) +
               worstSentence,
             subjects: bestGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor ?? null })),
             linkType: 'user',
@@ -2810,22 +2848,28 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
               ? `sluppet inn bare ${winner.ga}!`
               : lang === 'de'
                 ? `nur ${winner.ga} Gegentore kassiert!`
-                : `conceded only ${winner.ga}!`
+                : lang === 'jk'
+                    ? `slapp in only ${winner.ga}!`
+                    : `conceded only ${winner.ga}!`
             : lang === 'no'
               ? 'uten å slippe inn ett eneste mål!'
               : lang === 'de'
                 ? 'kein einziges Gegentor kassiert!'
-                : 'without conceding a single goal!';
+                : lang === 'jk'
+                    ? 'without to slippe in a single mål!'
+                    : 'without conceding a single goal!';
 
         thePatriotCard = {
           id: 'thePatriot',
-          title: lang === 'no' ? 'Patrioten 🇳🇴' : lang === 'de' ? 'Norwegen-Fanatiker 🇳🇴' : 'The Patriot 🇳🇴',
+          title: lang === 'no' ? 'Patrioten 🇳🇴' : lang === 'de' ? 'Norwegen-Fanatiker 🇳🇴' : lang === 'jk' ? 'The Patriot 🇳🇴' : 'The Patriot 🇳🇴',
           statistic:
             lang === 'no'
               ? `${formatUserList(patriotGroup.map(u => u.username), lang)} er den største patrioten! De har tippet at Norge har vunnet ${winner.wins} av sine ${winner.games} kamper${soFarNo}! Og at de har scoret hele ${winner.gf} mål og ${concededClause}`
               : lang === 'de'
                 ? `${formatUserList(patriotGroup.map(u => u.username), lang)} ist der größte Norwegen-Fan von allen! Norwegen gewinnt laut ${patriotGroup.length === 1 ? 'ihm/ihr' : 'ihnen'} sage und schreibe ${winner.wins} von ${winner.games} Spielen und schießt dabei stolze ${winner.gf} Tore, und hat dabei ${concededClause}`
-                : `${formatUserList(patriotGroup.map(u => u.username), lang)} ${patriotGroup.length === 1 ? 'is the biggest patriot' : 'are the biggest patriots'}! They've predicted that Norway has won ${winner.wins} of their ${winner.games} games${soFarEn}! And that they've scored a whopping ${winner.gf} goals and ${concededClause}`,
+                : lang === 'jk'
+                    ? `${formatUserList(patriotGroup.map(u => u.username), lang)} ${patriotGroup.length === 1 ? 'is the biggest patriot' : 'are the biggest patriots'}! They have tippet that Norge has vunnet ${winner.wins} of their ${winner.games} kamper${soFarEn}! And that they have scored a whopping ${winner.gf} mål and ${concededClause}`
+                    : `${formatUserList(patriotGroup.map(u => u.username), lang)} ${patriotGroup.length === 1 ? 'is the biggest patriot' : 'are the biggest patriots'}! They've predicted that Norway has won ${winner.wins} of their ${winner.games} games${soFarEn}! And that they've scored a whopping ${winner.gf} goals and ${concededClause}`,
           subjects: patriotGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
           linkType: 'user',
           overlayImageUrl: norwayTeam.imageUrl ?? null,
@@ -2983,18 +3027,22 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
               ? ` ${formatUserList(lowestPredictorGroup.map(u => u.username), lang)} har i midlertiden tippet at det bare skulle vært scoret ${minPredicted} mål så langt.`
               : lang === 'de'
                 ? ` Während ${formatUserList(lowestPredictorGroup.map(u => u.username), lang)} mit ${minPredicted} Toren gerechnet hat. Ein Pessimist, der tatsächlich recht hat.`
-                : ` Meanwhile ${formatUserList(lowestPredictorGroup.map(u => u.username), lang)} ${lowestPredictorGroup.length === 1 ? 'has' : 'have'} predicted that only ${minPredicted} ${minPredicted === 1 ? 'goal' : 'goals'} should've been scored by now.`
+                : lang === 'jk'
+                    ? ` Meanwhile ${formatUserList(lowestPredictorGroup.map(u => u.username), lang)} ${lowestPredictorGroup.length === 1 ? 'has' : 'have'} tippet that only ${minPredicted} mål should have been scored by now.`
+                    : ` Meanwhile ${formatUserList(lowestPredictorGroup.map(u => u.username), lang)} ${lowestPredictorGroup.length === 1 ? 'has' : 'have'} predicted that only ${minPredicted} ${minPredicted === 1 ? 'goal' : 'goals'} should've been scored by now.`
             : '';
 
         theOptimistCard = {
           id: 'theOptimist',
-          title: lang === 'no' ? 'Optimisten' : lang === 'de' ? 'Der Optimist' : 'The Optimist',
+          title: lang === 'no' ? 'Optimisten' : lang === 'de' ? 'Der Optimist' : lang === 'jk' ? 'The optimist' : 'The Optimist',
           statistic:
             (lang === 'no'
               ? `${formatUserList(highestPredictorGroup.map(u => u.username), lang)} har tippet at det totalt skulle vært scoret ${maxPredicted} mål på dette tidspunktet! Bare ${actualTotalGoals} mål har faktisk blitt scoret.`
               : lang === 'de'
                 ? `${formatUserList(highestPredictorGroup.map(u => u.username), lang)} hat insgesamt ${maxPredicted} Tore erwartet! Tatsächlich wurden nur ${actualTotalGoals} erzielt. Lebt wohl in einer eigenen kleinen Traumwelt.`
-                : `${formatUserList(highestPredictorGroup.map(u => u.username), lang)} ${highestPredictorGroup.length === 1 ? 'has' : 'have'} predicted that a total of ${maxPredicted} ${maxPredicted === 1 ? 'goal' : 'goals'} should have been scored by this point! Only ${actualTotalGoals} ${actualTotalGoals === 1 ? 'goal' : 'goals'} ${actualTotalGoals === 1 ? 'has' : 'have'} actually been scored.`) +
+                : lang === 'jk'
+                    ? `${formatUserList(highestPredictorGroup.map(u => u.username), lang)} ${highestPredictorGroup.length === 1 ? 'has' : 'have'} tippet that a total of ${maxPredicted} mål should have been scored by now! Only ${actualTotalGoals} mål ${actualTotalGoals === 1 ? 'has' : 'have'} actually been scored.`
+                    : `${formatUserList(highestPredictorGroup.map(u => u.username), lang)} ${highestPredictorGroup.length === 1 ? 'has' : 'have'} predicted that a total of ${maxPredicted} ${maxPredicted === 1 ? 'goal' : 'goals'} should have been scored by this point! Only ${actualTotalGoals} ${actualTotalGoals === 1 ? 'goal' : 'goals'} ${actualTotalGoals === 1 ? 'has' : 'have'} actually been scored.`) +
             lowestSentence,
           subjects: highestPredictorGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
           linkType: 'user',
@@ -3185,7 +3233,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       let featuredTeamIds: Set<string>;
 
       if (isTieWithNorway) {
-        const andWord = lang === 'no' ? 'og' : lang === 'de' ? 'und' : 'and';
+        const andWord = lang === 'no' ? 'og' : lang === 'de' ? 'und' : lang === 'jk' ? 'og' : 'and';
         const tiedNames = tiedForFirst.map(([teamId]) => `**${teamName(teamId)}**`);
         const teamsString =
           tiedNames.length === 2
@@ -3196,13 +3244,17 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           ? (tiedForFirst.length === 2 ? 'begge' : 'alle')
           : lang === 'de'
             ? (tiedForFirst.length === 2 ? 'beide' : 'alle')
-            : (tiedForFirst.length === 2 ? 'both' : 'all');
+            : lang === 'jk'
+                ? (tiedForFirst.length === 2 ? 'both' : 'all')
+                : (tiedForFirst.length === 2 ? 'both' : 'all');
 
         statistic = lang === 'no'
           ? `${teamsString} er ${bothAll} de mest tippede vinnerne med **${topCount}** ${topCount === 1 ? 'spiller' : 'spillere'} hver!`
           : lang === 'de'
             ? `${teamsString} sind ${bothAll} die meistgetippten Turniersieger mit jeweils **${topCount}** ${topCount === 1 ? 'Spieler' : 'Spielern'}!`
-            : `${teamsString} are ${bothAll} tied as the most predicted winners with **${topCount}** prediction${topCount === 1 ? '' : 's'} each!`;
+            : lang === 'jk'
+                ? `${teamsString} are ${bothAll} like as the most tippede vinnere with **${topCount}** tipping${topCount === 1 ? '' : 's'} each!`
+                : `${teamsString} are ${bothAll} tied as the most predicted winners with **${topCount}** prediction${topCount === 1 ? '' : 's'} each!`;
 
         cardSubjects = tiedForFirst.map(([teamId]) => ({
           type: 'team' as const,
@@ -3227,7 +3279,9 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
             ? `**${mainTeamDisplayName}** er den mest tippede vinneren! Totalt **${mainCount}** ${mainCount === 1 ? 'spiller' : 'spillere'}: ${mainUserList} har tippet at de vil vinne turneringen.`
             : lang === 'de'
               ? `**${mainTeamDisplayName}** ist der meistgetippte Turniersieger! Satte **${mainCount}** ${mainCount === 1 ? 'Spieler hat' : 'Spieler haben'} getippt, dass sie gewinnen werden: ${mainUserList}.`
-              : `**${mainTeamDisplayName}** is the most predicted winner! A total of **${mainCount}** ${mainCount === 1 ? 'user' : 'users'}: ${mainUserList} ${mainCount === 1 ? 'has' : 'have'} predicted that they will win the tournament.`;
+              : lang === 'jk'
+                  ? `**${mainTeamDisplayName}** is the most tippede vinner! A total of **${mainCount}** ${mainCount === 1 ? 'bruker' : 'brukere'}: ${mainUserList} ${mainCount === 1 ? 'has' : 'have'} tippet that they will vinne the turnering.`
+                  : `**${mainTeamDisplayName}** is the most predicted winner! A total of **${mainCount}** ${mainCount === 1 ? 'user' : 'users'}: ${mainUserList} ${mainCount === 1 ? 'has' : 'have'} predicted that they will win the tournament.`;
 
         if (shouldFilterNorway && mainEntry !== topEntry) {
           statistic +=
@@ -3235,7 +3289,9 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
               ? ` Bortsett fra Norge da! **${norwayCount}** ${norwayCount === 1 ? 'spiller' : 'spillere'} har tippet at Norge vinner det hele!`
               : lang === 'de'
                 ? ` Außer Norwegen natürlich! **${norwayCount}** ${norwayCount === 1 ? 'Spieler hat' : 'Spieler haben'} getippt, dass Norwegen das Turnier gewinnt!`
-                : ` Except for Norway of course! **${norwayCount}** ${norwayCount === 1 ? 'person has' : 'people have'} predicted that Norway will win the whole thing!`;
+                : lang === 'jk'
+                    ? ` Except for Norge of course! **${norwayCount}** ${norwayCount === 1 ? 'person has' : 'people have'} tippet that Norge will vinne the whole thing!`
+                    : ` Except for Norway of course! **${norwayCount}** ${norwayCount === 1 ? 'person has' : 'people have'} predicted that Norway will win the whole thing!`;
         }
 
         cardSubjects = [];
@@ -3254,9 +3310,11 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
             ? `**${predictors[0].username}**, for øvrig, er den eneste som har tippet at **${teamName(teamId)}** skal gå hele veien`
             : lang === 'de'
               ? `**${predictors[0].username}** ist der einzige Spieler, der auf **${teamName(teamId)}** als Gesamtsieger getippt hat`
-              : `**${predictors[0].username}** is the only player to predict **${teamName(teamId)}** to go all the way`
+              : lang === 'jk'
+                  ? `**${predictors[0].username}** is the only one to tipp **${teamName(teamId)}** to go all the way`
+                  : `**${predictors[0].username}** is the only player to predict **${teamName(teamId)}** to go all the way`
         );
-        const andWord = lang === 'no' ? 'og' : lang === 'de' ? 'und' : 'and';
+        const andWord = lang === 'no' ? 'og' : lang === 'de' ? 'und' : lang === 'jk' ? 'og' : 'and';
         let soloText: string;
         if (soloClauses.length === 1) {
           soloText = `${soloClauses[0]}!`;
@@ -3265,13 +3323,13 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         } else {
           soloText = `${soloClauses.slice(0, -1).join(', ')}, ${andWord} ${soloClauses[soloClauses.length - 1]}!`;
         }
-        const meanwhilePrefix = lang === 'no' ? '' : lang === 'de' ? 'Außerdem, ' : 'Meanwhile, ';
+        const meanwhilePrefix = lang === 'no' ? '' : lang === 'de' ? 'Außerdem, ' : lang === 'jk' ? 'Meanwhile, ' : 'Meanwhile, ';
         statistic += ` ${meanwhilePrefix}${soloText}`;
       }
 
       audienceDarlingCard = {
         id: 'audienceDarling',
-        title: lang === 'no' ? 'Publikumsfavoritten' : lang === 'de' ? 'Der Publikumsliebling' : 'The Audience Darling',
+        title: lang === 'no' ? 'Publikumsfavoritten' : lang === 'de' ? 'Der Publikumsliebling' : lang === 'jk' ? 'The publikumsfavoritt' : 'The Audience Darling',
         statistic,
         subjects: cardSubjects,
         linkType: null,
@@ -3292,19 +3350,25 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
             ? bestPredictionMatch.resultCount === 1
               ? 'Kein anderer hat überhaupt das richtige Ergebnis getippt!'
               : `Nur ${bestPredictionMatch.resultCount} Leute haben überhaupt das richtige Ergebnis getippt!`
-            : bestPredictionMatch.resultCount === 1
+            : lang === 'jk'
+                ? (bestPredictionMatch.resultCount === 1
+              ? 'No one else even got the riktig resultat!'
+              : `Only ${bestPredictionMatch.resultCount} brukere even got the resultat riktig!`)
+                : bestPredictionMatch.resultCount === 1
               ? 'No one else even got the correct result!'
               : `Only ${bestPredictionMatch.resultCount} players even got the result right!`;
 
       bestPredictionCard = {
         id: 'bestPrediction',
-        title: lang === 'no' ? 'Synsk' : lang === 'de' ? 'Wahrsager' : 'Best prediction',
+        title: lang === 'no' ? 'Synsk' : lang === 'de' ? 'Wahrsager' : lang === 'jk' ? 'Best tipping' : 'Best prediction',
         statistic:
           lang === 'no'
             ? `**${winner.username}** tippet eksakt resultat på ${homeTeamName} mot ${awayTeamName} (${bestPredictionMatch.homeScore}-${bestPredictionMatch.awayScore})! ${resultText}`
             : lang === 'de'
               ? `**${winner.username}** hat ${homeTeamName} gegen ${awayTeamName} (${bestPredictionMatch.homeScore}-${bestPredictionMatch.awayScore}) exakt vorhergesagt! ${resultText}`
-              : `**${winner.username}** got a perfect score on ${homeTeamName} vs ${awayTeamName} (${bestPredictionMatch.homeScore} - ${bestPredictionMatch.awayScore})! ${resultText}`,
+              : lang === 'jk'
+                  ? `**${winner.username}** got a perfekt resultat on ${homeTeamName} vs ${awayTeamName} (${bestPredictionMatch.homeScore} - ${bestPredictionMatch.awayScore})! ${resultText}`
+                  : `**${winner.username}** got a perfect score on ${homeTeamName} vs ${awayTeamName} (${bestPredictionMatch.homeScore} - ${bestPredictionMatch.awayScore})! ${resultText}`,
         subjects: [{ type: 'user', id: winner.userId, name: winner.username, imageUrl: winner.imageUrl, iconColor: winner.iconColor }],
         linkType: 'match',
         matchId: bestPredictionMatch.matchId,
@@ -3313,7 +3377,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
     unluckyCard = {
       id: 'unlucky',
-      title: lang === 'no' ? 'Uflaks' : lang === 'de' ? 'Pech gehabt' : 'Unlucky',
+      title: lang === 'no' ? 'Uflaks' : lang === 'de' ? 'Pech gehabt' : lang === 'jk' ? 'Uflaks' : 'Unlucky',
       statistic:
         unluckyGroup.length > 0
           ? lang === 'no'
@@ -3326,7 +3390,12 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
                 (nextUnluckyGroup.length > 0
                   ? ` Die zweitunglücklichsten sind ${formatUserList(nextUnluckyGroup.map(u => u.username), lang)} mit ${nextUnluckyCount}.`
                   : '')
-              : `${formatUserList(unluckyGroup.map(u => u.username), lang)} ${unluckyGroup.length === 1 ? 'has' : 'have'} been one goal away from predicting a perfect score ${topUnluckyCount} ${topUnluckyCount === 1 ? 'time' : 'times'}!` +
+              : lang === 'jk'
+                  ? (`${formatUserList(unluckyGroup.map(u => u.username), lang)} ${unluckyGroup.length === 1 ? 'has' : 'have'} been one mål away from a perfekt resultat ${topUnluckyCount} ${topUnluckyCount === 1 ? 'gang' : 'ganger'}!` +
+                (nextUnluckyGroup.length > 0
+                  ? ` The next with most uflaks ${nextUnluckyGroup.length === 1 ? 'is' : 'are'} ${formatUserList(nextUnluckyGroup.map(u => u.username), lang)} with ${nextUnluckyCount}.`
+                  : ''))
+                  : `${formatUserList(unluckyGroup.map(u => u.username), lang)} ${unluckyGroup.length === 1 ? 'has' : 'have'} been one goal away from predicting a perfect score ${topUnluckyCount} ${topUnluckyCount === 1 ? 'time' : 'times'}!` +
                 (nextUnluckyGroup.length > 0
                   ? ` The next unluckiest ${nextUnluckyGroup.length === 1 ? 'is' : 'are'} ${formatUserList(nextUnluckyGroup.map(u => u.username), lang)} with ${nextUnluckyCount}.`
                   : '')
@@ -3334,7 +3403,9 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
             ? 'Ingen har vært ett mål fra et eksakt resultat ennå!'
             : lang === 'de'
               ? 'Noch niemand war nur ein Tor vom Volltreffer entfernt!'
-              : 'No one has been one goal away from a perfect score yet!',
+              : lang === 'jk'
+                  ? 'No one has been one mål away from a perfekt resultat yet!'
+                  : 'No one has been one goal away from a perfect score yet!',
       subjects: unluckyGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
       linkType: 'user',
     };
@@ -3359,7 +3430,9 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           ? `${formatUserList(group.map(p => p.username), lang)} tippet ${outcome}`
           : lang === 'de'
             ? `${formatUserList(group.map(p => p.username), lang)} hat getippt ${outcome}`
-            : `${formatUserList(group.map(p => p.username), lang)} predicted ${outcome}`;
+            : lang === 'jk'
+                ? `${formatUserList(group.map(p => p.username), lang)} tippet ${outcome}`
+                : `${formatUserList(group.map(p => p.username), lang)} predicted ${outcome}`;
       });
       const correctOutcome = describeOutcome(
         homeTeamName,
@@ -3376,12 +3449,15 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           : lang === 'de'
             ? `${wrongClauses.join('; ')}.` +
               (worstPredictionMatch.resultCount > 0 ? ` Alle anderen lagen richtig: ${correctOutcome}.` : '')
-            : `${wrongClauses.join('; ')}.` +
+            : lang === 'jk'
+                ? (`${wrongClauses.join('; ')}.` +
+              (worstPredictionMatch.resultCount > 0 ? ` Everybody else tippet ${correctOutcome} riktig.` : ''))
+                : `${wrongClauses.join('; ')}.` +
               (worstPredictionMatch.resultCount > 0 ? ` Everyone else correctly predicted ${correctOutcome}.` : '');
 
       worstPredictionCard = {
         id: 'worstPrediction',
-        title: lang === 'no' ? 'Skivebom' : lang === 'de' ? 'Katastrophentipp' : 'Worst prediction',
+        title: lang === 'no' ? 'Skivebom' : lang === 'de' ? 'Katastrophentipp' : lang === 'jk' ? 'Worst tipping' : 'Worst prediction',
         statistic,
         subjects: sortedWrongGroups
           .flat()
@@ -3422,13 +3498,15 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
       mostUnexpectedResultCard = {
         id: 'mostUnexpectedResult',
-        title: lang === 'no' ? 'Sjokkresultat' : lang === 'de' ? 'Schockresultat' : 'Most unexpected result',
+        title: lang === 'no' ? 'Sjokkresultat' : lang === 'de' ? 'Schockresultat' : lang === 'jk' ? 'Most uventet resultat' : 'Most unexpected result',
         statistic:
           lang === 'no'
             ? `Ingen tippet ${actualOutcome}! ${namesText} tippet til og med ${predictedOutcome} (${worstDeviationGroup[0].predHomeScore}-${worstDeviationGroup[0].predAwayScore})!`
             : lang === 'de'
               ? `Niemand hat ${actualOutcome} vorhergesagt! ${namesText} hat sogar ${predictedOutcome} (${worstDeviationGroup[0].predHomeScore}-${worstDeviationGroup[0].predAwayScore}) getippt!`
-              : `No one predicted ${actualOutcome}! ${namesText} even predicted ${predictedOutcome} (${worstDeviationGroup[0].predHomeScore} - ${worstDeviationGroup[0].predAwayScore})!`,
+              : lang === 'jk'
+                  ? `No one tippet ${actualOutcome}! ${namesText} even tippet ${predictedOutcome} (${worstDeviationGroup[0].predHomeScore} - ${worstDeviationGroup[0].predAwayScore})!`
+                  : `No one predicted ${actualOutcome}! ${namesText} even predicted ${predictedOutcome} (${worstDeviationGroup[0].predHomeScore} - ${worstDeviationGroup[0].predAwayScore})!`,
         subjects: [unexpectedMatch.homeTeamId, unexpectedMatch.awayTeamId]
           .filter((teamId): teamId is string => teamId !== null)
           .map(teamId => ({ type: 'team' as const, id: teamId, name: teamName(teamId), imageUrl: teamImageMap.get(teamId) ?? null })),
@@ -3459,25 +3537,31 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
             ? ` Likevel sanket ${formatUserList(zeroPointUsers.map(u => u.username), lang)} 0 poeng.`
             : lang === 'de'
               ? ` Und trotzdem hat ${formatUserList(zeroPointUsers.map(u => u.username), lang)} 0 Punkte geholt. Wie?`
-              : ` Still ${formatUserList(zeroPointUsers.map(u => u.username), lang)} earned 0 points.`;
+              : lang === 'jk'
+                  ? ` Still ${formatUserList(zeroPointUsers.map(u => u.username), lang)} got 0 points.`
+                  : ` Still ${formatUserList(zeroPointUsers.map(u => u.username), lang)} earned 0 points.`;
       } else if (onePointUsers.length >= 1 && onePointUsers.length <= 4) {
         appendText =
           lang === 'no'
             ? ` Likevel sanket ${formatUserList(onePointUsers.map(u => u.username), lang)} bare 1 poeng.`
             : lang === 'de'
               ? ` Und trotzdem hat ${formatUserList(onePointUsers.map(u => u.username), lang)} nur 1 Punkt geholt. Traurig.`
-              : ` Still ${formatUserList(onePointUsers.map(u => u.username), lang)} earned only 1 point.`;
+              : lang === 'jk'
+                  ? ` Still ${formatUserList(onePointUsers.map(u => u.username), lang)} got only 1 point.`
+                  : ` Still ${formatUserList(onePointUsers.map(u => u.username), lang)} earned only 1 point.`;
       }
 
       mostPredictableResultCard = {
         id: 'mostPredictableResult',
-        title: lang === 'no' ? 'Forventet resultat' : lang === 'de' ? 'Na klar!' : 'The most expected result',
+        title: lang === 'no' ? 'Forventet resultat' : lang === 'de' ? 'Na klar!' : lang === 'jk' ? 'The most forventede resultat' : 'The most expected result',
         statistic:
           (lang === 'no'
             ? `${homeTeamName} mot ${awayTeamName} (${mostPredictableMatch.homeScore}-${mostPredictableMatch.awayScore}) var det mest forutsigbare resultatet! Totalt tippet ${resultCount} ${resultCount === 1 ? 'spiller' : 'spillere'} riktig resultat, og ${exactCount} av dem tippet eksakt resultat! Hver spiller sanket i snitt ${avgPoints} poeng.`
             : lang === 'de'
               ? `${homeTeamName} gegen ${awayTeamName} (${mostPredictableMatch.homeScore}-${mostPredictableMatch.awayScore}): so offensichtlich, dass sogar ein Blindgänger es hätte tippen können! ${resultCount} Leute lagen richtig, ${exactCount} davon sogar mit exaktem Ergebnis. Im Schnitt ${avgPoints} Punkte pro Person.`
-              : `${homeTeamName} vs ${awayTeamName} (${mostPredictableMatch.homeScore} - ${mostPredictableMatch.awayScore}) was the most predictable outcome! A total of ${resultCount} ${resultCount === 1 ? 'user' : 'users'} predicted the correct result, and ${exactCount} of those predicted the exact score! Each user scored on average ${avgPoints} points.`) +
+              : lang === 'jk'
+                  ? `${homeTeamName} vs ${awayTeamName} (${mostPredictableMatch.homeScore} - ${mostPredictableMatch.awayScore}) was the most forutsigbare utfall! A total of ${resultCount} ${resultCount === 1 ? 'bruker' : 'brukere'} tippet the correct resultat, and ${exactCount} of them tippet the exact resultat! Every bruker got on average ${avgPoints} points.`
+                  : `${homeTeamName} vs ${awayTeamName} (${mostPredictableMatch.homeScore} - ${mostPredictableMatch.awayScore}) was the most predictable outcome! A total of ${resultCount} ${resultCount === 1 ? 'user' : 'users'} predicted the correct result, and ${exactCount} of those predicted the exact score! Each user scored on average ${avgPoints} points.`) +
           appendText,
         subjects: [mostPredictableMatch.homeTeamId, mostPredictableMatch.awayTeamId]
           .filter((teamId): teamId is string => teamId !== null)
@@ -3502,25 +3586,29 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         .sort((a, b) => a.username.localeCompare(b.username));
 
       const describeGoalDiff = (diff: number) => {
-        if (diff === 0) return lang === 'no' ? 'uavgjort' : lang === 'de' ? 'Unentschieden' : 'a draw';
+        if (diff === 0) return lang === 'no' ? 'uavgjort' : lang === 'de' ? 'Unentschieden' : lang === 'jk' ? 'uavgjort' : 'a draw';
         const winnerName = diff > 0 ? homeTeamName : awayTeamName;
         const margin = Math.abs(diff);
         return lang === 'no'
           ? `${winnerName} vinne med ${margin} mål`
           : lang === 'de'
             ? `${winnerName} gewinnt mit ${margin} Tor${margin === 1 ? '' : 'en'}`
-            : `${winnerName} to win by ${margin} ${margin === 1 ? 'goal' : 'goals'}`;
+            : lang === 'jk'
+                ? `${winnerName} to vinne by ${margin} mål`
+                : `${winnerName} to win by ${margin} ${margin === 1 ? 'goal' : 'goals'}`;
       };
 
       mostContrastingPredictionCard = {
         id: 'mostContrastingPrediction',
-        title: lang === 'no' ? 'Natt Og Dag' : lang === 'de' ? 'Wie Tag und Nacht' : 'Most Contrasting Predictions',
+        title: lang === 'no' ? 'Natt Og Dag' : lang === 'de' ? 'Wie Tag und Nacht' : lang === 'jk' ? 'Most ulike tippings' : 'Most Contrasting Predictions',
         statistic:
           lang === 'no'
             ? `Det største spriket i tippingen så langt kom i kampen mellom ${homeTeamName} og ${awayTeamName}, hvor ${formatUserList(highGroup.map(u => u.username), lang)} tippet ${highGroup[0].predHomeScore}-${highGroup[0].predAwayScore} og ${formatUserList(lowGroup.map(u => u.username), lang)} tippet ${lowGroup[0].predHomeScore}-${lowGroup[0].predAwayScore}! Kampen endte til slutt med ${contrastMatch.homeScore}-${contrastMatch.awayScore}.`
             : lang === 'de'
               ? `Bei ${homeTeamName} gegen ${awayTeamName} (${contrastMatch.homeScore}-${contrastMatch.awayScore}) waren die Meinungen gespalten! ${formatUserList(highGroup.map(u => u.username), lang)} tippte ${describeGoalDiff(maxDiff)}, während ${formatUserList(lowGroup.map(u => u.username), lang)} auf ${describeGoalDiff(minDiff)} setzte: eine Differenz von ${contrastGap} Toren!`
-              : `${homeTeamName} vs ${awayTeamName} (${contrastMatch.homeScore} - ${contrastMatch.awayScore}) caused the most contrasting predictions! ${formatUserList(highGroup.map(u => u.username), lang)} predicted ${describeGoalDiff(maxDiff)}, while ${formatUserList(lowGroup.map(u => u.username), lang)} predicted ${describeGoalDiff(minDiff)}: a ${contrastGap}-goal swing!`,
+              : lang === 'jk'
+                  ? `${homeTeamName} vs ${awayTeamName} (${contrastMatch.homeScore} - ${contrastMatch.awayScore}) gave the most ulike tippings! ${formatUserList(highGroup.map(u => u.username), lang)} tippet ${describeGoalDiff(maxDiff)}, while ${formatUserList(lowGroup.map(u => u.username), lang)} tippet ${describeGoalDiff(minDiff)}: a ${contrastGap}-mål swing!`
+                  : `${homeTeamName} vs ${awayTeamName} (${contrastMatch.homeScore} - ${contrastMatch.awayScore}) caused the most contrasting predictions! ${formatUserList(highGroup.map(u => u.username), lang)} predicted ${describeGoalDiff(maxDiff)}, while ${formatUserList(lowGroup.map(u => u.username), lang)} predicted ${describeGoalDiff(minDiff)}: a ${contrastGap}-goal swing!`,
         subjects: [...highGroup, ...lowGroup].map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
         linkType: 'match',
         matchId: contrastMatch.matchId,
@@ -3533,13 +3621,15 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
       const userNames = formatUserList(swingAndAMissData.users.map(u => u.username), lang);
       swingAndAMissCard = {
         id: 'swingAndAMiss',
-        title: lang === 'no' ? 'Det var nesten da!' : lang === 'de' ? 'Knapp daneben!' : 'Swing and a Miss',
+        title: lang === 'no' ? 'Det var nesten da!' : lang === 'de' ? 'Knapp daneben!' : lang === 'jk' ? 'Swing and a bom' : 'Swing and a Miss',
         statistic:
           lang === 'no'
             ? `Kampen mellom ${homeTeamName} og ${awayTeamName} endte ${swingAndAMissData.homeScore} - ${swingAndAMissData.awayScore}, bare litt annerledes enn hva ${userNames} tippet, som trodde kampen skulle ende ${swingAndAMissData.predHomeScore} - ${swingAndAMissData.predAwayScore}.`
             : lang === 'de'
               ? `Das Spiel ${homeTeamName} gegen ${awayTeamName} endete ${swingAndAMissData.homeScore} - ${swingAndAMissData.awayScore}, nur eine Kleinigkeit anders als ${userNames} gedacht hatte, der auf ${swingAndAMissData.predHomeScore} - ${swingAndAMissData.predAwayScore} tippte. Nah dran, aber leider nein.`
-              : `The match between ${homeTeamName} and ${awayTeamName} ended ${swingAndAMissData.homeScore} - ${swingAndAMissData.awayScore}, just a little different from what ${userNames} predicted, who thought the match would end ${swingAndAMissData.predHomeScore} - ${swingAndAMissData.predAwayScore}.`,
+              : lang === 'jk'
+                  ? `The kamp between ${homeTeamName} and ${awayTeamName} ended ${swingAndAMissData.homeScore} - ${swingAndAMissData.awayScore}, just a little bit different from what ${userNames} tippet, who thought the kamp would end ${swingAndAMissData.predHomeScore} - ${swingAndAMissData.predAwayScore}.`
+                  : `The match between ${homeTeamName} and ${awayTeamName} ended ${swingAndAMissData.homeScore} - ${swingAndAMissData.awayScore}, just a little different from what ${userNames} predicted, who thought the match would end ${swingAndAMissData.predHomeScore} - ${swingAndAMissData.predAwayScore}.`,
         subjects: swingAndAMissData.users.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
         linkType: 'match',
         matchId: swingAndAMissData.matchId,
@@ -3548,19 +3638,23 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
     hitOrMissCard = {
       id: 'hitOrMiss',
-      title: lang === 'de' ? 'Alles oder Nichts' : 'Hit or Miss',
+      title: lang === 'de' ? 'Alles oder Nichts' : lang === 'jk' ? 'Treff or bom' : 'Hit or Miss',
       statistic:
         hitOrMissGroup.length > 0
           ? lang === 'no'
             ? `${formatUserList(hitOrMissGroup.map(u => u.username), lang)} har "bare" tippet korrekt resultat ${hitOrMissGroup[0].correctResults} ${hitOrMissGroup[0].correctResults === 1 ? 'gang' : 'ganger'}, men ${hitOrMissGroup[0].exactScores} av de har vært fulltreffere!`
             : lang === 'de'
               ? `${formatUserList(hitOrMissGroup.map(u => u.username), lang)} hat zwar nur ${hitOrMissGroup[0].correctResults} richtige Ergebnisse, aber davon waren ${hitOrMissGroup[0].exactScores} exakte Volltreffer! Hochrisikosstrategie.`
-              : `${hitOrMissGroup[0].exactScores} out of ${formatUserList(hitOrMissGroup.map(u => u.username), lang)}'s ${hitOrMissGroup[0].correctResults} have been perfect predictions!`
+              : lang === 'jk'
+                  ? `${hitOrMissGroup[0].exactScores} of the ${hitOrMissGroup[0].correctResults} riktige resultats of ${formatUserList(hitOrMissGroup.map(u => u.username), lang)} have been perfekte tippings!`
+                  : `${hitOrMissGroup[0].exactScores} out of ${formatUserList(hitOrMissGroup.map(u => u.username), lang)}'s ${hitOrMissGroup[0].correctResults} have been perfect predictions!`
           : lang === 'no'
             ? 'Ingen har tippet minst to perfekte resultater ennå!'
             : lang === 'de'
               ? 'Noch niemand hat mindestens zwei exakte Ergebnisse getippt!'
-              : 'No one has predicted at least two perfect scores yet!',
+              : lang === 'jk'
+                  ? 'No one has tippet at least two perfekte resultats yet!'
+                  : 'No one has predicted at least two perfect scores yet!',
       subjects: hitOrMissGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
       linkType: 'user',
     };
@@ -3581,38 +3675,50 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
     closeButNoCigarCard = {
       id: 'closeButNoCigar',
-      title: lang === 'de' ? 'Fast perfekt' : 'Slow and Steady',
+      title: lang === 'de' ? 'Fast perfekt' : lang === 'jk' ? 'Slow and stødig' : 'Slow and Steady',
       statistic:
         closeButNoCigarGroup.length > 0
           ? lang === 'no'
             ? `${formatUserList(closeButNoCigarGroup.map(u => u.username), lang)} har tippet riktig resultat ${closeButNoCigarGroup[0].correctResults} ${closeButNoCigarGroup[0].correctResults === 1 ? 'gang' : 'ganger'}, men ${closeButNoCigarTailNo}`
             : lang === 'de'
               ? `${formatUserList(closeButNoCigarGroup.map(u => u.username), lang)} hat ${closeButNoCigarGroup[0].correctResults} Mal das richtige Ergebnis getippt, aber beim exakten Ergebnis, da hapert es gewaltig. ${closeButNoCigarTailDe}`
-              : `${formatUserList(closeButNoCigarGroup.map(u => u.username), lang)} ${closeButNoCigarVerb} predicted the correct result ${closeButNoCigarGroup[0].correctResults} times, but ${closeButNoCigarVerb} ${closeButNoCigarTail}`
+              : lang === 'jk'
+                  ? (`${formatUserList(closeButNoCigarGroup.map(u => u.username), lang)} ${closeButNoCigarVerb} tippet the correct resultat ${closeButNoCigarGroup[0].correctResults} ganger, but ${
+                  closeButNoCigarGroup[0].exactScores > 0
+                    ? `only ${closeButNoCigarGroup[0].exactScores} exact ${closeButNoCigarGroup[0].exactScores === 1 ? 'resultat' : 'resultats'}!`
+                    : 'never an exact resultat!'
+                }`)
+                  : `${formatUserList(closeButNoCigarGroup.map(u => u.username), lang)} ${closeButNoCigarVerb} predicted the correct result ${closeButNoCigarGroup[0].correctResults} times, but ${closeButNoCigarVerb} ${closeButNoCigarTail}`
           : lang === 'no'
             ? 'Ingen har tippet riktig resultat ennå!'
             : lang === 'de'
               ? 'Noch niemand hat ein richtiges Ergebnis getippt!'
-              : 'No one has predicted a correct result yet!',
+              : lang === 'jk'
+                  ? 'No one has tippet a correct resultat yet!'
+                  : 'No one has predicted a correct result yet!',
       subjects: closeButNoCigarGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
       linkType: 'user',
     };
 
     bestFormCard = {
       id: 'bestForm',
-      title: lang === 'no' ? 'I fyr og flamme 🔥' : lang === 'de' ? 'Formrakete 🔥' : 'Best form',
+      title: lang === 'no' ? 'I fyr og flamme 🔥' : lang === 'de' ? 'Formrakete 🔥' : lang === 'jk' ? 'Best formkurve' : 'Best form',
       statistic:
         bestFormGroup.length > 0
           ? lang === 'no'
             ? `${formatUserList(bestFormGroup.map(u => u.username), lang)} har sanket ${bestFormGroup[0].points} poeng de siste 5 kampene!`
             : lang === 'de'
               ? `${formatUserList(bestFormGroup.map(u => u.username), lang)} hat in den letzten 5 Spielen ${bestFormGroup[0].points} Punkte eingesammelt! Heiß wie eine Bratwurst auf dem Grill.`
-              : `${formatUserList(bestFormGroup.map(u => u.username), lang)} ${bestFormGroup.length === 1 ? 'has' : 'have'} gained ${bestFormGroup[0].points} points in the last 5 matches!`
+              : lang === 'jk'
+                  ? `${formatUserList(bestFormGroup.map(u => u.username), lang)} ${bestFormGroup.length === 1 ? 'has' : 'have'} tatt ${bestFormGroup[0].points} points in the last 5 kamper!`
+                  : `${formatUserList(bestFormGroup.map(u => u.username), lang)} ${bestFormGroup.length === 1 ? 'has' : 'have'} gained ${bestFormGroup[0].points} points in the last 5 matches!`
           : lang === 'no'
             ? 'Ingen kamper er fullført ennå!'
             : lang === 'de'
               ? 'Noch keine Spiele abgeschlossen!'
-              : 'No matches have been completed yet!',
+              : lang === 'jk'
+                  ? 'No kamper are ferdig yet!'
+                  : 'No matches have been completed yet!',
       subjects: bestFormGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
       linkType: 'user',
     };
@@ -3620,13 +3726,15 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
     if (worstFormGroup.length > 0) {
       worstFormCard = {
         id: 'worstForm',
-        title: lang === 'no' ? 'Send Hjelp' : lang === 'de' ? 'Hilfe senden' : 'Worst form',
+        title: lang === 'no' ? 'Send Hjelp' : lang === 'de' ? 'Hilfe senden' : lang === 'jk' ? 'Worst formkurve' : 'Worst form',
         statistic:
           lang === 'no'
             ? `${formatUserList(worstFormGroup.map(u => u.username), lang)} har gått ${worstFormGroup[0].drought} kamper på rad uten å sanke et eneste poeng!`
             : lang === 'de'
               ? `${formatUserList(worstFormGroup.map(u => u.username), lang)} hat ${worstFormGroup[0].drought} Spiele in Folge keinen einzigen Punkt geholt! Bitte ruft professionelle Hilfe!`
-              : `${formatUserList(worstFormGroup.map(u => u.username), lang)} ${worstFormGroup.length === 1 ? 'has' : 'have'} gone ${worstFormGroup[0].drought} matches without gaining a single point!`,
+              : lang === 'jk'
+                  ? `${formatUserList(worstFormGroup.map(u => u.username), lang)} ${worstFormGroup.length === 1 ? 'has' : 'have'} gått ${worstFormGroup[0].drought} kamper without a single point!`
+                  : `${formatUserList(worstFormGroup.map(u => u.username), lang)} ${worstFormGroup.length === 1 ? 'has' : 'have'} gone ${worstFormGroup[0].drought} matches without gaining a single point!`,
         subjects: worstFormGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor })),
         linkType: 'user',
       };
@@ -3699,13 +3807,15 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
         brautometerCard = {
           id: 'brautometer',
-          title: lang === 'no' ? 'Brautometeret' : lang === 'de' ? 'Der Brautometer' : 'The Brautometer',
+          title: lang === 'no' ? 'Brautometeret' : lang === 'de' ? 'Der Brautometer' : lang === 'jk' ? 'The Brautometer' : 'The Brautometer',
           statistic:
             lang === 'no'
               ? `Deltakerne har i gjennomsnitt tippet at Haaland kommer til å score ${average.toFixed(2)} mål i turneringen. ${formatUserList(mostFaithGroup.map(u => u.username), lang)} har mest tro og tror han kommer til å score utrolige ${maxGoals} mål! Mens ${formatUserList(leastFaithGroup.map(u => u.username), lang)} tror han bare kommer til å score ${minGoals} mål.`
               : lang === 'de'
                 ? `Die Teilnehmer haben im Schnitt ${average.toFixed(2)} Haaland-Tore erwartet. ${formatUserList(mostFaithGroup.map(u => u.username), lang)} glaubt am meisten an ihn und tippt sagenhafter ${maxGoals} Tore! ${formatUserList(leastFaithGroup.map(u => u.username), lang)} hingegen glaubt er trifft nur ${minGoals} Mal. Einer von ihnen irrt sich gewaltig.`
-                : `The participants have on average predicted that Haaland will score ${average.toFixed(2)} goals in the tournament. ${formatUserList(mostFaithGroup.map(u => u.username), lang)} ${mostFaithGroup.length === 1 ? 'has' : 'have'} the most faith and ${mostFaithGroup.length === 1 ? 'believes' : 'believe'} he will score an incredible ${maxGoals} goals! While ${formatUserList(leastFaithGroup.map(u => u.username), lang)} only ${leastFaithGroup.length === 1 ? 'believes' : 'believe'} he will score ${minGoals} goals.`,
+                : lang === 'jk'
+                    ? `The deltakere have on average tippet that Haaland will score ${average.toFixed(2)} mål in the turnering. ${formatUserList(mostFaithGroup.map(u => u.username), lang)} ${mostFaithGroup.length === 1 ? 'has' : 'have'} the most tro and ${mostFaithGroup.length === 1 ? 'believes' : 'believe'} he will score an utrolig ${maxGoals} mål! While ${formatUserList(leastFaithGroup.map(u => u.username), lang)} only ${leastFaithGroup.length === 1 ? 'believes' : 'believe'} he will score ${minGoals} mål.`
+                    : `The participants have on average predicted that Haaland will score ${average.toFixed(2)} goals in the tournament. ${formatUserList(mostFaithGroup.map(u => u.username), lang)} ${mostFaithGroup.length === 1 ? 'has' : 'have'} the most faith and ${mostFaithGroup.length === 1 ? 'believes' : 'believe'} he will score an incredible ${maxGoals} goals! While ${formatUserList(leastFaithGroup.map(u => u.username), lang)} only ${leastFaithGroup.length === 1 ? 'believes' : 'believe'} he will score ${minGoals} goals.`,
           subjects: mostFaithGroup.map(u => ({ type: 'user' as const, id: u.userId, name: u.username, imageUrl: u.imageUrl, iconColor: u.iconColor ?? null })),
           linkType: 'userBonus',
           iconImageUrl: '/haaland.jpg',
@@ -3721,7 +3831,9 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
               ? ` Haaland har så langt scoret ${goals} ${goals === 1 ? 'mål' : 'mål'} på ${games} ${games === 1 ? 'kamp' : 'kamper'}.`
               : lang === 'de'
                 ? ` Haaland hat bisher ${goals} Tor${goals === 1 ? '' : 'e'} in ${games} Spiel${games === 1 ? '' : 'en'} erzielt.`
-                : ` Haaland has so far scored ${goals} ${goals === 1 ? 'goal' : 'goals'} in ${games} ${games === 1 ? 'game' : 'games'}.`;
+                : lang === 'jk'
+                    ? ` Haaland has so far scored ${goals} mål in ${games} ${games === 1 ? 'kamp' : 'kamper'}.`
+                    : ` Haaland has so far scored ${goals} ${goals === 1 ? 'goal' : 'goals'} in ${games} ${games === 1 ? 'game' : 'games'}.`;
         }
       }
     }
@@ -3756,7 +3868,9 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
               ? `${names} tror faktisk at Norge kommer til å vinne hele turneringen!`
               : lang === 'de'
                 ? `${names} glaubt tatsächlich, dass Norwegen das gesamte Turnier gewinnt! Norwegischer Patriotismus kennt keine Grenzen.`
-                : `${names} actually ${believers.length === 1 ? 'believes' : 'believe'} that Norway will win the entire tournament!`,
+                : lang === 'jk'
+                    ? `${names} actually ${believers.length === 1 ? 'believes' : 'believe'} that Norge will vinne the whole turnering!`
+                    : `${names} actually ${believers.length === 1 ? 'believes' : 'believe'} that Norway will win the entire tournament!`,
           subjects: believers.map(u => ({
             type: 'user' as const,
             id: u.userId,
@@ -3921,10 +4035,10 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
             .sort((a, b) => a.username.localeCompare(b.username));
 
           const minStage = Object.keys(STAGE_RANK_TRAITOR).find(s => STAGE_RANK_TRAITOR[s] === minRank) ?? 'group';
-          const stageLabelMap: Record<string, { no: string; en: string; de: string }> = {
-            group: { no: 'gruppespillet', en: 'the group stage', de: 'der Gruppenphase' },
-            round_of_32: { no: 'sekstendelsfinalen', en: 'the round of 32', de: 'der Runde der 32' },
-            round_of_16: { no: 'åttendelsfinalen', en: 'the round of 16', de: 'dem Achtelfinale' },
+          const stageLabelMap: Record<string, { no: string; en: string; de: string; jk: string }> = {
+            group: { no: 'gruppespillet', en: 'the group stage', de: 'der Gruppenphase', jk: 'the gruppespill' },
+            round_of_32: { no: 'sekstendelsfinalen', en: 'the round of 32', de: 'der Runde der 32', jk: 'the sekstendelsfinale' },
+            round_of_16: { no: 'åttendelsfinalen', en: 'the round of 16', de: 'dem Achtelfinale', jk: 'the åttendelsfinale' },
           };
           const stageLabelNo = stageLabelMap[minStage]?.no ?? minStage;
           const stageLabelEn = stageLabelMap[minStage]?.en ?? minStage;
@@ -3933,13 +4047,15 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
           traitorCard = {
             id: 'traitor',
-            title: lang === 'no' ? 'Landssvikeren' : lang === 'de' ? 'Der Verräter' : 'The Traitor',
+            title: lang === 'no' ? 'Landssvikeren' : lang === 'de' ? 'Der Verräter' : lang === 'jk' ? 'The landssviker' : 'The Traitor',
             statistic:
               lang === 'no'
                 ? `${traitorNames} trodde faktisk at Norge ville bli slått ut allerede i ${stageLabelNo}!`
                 : lang === 'de'
                   ? `${traitorNames} dachte allen Ernstes, Norwegen würde schon in ${stageLabelDe} ausscheiden! Das nennt man Pessimismus.`
-                  : `${traitorNames} actually thought that Norway would be knocked out as early as ${stageLabelEn}!`,
+                  : lang === 'jk'
+                      ? `${traitorNames} actually thought that Norge would go ut already in ${stageLabelMap[minStage]?.jk ?? minStage}!`
+                      : `${traitorNames} actually thought that Norway would be knocked out as early as ${stageLabelEn}!`,
             subjects: traitors.map(u => ({
               type: 'user' as const,
               id: u.userId,
@@ -3994,7 +4110,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
       const joinTeamNames = (tIds: string[]): string => {
         const bolded = tIds.map(id => `**${teamName(id)}**`);
-        const andWord = lang === 'no' ? 'og' : lang === 'de' ? 'und' : 'and';
+        const andWord = lang === 'no' ? 'og' : lang === 'de' ? 'und' : lang === 'jk' ? 'og' : 'and';
         if (bolded.length === 1) return bolded[0];
         if (bolded.length === 2) return `${bolded[0]} ${andWord} ${bolded[1]}`;
         return `${bolded.slice(0, -1).join(', ')}, ${andWord} ${bolded[bolded.length - 1]}`;
@@ -4007,10 +4123,12 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           const n = firstCount;
           if (lang === 'no') return `${userNames} har tippet eksakt resultat ${n} ${n === 1 ? 'gang' : 'ganger'} for ${teams}!`;
           if (lang === 'de') return `${userNames} ${users.length === 1 ? 'hat' : 'haben'} ${n} Mal das exakte Ergebnis für ${teams} getippt!`;
+          if (lang === 'jk') return `${userNames} ${users.length === 1 ? 'has' : 'have'} tippet the exact resultat ${n} ${n === 1 ? 'gang' : 'ganger'} for ${teams}!`;
           return `${userNames} ${users.length === 1 ? 'has' : 'have'} predicted the exact score ${n} ${n === 1 ? 'time' : 'times'} for ${teams}!`;
         }
         if (lang === 'no') return `${userNames} har en åndelig forbindelse med ${teams}!`;
         if (lang === 'de') return `${userNames} ${users.length === 1 ? 'hat' : 'haben'} eine spirituelle Verbindung mit ${teams}!`;
+        if (lang === 'jk') return `${userNames} ${users.length === 1 ? 'has' : 'have'} a åndelig forbindelse with ${teams}!`;
         return `${userNames} ${users.length === 1 ? 'has' : 'have'} a spiritual connection with ${teams}!`;
       };
 
@@ -4018,10 +4136,12 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
         if (allSameCount) {
           if (lang === 'no') return `alle ${firstCount} ${firstCount === 1 ? 'kamp' : 'kamper'} de har spilt`;
           if (lang === 'de') return `allen ${firstCount} ${firstCount === 1 ? 'Spiel' : 'Spielen'}, die sie gespielt haben`;
+          if (lang === 'jk') return `all ${firstCount} ${firstCount === 1 ? 'kamp' : 'kamper'} they have spilt`;
           return `all ${firstCount} ${firstCount === 1 ? 'game' : 'games'} they have played`;
         }
         if (lang === 'no') return 'alle kampene de har spilt';
         if (lang === 'de') return 'allen Spielen, die sie gespielt haben';
+        if (lang === 'jk') return 'all the kamper they have spilt';
         return 'all the games they have played';
       };
 
@@ -4030,12 +4150,16 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
           ? 'Det er flest eksakte resultater for ett enkelt lag!'
           : lang === 'de'
             ? 'Das sind die meisten exakten Treffer für ein einzelnes Team!'
-            : 'That\'s the most perfect score predictions for any single team!')
+            : lang === 'jk'
+                ? 'That is the most perfekte resultats for any single lag!'
+                : 'That\'s the most perfect score predictions for any single team!')
         : (lang === 'no'
           ? `De har gjettet eksakt resultat i ${buildCountPhrase()}!`
           : lang === 'de'
             ? `Sie haben in ${buildCountPhrase()} das perfekte Ergebnis getippt!`
-            : `They have guessed the perfect score in ${buildCountPhrase()}!`);
+            : lang === 'jk'
+                ? `They have tippet the perfekt resultat in ${buildCountPhrase()}!`
+                : `They have guessed the perfect score in ${buildCountPhrase()}!`);
 
       let heavenStatistic: string;
       if (sortedGroups.length === 1) {
@@ -4125,13 +4249,15 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
         twinSpiritsCard = {
           id: 'twinSpirits',
-          title: lang === 'no' ? 'Skilt ved fødselen' : lang === 'de' ? 'Seelenverwandte' : 'Twin spirits',
+          title: lang === 'no' ? 'Skilt ved fødselen' : lang === 'de' ? 'Seelenverwandte' : lang === 'jk' ? 'Tvillingsjeler' : 'Twin spirits',
           statistic:
             lang === 'no'
               ? `**${first.username}** og **${second.username}** har tippet samme resultat i ${fmtPct(bestPct)} av alle kampene de begge har tippet! Disse to er virkelig skilt ved fødselen.`
               : lang === 'de'
                 ? `**${first.username}** und **${second.username}** haben in ${fmtPct(bestPct)} aller Spiele, die sie beide getippt haben, dasselbe Ergebnis vorhergesagt! Wahrhaftige Seelenverwandte.`
-                : `**${first.username}** and **${second.username}** predicted the same result in ${fmtPct(bestPct)} of all games they both predicted! Truly twin spirits.`,
+                : lang === 'jk'
+                    ? `**${first.username}** and **${second.username}** tippet the same resultat in ${fmtPct(bestPct)} of all kamper they both tippet! Truly tvillingsjeler.`
+                    : `**${first.username}** and **${second.username}** predicted the same result in ${fmtPct(bestPct)} of all games they both predicted! Truly twin spirits.`,
           subjects: [
             { type: 'user' as const, id: first.id, name: first.username, imageUrl: first.imageUrl, iconColor: first.iconColor },
             { type: 'user' as const, id: second.id, name: second.username, imageUrl: second.imageUrl, iconColor: second.iconColor },

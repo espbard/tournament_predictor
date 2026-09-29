@@ -629,7 +629,13 @@ liveCompetitionsRouter.get(
       // Only the three season-long milestones are worded, so the language costs nothing
       // more than picking a label set — same convention as the user-stats route.
       const lang: LiveProgressionLang =
-        req.query.lang === 'no' ? 'no' : req.query.lang === 'de' ? 'de' : 'en';
+        req.query.lang === 'no'
+        ? 'no'
+        : req.query.lang === 'de'
+          ? 'de'
+          : req.query.lang === 'jk'
+            ? 'jk'
+            : 'en';
 
       return res.json(
         await loadLiveProgression(id, competition.liveTournamentId, lang, res.locals.user.id),
@@ -656,7 +662,13 @@ liveCompetitionsRouter.get('/competitions/:id/user-stats', requireAuth, async (r
       return res.status(403).json({ error: 'Not a member of this competition' });
     }
     const lang: LiveStatsLang =
-      req.query.lang === 'no' ? 'no' : req.query.lang === 'de' ? 'de' : 'en';
+      req.query.lang === 'no'
+        ? 'no'
+        : req.query.lang === 'de'
+          ? 'de'
+          : req.query.lang === 'jk'
+            ? 'jk'
+            : 'en';
 
     const [competition] = await db
       .select()

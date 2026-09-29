@@ -2212,7 +2212,7 @@ describe('buildLiveUserStats', () => {
         },
       ],
     };
-    for (const lang of ['en', 'no', 'de'] as const) {
+    for (const lang of ['en', 'no', 'de', 'jk'] as const) {
       const cards = buildLiveUserStats(deck, lang);
       // The guard is only worth having if the deck it walks is the whole deck.
       expect(cards.map(c => c.id)).toContain('norwaySceptic');
