@@ -15,7 +15,7 @@ const LANGUAGES = [
   { code: 'en', label: 'English', flag: '/flag-en.png' },
   { code: 'de', label: 'Deutsch', flag: '/flag-de.png' },
   // A joke language, only offered to test accounts while it is being tried out.
-  { code: 'jk', label: "The Julekalender (Shit! It's på norsk!)", flag: '/flag-jk.jpg', testOnly: true },
+  { code: 'jk', label: 'Norwenglish', flag: '/flag-jk.jpg', testOnly: true },
 ] as const;
 
 export default function Navbar() {

@@ -100,11 +100,11 @@ const COPY: Record<EmailLanguage, {
     expiry: 'Der Link funktioniert einmal und läuft in 30 Minuten ab.',
     ignore: 'Wenn du das nicht warst, kannst du diese E-Mail ignorieren. Dein Passwort bleibt unverändert.',
   },
-  // The Julekalender joke language: English with Norwegian words mixed in.
+  // Norwenglish, a joke language: English with Norwegian words mixed in.
   jk: {
     subject: 'Reset your passord',
     greeting: (u) => `Hei hei ${u},`,
-    body: 'Somebody asked to reset the passord for your Tournament Predictor konto. Use the lenke below to choose a new one. It is hard to be a nissemann who glemmer his passord!',
+    body: 'Somebody asked to reset the passord for your Tournament Predictor konto. Use the lenke below to choose a new one.',
     button: 'Choose a new passord',
     expiry: 'The lenke works one gang and goes ut in 30 minutter.',
     ignore: 'If it was not you, just forget this e-post. Your passord stays the same.',

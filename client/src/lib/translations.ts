@@ -3411,12 +3411,11 @@ const translations = {
     },
   },
 
-  // The Julekalender: a joke language in the Norwenglish of Hansi, Fritz and Günther
-  // (Travellin' Strawberries, TV 2 1994). English grammar, Norwegian words where they are
-  // funniest. Anything missing here falls back to English in useT.
+  // Norwenglish: a joke language. English grammar with Norwegian words mixed in where they
+  // are funniest. Anything missing here falls back to English in useT.
   jk: {
     common: {
-      loading: 'Loading… it is hard to be a nissemann…',
+      loading: 'Loading… vent litt…',
       saving: 'Lagring…',
       saved: 'Lagret!',
       save: 'Lagre',
@@ -3451,7 +3450,7 @@ const translations = {
     },
     nav: {
       logOut: 'Logg ut and go to the skog',
-      appName: 'The Tippekalender',
+      appName: 'Turnering Predictor',
       tabGroups: 'Tippings',
       tabStandings: 'Resultater',
       darkMode: 'Mørk mode',
@@ -3471,12 +3470,12 @@ const translations = {
       alreadyHaveAccount: 'You already have a konto?',
       signInLink: 'Logg inn',
       usernameHint: 'Bokstaver, tall, understreker. 3–30 tegn.',
-      passwordHint: 'Minst 6 tegn. Not "nissemann123".',
+      passwordHint: 'Minst 6 tegn.',
       profilePicture: 'Profilbilde (if you vil)',
       registrationFailed: 'The registrering went rett åt skogen',
       email: 'E-post',
       emailOptional: 'E-post (if you vil)',
-      emailHint: 'Only used if you glemmer your passord. Never shown to anybody, not even Gammel Nok.',
+      emailHint: 'Only used if you glemmer your passord. Never vist to anybody.',
       forgotPassword: 'Glemt the passord?',
       backToSignIn: 'Tilbake to the innlogging',
       forgot: {
@@ -3484,7 +3483,7 @@ const translations = {
         intro: 'Skriv the e-post on your konto, and we send you a lenke to choose a new passord.',
         submit: 'Send the lenke',
         sending: 'Sending…',
-        sent: 'If a konto has this e-post, the lenke is on its way like a little reinsdyr. It goes ut in 30 minutter.',
+        sent: 'If a konto has this e-post, the lenke is on its way. It goes ut in 30 minutter.',
         spamTitle: 'Look in the søppelpost!',
         spamBody: 'The e-post very often ends up in spam. Look there if it is not in your innboks after a couple of minutter.',
         failed: 'Uff da! Could not send the lenke',
@@ -3494,13 +3493,13 @@ const translations = {
         newPassword: 'New passord',
         confirmPassword: 'New passord one more gang',
         submit: 'Lagre the new passord',
-        mismatch: 'The passordene are not the same, Günther!',
+        mismatch: 'The passordene are not the same!',
         failed: 'Could not change the passord',
         requestNew: 'Ask for a new lenke',
       },
     },
     home: {
-      welcome: 'Velkommen, {{name}}! It is hard to be a tipper!',
+      welcome: 'Velkommen, {{name}}!',
       myCompetitions: 'My konkurranser',
       tags: {
         live: 'Live',
@@ -3557,7 +3556,7 @@ const translations = {
       close: 'Lukk',
       failed: 'Could not lage a lenke',
       invitedTitle: 'You are invitert to {{name}}!',
-      alreadyMemberTitle: 'You are already in {{name}}, you fjols',
+      alreadyMemberTitle: 'You are already in {{name}}',
       signInToJoin: 'Logg inn or lag a konto to bli med.',
       joining: 'Blir med…',
       failedToJoin: 'Could not bli med in this konkurranse',
@@ -3591,9 +3590,9 @@ const translations = {
         correctResultPoints: 'Poeng for riktig resultat',
         perfectScorePoints: 'Poeng for helt riktig',
         groupTablePosition: 'Gruppetabell: riktig plass',
-        lateAdditionBonus: 'Bonus for sent ankommet nissemann',
+        lateAdditionBonus: 'Bonus for sent ankommet',
         bonusQuestionEyebrow: 'Bonusspørsmål:',
-        intro: "{{tournamentNameNoNumbers}} is ferdig for this år! Before the turnering kicked off, everybody had their tippings klar for every single kamp, some with pure magefølelse, some with the FIFA-ranking and a little bit AI-hjelp, and some just picked the lag with the finest flagg.\n\nThe gruppespill was kaos, and the sluttspill gave us historier nobody saw coming: Kapp Verde went just as langt as Nederland and Tyskland, Paraguay went as langt as Portugal and Brasil, and Norge rodde all the way to the kvartfinale. In the end, {{finalWinner}} were kronet to VM-mester!\n\nBut something much more viktig than who won the VM-trofé is who gets kronet to tippemester in {{competitionName}}! Now the ball is lagt død, the kamper are spilt, and every resultat is talt opp. It has been uker with jubel, frustrasjon and more than a few tvilsomme tips, but now the øyeblikk of truth has finally come. The poeng will be talt one last gang, and we will reveal who of you gets to take the tippemester-trofé hjem. It is hard to be a tippemester!",
+        intro: "{{tournamentNameNoNumbers}} is ferdig for this år! Before the turnering kicked off, everybody had their tippings klar for every single kamp, some with pure magefølelse, some with the FIFA-ranking and a little bit AI-hjelp, and some just picked the lag with the finest flagg.\n\nThe gruppespill was kaos, and the sluttspill gave us historier nobody saw coming: Kapp Verde went just as langt as Nederland and Tyskland, Paraguay went as langt as Portugal and Brasil, and Norge rodde all the way to the kvartfinale. In the end, {{finalWinner}} were kronet to VM-mester!\n\nBut something much more viktig than who won the VM-trofé is who gets kronet to tippemester in {{competitionName}}! Now the ball is lagt død, the kamper are spilt, and every resultat is talt opp. It has been uker with jubel, frustrasjon and more than a few tvilsomme tips, but now the øyeblikk of truth has finally come. The poeng will be talt one last gang, and we will reveal who of you gets to take the tippemester-trofé hjem!",
         winner: '{{name}} vinner! Hurra!',
         toLeaderboard: 'To the tabellen →',
         close: 'Lukk',
@@ -3624,9 +3623,9 @@ const translations = {
         winner: 'Riktig vinner',
         bonus: 'Bonus',
         noScores: 'No poeng yet.',
-        you: '(you, the nissemann)',
+        you: '(deg)',
         points: 'poeng',
-        inactiveLegend: '= Inaktiv: is sleeping in the fjøs, missing tippings for the last kamper',
+        inactiveLegend: '= Inaktiv: missing tippings for the last kamper',
         lateAdditionLegend: '= Sent ankommet: came in after the turnering started',
         showAiUsers: 'Vis the AI-brukere',
         showInactiveUsers: 'Vis the inaktive brukere',
@@ -3979,7 +3978,7 @@ const translations = {
     },
     maintenance: {
       title: 'Vedlikehold',
-      message: 'The nissemenn are fixing the site with hammer and spiker. Come back senere.',
+      message: 'We are fixing the site with hammer and spiker. Come back senere.',
       toggleOn: 'Skru on vedlikehold',
       toggleOff: 'Skru off vedlikehold',
       enabling: 'Skruing on…',
@@ -4007,7 +4006,7 @@ const translations = {
       modalTitle: 'Gi tilbakemelding',
       typeLabel: 'Type',
       messageLabel: 'Melding',
-      messagePlaceholder: 'Tell us, like a nissemann to Gammel Nok…',
+      messagePlaceholder: 'Tell us what you mener…',
       submit: 'Send inn',
       submitting: 'Sending inn…',
       submitSuccess: 'The tilbakemelding is sendt! Tusen takk!',
@@ -4015,7 +4014,7 @@ const translations = {
       types: {
         feature_request: 'Ønske',
         improvement: 'Forbedring',
-        bug: 'Feil (a little troll in the maskin)',
+        bug: 'Feil',
       },
       myFeedback: 'My tilbakemeldinger',
       noFeedback: 'You have not sent any tilbakemelding yet.',
@@ -4039,7 +4038,7 @@ const translations = {
     },
     live: {
       predictorPicker: {
-        seeOthers: 'Se what the other nissemenn tippet',
+        seeOthers: 'Se what the other brukere tippet',
         seeUsers: 'Se what the brukere tippet',
         seeOthersAnswers: 'Se the other brukeres svar',
         seeUsersAnswers: 'Se what the brukere svarte',
@@ -4094,7 +4093,7 @@ const translations = {
           outcome: 'Riktig utfall',
           multiplier: 'Multiplikator',
           total: 'Totalt',
-          nothing: 'Nothing riktig: no poeng from this tipping. It is hard to be a nissemann.',
+          nothing: 'Nothing riktig: no poeng from this tipping. Shit!',
         },
       },
       userPredictions: {
