@@ -2209,14 +2209,14 @@ function norwegianFaithCard(
         : lang === 'de'
           ? 'Niemand glaubt mehr an die norwegischen Klubs!'
           : lang === 'jk'
-              ? 'Nobody has mer tro on the norske klubbene!'
+              ? 'Nobody has mer tro on the norske klubber!'
               : 'Nobody has more faith in the Norwegian clubs!'
       : lang === 'no'
         ? 'Ingen har mindre tro på de norske lagene!'
         : lang === 'de'
           ? 'Niemand glaubt weniger an die norwegischen Klubs!'
           : lang === 'jk'
-              ? 'Nobody has less tro on the norske klubbene!'
+              ? 'Nobody has less tro on the norske klubber!'
               : 'Nobody has less faith in the Norwegian clubs!';
 
   // One member reads as a single breath; several are a line each, because members level
