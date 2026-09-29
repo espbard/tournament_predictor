@@ -1481,7 +1481,7 @@ export function bestPredictionCard(
       : lang === 'de'
         ? 'Woher wusstest du das?'
         : lang === 'jk'
-            ? 'How did you vite that?'
+            ? 'How did you vit that?'
             : 'How did you know?';
 
   // Two fixtures level on both counts are two different stories, so a tie names no

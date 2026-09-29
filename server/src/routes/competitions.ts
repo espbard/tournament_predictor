@@ -2443,7 +2443,7 @@ router.get('/:id/user-stats', requireAuth, async (req, res) => {
 
             howDidYouKnowCard = {
               id: 'howDidYouKnow',
-              title: lang === 'no' ? 'Hvordan visste du det?' : lang === 'de' ? 'Wie wusstest du das?' : lang === 'jk' ? 'How did you vite that?' : 'How did you know?',
+              title: lang === 'no' ? 'Hvordan visste du det?' : lang === 'de' ? 'Wie wusstest du das?' : lang === 'jk' ? 'How did you vit that?' : 'How did you know?',
               statistic:
                 lang === 'no'
                   ? `${formatUserList(subjects.map(s => s.name), lang)} trodde at **${teamNameStr}** ville ta seg til sluttspillet! Ingen andre så den komme!`
