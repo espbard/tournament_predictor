@@ -4141,9 +4141,9 @@ const translations = {
       },
       multiplier: {
         badge: '×{{multiplier}}',
-        explainer: 'This kamp is worth more: every poeng you score here gets ganget with {{multiplier}}.',
-        explainerDouble: 'This kamp is worth more: every poeng you score here counts dobbelt!',
-        explainerTriple: 'This kamp is worth more: every poeng you score here counts trippelt!',
+        explainer: 'This kamp is worth mer: every poeng you score here gets ganget with {{multiplier}}.',
+        explainerDouble: 'This kamp is worth mer: every poeng you score here counts dobbelt!',
+        explainerTriple: 'This kamp is worth mer: every poeng you score here counts trippelt!',
         explainerApplied: 'This kamp was worth mer: the poeng you scored here were ganget with {{multiplier}}.',
         explainerAppliedDouble: 'This kamp was worth mer: the poeng you scored here counted dobbelt!',
         explainerAppliedTriple: 'This kamp was worth mer: the poeng you scored here counted trippelt!',
