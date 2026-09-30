@@ -14,8 +14,8 @@ const LANGUAGES = [
   { code: 'no', label: 'Norsk', flag: '/flag-no.png' },
   { code: 'en', label: 'English', flag: '/flag-en.png' },
   { code: 'de', label: 'Deutsch', flag: '/flag-de.png' },
-  // A joke language: English with Norwegian words mixed in.
-  { code: 'jk', label: 'Norwenglish', flag: '/flag-jk.jpg' },
+  // A joke language (English with Norwegian words mixed in), only offered to test accounts.
+  { code: 'jk', label: 'Norwenglish', flag: '/flag-jk.jpg', testOnly: true },
 ] as const;
 
 export default function Navbar() {
@@ -33,6 +33,15 @@ export default function Navbar() {
   const userMenuRef = useRef<HTMLDivElement>(null);
   const groupsRef = useRef<HTMLDivElement>(null);
   const standingsRef = useRef<HTMLDivElement>(null);
+
+  const languages = LANGUAGES.filter((lang) => !('testOnly' in lang) || user?.isTestAccount);
+
+  // Someone who is not a test account (any more) must not be left stuck in a test-only language.
+  useEffect(() => {
+    if (user && !user.isTestAccount && LANGUAGES.some((l) => l.code === language && 'testOnly' in l)) {
+      setLanguage('no');
+    }
+  }, [user, language, setLanguage]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -311,7 +320,7 @@ export default function Navbar() {
               <div className="absolute right-0 top-full mt-2 z-[100] w-52 rounded-md border border-border bg-popover shadow-md py-2">
                 {/* Language picker */}
                 <div className="px-4 py-2 flex items-center gap-2">
-                  {LANGUAGES.map((lang) => (
+                  {languages.map((lang) => (
                     <img
                       key={lang.code}
                       src={lang.flag}
