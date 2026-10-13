@@ -1832,7 +1832,7 @@ const translations = {
       aggregateExplainer: 'Sammenlagt over begge kampene. Hver kamp tippes og poengsettes for seg.',
       inPlay: 'Live',
       fullTime: 'Slutt',
-      predictedScoreLabel: 'Tippet',
+      predictedScoreLabel: 'Ditt tipps',
       actualScoreLabel: 'Resultat',
       locked: 'Låst',
       locksIn: 'Låses om {{time}}',
