@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { bandDefForPosition, type LiveTableBand, type LiveTeam } from '@tournament-predictor/shared';
 import { useT } from '@/lib/useT';
 import { bandBarClasses } from '@/lib/liveBands';
@@ -12,9 +12,9 @@ import { bandBarClasses } from '@/lib/liveBands';
 // Rows are coloured by exactly the two things the table prediction scores (see
 // server/src/live/tableScoring.ts): green where a team is in exactly the position it was
 // predicted, amber where it is elsewhere but in the same band. Only the predicted column is
-// coloured — it is the one being marked; the real table is left plain for reference. Where
-// a team stands on the other list is only a hover title, to keep the two narrow columns
-// uncluttered.
+// coloured — it is the one being marked; the real table is left plain for reference. Hovering
+// a team on either list makes the same team glow on the other, to keep the two narrow
+// columns uncluttered.
 //
 // The band bar down the left of each row is where that *position* falls, the same bar the
 // ranking itself draws — so the green, amber and grey sections line up across the two.
@@ -34,6 +34,11 @@ interface Props {
 
 type Match = 'exact' | 'band' | 'none';
 
+// The glow on the counterpart of the row under the pointer.
+const HOVER_GLOW = 'ring-2 ring-primary/70 shadow-[0_0_14px_-2px_hsl(var(--primary)/0.6)]';
+
+type Side = 'predicted' | 'actual';
+
 const COLUMN_HEADING = 'mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground';
 
 const MATCH_ROW: Record<Match, string> = {
@@ -51,6 +56,11 @@ export default function LiveTableComparison({
   predictedLabel,
 }: Props) {
   const { t } = useT();
+  // The row under the pointer, and which column it is in: the same entry on the other
+  // column glows so it can be found at a glance.
+  const [hovered, setHovered] = useState<{ id: string; side: Side } | null>(null);
+  const glowsOn = (side: Side, id: string) =>
+    hovered !== null && hovered.side !== side && hovered.id === id;
 
   const teamById = useMemo(() => new Map(teams.map(team => [team.id, team])), [teams]);
   // The stage definition is only needed for its bands, so a synthetic one will do.
@@ -111,6 +121,10 @@ export default function LiveTableComparison({
               return (
                 <ComparisonRow
                   key={teamId}
+                  highlighted={glowsOn('predicted', teamId)}
+                  onHoverChange={over =>
+                    setHovered(over ? { id: teamId, side: 'predicted' } : null)
+                  }
                   team={teamById.get(teamId) ?? null}
                   teamId={teamId}
                   position={index + 1}
@@ -139,6 +153,10 @@ export default function LiveTableComparison({
               return (
                 <ComparisonRow
                   key={teamId}
+                  highlighted={glowsOn('actual', teamId)}
+                  onHoverChange={over =>
+                    setHovered(over ? { id: teamId, side: 'actual' } : null)
+                  }
                   team={teamById.get(teamId) ?? null}
                   teamId={teamId}
                   position={index + 1}
@@ -183,8 +201,11 @@ interface RowProps {
   /** The band of that position, for the bar down the left. */
   bandKey: string | null;
   match: Match;
-  /** Where the same row sits on the other list, as a hover title and for screen readers. */
+  /** Where the same row sits on the other list, for screen readers. */
   counterpartLabel: string;
+  /** The same entry is under the pointer on the other list. */
+  highlighted: boolean;
+  onHoverChange: (over: boolean) => void;
 }
 
 function ComparisonRow({
@@ -194,13 +215,18 @@ function ComparisonRow({
   bandKey,
   match,
   counterpartLabel,
+  highlighted,
+  onHoverChange,
 }: RowProps) {
   const name = team?.shortName ?? team?.name ?? teamId;
 
   return (
     <li
-      className={`flex items-center gap-1.5 rounded-md border bg-background px-1.5 py-1.5 sm:gap-2 sm:px-2 ${bandBarClasses(bandKey)} ${MATCH_ROW[match]}`}
-      title={counterpartLabel}
+      className={`flex items-center gap-1.5 rounded-md border bg-background px-1.5 py-1.5 sm:gap-2 sm:px-2 transition-shadow ${bandBarClasses(bandKey)} ${MATCH_ROW[match]} ${
+        highlighted ? HOVER_GLOW : ''
+      }`}
+      onMouseEnter={() => onHoverChange(true)}
+      onMouseLeave={() => onHoverChange(false)}
     >
       <span className="w-5 shrink-0 sm:w-6 text-right text-sm tabular-nums text-muted-foreground">
         {position}

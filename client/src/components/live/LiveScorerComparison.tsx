@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { LivePlayer, LiveTeam } from '@tournament-predictor/shared';
 import { useT } from '@/lib/useT';
 
@@ -17,8 +17,8 @@ import { useT } from '@/lib/useT';
 // The columns hold the same players in different orders, so the comparison is carried by
 // the rows themselves rather than by lines drawn between them: on the predicted list, a
 // player in exactly the position the member gave them is green. The real ranking is left
-// plain for reference. Where a player stands on the other list is only a hover title, to
-// keep the two narrow columns uncluttered.
+// plain for reference. Hovering a player on either list makes the same player glow on
+// the other, to keep the two narrow columns uncluttered.
 
 interface Props {
   players: LivePlayer[];
@@ -34,6 +34,11 @@ interface Props {
   predictedLabel?: string;
 }
 
+// The glow on the counterpart of the row under the pointer.
+const HOVER_GLOW = 'ring-2 ring-primary/70 shadow-[0_0_14px_-2px_hsl(var(--primary)/0.6)]';
+
+type Side = 'predicted' | 'actual';
+
 const COLUMN_HEADING = 'mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground';
 
 export default function LiveScorerComparison({
@@ -45,6 +50,11 @@ export default function LiveScorerComparison({
   predictedLabel,
 }: Props) {
   const { t } = useT();
+  // The row under the pointer, and which column it is in: the same entry on the other
+  // column glows so it can be found at a glance.
+  const [hovered, setHovered] = useState<{ id: string; side: Side } | null>(null);
+  const glowsOn = (side: Side, id: string) =>
+    hovered !== null && hovered.side !== side && hovered.id === id;
 
   const playerById = useMemo(() => new Map(players.map(p => [p.id, p])), [players]);
   const teamById = useMemo(() => new Map(teams.map(team => [team.id, team])), [teams]);
@@ -80,6 +90,10 @@ export default function LiveScorerComparison({
               return (
                 <ComparisonRow
                   key={playerId}
+                  highlighted={glowsOn('predicted', playerId)}
+                  onHoverChange={over =>
+                    setHovered(over ? { id: playerId, side: 'predicted' } : null)
+                  }
                   playerId={playerId}
                   player={playerById.get(playerId) ?? null}
                   team={teamById.get(playerById.get(playerId)?.teamId ?? '') ?? null}
@@ -112,6 +126,10 @@ export default function LiveScorerComparison({
               return (
                 <ComparisonRow
                   key={playerId}
+                  highlighted={glowsOn('actual', playerId)}
+                  onHoverChange={over =>
+                    setHovered(over ? { id: playerId, side: 'actual' } : null)
+                  }
                   playerId={playerId}
                   player={playerById.get(playerId) ?? null}
                   team={teamById.get(playerById.get(playerId)?.teamId ?? '') ?? null}
@@ -143,8 +161,11 @@ interface RowProps {
   position: number;
   /** Goals and assists, carried by the real ranking only. */
   showTally: boolean;
-  /** Where the same row sits on the other list, as a hover title and for screen readers. */
+  /** Where the same row sits on the other list, for screen readers. */
   counterpartLabel: string;
+  /** The same entry is under the pointer on the other list. */
+  highlighted: boolean;
+  onHoverChange: (over: boolean) => void;
   exact: boolean;
 }
 
@@ -155,6 +176,8 @@ function ComparisonRow({
   position,
   showTally,
   counterpartLabel,
+  highlighted,
+  onHoverChange,
   exact,
 }: RowProps) {
   const { t } = useT();
@@ -162,10 +185,11 @@ function ComparisonRow({
 
   return (
     <li
-      className={`flex items-center gap-1.5 rounded border bg-background px-1.5 py-1.5 sm:gap-2 sm:px-2 ${
+      className={`flex items-center gap-1.5 rounded border bg-background transition-shadow px-1.5 py-1.5 sm:gap-2 sm:px-2 ${
         exact ? 'border-green-500/60 bg-green-500/5' : ''
-      }`}
-      title={counterpartLabel}
+      } ${highlighted ? HOVER_GLOW : ''}`}
+      onMouseEnter={() => onHoverChange(true)}
+      onMouseLeave={() => onHoverChange(false)}
     >
       <span className="w-5 shrink-0 text-right text-sm tabular-nums text-muted-foreground sm:w-6">
         {position}
