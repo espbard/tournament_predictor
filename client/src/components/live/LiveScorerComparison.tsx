@@ -15,13 +15,10 @@ import { useT } from '@/lib/useT';
 // alone. Against the guess the same number would only be the same number again.
 //
 // The columns hold the same players in different orders, so the comparison is carried by
-// the rows themselves rather than by lines drawn between them: a player in exactly the
-// position the member gave them is green on both sides. Where a player stands on the
-// other list is only a hover title, to keep the two narrow columns uncluttered.
-//
-// The glow an admin gave a player is drawn here as it is in the ranking, and gives way to
-// green for the same reason: two glows on one row fight, and the exact hit is what the
-// list is being read for.
+// the rows themselves rather than by lines drawn between them: on the predicted list, a
+// player in exactly the position the member gave them is green. The real ranking is left
+// plain for reference. Where a player stands on the other list is only a hover title, to
+// keep the two narrow columns uncluttered.
 
 interface Props {
   players: LivePlayer[];
@@ -125,7 +122,7 @@ export default function LiveScorerComparison({
                       ? t('live.scorers.compare.notPredicted')
                       : t('live.scorers.compare.predictedAt', { position: predictedPosition })
                   }
-                  exact={predictedPosition === index + 1}
+                  exact={false}
                 />
               );
             })}
@@ -162,24 +159,13 @@ function ComparisonRow({
 }: RowProps) {
   const { t } = useT();
   const name = player?.name ?? playerId;
-  const glow = !exact ? (player?.glowColor ?? null) : null;
 
   return (
     <li
-      className={`flex items-center gap-1.5 rounded-md border bg-background px-1.5 py-1.5 sm:gap-2 sm:px-2 ${
+      className={`flex items-center gap-1.5 rounded border bg-background px-1.5 py-1.5 sm:gap-2 sm:px-2 ${
         exact ? 'border-green-500/60 bg-green-500/5' : ''
       }`}
       title={counterpartLabel}
-      // Inline because the colour is per player and arbitrary — the same glow the ranking
-      // draws, so a player is recognisable across both views.
-      style={
-        glow
-          ? {
-              borderColor: `${glow}99`,
-              boxShadow: `0 0 12px -2px ${glow}66, inset 0 0 24px -14px ${glow}`,
-            }
-          : undefined
-      }
     >
       <span className="w-5 shrink-0 text-right text-sm tabular-nums text-muted-foreground sm:w-6">
         {position}

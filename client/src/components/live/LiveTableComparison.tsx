@@ -11,9 +11,10 @@ import { bandBarClasses } from '@/lib/liveBands';
 //
 // Rows are coloured by exactly the two things the table prediction scores (see
 // server/src/live/tableScoring.ts): green where a team is in exactly the position it was
-// predicted, amber where it is elsewhere but in the same band. Both columns carry the same
-// colour for the same team. Where a team stands on the other list is only a hover title,
-// to keep the two narrow columns uncluttered.
+// predicted, amber where it is elsewhere but in the same band. Only the predicted column is
+// coloured — it is the one being marked; the real table is left plain for reference. Where
+// a team stands on the other list is only a hover title, to keep the two narrow columns
+// uncluttered.
 //
 // The band bar down the left of each row is where that *position* falls, the same bar the
 // ranking itself draws — so the green, amber and grey sections line up across the two.
@@ -72,7 +73,7 @@ export default function LiveTableComparison({
     return map;
   }, [predictedOrder]);
 
-  // Same test from either side: where the team was predicted against where it is.
+  // Where the team was predicted against where it is.
   function matchFor(teamId: string): Match {
     const predicted = predictedPositionById.get(teamId);
     const actual = actualPositionById.get(teamId);
@@ -142,7 +143,7 @@ export default function LiveTableComparison({
                   teamId={teamId}
                   position={index + 1}
                   bandKey={bandAt(index + 1)}
-                  match={matchFor(teamId)}
+                  match="none"
                   counterpartLabel={
                     predictedPosition === null
                       ? t('live.table.compare.notPredicted')
