@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { bandDefForPosition, type LiveTableBand, type LiveTeam } from '@tournament-predictor/shared';
 import { useT } from '@/lib/useT';
 import { bandBarClasses } from '@/lib/liveBands';
@@ -11,9 +11,10 @@ import { bandBarClasses } from '@/lib/liveBands';
 //
 // Rows are coloured by exactly the two things the table prediction scores (see
 // server/src/live/tableScoring.ts): green where a team is in exactly the position it was
-// predicted, amber where it is elsewhere but in the same band. Both columns carry the same
-// colour for the same team. Where a team stands on the other list is only a hover title,
-// to keep the two narrow columns uncluttered.
+// predicted, amber where it is one place above or below it. Only the predicted column is
+// coloured — it is the one being marked; the real table is left plain for reference. Hovering
+// a team on either list makes the same team glow on the other, to keep the two narrow
+// columns uncluttered.
 //
 // The band bar down the left of each row is where that *position* falls, the same bar the
 // ranking itself draws — so the green, amber and grey sections line up across the two.
@@ -31,14 +32,23 @@ interface Props {
   predictedLabel?: string;
 }
 
-type Match = 'exact' | 'band' | 'none';
+type Match = 'exact' | 'near' | 'none';
+
+// The glow on the counterpart of the row under the pointer. A bright sky blue rather than
+// the theme primary, which is too dark to stand out in dark mode, and distinct from the
+// green/amber match tints. The row also lifts slightly so it is unmistakable.
+const HOVER_GLOW =
+  'relative z-10 scale-[1.03] ring-2 ring-sky-400 shadow-[0_0_18px_4px_rgba(56,189,248,0.6)]';
+
+type Side = 'predicted' | 'actual';
 
 const COLUMN_HEADING = 'mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground';
 
+// A tint of the row's background only; the border is left as it is.
 const MATCH_ROW: Record<Match, string> = {
-  exact: 'border-green-500/60 bg-green-500/5',
-  band: 'border-amber-400/60 bg-amber-400/5',
-  none: '',
+  exact: 'bg-green-500/10',
+  near: 'bg-amber-400/10',
+  none: 'bg-background',
 };
 
 export default function LiveTableComparison({
@@ -50,6 +60,11 @@ export default function LiveTableComparison({
   predictedLabel,
 }: Props) {
   const { t } = useT();
+  // The row under the pointer, and which column it is in: the same entry on the other
+  // column glows so it can be found at a glance.
+  const [hovered, setHovered] = useState<{ id: string; side: Side } | null>(null);
+  const glowsOn = (side: Side, id: string) =>
+    hovered !== null && hovered.side !== side && hovered.id === id;
 
   const teamById = useMemo(() => new Map(teams.map(team => [team.id, team])), [teams]);
   // The stage definition is only needed for its bands, so a synthetic one will do.
@@ -72,33 +87,27 @@ export default function LiveTableComparison({
     return map;
   }, [predictedOrder]);
 
-  // Same test from either side: where the team was predicted against where it is.
+  // Where the team was predicted against where it is.
   function matchFor(teamId: string): Match {
     const predicted = predictedPositionById.get(teamId);
     const actual = actualPositionById.get(teamId);
     if (predicted === undefined || actual === undefined) return 'none';
     if (predicted === actual) return 'exact';
-    const band = bandAt(predicted);
-    return band !== null && band === bandAt(actual) ? 'band' : 'none';
+    return Math.abs(predicted - actual) === 1 ? 'near' : 'none';
   }
 
   const matches = predictedOrder.map(matchFor);
   const exactCount = matches.filter(m => m === 'exact').length;
-  const bandCount = matches.filter(m => m === 'band').length;
+  const nearCount = matches.filter(m => m === 'near').length;
 
   return (
     <div>
       <p className="mb-2 text-xs text-muted-foreground">
-        {bands.length > 0
-          ? t('live.table.compare.summary', {
-              exact: exactCount,
-              band: bandCount,
-              total: predictedOrder.length,
-            })
-          : t('live.table.compare.summaryNoBands', {
-              exact: exactCount,
-              total: predictedOrder.length,
-            })}
+        {t('live.table.compare.summary', {
+          exact: exactCount,
+          near: nearCount,
+          total: predictedOrder.length,
+        })}
       </p>
 
       <div className="grid grid-cols-2 gap-x-2 sm:gap-x-4">
@@ -110,6 +119,10 @@ export default function LiveTableComparison({
               return (
                 <ComparisonRow
                   key={teamId}
+                  highlighted={glowsOn('predicted', teamId)}
+                  onHoverChange={over =>
+                    setHovered(over ? { id: teamId, side: 'predicted' } : null)
+                  }
                   team={teamById.get(teamId) ?? null}
                   teamId={teamId}
                   position={index + 1}
@@ -138,11 +151,15 @@ export default function LiveTableComparison({
               return (
                 <ComparisonRow
                   key={teamId}
+                  highlighted={glowsOn('actual', teamId)}
+                  onHoverChange={over =>
+                    setHovered(over ? { id: teamId, side: 'actual' } : null)
+                  }
                   team={teamById.get(teamId) ?? null}
                   teamId={teamId}
                   position={index + 1}
                   bandKey={bandAt(index + 1)}
-                  match={matchFor(teamId)}
+                  match="none"
                   counterpartLabel={
                     predictedPosition === null
                       ? t('live.table.compare.notPredicted')
@@ -155,18 +172,16 @@ export default function LiveTableComparison({
         </section>
       </div>
 
-      {/* What the two row colours mean. Amber only exists where the format has bands. */}
+      {/* What the two row colours mean. */}
       <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
         <li className="flex items-center gap-1.5">
           <span className="inline-block h-2.5 w-2.5 rounded-sm bg-green-500/40" />
           {t('live.table.compare.glowExact')}
         </li>
-        {bands.length > 0 && (
-          <li className="flex items-center gap-1.5">
-            <span className="inline-block h-2.5 w-2.5 rounded-sm bg-amber-400/40" />
-            {t('live.table.compare.glowBand')}
-          </li>
-        )}
+        <li className="flex items-center gap-1.5">
+          <span className="inline-block h-2.5 w-2.5 rounded-sm bg-amber-400/40" />
+          {t('live.table.compare.glowNear')}
+        </li>
       </ul>
     </div>
   );
@@ -182,8 +197,11 @@ interface RowProps {
   /** The band of that position, for the bar down the left. */
   bandKey: string | null;
   match: Match;
-  /** Where the same row sits on the other list, as a hover title and for screen readers. */
+  /** Where the same row sits on the other list, for screen readers. */
   counterpartLabel: string;
+  /** The same entry is under the pointer on the other list. */
+  highlighted: boolean;
+  onHoverChange: (over: boolean) => void;
 }
 
 function ComparisonRow({
@@ -193,13 +211,18 @@ function ComparisonRow({
   bandKey,
   match,
   counterpartLabel,
+  highlighted,
+  onHoverChange,
 }: RowProps) {
   const name = team?.shortName ?? team?.name ?? teamId;
 
   return (
     <li
-      className={`flex items-center gap-1.5 rounded-md border bg-background px-1.5 py-1.5 sm:gap-2 sm:px-2 ${bandBarClasses(bandKey)} ${MATCH_ROW[match]}`}
-      title={counterpartLabel}
+      className={`flex items-center gap-1.5 rounded-md border px-1.5 py-1.5 sm:gap-2 sm:px-2 transition-[box-shadow,transform] duration-150 ${bandBarClasses(bandKey)} ${MATCH_ROW[match]} ${
+        highlighted ? HOVER_GLOW : ''
+      }`}
+      onMouseEnter={() => onHoverChange(true)}
+      onMouseLeave={() => onHoverChange(false)}
     >
       <span className="w-5 shrink-0 sm:w-6 text-right text-sm tabular-nums text-muted-foreground">
         {position}

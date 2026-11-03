@@ -76,7 +76,7 @@ const scoringConfig = {
   correct_goal_difference: 1,
   exact_score: 2,
   table_exact_position: 3,
-  table_correct_band: 1,
+  table_near_position: 1,
   scorer_exact_position: 3,
 };
 

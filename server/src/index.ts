@@ -21,6 +21,8 @@ import { ensureLiveSchema } from './live/ensureSchema';
 import { liveTournamentsRouter } from './live/routes/tournaments';
 import { liveCompetitionsRouter } from './live/routes/competitions';
 import { startLiveScheduler } from './live/scheduler';
+import { recalculateLiveTournament } from './live/scoringTrigger';
+import { liveCompetitions } from './db/liveSchema';
 import { missingEmailSettings } from './lib/email';
 import { emailEncryptionConfigured } from './lib/emailCrypto';
 
@@ -217,6 +219,38 @@ async function start() {
     }
   } catch (err) {
     console.warn('correct_group_position fix skipped:', err);
+  }
+
+  // Live competitions store their whole scoring config when created, so a change of default
+  // never reaches them on its own. Move any competition still on the old table/scorer rules
+  // to the new ones: the table bonus point is now for finishing within one place of the
+  // prediction rather than in the right band, and an exact top-scorer position is worth 3
+  // rather than 2. The old `table_correct_band` key marks a competition not yet moved, and
+  // is removed here, so this runs once per competition. Scores are then rebuilt.
+  try {
+    const staleLive = await db
+      .select({ id: liveCompetitions.id, liveTournamentId: liveCompetitions.liveTournamentId })
+      .from(liveCompetitions)
+      .where(sql`(${liveCompetitions.scoringConfig}::jsonb) ? 'table_correct_band'`);
+    if (staleLive.length > 0) {
+      await db.execute(sql`
+        UPDATE live_competitions
+        SET scoring_config = (
+          (scoring_config::jsonb - 'table_correct_band')
+          || '{"table_near_position": 1}'::jsonb
+          || CASE WHEN (scoring_config->>'scorer_exact_position')::int = 2
+                  THEN '{"scorer_exact_position": 3}'::jsonb ELSE '{}'::jsonb END
+        )::json
+        WHERE (scoring_config::jsonb) ? 'table_correct_band'
+      `);
+      const liveTournamentIds = [...new Set(staleLive.map(c => c.liveTournamentId))];
+      for (const tid of liveTournamentIds) {
+        await recalculateLiveTournament(tid);
+      }
+      console.log(`Moved ${staleLive.length} live competition(s) to the ±1 table rule and 3-point scorer positions, and rescored them.`);
+    }
+  } catch (err) {
+    console.warn('Live scoring rule update skipped:', err);
   }
 
   // Seed icon colors for any users that don't have one yet

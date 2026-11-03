@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { LivePlayer, LiveTeam } from '@tournament-predictor/shared';
 import { useT } from '@/lib/useT';
 
@@ -15,13 +15,10 @@ import { useT } from '@/lib/useT';
 // alone. Against the guess the same number would only be the same number again.
 //
 // The columns hold the same players in different orders, so the comparison is carried by
-// the rows themselves rather than by lines drawn between them: a player in exactly the
-// position the member gave them is green on both sides. Where a player stands on the
-// other list is only a hover title, to keep the two narrow columns uncluttered.
-//
-// The glow an admin gave a player is drawn here as it is in the ranking, and gives way to
-// green for the same reason: two glows on one row fight, and the exact hit is what the
-// list is being read for.
+// the rows themselves rather than by lines drawn between them: on the predicted list, a
+// player in exactly the position the member gave them is green. The real ranking is left
+// plain for reference. Hovering a player on either list makes the same player glow on
+// the other, to keep the two narrow columns uncluttered.
 
 interface Props {
   players: LivePlayer[];
@@ -37,6 +34,14 @@ interface Props {
   predictedLabel?: string;
 }
 
+// The glow on the counterpart of the row under the pointer. A bright sky blue rather than
+// the theme primary, which is too dark to stand out in dark mode, and distinct from the
+// green/amber match tints. The row also lifts slightly so it is unmistakable.
+const HOVER_GLOW =
+  'relative z-10 scale-[1.03] ring-2 ring-sky-400 shadow-[0_0_18px_4px_rgba(56,189,248,0.6)]';
+
+type Side = 'predicted' | 'actual';
+
 const COLUMN_HEADING = 'mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground';
 
 export default function LiveScorerComparison({
@@ -48,6 +53,11 @@ export default function LiveScorerComparison({
   predictedLabel,
 }: Props) {
   const { t } = useT();
+  // The row under the pointer, and which column it is in: the same entry on the other
+  // column glows so it can be found at a glance.
+  const [hovered, setHovered] = useState<{ id: string; side: Side } | null>(null);
+  const glowsOn = (side: Side, id: string) =>
+    hovered !== null && hovered.side !== side && hovered.id === id;
 
   const playerById = useMemo(() => new Map(players.map(p => [p.id, p])), [players]);
   const teamById = useMemo(() => new Map(teams.map(team => [team.id, team])), [teams]);
@@ -83,6 +93,10 @@ export default function LiveScorerComparison({
               return (
                 <ComparisonRow
                   key={playerId}
+                  highlighted={glowsOn('predicted', playerId)}
+                  onHoverChange={over =>
+                    setHovered(over ? { id: playerId, side: 'predicted' } : null)
+                  }
                   playerId={playerId}
                   player={playerById.get(playerId) ?? null}
                   team={teamById.get(playerById.get(playerId)?.teamId ?? '') ?? null}
@@ -115,6 +129,10 @@ export default function LiveScorerComparison({
               return (
                 <ComparisonRow
                   key={playerId}
+                  highlighted={glowsOn('actual', playerId)}
+                  onHoverChange={over =>
+                    setHovered(over ? { id: playerId, side: 'actual' } : null)
+                  }
                   playerId={playerId}
                   player={playerById.get(playerId) ?? null}
                   team={teamById.get(playerById.get(playerId)?.teamId ?? '') ?? null}
@@ -125,7 +143,7 @@ export default function LiveScorerComparison({
                       ? t('live.scorers.compare.notPredicted')
                       : t('live.scorers.compare.predictedAt', { position: predictedPosition })
                   }
-                  exact={predictedPosition === index + 1}
+                  exact={false}
                 />
               );
             })}
@@ -146,8 +164,11 @@ interface RowProps {
   position: number;
   /** Goals and assists, carried by the real ranking only. */
   showTally: boolean;
-  /** Where the same row sits on the other list, as a hover title and for screen readers. */
+  /** Where the same row sits on the other list, for screen readers. */
   counterpartLabel: string;
+  /** The same entry is under the pointer on the other list. */
+  highlighted: boolean;
+  onHoverChange: (over: boolean) => void;
   exact: boolean;
 }
 
@@ -158,28 +179,20 @@ function ComparisonRow({
   position,
   showTally,
   counterpartLabel,
+  highlighted,
+  onHoverChange,
   exact,
 }: RowProps) {
   const { t } = useT();
   const name = player?.name ?? playerId;
-  const glow = !exact ? (player?.glowColor ?? null) : null;
 
   return (
     <li
-      className={`flex items-center gap-1.5 rounded-md border bg-background px-1.5 py-1.5 sm:gap-2 sm:px-2 ${
-        exact ? 'border-green-500/60 bg-green-500/5' : ''
-      }`}
-      title={counterpartLabel}
-      // Inline because the colour is per player and arbitrary — the same glow the ranking
-      // draws, so a player is recognisable across both views.
-      style={
-        glow
-          ? {
-              borderColor: `${glow}99`,
-              boxShadow: `0 0 12px -2px ${glow}66, inset 0 0 24px -14px ${glow}`,
-            }
-          : undefined
-      }
+      className={`flex items-center gap-1.5 rounded border transition-[box-shadow,transform] duration-150 px-1.5 py-1.5 sm:gap-2 sm:px-2 ${
+        exact ? 'bg-green-500/10' : 'bg-background'
+      } ${highlighted ? HOVER_GLOW : ''}`}
+      onMouseEnter={() => onHoverChange(true)}
+      onMouseLeave={() => onHoverChange(false)}
     >
       <span className="w-5 shrink-0 text-right text-sm tabular-nums text-muted-foreground sm:w-6">
         {position}

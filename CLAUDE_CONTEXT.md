@@ -476,9 +476,11 @@ scores 1, predicted 1–1 scores 0.
 
 **League table prediction** (`server/src/live/tableScoring.ts`) — a fourth source, scored once
 per season. Users order every team in the table stage; each team in exactly the right final
-position scores `table_exact_position` (2), and in a format with **bands** each team in the right
-band scores `table_correct_band` (1) on top. Champions League bands are 1–8 automatic, 9–24
-play-off, 25+ eliminated; the Premier League defines none, so only exact positions score there.
+position scores `table_exact_position` (2), and each team within one place of its predicted
+position scores `table_near_position` (1) on top — so exact is 3, one place off is 1. This applies
+to every format. **Bands** (Champions League: 1–8 automatic, 9–24 play-off, 25+ eliminated) are
+still shown on the table but no longer score. The top-scorer ranking scores
+`scorer_exact_position` (3) per player in exactly the right place.
 Bands are format data on `LiveStageDef.bands` — adding them to another competition is a data
 change, not a code one.
 

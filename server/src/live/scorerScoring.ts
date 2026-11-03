@@ -4,7 +4,7 @@ import type { LiveScorerPredictionPlayerResult, LiveScoringConfig } from '@tourn
 //
 // Users order the admin's shortlist of players by how many goals they think each will
 // finish the tournament on. Every player placed in exactly the right position is worth
-// `scorer_exact_position` — 2 by default. There are no bands: unlike a league table, a
+// `scorer_exact_position` — 3 by default. There are no bands: unlike a league table, a
 // top-scorer list has no meaningful sections, so a player is in the right place or is not.
 //
 // The whole difficulty is ties, and a top-scorer table is full of them. The final ranking

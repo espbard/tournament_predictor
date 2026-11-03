@@ -82,15 +82,15 @@ describe('calculateScorerPoints', () => {
 
   it('awards the configured points per exactly right position', () => {
     const result = calculateScorerPoints(['a', 'b', 'c'], actual, CONFIG);
-    expect(result.points).toBe(6);
-    expect(result.exactPositionPoints).toBe(6);
+    expect(result.points).toBe(9);
+    expect(result.exactPositionPoints).toBe(9);
     expect(result.players.every(p => p.exactPosition)).toBe(true);
   });
 
   it('awards nothing for a player in the wrong place', () => {
     const result = calculateScorerPoints(['c', 'b', 'a'], actual, CONFIG);
     // Only the middle player lands where they finished.
-    expect(result.points).toBe(2);
+    expect(result.points).toBe(3);
     expect(result.players.map(p => p.exactPosition)).toEqual([false, true, false]);
   });
 
@@ -99,7 +99,7 @@ describe('calculateScorerPoints', () => {
     expect(result.players).toEqual([
       { playerId: 'b', predictedPosition: 1, actualPosition: 2, exactPosition: false, points: 0 },
       { playerId: 'a', predictedPosition: 2, actualPosition: 1, exactPosition: false, points: 0 },
-      { playerId: 'c', predictedPosition: 3, actualPosition: 3, exactPosition: true, points: 2 },
+      { playerId: 'c', predictedPosition: 3, actualPosition: 3, exactPosition: true, points: 3 },
     ]);
   });
 
@@ -112,7 +112,7 @@ describe('calculateScorerPoints', () => {
       exactPosition: false,
       points: 0,
     });
-    expect(result.points).toBe(4);
+    expect(result.points).toBe(6);
   });
 
   it('honours a custom points value', () => {

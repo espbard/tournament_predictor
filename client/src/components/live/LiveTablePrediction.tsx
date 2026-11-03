@@ -158,15 +158,11 @@ export default function LiveTablePrediction({
           {/* The gate's own heading already says this, so the card leads with the scoring. */}
           {!isGate && <h2 className="font-semibold">{t('live.table.title')}</h2>}
           <p className={`text-sm text-muted-foreground${isGate ? '' : ' mt-1'}`}>
-            {view.bands.length > 0
-              ? t('live.table.explainerWithBands', {
-                  exact: view.scoringConfig.table_exact_position,
-                  band: view.scoringConfig.table_correct_band,
-                  total:
-                    view.scoringConfig.table_exact_position +
-                    view.scoringConfig.table_correct_band,
-                })
-              : t('live.table.explainer', { exact: view.scoringConfig.table_exact_position })}
+            {t('live.table.explainer', {
+              near: view.scoringConfig.table_near_position,
+              total:
+                view.scoringConfig.table_exact_position + view.scoringConfig.table_near_position,
+            })}
           </p>
 
           <LiveTableBandLegend bands={view.bands} className="mt-3" />
@@ -197,7 +193,7 @@ export default function LiveTablePrediction({
                 {t('live.table.scored', {
                   points: view.prediction!.points ?? 0,
                   exact: view.prediction!.exactPositionPoints,
-                  band: view.prediction!.bandPoints,
+                  near: view.prediction!.nearPositionPoints,
                 })}
               </span>
             )}

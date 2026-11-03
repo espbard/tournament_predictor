@@ -10,19 +10,20 @@ import {
 // Users order every team in a table stage from top to bottom. Once the stage has been
 // played out, each team is compared against where it actually finished:
 //
-//   exact position                        +1
-//   right band of the table               +1   (only where the format defines bands)
+//   exact position                        table_exact_position  (2)
+//   within one place of the prediction    table_near_position   (1)
 //
-// The two stack, so in the Champions League a team placed exactly right is worth 2, a
-// team in the right band but the wrong place 1, and a team in the wrong band 0. The
-// Premier League has no bands, so only exact positions score there.
+// The two stack, so by default a team placed exactly right is worth 3, a team one place
+// above or below where it was predicted 1, and anything further off 0. This applies the
+// same to every format. Bands (where the format has them) are still reported per team for
+// display, but no longer score: a band bonus handed out too many points on a big table.
 //
 // Pure, no database access — the caller supplies the actual finishing order.
 
 export interface TableScoreResult {
   points: number;
   exactPositionPoints: number;
-  bandPoints: number;
+  nearPositionPoints: number;
   /** Per-team detail, in predicted order. For showing a user how they did. */
   teams: LiveTablePredictionTeamResult[];
 }
@@ -30,7 +31,7 @@ export interface TableScoreResult {
 const EMPTY: TableScoreResult = {
   points: 0,
   exactPositionPoints: 0,
-  bandPoints: 0,
+  nearPositionPoints: 0,
   teams: [],
 };
 
@@ -51,7 +52,7 @@ export function calculateTablePoints(
 
   const teams: LiveTablePredictionTeamResult[] = [];
   let exactPositionPoints = 0;
-  let bandPoints = 0;
+  let nearPositionPoints = 0;
 
   orderedTeamIds.forEach((teamId, index) => {
     const predictedPosition = index + 1;
@@ -61,32 +62,31 @@ export function calculateTablePoints(
     const actualBand = actualPosition === null ? null : bandForPosition(stage, actualPosition);
 
     const exactPosition = actualPosition !== null && actualPosition === predictedPosition;
-    // Both sides must resolve to a band. Without bands configured this is always false,
-    // which is exactly what a format like the Premier League wants.
-    const correctBand = predictedBand !== null && actualBand !== null && predictedBand === actualBand;
+    const nearPosition =
+      actualPosition !== null && Math.abs(actualPosition - predictedPosition) <= 1;
 
     const exact = exactPosition ? config.table_exact_position : 0;
-    const band = correctBand ? config.table_correct_band : 0;
+    const near = nearPosition ? config.table_near_position : 0;
 
     exactPositionPoints += exact;
-    bandPoints += band;
+    nearPositionPoints += near;
 
     teams.push({
       teamId,
       predictedPosition,
       actualPosition,
       exactPosition,
-      correctBand,
+      nearPosition,
       predictedBand,
       actualBand,
-      points: exact + band,
+      points: exact + near,
     });
   });
 
   return {
-    points: exactPositionPoints + bandPoints,
+    points: exactPositionPoints + nearPositionPoints,
     exactPositionPoints,
-    bandPoints,
+    nearPositionPoints,
     teams,
   };
 }

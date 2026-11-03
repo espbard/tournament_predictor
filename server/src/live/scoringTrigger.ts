@@ -305,7 +305,7 @@ export async function scoreTablePredictions(tournamentId: string): Promise<Score
         .set({
           points: scored.points,
           exactPositionPoints: scored.exactPositionPoints,
-          bandPoints: scored.bandPoints,
+          nearPositionPoints: scored.nearPositionPoints,
           updatedAt: new Date(),
         })
         .where(eq(liveTablePredictions.id, prediction.id));
