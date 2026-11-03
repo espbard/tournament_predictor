@@ -41,10 +41,11 @@ type Side = 'predicted' | 'actual';
 
 const COLUMN_HEADING = 'mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground';
 
+// A tint of the row's background only; the border is left as it is.
 const MATCH_ROW: Record<Match, string> = {
-  exact: 'border-green-500/60 bg-green-500/5',
-  band: 'border-amber-400/60 bg-amber-400/5',
-  none: '',
+  exact: 'bg-green-500/10',
+  band: 'bg-amber-400/10',
+  none: 'bg-background',
 };
 
 export default function LiveTableComparison({
@@ -222,7 +223,7 @@ function ComparisonRow({
 
   return (
     <li
-      className={`flex items-center gap-1.5 rounded-md border bg-background px-1.5 py-1.5 sm:gap-2 sm:px-2 transition-shadow ${bandBarClasses(bandKey)} ${MATCH_ROW[match]} ${
+      className={`flex items-center gap-1.5 rounded-md border px-1.5 py-1.5 sm:gap-2 sm:px-2 transition-shadow ${bandBarClasses(bandKey)} ${MATCH_ROW[match]} ${
         highlighted ? HOVER_GLOW : ''
       }`}
       onMouseEnter={() => onHoverChange(true)}

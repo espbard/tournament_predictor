@@ -185,8 +185,8 @@ function ComparisonRow({
 
   return (
     <li
-      className={`flex items-center gap-1.5 rounded border bg-background transition-shadow px-1.5 py-1.5 sm:gap-2 sm:px-2 ${
-        exact ? 'border-green-500/60 bg-green-500/5' : ''
+      className={`flex items-center gap-1.5 rounded border transition-shadow px-1.5 py-1.5 sm:gap-2 sm:px-2 ${
+        exact ? 'bg-green-500/10' : 'bg-background'
       } ${highlighted ? HOVER_GLOW : ''}`}
       onMouseEnter={() => onHoverChange(true)}
       onMouseLeave={() => onHoverChange(false)}
