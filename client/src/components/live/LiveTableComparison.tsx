@@ -34,8 +34,11 @@ interface Props {
 
 type Match = 'exact' | 'band' | 'none';
 
-// The glow on the counterpart of the row under the pointer.
-const HOVER_GLOW = 'ring-2 ring-primary/70 shadow-[0_0_14px_-2px_hsl(var(--primary)/0.6)]';
+// The glow on the counterpart of the row under the pointer. A bright sky blue rather than
+// the theme primary, which is too dark to stand out in dark mode, and distinct from the
+// green/amber match tints. The row also lifts slightly so it is unmistakable.
+const HOVER_GLOW =
+  'relative z-10 scale-[1.03] ring-2 ring-sky-400 shadow-[0_0_18px_4px_rgba(56,189,248,0.6)]';
 
 type Side = 'predicted' | 'actual';
 
@@ -223,7 +226,7 @@ function ComparisonRow({
 
   return (
     <li
-      className={`flex items-center gap-1.5 rounded-md border px-1.5 py-1.5 sm:gap-2 sm:px-2 transition-shadow ${bandBarClasses(bandKey)} ${MATCH_ROW[match]} ${
+      className={`flex items-center gap-1.5 rounded-md border px-1.5 py-1.5 sm:gap-2 sm:px-2 transition-[box-shadow,transform] duration-150 ${bandBarClasses(bandKey)} ${MATCH_ROW[match]} ${
         highlighted ? HOVER_GLOW : ''
       }`}
       onMouseEnter={() => onHoverChange(true)}
