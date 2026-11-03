@@ -67,14 +67,14 @@ export interface LiveScoringConfig {
   correct_outcome: number;
   correct_goal_difference: number;
   exact_score: number;
-  /** Per team placed in exactly the right final table position. Worth more than a band. */
+  /** Per team placed in exactly the right final table position. */
   table_exact_position: number;
   /**
-   * Per team placed in the right band of the table (Champions League: top 8, 9th–24th,
-   * 25th and below). Stacks with the exact-position award, so a team in exactly the right
-   * place is worth both — 3 points by default. Formats without bands never award this.
+   * Per team that finishes within one place of where it was predicted. Stacks with the
+   * exact-position award, so a team in exactly the right place is worth both — 3 points by
+   * default — and one a single place off is worth this alone.
    */
-  table_correct_band: number;
+  table_near_position: number;
   /**
    * Per player placed in exactly the right position of the final top-scorer ranking.
    * That ranking has no bands — a player is in the right place or is not.
@@ -87,8 +87,8 @@ export const DEFAULT_LIVE_SCORING_CONFIG: LiveScoringConfig = {
   correct_goal_difference: 1,
   exact_score: 2,
   table_exact_position: 2,
-  table_correct_band: 1,
-  scorer_exact_position: 2,
+  table_near_position: 1,
+  scorer_exact_position: 3,
 };
 
 /**
@@ -133,7 +133,7 @@ export interface LiveScoreBreakdown {
   exactScorePoints: number;
   /** Everything highlighted matches added on top of those three. */
   multiplierBonusPoints: number;
-  /** Combined exact-position and band points from the table prediction. */
+  /** Combined exact-position and within-one-place points from the table prediction. */
   tablePoints: number;
   /** Exact-position points from the top-scorer ranking. Awarded at completion. */
   scorerPoints: number;
@@ -290,7 +290,8 @@ export interface LiveTablePrediction {
   /** Null until the stage finishes and scoring runs. */
   points: number | null;
   exactPositionPoints: number;
-  bandPoints: number;
+  /** Points for teams within one place of their predicted position. */
+  nearPositionPoints: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -453,7 +454,8 @@ export interface LiveTablePredictionTeamResult {
   predictedPosition: number;
   actualPosition: number | null;
   exactPosition: boolean;
-  correctBand: boolean;
+  /** Finished within one place of the predicted position (exact included). */
+  nearPosition: boolean;
   predictedBand: string | null;
   actualBand: string | null;
   points: number;

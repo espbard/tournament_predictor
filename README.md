@@ -288,9 +288,10 @@ The tiers are nested, so they add: against an actual 2–1, predicting 2–1 sco
 3–1 scores 1, and 1–1 scores nothing.
 
 **League table prediction.** Users also order every team in the league table from top to bottom.
-Once the whole stage has been played, each team in exactly the right final position scores 1. In
-the Champions League, landing a team in the right part of the table scores 1 more, so an exact
-placing is worth 2:
+Once the whole stage has been played, each team in exactly the right final position scores 2, and
+each team within one place of where it was predicted (above or below) scores 1. The two stack, so
+an exact placing is worth 3 and a placing one place off is worth 1. This applies to every format;
+the Champions League bands below are shown on the table but no longer score:
 
 | Champions League band | Positions |
 |---|---|
@@ -298,10 +299,12 @@ placing is worth 2:
 | Play-off spots | 9–24 |
 | Eliminated | 25 and below |
 
-The Premier League defines no bands, so only exact positions score there. The table closes one
+The table closes one
 hour before the first match of the stage — except for somebody who never submitted one. There is
 nothing to close in that case, so they can still enter a table (and a top-scorer ranking) whenever
 they join, and it is final the moment they save it.
+
+**Top-scorer ranking.** Each player placed in exactly the right final position scores 3.
 
 Only the 90-minute score ever counts, in every stage. This matters more than it sounds: for a
 penalty shootout the provider reports full time as regular time *plus* the shootout tally, so a

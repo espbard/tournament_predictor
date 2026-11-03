@@ -275,7 +275,7 @@ export const liveCompetitionMembers = pgTable(
     correctOutcomePoints: integer('correct_outcome_points').notNull().default(0),
     correctGoalDifferencePoints: integer('correct_goal_difference_points').notNull().default(0),
     exactScorePoints: integer('exact_score_points').notNull().default(0),
-    /** Exact-position plus band points from the table prediction. */
+    /** Exact-position plus within-one-place points from the table prediction. */
     tablePoints: integer('table_points').notNull().default(0),
     /** What highlighted (multiplied) matches added on top of the three tiers. */
     multiplierBonusPoints: integer('multiplier_bonus_points').notNull().default(0),
@@ -350,7 +350,8 @@ export const liveTablePredictions = pgTable(
     /** Null until every fixture in the stage has been played and scoring runs. */
     points: integer('points'),
     exactPositionPoints: integer('exact_position_points').notNull().default(0),
-    bandPoints: integer('band_points').notNull().default(0),
+    // The column predates the ±1 rule, when this bonus was for landing the right band.
+    nearPositionPoints: integer('band_points').notNull().default(0),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
   },

@@ -11,7 +11,7 @@ import { bandBarClasses } from '@/lib/liveBands';
 //
 // Rows are coloured by exactly the two things the table prediction scores (see
 // server/src/live/tableScoring.ts): green where a team is in exactly the position it was
-// predicted, amber where it is elsewhere but in the same band. Only the predicted column is
+// predicted, amber where it is one place above or below it. Only the predicted column is
 // coloured — it is the one being marked; the real table is left plain for reference. Hovering
 // a team on either list makes the same team glow on the other, to keep the two narrow
 // columns uncluttered.
@@ -32,7 +32,7 @@ interface Props {
   predictedLabel?: string;
 }
 
-type Match = 'exact' | 'band' | 'none';
+type Match = 'exact' | 'near' | 'none';
 
 // The glow on the counterpart of the row under the pointer. A bright sky blue rather than
 // the theme primary, which is too dark to stand out in dark mode, and distinct from the
@@ -47,7 +47,7 @@ const COLUMN_HEADING = 'mb-1.5 text-xs font-semibold uppercase tracking-wide tex
 // A tint of the row's background only; the border is left as it is.
 const MATCH_ROW: Record<Match, string> = {
   exact: 'bg-green-500/10',
-  band: 'bg-amber-400/10',
+  near: 'bg-amber-400/10',
   none: 'bg-background',
 };
 
@@ -93,27 +93,21 @@ export default function LiveTableComparison({
     const actual = actualPositionById.get(teamId);
     if (predicted === undefined || actual === undefined) return 'none';
     if (predicted === actual) return 'exact';
-    const band = bandAt(predicted);
-    return band !== null && band === bandAt(actual) ? 'band' : 'none';
+    return Math.abs(predicted - actual) === 1 ? 'near' : 'none';
   }
 
   const matches = predictedOrder.map(matchFor);
   const exactCount = matches.filter(m => m === 'exact').length;
-  const bandCount = matches.filter(m => m === 'band').length;
+  const nearCount = matches.filter(m => m === 'near').length;
 
   return (
     <div>
       <p className="mb-2 text-xs text-muted-foreground">
-        {bands.length > 0
-          ? t('live.table.compare.summary', {
-              exact: exactCount,
-              band: bandCount,
-              total: predictedOrder.length,
-            })
-          : t('live.table.compare.summaryNoBands', {
-              exact: exactCount,
-              total: predictedOrder.length,
-            })}
+        {t('live.table.compare.summary', {
+          exact: exactCount,
+          near: nearCount,
+          total: predictedOrder.length,
+        })}
       </p>
 
       <div className="grid grid-cols-2 gap-x-2 sm:gap-x-4">
@@ -178,18 +172,16 @@ export default function LiveTableComparison({
         </section>
       </div>
 
-      {/* What the two row colours mean. Amber only exists where the format has bands. */}
+      {/* What the two row colours mean. */}
       <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
         <li className="flex items-center gap-1.5">
           <span className="inline-block h-2.5 w-2.5 rounded-sm bg-green-500/40" />
           {t('live.table.compare.glowExact')}
         </li>
-        {bands.length > 0 && (
-          <li className="flex items-center gap-1.5">
-            <span className="inline-block h-2.5 w-2.5 rounded-sm bg-amber-400/40" />
-            {t('live.table.compare.glowBand')}
-          </li>
-        )}
+        <li className="flex items-center gap-1.5">
+          <span className="inline-block h-2.5 w-2.5 rounded-sm bg-amber-400/40" />
+          {t('live.table.compare.glowNear')}
+        </li>
       </ul>
     </div>
   );

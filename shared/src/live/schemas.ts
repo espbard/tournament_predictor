@@ -15,7 +15,7 @@ export const LiveScoringConfigSchema = z.object({
   // Optional so a competition stored before these tiers existed still validates on
   // update; withLiveScoringDefaults fills them in on read.
   table_exact_position: points.optional(),
-  table_correct_band: points.optional(),
+  table_near_position: points.optional(),
   scorer_exact_position: points.optional(),
 });
 

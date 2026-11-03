@@ -47,26 +47,25 @@ describe('bandForPosition — Champions League league phase', () => {
 });
 
 describe('DEFAULT_LIVE_SCORING_CONFIG', () => {
-  // An exactly right position is worth more than merely landing the right part of the
-  // table, and the two stack: 3 points for a team placed exactly right.
-  it('awards 2 for an exact position and 1 for the band', () => {
+  // An exactly right position is worth more than being one place off, and the two stack:
+  // 3 points for a team placed exactly right.
+  it('awards 2 for an exact position and 1 for within one place', () => {
     expect(DEFAULT_LIVE_SCORING_CONFIG.table_exact_position).toBe(2);
-    expect(DEFAULT_LIVE_SCORING_CONFIG.table_correct_band).toBe(1);
+    expect(DEFAULT_LIVE_SCORING_CONFIG.table_near_position).toBe(1);
   });
 });
 
 describe('calculateTablePoints — Champions League', () => {
   const order = teams(36);
 
-  it('awards 3 per team for a perfect table — 2 for the position, 1 for the band', () => {
+  it('awards 3 per team for a perfect table — 2 for the position, 1 for within one place', () => {
     const result = calculateTablePoints(order, positions(order), UCL_STAGE, CONFIG);
     expect(result.exactPositionPoints).toBe(72);
-    expect(result.bandPoints).toBe(36);
+    expect(result.nearPositionPoints).toBe(36);
     expect(result.points).toBe(108);
   });
 
-  // The worked example from the feature request.
-  it('awards 3 for an exact position, 1 for the right band only, 0 for the wrong band', () => {
+  it('awards 3 for an exact position, 1 for one place off, 0 for further away', () => {
     // Actual order is t1..t36. The prediction pulls t1 out of the top and slots it in at
     // 29th, shifting t2..t29 up one place; t30..t36 keep their real positions.
     const actual = positions(order);
@@ -75,27 +74,33 @@ describe('calculateTablePoints — Champions League', () => {
     const result = calculateTablePoints(predicted, actual, UCL_STAGE, CONFIG);
     const byTeam = new Map(result.teams.map(t => [t.teamId, t]));
 
-    // t2 predicted 1st, actually 2nd — wrong place, still automatic qualification.
-    expect(byTeam.get('t2')).toMatchObject({ exactPosition: false, correctBand: true, points: 1 });
-    // t1 predicted 29th, actually 1st — wrong place, and eliminated vs automatic.
-    expect(byTeam.get('t1')).toMatchObject({ exactPosition: false, correctBand: false, points: 0 });
-    // t30 undisturbed at 30th — exact position and, necessarily, the right band: 2 + 1.
-    expect(byTeam.get('t30')).toMatchObject({ exactPosition: true, correctBand: true, points: 3 });
-    // t25 shifted from 25th to 24th: eliminated band predicted as play-off.
-    expect(byTeam.get('t25')).toMatchObject({ predictedBand: 'playoff', actualBand: 'eliminated', points: 0 });
+    // t2 predicted 1st, actually 2nd — one place off.
+    expect(byTeam.get('t2')).toMatchObject({ exactPosition: false, nearPosition: true, points: 1 });
+    // t1 predicted 29th, actually 1st — nowhere near.
+    expect(byTeam.get('t1')).toMatchObject({ exactPosition: false, nearPosition: false, points: 0 });
+    // t30 undisturbed at 30th — exact, and so within one place too: 2 + 1.
+    expect(byTeam.get('t30')).toMatchObject({ exactPosition: true, nearPosition: true, points: 3 });
+    // t25 shifted from 25th to 24th: different band, but only one place off, so it scores.
+    expect(byTeam.get('t25')).toMatchObject({
+      predictedBand: 'playoff',
+      actualBand: 'eliminated',
+      nearPosition: true,
+      points: 1,
+    });
   });
 
-  it('awards the band point across a band boundary miss', () => {
-    // t9 (actually 9th, playoff band) predicted 8th — automatic band. Wrong band.
-    const actual = positions(teams(36));
-    const predicted = [...teams(36)];
-    [predicted[7], predicted[8]] = [predicted[8], predicted[7]];
+  // Bands no longer score: a team in the right band but two or more places off gets nothing.
+  it('gives nothing for the right band alone', () => {
+    const actual = positions(order);
+    const predicted = [...order];
+    [predicted[0], predicted[2]] = [predicted[2], predicted[0]]; // t1 ↔ t3, both automatic
 
     const result = calculateTablePoints(predicted, actual, UCL_STAGE, CONFIG);
     const byTeam = new Map(result.teams.map(t => [t.teamId, t]));
 
-    expect(byTeam.get('t9')).toMatchObject({ predictedBand: 'automatic', actualBand: 'playoff', points: 0 });
-    expect(byTeam.get('t8')).toMatchObject({ predictedBand: 'playoff', actualBand: 'automatic', points: 0 });
+    expect(byTeam.get('t1')).toMatchObject({ predictedBand: 'automatic', actualBand: 'automatic', points: 0 });
+    expect(byTeam.get('t3')).toMatchObject({ points: 0 });
+    expect(byTeam.get('t2')).toMatchObject({ exactPosition: true, points: 3 });
   });
 
   it('reports per-team detail in predicted order', () => {
@@ -110,7 +115,7 @@ describe('calculateTablePoints — Champions League', () => {
     const result = calculateTablePoints(['t1', 't2', 'withdrawn'], actual, UCL_STAGE, CONFIG);
     const last = result.teams[2];
 
-    expect(last).toMatchObject({ actualPosition: null, exactPosition: false, correctBand: false, points: 0 });
+    expect(last).toMatchObject({ actualPosition: null, exactPosition: false, nearPosition: false, points: 0 });
     // The rest of the table still scores normally.
     expect(result.teams[0].points).toBe(3);
   });
@@ -119,18 +124,19 @@ describe('calculateTablePoints — Champions League', () => {
 describe('calculateTablePoints — domestic league (no bands)', () => {
   const order = teams(20);
 
-  it('awards only exact positions', () => {
+  // The ±1 rule does not depend on bands, so it applies here too.
+  it('awards exact and within-one-place points', () => {
     const result = calculateTablePoints(order, positions(order), PL_STAGE, CONFIG);
     expect(result.exactPositionPoints).toBe(40);
-    expect(result.bandPoints).toBe(0);
-    expect(result.points).toBe(40);
+    expect(result.nearPositionPoints).toBe(20);
+    expect(result.points).toBe(60);
   });
 
-  it('never awards a band point', () => {
+  it('awards the one-place bonus for a swapped pair', () => {
     const predicted = [order[1], order[0], ...order.slice(2)];
     const result = calculateTablePoints(predicted, positions(order), PL_STAGE, CONFIG);
-    expect(result.bandPoints).toBe(0);
-    expect(result.teams.every(t => t.correctBand === false)).toBe(true);
+    expect(result.teams[0]).toMatchObject({ exactPosition: false, nearPosition: true, points: 1 });
+    expect(result.teams[1]).toMatchObject({ exactPosition: false, nearPosition: true, points: 1 });
   });
 });
 
@@ -139,18 +145,18 @@ describe('calculateTablePoints — configuration', () => {
     const custom: LiveScoringConfig = {
       ...CONFIG,
       table_exact_position: 5,
-      table_correct_band: 3,
+      table_near_position: 3,
     };
     const order = teams(36);
     const result = calculateTablePoints(order, positions(order), UCL_STAGE, custom);
     expect(result.points).toBe(36 * 8);
   });
 
-  it('can have the band bonus switched off', () => {
-    const noBand: LiveScoringConfig = { ...CONFIG, table_correct_band: 0 };
+  it('can have the one-place bonus switched off', () => {
+    const noNear: LiveScoringConfig = { ...CONFIG, table_near_position: 0 };
     const order = teams(36);
-    const result = calculateTablePoints(order, positions(order), UCL_STAGE, noBand);
-    expect(result.bandPoints).toBe(0);
+    const result = calculateTablePoints(order, positions(order), UCL_STAGE, noNear);
+    expect(result.nearPositionPoints).toBe(0);
     expect(result.points).toBe(72);
   });
 
@@ -161,11 +167,11 @@ describe('calculateTablePoints — configuration', () => {
     });
   });
 
-  it('treats a null stage as having no bands', () => {
+  it('scores a null stage the same way', () => {
     const order = teams(3);
     const result = calculateTablePoints(order, positions(order), null, CONFIG);
     expect(result.exactPositionPoints).toBe(6);
-    expect(result.bandPoints).toBe(0);
+    expect(result.nearPositionPoints).toBe(3);
   });
 });
 

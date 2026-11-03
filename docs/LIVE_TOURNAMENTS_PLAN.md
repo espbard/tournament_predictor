@@ -348,7 +348,7 @@ column, so a sync leaves it alone.
 
 An admin curates a shortlist of players out of `live_players`; users order it by how many
 goals each will finish the tournament on. Every player placed in exactly the right position
-is worth `scorer_exact_position` (2 by default). No bands — a top-scorer list has no
+is worth `scorer_exact_position` (3 by default). No bands — a top-scorer list has no
 meaningful sections, so close is worth nothing.
 
 The final ranking is made **strict 1..N** by breaking a tie on goals with assists, and a tie
@@ -443,11 +443,11 @@ export interface LiveScoringConfig {
   correct_goal_difference: number;
   exact_score: number;
   table_exact_position: number;
-  table_correct_band: number;
+  table_near_position: number;   // within one place of the prediction (was: right band)
 }
 export const DEFAULT_LIVE_SCORING_CONFIG: LiveScoringConfig = {
   correct_outcome: 1, correct_goal_difference: 1, exact_score: 2,
-  table_exact_position: 2, table_correct_band: 1,
+  table_exact_position: 2, table_near_position: 1, scorer_exact_position: 3,
 };
 ```
 
