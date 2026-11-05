@@ -4,7 +4,6 @@ import {
   SetLiveBonusRoundFixturesSchema,
   bonusRoundScore,
   canSeeLiveBonusRound,
-  gameweekStrip,
   layoutLiveRounds,
   suggestLiveBonusRoundAnchor,
   type LiveRoundLayoutStage,
@@ -82,22 +81,6 @@ describe('layoutLiveRounds', () => {
       round('empty', 'league_phase', 4, null),
     ]);
     expect(layout.inStage.get('league_phase')?.get(4)?.map(r => r.id)).toEqual(['earlier', 'later', 'empty']);
-  });
-});
-
-describe('gameweekStrip', () => {
-  it('interleaves rounds after their gameweek', () => {
-    const after = new Map([
-      [0, ['pre']],
-      [2, ['mid']],
-    ]);
-    expect(gameweekStrip([1, 2, 3], after)).toEqual([
-      { type: 'bonus', round: 'pre' },
-      { type: 'gameweek', matchday: 1 },
-      { type: 'gameweek', matchday: 2 },
-      { type: 'bonus', round: 'mid' },
-      { type: 'gameweek', matchday: 3 },
-    ]);
   });
 });
 

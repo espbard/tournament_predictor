@@ -632,7 +632,9 @@ function FixtureSourcePanel({
             onChange={e => setLeagueKey(e.target.value)}
             placeholder={tournament.providerCompetitionId}
             maxLength={64}
-            disabled={!isSplit}
+            // A fixtures-only tournament (the Nations League on bigballsdata) has one
+            // provider, so its league key is the one thing worth correcting here.
+            disabled={!isSplit && tournament.provider !== 'big_balls'}
             className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
           />
           <p className="mt-1 text-xs text-muted-foreground">

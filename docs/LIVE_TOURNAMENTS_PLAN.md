@@ -2110,7 +2110,55 @@ one private `norwegianFaithCard()`.
 
 ---
 
-## 38. References
+## 38. Bonus rounds *(added after the six phases, on request)*
+
+Extra rounds of **match predictions only** inside an existing live competition, made of
+matches an admin borrows from another competition: the **UEFA Nations League** to begin with.
+A round can hold matches from several matchdays (and could from several source tournaments),
+and sits **between** the competition's own rounds. New rounds are visible to test accounts
+only.
+
+**Source.** `unl_2026_27` (`shared/src/live/presets.ts`) is a *bonus source*
+(`live_tournaments.is_bonus_source`): synced like any tournament, never given a competition
+(the create route refuses it, the admin picker hides it). football-data's free tier does not
+cover the Nations League, so it is served entirely by **bigballsdata**, which gives fixtures
+and nothing else. `sync.ts` handles that as a *fixtures-only* tournament
+(`isFixturesOnlyTournament`): teams are created from the names on the fixtures (keyed
+`name:<lowercased name>`) and fixtures are matched back to them by name; no standings or
+scorer requests are made; stage-less fixtures go to `startStageKey`. The league key
+`uefa-nations-league` is a guess that could not be checked from a cloud session. Check it with
+**Ask the provider** and correct it in "Where fixtures come from" on the tournament page.
+
+**Tables** (`drizzle/0040_live_bonus_rounds.sql`, mirrored in `ensureSchema.ts`):
+
+| Table / column | Notes |
+|---|---|
+| `live_bonus_rounds` | Per competition. `after_stage_key` + `after_matchday` place it; `visibility` is `test` or `everyone` |
+| `live_bonus_round_fixtures` | PK `(round, fixture)`, unique `(competition, fixture)` so a match is in one round per competition. Carries the round's `multiplier` for that match |
+| `live_bonus_round_predictions` | Unique `(competition, user, fixture)`. Same score columns as `live_predictions` |
+| `live_competition_members.bonus_round_points` | Public rounds only |
+| `live_fixtures.score_override_home/away` | Admin-entered 90-minute score. Never written by sync |
+
+**Placement** (`layoutLiveRounds` in `shared/src/live/bonusRounds.ts`): a table-stage
+gameweek anchor puts the round in that stage's gameweek strip as a star after the gameweek; a
+stage anchor (matchday null) makes it a pill between the stage pills; no anchor puts it before
+everything. Rounds sharing an anchor sort by first kickoff. An anchor whose gameweek or stage
+has gone degrades gracefully rather than losing the round.
+
+| Decision | Why |
+|---|---|
+| Own prediction table, not `live_predictions` | Everything that reads `live_predictions` (the save route, selections, user stats, the comparisons) assumes the fixture belongs to the competition's own tournament |
+| Scored from `applySyncResult`, not `scoreFixtures` | The source tournament has no competitions, and `scoreFixtures` stops as soon as it finds none |
+| The round's multiplier, never the source fixture's | The source fixture's `multiplier` belongs to the source tournament, and two competitions may weight the same match differently |
+| Admin 90-minute override | bigballsdata has one score with no split between 90 minutes and extra time. Fine for the league phase, wrong for a knockout that went to extra time |
+| Test-only rounds stay out of `total_points` | Requested ("only visible to test users"). A regular player must never see a total they cannot account for. The leaderboard adds the test-only points back for test accounts and admins, as a preview |
+| A hidden round is an empty list or a 404 | Nothing about a test-only round reaches a regular player's page, not even a leaderboard column |
+| The progression chart includes public rounds only | So it still ends on the leaderboard total that everyone sees |
+| Not in the upcoming-deadline checklist, user stats or table/scorer/bonus features | Requested: match predictions only |
+
+---
+
+## 39. References
 
 - [2026/27 Champions League: teams, dates, draws, format](https://www.uefa.com/uefachampionsleague/news/02a6-20d57cfcd03e-407c22a7f465-1000--2026-27-champions-league-teams-dates-draws-format-final/)
 - [UEFA confirms date for the 2026/27 Champions League league phase draw](https://www.besoccer.com/new/uefa-confirms-date-for-the-202627-champions-league-league-phase-draw-1421299)

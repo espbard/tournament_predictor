@@ -5,6 +5,8 @@ import type {
   LiveBonusAnswerType,
   LiveBonusQuestion,
   LiveBonusQuestionView,
+  LiveBonusRoundView,
+  LiveBonusRoundVisibility,
   LiveCompetition,
   LiveFixture,
   LiveFormatDef,
@@ -79,8 +81,31 @@ export interface LiveLeaderboardRow {
     scorerPoints: number;
     /** Zero until the tournament is marked completed — bonus points are withheld until then. */
     bonusPoints: number;
+    /**
+     * Bonus-round matches. Only public rounds count for everybody; a test account's view
+     * adds the test-only rounds, total included.
+     */
+    bonusRoundPoints: number;
   };
 }
+
+/** A bonus-source tournament, for the admin's fixture picker. */
+export interface LiveBonusSource {
+  id: string;
+  name: string;
+  status: LiveTournamentStatus;
+  lastSyncError: string | null;
+}
+
+/** A source fixture as the picker lists it. */
+export type LiveBonusSourceFixture = LiveFixture & {
+  homeTeam: LiveTeam | null;
+  awayTeam: LiveTeam | null;
+  scoreOverrideHome: number | null;
+  scoreOverrideAway: number | null;
+};
+
+export type { LiveBonusRoundView, LiveBonusRoundVisibility };
 
 /**
  * One member's prediction for a single fixture, as the "what everyone predicted" dropdown
@@ -637,6 +662,54 @@ export const liveApi = {
     api.get<LiveFixturePredictionRow[]>(
       `/live/competitions/${competitionId}/fixtures/${fixtureId}/predictions`,
     ),
+
+  // ── Bonus rounds ──────────────────────────────────────────────────────────
+  // Rounds of borrowed matches inside one competition. The server hides a test-only
+  // round from everybody but test accounts and admins.
+  bonusRounds: (competitionId: string) =>
+    api.get<LiveBonusRoundView[]>(`/live/competitions/${competitionId}/bonus-rounds`),
+  userBonusRounds: (competitionId: string, userId: string) =>
+    api.get<LiveBonusRoundView[]>(`/live/competitions/${competitionId}/bonus-rounds/user/${userId}`),
+  saveBonusPrediction: (
+    competitionId: string,
+    body: { fixtureId: string; homeScore: number; awayScore: number },
+  ) => api.put<{ id: string }>(`/live/competitions/${competitionId}/bonus-predictions`, body),
+  bonusFixturePredictions: (competitionId: string, fixtureId: string) =>
+    api.get<LiveFixturePredictionRow[]>(
+      `/live/competitions/${competitionId}/bonus-fixtures/${fixtureId}/predictions`,
+    ),
+  createBonusRound: (
+    competitionId: string,
+    body: {
+      name: string;
+      afterStageKey: string | null;
+      afterMatchday: number | null;
+      visibility?: LiveBonusRoundVisibility;
+    },
+  ) => api.post<LiveBonusRoundView>(`/live/competitions/${competitionId}/bonus-rounds`, body),
+  updateBonusRound: (
+    roundId: string,
+    body: {
+      name?: string;
+      afterStageKey?: string | null;
+      afterMatchday?: number | null;
+      visibility?: LiveBonusRoundVisibility;
+    },
+  ) => api.patch<LiveBonusRoundView>(`/live/bonus-rounds/${roundId}`, body),
+  deleteBonusRound: (roundId: string) => api.delete<{ ok: true }>(`/live/bonus-rounds/${roundId}`),
+  /** Replace the round's matches. Removing a predicted match needs `force`. */
+  setBonusRoundFixtures: (
+    roundId: string,
+    body: { fixtures: Array<{ fixtureId: string; multiplier: number }>; force?: boolean },
+  ) => api.put<LiveBonusRoundView>(`/live/bonus-rounds/${roundId}/fixtures`, body),
+  bonusSources: () => api.get<LiveBonusSource[]>('/live/bonus-sources'),
+  bonusSourceFixtures: (tournamentId: string) =>
+    api.get<LiveBonusSourceFixture[]>(`/live/bonus-sources/${tournamentId}/fixtures`),
+  /** The normal-time score bonus rounds use instead of the provider's. Nulls clear it. */
+  setFixtureScoreOverride: (
+    fixtureId: string,
+    body: { homeScore: number | null; awayScore: number | null },
+  ) => api.put<{ ok: true }>(`/live/bonus-fixtures/${fixtureId}/score-override`, body),
 };
 
 // ── Query keys ────────────────────────────────────────────────────────────────
@@ -696,6 +769,14 @@ export const liveKeys = {
   bonusQuestions: (competitionId: string) => ['live', 'bonus-questions', competitionId] as const,
   bonusAnswers: (competitionId: string, userId?: string) =>
     ['live', 'bonus-answers', competitionId, userId ?? 'me'] as const,
+  bonusRounds: (competitionId: string) => ['live', 'bonus-rounds', competitionId] as const,
+  userBonusRounds: (competitionId: string, userId: string) =>
+    ['live', 'bonus-rounds', competitionId, 'user', userId] as const,
+  bonusFixturePredictions: (competitionId: string, fixtureId: string) =>
+    ['live', 'fixture-predictions', competitionId, 'bonus', fixtureId] as const,
+  bonusSources: ['live', 'bonus-sources'] as const,
+  bonusSourceFixtures: (tournamentId: string) =>
+    ['live', 'bonus-sources', tournamentId, 'fixtures'] as const,
   presets: ['live', 'presets'] as const,
   syncStatus: ['live', 'sync-status'] as const,
 };

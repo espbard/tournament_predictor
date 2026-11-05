@@ -27,6 +27,7 @@ import LiveUserPredictionsPage from '@/pages/live/LiveUserPredictionsPage';
 import AdminLiveTournamentsPage from '@/pages/live/AdminLiveTournamentsPage';
 import AdminLiveTournamentDetailPage from '@/pages/live/AdminLiveTournamentDetailPage';
 import AdminLiveCompetitionsPage from '@/pages/live/AdminLiveCompetitionsPage';
+import AdminLiveBonusRoundsPage from '@/pages/live/AdminLiveBonusRoundsPage';
 import InvitePage from '@/pages/InvitePage';
 import ForgotPasswordPage from '@/pages/ForgotPasswordPage';
 import ResetPasswordPage from '@/pages/ResetPasswordPage';
@@ -222,6 +223,14 @@ export default function App() {
         element={
           <AdminRoute>
             <AdminLiveCompetitionsPage />
+          </AdminRoute>
+        }
+      />
+      <Route
+        path="/admin/live-competitions/:id/bonus-rounds"
+        element={
+          <AdminRoute>
+            <AdminLiveBonusRoundsPage />
           </AdminRoute>
         }
       />

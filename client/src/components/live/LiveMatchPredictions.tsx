@@ -28,6 +28,8 @@ interface Props {
   linkToUsers?: boolean;
   /** The fixture's whole-number multiplier, so a highlighted match can name its own ×N. */
   multiplier?: number;
+  /** A bonus-round match: its predictions live in their own table, behind their own route. */
+  bonusRound?: boolean;
 }
 
 type Prediction = NonNullable<LiveFixturePredictionRow['prediction']>;
@@ -134,6 +136,7 @@ export default function LiveMatchPredictions({
   fixtureId,
   linkToUsers = true,
   multiplier = 1,
+  bonusRound = false,
 }: Props) {
   const { t } = useT();
   const { user } = useAuthStore();
@@ -143,8 +146,13 @@ export default function LiveMatchPredictions({
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
 
   const { data: rows = [], isLoading, isError } = useQuery({
-    queryKey: liveKeys.fixturePredictions(competitionId, fixtureId),
-    queryFn: () => liveApi.fixturePredictions(competitionId, fixtureId),
+    queryKey: bonusRound
+      ? liveKeys.bonusFixturePredictions(competitionId, fixtureId)
+      : liveKeys.fixturePredictions(competitionId, fixtureId),
+    queryFn: () =>
+      bonusRound
+        ? liveApi.bonusFixturePredictions(competitionId, fixtureId)
+        : liveApi.fixturePredictions(competitionId, fixtureId),
     enabled: open,
     retry: false,
   });

@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { isLiveFixtureSelected } from '@tournament-predictor/shared';
 import { db } from '../db/client';
-import { liveFixtures, livePredictions } from '../db/liveSchema';
+import { liveBonusRoundPredictions, liveFixtures, livePredictions } from '../db/liveSchema';
 import { loadSelectionIndex } from './selections';
 
 // ── Who is playing ────────────────────────────────────────────────────────────
@@ -48,7 +48,7 @@ export async function loadLiveParticipation(
   competitionId: string,
   liveTournamentId: string,
 ): Promise<LiveParticipation> {
-  const [finishedFixtures, selections, fixturePredictors] = await Promise.all([
+  const [finishedFixtures, selections, fixturePredictors, bonusRoundPredictors] = await Promise.all([
     db
       .select({
         id: liveFixtures.id,
@@ -69,11 +69,17 @@ export async function loadLiveParticipation(
       .selectDistinct({ userId: livePredictions.userId })
       .from(livePredictions)
       .where(eq(livePredictions.liveCompetitionId, competitionId)),
+    // A bonus-round prediction is playing too. Without it, somebody whose only points so
+    // far come from a bonus round would be left off the leaderboard that shows them.
+    db
+      .selectDistinct({ userId: liveBonusRoundPredictions.userId })
+      .from(liveBonusRoundPredictions)
+      .where(eq(liveBonusRoundPredictions.liveCompetitionId, competitionId)),
   ]);
 
   return {
     hasCompletedFixtures: finishedFixtures.some(f => isLiveFixtureSelected(f, selections)),
-    participantIds: new Set(fixturePredictors.map(r => r.userId)),
+    participantIds: new Set([...fixturePredictors, ...bonusRoundPredictors].map(r => r.userId)),
   };
 }
 

@@ -258,6 +258,12 @@ indistinguishable from the outside.
   adapter retries such a response once without the `season=` filter, keeping the matches whose
   own `season.startDate` falls in the season asked for.
 
+- **Bonus rounds** borrow fixtures from a *bonus-source* tournament (`is_bonus_source`, the
+  Nations League on bigballsdata, synced as a *fixtures-only* tournament) into rounds inside
+  another competition. They have their own tables (`live_bonus_rounds`,
+  `live_bonus_round_fixtures`, `live_bonus_round_predictions`) and never touch
+  `live_predictions`. See [`docs/LIVE_TOURNAMENTS_PLAN.md`](docs/LIVE_TOURNAMENTS_PLAN.md) §38.
+
 ### Migrations — read this before adding a column
 
 `server/drizzle/meta/_journal.json` is **out of sync** with the SQL files on disk: several
@@ -424,6 +430,21 @@ GET    /api/live/competitions/:id/bonus-questions      — + lockedAt / isLocked
 GET    /api/live/competitions/:id/bonus-answers        — the caller's own
 PUT    /api/live/competitions/:id/bonus-answers        — {questionId, answer}
 GET    /api/live/competitions/:id/bonus-answers/:userId — open to members from the off
+
+# Bonus rounds (server/src/live/routes/bonusRounds.ts): match predictions on borrowed
+# fixtures. A test-only round is invisible (empty list / 404) to everyone but test
+# accounts and admins.
+GET    /api/live/competitions/:id/bonus-rounds         — visible rounds + fixtures + my predictions
+POST   /api/live/competitions/:id/bonus-rounds         — admin; {name, afterStageKey, afterMatchday}
+PATCH  /api/live/bonus-rounds/:roundId                 — admin; name, placement, visibility
+DELETE /api/live/bonus-rounds/:roundId                 — admin; deletes its predictions too
+PUT    /api/live/bonus-rounds/:roundId/fixtures        — admin; {fixtures:[{fixtureId,multiplier}], force?}
+PUT    /api/live/competitions/:id/bonus-predictions    — {fixtureId, homeScore, awayScore}
+GET    /api/live/competitions/:id/bonus-fixtures/:fixtureId/predictions — locked only
+GET    /api/live/competitions/:id/bonus-rounds/user/:userId — another member's, locked only
+GET    /api/live/bonus-sources                         — admin; bonus-source tournaments
+GET    /api/live/bonus-sources/:tournamentId/fixtures  — admin; for the picker
+PUT    /api/live/bonus-fixtures/:fixtureId/score-override — admin; 90-minute score, nulls clear
 ```
 
 `GET /competitions/:id/fixtures` is what the client should build the fixtures tab from: it

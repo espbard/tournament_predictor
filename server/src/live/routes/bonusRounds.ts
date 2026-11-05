@@ -353,7 +353,7 @@ liveBonusRoundsRouter.delete('/bonus-rounds/:roundId', requireAdmin, async (req,
     });
 
     await afterScoresMoved([round.liveCompetitionId], true);
-    return res.status(204).end();
+    return res.json({ ok: true });
   } catch (err) {
     return fail(res, err);
   }
@@ -433,8 +433,7 @@ liveBonusRoundsRouter.put('/bonus-rounds/:roundId/fixtures', requireAdmin, async
           error:
             `${predicted.length} prediction(s) have been made on the matches being removed. ` +
             'Removing them deletes those predictions.',
-          predictionsAffected: predicted.length,
-          needsForce: true,
+          details: { needsForce: true, predictionsAffected: predicted.length },
         });
       }
     }

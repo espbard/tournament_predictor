@@ -166,25 +166,6 @@ export function layoutLiveRounds<R extends PlaceableBonusRound>(
   return { top, inStage };
 }
 
-/** One entry of a table stage's gameweek strip: a gameweek, or a bonus round after one. */
-export type LiveGameweekStripItem<R> =
-  | { type: 'gameweek'; matchday: number }
-  | { type: 'bonus'; round: R };
-
-/** A table stage's gameweeks with its bonus rounds interleaved, for the progress strip. */
-export function gameweekStrip<R>(
-  matchdays: number[],
-  roundsAfter: Map<number, R[]> | undefined,
-): LiveGameweekStripItem<R>[] {
-  const items: LiveGameweekStripItem<R>[] = [];
-  for (const round of roundsAfter?.get(0) ?? []) items.push({ type: 'bonus', round });
-  for (const matchday of matchdays) {
-    items.push({ type: 'gameweek', matchday });
-    for (const round of roundsAfter?.get(matchday) ?? []) items.push({ type: 'bonus', round });
-  }
-  return items;
-}
-
 /** A gameweek or stage the admin can place a round after, with when it starts. */
 export interface LiveAnchorOption extends LiveBonusRoundAnchor {
   /** ISO 8601 first kickoff of the gameweek or stage. Null when it has no dated fixture. */

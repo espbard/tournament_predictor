@@ -40,6 +40,8 @@ interface Props {
   competitionId?: string;
   /** Names in that dropdown link to a member's predictions unless this says otherwise. */
   linkToUsers?: boolean;
+  /** A bonus-round match, whose league predictions come from the bonus-round route. */
+  bonusRound?: boolean;
 }
 
 // The team name is always rendered next to the badge, so the crest itself is decorative.
@@ -85,6 +87,7 @@ export default function LiveFixtureCard({
   hidePrediction = false,
   competitionId,
   linkToUsers = true,
+  bonusRound = false,
 }: Props) {
   const { t } = useT();
   const [home, setHome] = useState(fixture.prediction ? String(fixture.prediction.homeScore) : '');
@@ -345,6 +348,7 @@ export default function LiveFixtureCard({
           fixtureId={fixture.id}
           linkToUsers={linkToUsers}
           multiplier={multiplier}
+          bonusRound={bonusRound}
         />
       )}
     </div>
