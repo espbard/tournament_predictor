@@ -88,7 +88,8 @@ export default function AdminLiveCompetitionsPage() {
               className="rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             >
               <option value="">{t('live.admin.chooseTournament')}</option>
-              {tournaments.map(tour => (
+              {/* A bonus source only lends matches to bonus rounds — it gets no league. */}
+              {tournaments.filter(tour => !tour.isBonusSource).map(tour => (
                 <option key={tour.id} value={tour.id}>
                   {tour.name}
                 </option>

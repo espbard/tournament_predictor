@@ -49,6 +49,7 @@ import { subscribeLiveCompetition, unsubscribeLiveCompetition } from '../liveEve
 import { loadLiveBonusAnswers } from '../bonusScoring';
 import { redactLiveBonusAnswerPoints, redactLiveBonusQuestions } from '../bonusVisibility';
 import { recalculateLiveCompetition } from '../scoringTrigger';
+import { loadTestOnlyBonusRoundPoints } from '../bonusRoundScoring';
 import { loadSelectionIndex } from '../selections';
 import { filterLiveParticipants, loadLiveParticipation } from '../participation';
 import { buildLiveProgression, type LiveProgressionLang } from '../progression';
@@ -224,10 +225,14 @@ liveCompetitionsRouter.post('/competitions', requireAdmin, async (req, res) => {
     }
 
     const [tournament] = await db
-      .select({ id: liveTournaments.id })
+      .select({ id: liveTournaments.id, isBonusSource: liveTournaments.isBonusSource })
       .from(liveTournaments)
       .where(eq(liveTournaments.id, parsed.data.liveTournamentId));
     if (!tournament) return res.status(404).json({ error: 'Live tournament not found' });
+    // A bonus source only lends its fixtures to bonus rounds; nobody plays it directly.
+    if (tournament.isBonusSource) {
+      return res.status(400).json({ error: 'That tournament only supplies bonus-round matches' });
+    }
 
     let inviteCode = generateInviteCode();
     for (let i = 0; i < 10; i++) {
@@ -451,6 +456,7 @@ liveCompetitionsRouter.get('/competitions/:id/leaderboard', requireAuth, async (
           tablePoints: liveCompetitionMembers.tablePoints,
           scorerPoints: liveCompetitionMembers.scorerPoints,
           bonusPoints: liveCompetitionMembers.bonusPoints,
+          bonusRoundPoints: liveCompetitionMembers.bonusRoundPoints,
         })
         .from(liveCompetitionMembers)
         .innerJoin(users, eq(liveCompetitionMembers.userId, users.id))
@@ -459,7 +465,28 @@ liveCompetitionsRouter.get('/competitions/:id/leaderboard', requireAuth, async (
       loadLiveParticipation(competition.id, competition.liveTournamentId),
     ]);
 
-    const rows = filterLiveParticipants(allRows, participation, res.locals.user.id);
+    // Bonus rounds still limited to test accounts keep their points out of the stored
+    // totals. A test account (or an admin) sees them added back, so the leaderboard
+    // previews what it will look like once the round goes public; nobody else does.
+    const viewer = res.locals.user;
+    const testOnly =
+      viewer.isAdmin || viewer.isTestAccount
+        ? await loadTestOnlyBonusRoundPoints(competition.id)
+        : new Map<string, number>();
+    const withPreview = allRows
+      .map(row => {
+        const extra = testOnly.get(row.userId) ?? 0;
+        return extra === 0
+          ? row
+          : {
+              ...row,
+              totalPoints: row.totalPoints + extra,
+              bonusRoundPoints: row.bonusRoundPoints + extra,
+            };
+      })
+      .sort((a, b) => b.totalPoints - a.totalPoints || a.username.localeCompare(b.username));
+
+    const rows = filterLiveParticipants(withPreview, participation, res.locals.user.id);
 
     // Standard competition ranking: equal totals share a rank, and the next rank skips.
     let previousPoints: number | null = null;
@@ -484,6 +511,7 @@ liveCompetitionsRouter.get('/competitions/:id/leaderboard', requireAuth, async (
             tablePoints: row.tablePoints,
             scorerPoints: row.scorerPoints,
             bonusPoints: row.bonusPoints,
+            bonusRoundPoints: row.bonusRoundPoints,
           },
         };
       }),

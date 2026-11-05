@@ -42,6 +42,13 @@ export interface LiveTournamentPreset {
    */
   expectedStartStageFixtures: number | null;
   defaultImageUrl?: string | null;
+  /**
+   * A tournament that exists only to lend its fixtures to bonus rounds in other
+   * competitions. It gets no competitions of its own, no table, no scorers and no bonus
+   * questions — see server/src/live/bonusRounds.ts. Persisted as
+   * live_tournaments.is_bonus_source.
+   */
+  bonusSourceOnly?: boolean;
 }
 
 export const LIVE_TOURNAMENT_PRESETS: LiveTournamentPreset[] = [
@@ -74,6 +81,27 @@ export const LIVE_TOURNAMENT_PRESETS: LiveTournamentPreset[] = [
     seasonBounds: { from: '08-01', to: '06-30' },
     expectedTeamCount: 20,
     expectedStartStageFixtures: 380,
+  },
+  {
+    key: 'unl_2026_27',
+    defaultName: 'UEFA Nations League 2026/27',
+    labelKey: 'live.presets.unl_2026_27',
+    // bigballsdata serves everything here — fixtures *and*, by being the only provider,
+    // the teams, which the sync builds from the names on the fixtures. football-data's
+    // free tier does not cover the Nations League. See "fixtures-only" in sync.ts.
+    provider: 'big_balls',
+    // bigballsdata's league key. Unverified from a cloud session (the host is blocked
+    // there): check it with the tournament's "Ask the provider" button, which lists the
+    // keys the provider knows, and correct it on the tournament page if it differs.
+    providerCompetitionId: 'uefa-nations-league',
+    season: '2026',
+    format: 'nations_league',
+    startStageKey: 'league_phase',
+    // League phase September–November 2026, knockouts March 2027, finals June 2027.
+    seasonBounds: { from: '09-01', to: '06-30' },
+    expectedTeamCount: null,
+    expectedStartStageFixtures: null,
+    bonusSourceOnly: true,
   },
 ];
 

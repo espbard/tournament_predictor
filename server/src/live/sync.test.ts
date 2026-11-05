@@ -6,6 +6,7 @@ import {
   defaultStageFor,
   deriveQualificationStatuses,
   fixtureCompetitionId,
+  isFixturesOnlyTournament,
   liveWindowDates,
   loserOf,
   resolveByName,
@@ -236,6 +237,37 @@ describe('defaultStageFor', () => {
   // warning rather than being quietly assigned one.
   it('assigns nothing when one provider serves everything', () => {
     expect(defaultStageFor(tournament, false)).toBeNull();
+  });
+});
+
+describe('fixtures-only tournaments', () => {
+  // The Nations League: bigballsdata is its only provider, so there is no team list and
+  // no table to fetch — teams come from the names on the fixtures.
+  it('is fixtures-only when bigballsdata serves the whole tournament', () => {
+    expect(isFixturesOnlyTournament({ provider: 'big_balls', fixtureProvider: null })).toBe(true);
+    expect(isFixturesOnlyTournament({ provider: 'big_balls', fixtureProvider: 'big_balls' })).toBe(
+      true,
+    );
+  });
+
+  it('is not fixtures-only when football-data supplies the teams', () => {
+    // The Champions League split: teams from football-data, fixtures from bigballsdata.
+    expect(isFixturesOnlyTournament({ provider: 'football_data', fixtureProvider: 'big_balls' })).toBe(
+      false,
+    );
+    expect(isFixturesOnlyTournament({ provider: 'football_data', fixtureProvider: null })).toBe(false);
+  });
+
+  it('files stage-less fixtures under the start stage', () => {
+    const unl = { provider: 'big_balls', fixtureProvider: null, startStageKey: 'league_phase' } as any;
+    expect(defaultStageFor(unl, false)).toBe('league_phase');
+  });
+
+  it('has a Nations League format whose start stage exists', () => {
+    const format = LIVE_FORMATS.nations_league;
+    expect(format.stages.some(s => s.key === 'league_phase')).toBe(true);
+    // Never a table prediction: it is only a source of bonus-round fixtures.
+    expect(format.stages.some(s => s.tablePredictable)).toBe(false);
   });
 });
 

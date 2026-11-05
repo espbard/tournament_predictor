@@ -24,6 +24,12 @@ import { calculateTablePoints, isTableStageComplete } from './tableScoring';
 import { notifyLiveCompetitions } from './liveEvents';
 import { scoreAllLiveBonusQuestions } from './bonusScoring';
 import { EMPTY_SELECTION_INDEX, loadSelectionIndex, loadSelectionIndexes } from './selections';
+import {
+  competitionsWithBonusFixtures,
+  recalculateBonusRoundsForCompetition,
+  scoreBonusRoundFixtures,
+  scoreUnscoredBonusRoundFixtures,
+} from './bonusRoundScoring';
 
 // ── Scoring trigger ───────────────────────────────────────────────────────────
 //
@@ -76,10 +82,12 @@ export async function recomputeLiveMemberTotals(competitionIds: string[]): Promi
           table_points = COALESCE(tp.table_points, 0),
           scorer_points = COALESCE(sp.scorer_points, 0),
           bonus_points = COALESCE(bq.bonus_points, 0),
+          bonus_round_points = COALESCE(brp.bonus_round_points, 0),
           total_points = COALESCE(f.total, 0)
                        + COALESCE(tp.table_points, 0)
                        + COALESCE(sp.scorer_points, 0)
                        + COALESCE(bq.bonus_points, 0)
+                       + COALESCE(brp.bonus_round_points, 0)
       FROM live_competition_members m2
       LEFT JOIN LATERAL (
         SELECT SUM(p.correct_outcome_points)         AS outcome,
@@ -114,6 +122,20 @@ export async function recomputeLiveMemberTotals(competitionIds: string[]): Promi
           AND ba.user_id = m2.user_id
           AND ba.points IS NOT NULL
       ) AS bq ON TRUE
+      LEFT JOIN LATERAL (
+        -- Bonus rounds count only once they are visible to everyone. A test-only round's
+        -- points stay out of the total; the leaderboard adds them for test accounts.
+        SELECT SUM(p.points) AS bonus_round_points
+        FROM live_bonus_round_predictions p
+        JOIN live_bonus_round_fixtures rf
+          ON rf.live_competition_id = p.live_competition_id
+         AND rf.live_fixture_id = p.live_fixture_id
+        JOIN live_bonus_rounds r ON r.id = rf.bonus_round_id
+        WHERE p.live_competition_id = m2.live_competition_id
+          AND p.user_id = m2.user_id
+          AND p.points IS NOT NULL
+          AND r.visibility = 'everyone'
+      ) AS brp ON TRUE
       WHERE m.id = m2.id
         AND m2.live_competition_id IN ${chunk}
     `);
@@ -506,6 +528,9 @@ export async function recalculateLiveCompetition(competitionId: string): Promise
     if (scorable) scored++;
   }
 
+  const bonusRounds = await recalculateBonusRoundsForCompetition(competition.id);
+  scored += bonusRounds.scoredPredictions;
+
   await recomputeLiveMemberTotals([competition.id]);
   return { scoredPredictions: scored, affectedCompetitionIds: [competition.id] };
 }
@@ -605,6 +630,23 @@ export async function applySyncResult(opts: {
     ];
   }
 
+  // Bonus rounds borrowing this tournament's fixtures, in whatever competitions hold
+  // them. A score corrected after full time arrives as a change, so both lists are
+  // rescored; an unfinished fixture simply stays unscored.
+  const bonus = await scoreBonusRoundFixtures([
+    ...opts.newlyFinishedFixtureIds,
+    ...opts.changedFixtureIds,
+  ]);
+  const bonusCaughtUp = await scoreUnscoredBonusRoundFixtures(opts.liveTournamentId);
+  const bonusAffected = [
+    ...new Set([...bonus.affectedCompetitionIds, ...bonusCaughtUp.affectedCompetitionIds]),
+  ];
+  if (bonusAffected.length > 0) {
+    await recomputeLiveMemberTotals(bonusAffected);
+    result.scoredPredictions += bonus.scoredPredictions + bonusCaughtUp.scoredPredictions;
+    result.affectedCompetitionIds = [...new Set([...result.affectedCompetitionIds, ...bonusAffected])];
+  }
+
   if (result.affectedCompetitionIds.length > 0) {
     notifyLiveCompetitions(result.affectedCompetitionIds, 'leaderboard-updated');
   }
@@ -614,8 +656,12 @@ export async function applySyncResult(opts: {
       .select({ id: liveCompetitions.id })
       .from(liveCompetitions)
       .where(eq(liveCompetitions.liveTournamentId, opts.liveTournamentId));
+    const withBonusFixtures = await competitionsWithBonusFixtures([
+      ...opts.newlyFinishedFixtureIds,
+      ...opts.changedFixtureIds,
+    ]);
     notifyLiveCompetitions(
-      competitions.map(c => c.id),
+      [...new Set([...competitions.map(c => c.id), ...withBonusFixtures])],
       'fixtures-updated',
     );
   }

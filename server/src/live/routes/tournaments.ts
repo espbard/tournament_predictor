@@ -25,6 +25,7 @@ import {
 import { db } from '../../db/client';
 import {
   liveBonusQuestions,
+  liveBonusRoundPredictions,
   liveCompetitions,
   liveFixtures,
   liveGameweekSelections,
@@ -195,6 +196,7 @@ liveTournamentsRouter.post('/tournaments', requireAdmin, async (req, res) => {
         season: preset.season,
         format: preset.format,
         startStageKey: preset.startStageKey,
+        isBonusSource: preset.bonusSourceOnly ?? false,
       })
       .returning();
 
@@ -349,6 +351,13 @@ liveTournamentsRouter.patch('/tournaments/:id', requireAdmin, async (req, res) =
         .from(livePredictions)
         .innerJoin(liveFixtures, eq(livePredictions.liveFixtureId, liveFixtures.id))
         .where(eq(liveFixtures.liveTournamentId, current.id));
+
+      const [bonusPredicted] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(liveBonusRoundPredictions)
+        .innerJoin(liveFixtures, eq(liveBonusRoundPredictions.liveFixtureId, liveFixtures.id))
+        .where(eq(liveFixtures.liveTournamentId, current.id));
+      if (predicted) predicted.count = (predicted.count ?? 0) + (bonusPredicted?.count ?? 0);
 
       if ((predicted?.count ?? 0) > 0) {
         return res.status(409).json({

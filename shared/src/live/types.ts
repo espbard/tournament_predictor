@@ -139,6 +139,11 @@ export interface LiveScoreBreakdown {
   scorerPoints: number;
   /** Awarded only once the tournament is marked completed. */
   bonusPoints: number;
+  /**
+   * Bonus-round match points. Only rounds visible to everyone count toward the total;
+   * a test-only round's points are reported to test accounts alone.
+   */
+  bonusRoundPoints: number;
 }
 
 // ── Entities ──────────────────────────────────────────────────────────────────
@@ -159,6 +164,8 @@ export interface LiveTournament {
   startStageKey: string;
   status: LiveTournamentStatus;
   syncEnabled: boolean;
+  /** Exists only to lend fixtures to bonus rounds — see shared/src/live/bonusRounds.ts. */
+  isBonusSource: boolean;
   lastStructureSyncAt: string | null;
   lastFixtureSyncAt: string | null;
   lastSyncError: string | null;
