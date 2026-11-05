@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '@/lib/api';
 import { liveApi, liveKeys, type LiveFixtureView } from '@/lib/liveApi';
@@ -815,6 +815,17 @@ export default function LiveCompetitionDetailPage() {
               competitionId={competition.id}
               className="inline-flex items-center justify-center gap-1.5 rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
             />
+          )}
+          {/* Admins manage this league's bonus rounds from here, at any point in the
+              season, as well as from the admin competitions list. */}
+          {user?.isAdmin && (
+            <Link
+              to={`/admin/live-competitions/${competition.id}/bonus-rounds`}
+              className="inline-flex items-center justify-center gap-1.5 rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+            >
+              <Star className="h-3.5 w-3.5" aria-hidden />
+              {t('live.bonusRounds.admin.title')}
+            </Link>
           )}
         </div>
       </header>
