@@ -3,14 +3,14 @@ import { LIVE_MAX_MULTIPLIER, LIVE_MIN_MULTIPLIER, type LiveFixtureView } from '
 
 // ── Bonus rounds ──────────────────────────────────────────────────────────────
 //
-// Extra rounds of match predictions inside one live competition, made of fixtures that
-// an admin hand-picks from *other* live tournaments — the UEFA Nations League to begin
-// with, a tournament that exists only to lend its fixtures this way (`is_bonus_source`).
-// A round may take fixtures from several matchdays, and could take them from several
-// source tournaments.
+// Extra rounds of match predictions inside one live competition, made of matches an admin
+// sets up by hand: two team names, a kickoff and, once played, the score after 90 minutes.
+// The same way the manual tournament type works, rather than through a data provider.
+// They are typically matches from another competition — the UEFA Nations League to begin
+// with — from any dates, in any number.
 //
 // Only match predictions: a bonus round has no table, scorers or questions. Scoring is the
-// competition's own three tiers, with a per-match multiplier set on the round.
+// competition's own three tiers, with a per-match multiplier.
 //
 // A round sits *between* the competition's own rounds. Its anchor says where:
 //
@@ -42,16 +42,28 @@ export interface LiveBonusRound extends LiveBonusRoundAnchor {
 }
 
 /**
- * A bonus-round match as the fixtures tab renders it — the ordinary fixture view, so the
- * same cards draw it, with three things made to mean the round rather than the source:
- * `multiplier` is the round's, `normalTime*` is the score the round scores on (the
- * admin's override where set), and `prediction` is the caller's bonus-round prediction.
+ * A bonus-round match as the fixtures tab renders it: shaped as the ordinary fixture view,
+ * so the same cards draw it. The team ids are synthetic (`<fixtureId>:home` / `:away`),
+ * since the teams are only names; `normalTime*` is the admin's result and `prediction`
+ * the caller's bonus-round prediction.
  */
 export interface LiveBonusRoundFixtureView extends LiveFixtureView {
-  sourceTournamentId: string;
-  sourceTournamentName: string;
-  /** The score shown is an admin override, not the provider's. */
-  scoreOverridden: boolean;
+  /** Free text the admin gave the match, such as "UEFA Nations League". */
+  label: string | null;
+}
+
+/** A hand-entered match as stored, for the admin page. */
+export interface LiveBonusFixture {
+  id: string;
+  bonusRoundId: string;
+  liveCompetitionId: string;
+  homeTeamName: string;
+  awayTeamName: string;
+  label: string | null;
+  kickoffAt: string;
+  multiplier: number;
+  homeScore: number | null;
+  awayScore: number | null;
 }
 
 export interface LiveBonusRoundView extends LiveBonusRound {
@@ -194,22 +206,14 @@ export function suggestLiveBonusRoundAnchor(
   return { afterStageKey: best.afterStageKey, afterMatchday: best.afterMatchday };
 }
 
-// ── Scores ────────────────────────────────────────────────────────────────────
+// ── Results ───────────────────────────────────────────────────────────────────
 
-/**
- * The end-of-normal-time score a bonus round scores on: the admin's override when both
- * halves are set, the provider's otherwise. See `score_override_*` on live_fixtures.
- */
-export function bonusRoundScore(fixture: {
-  normalTimeHome: number | null;
-  normalTimeAway: number | null;
-  scoreOverrideHome: number | null;
-  scoreOverrideAway: number | null;
-}): { home: number | null; away: number | null; overridden: boolean } {
-  if (fixture.scoreOverrideHome !== null && fixture.scoreOverrideAway !== null) {
-    return { home: fixture.scoreOverrideHome, away: fixture.scoreOverrideAway, overridden: true };
-  }
-  return { home: fixture.normalTimeHome, away: fixture.normalTimeAway, overridden: false };
+/** A hand-entered match is finished once both halves of its result are set. */
+export function bonusFixtureStatus(fixture: {
+  homeScore: number | null;
+  awayScore: number | null;
+}): 'scheduled' | 'finished' {
+  return fixture.homeScore !== null && fixture.awayScore !== null ? 'finished' : 'scheduled';
 }
 
 // ── Request schemas ───────────────────────────────────────────────────────────
@@ -234,35 +238,45 @@ export const UpdateLiveBonusRoundSchema = z
   })
   .refine(v => Object.keys(v).length > 0, { message: 'Nothing to update' });
 
-export const SetLiveBonusRoundFixturesSchema = z.object({
-  fixtures: z
-    .array(
-      z.object({
-        fixtureId: z.string().min(1),
-        multiplier: z.number().int().min(LIVE_MIN_MULTIPLIER).max(LIVE_MAX_MULTIPLIER).default(1),
-      }),
-    )
-    .max(100),
-  /**
-   * Removing a fixture deletes the predictions already made on it in this competition.
-   * Refused unless this is set, so it is never done by accident.
-   */
-  force: z.boolean().optional(),
+const teamName = z.string().trim().min(1).max(60);
+const score = z.number().int().min(0).max(99);
+
+export const CreateLiveBonusFixtureSchema = z.object({
+  homeTeamName: teamName,
+  awayTeamName: teamName,
+  label: z.string().trim().max(60).nullable().optional(),
+  /** ISO 8601. */
+  kickoffAt: z.string().datetime({ offset: true }),
+  multiplier: z.number().int().min(LIVE_MIN_MULTIPLIER).max(LIVE_MAX_MULTIPLIER).default(1),
 });
+
+export const UpdateLiveBonusFixtureSchema = z
+  .object({
+    homeTeamName: teamName.optional(),
+    awayTeamName: teamName.optional(),
+    label: z.string().trim().max(60).nullable().optional(),
+    kickoffAt: z.string().datetime({ offset: true }).optional(),
+    multiplier: z.number().int().min(LIVE_MIN_MULTIPLIER).max(LIVE_MAX_MULTIPLIER).optional(),
+    /** The score after 90 minutes. Both null clears the result; one alone is refused. */
+    homeScore: score.nullable().optional(),
+    awayScore: score.nullable().optional(),
+  })
+  .refine(v => Object.keys(v).length > 0, { message: 'Nothing to update' })
+  .refine(
+    v =>
+      (v.homeScore === undefined) === (v.awayScore === undefined) &&
+      (v.homeScore === null) === (v.awayScore === null),
+    { message: 'Set both scores, or clear both' },
+  );
 
 export const SaveLiveBonusRoundPredictionSchema = z.object({
   fixtureId: z.string().min(1),
-  homeScore: z.number().int().min(0).max(99),
-  awayScore: z.number().int().min(0).max(99),
-});
-
-export const SetLiveFixtureScoreOverrideSchema = z.object({
-  /** Both null clears the override. */
-  homeScore: z.number().int().min(0).max(99).nullable(),
-  awayScore: z.number().int().min(0).max(99).nullable(),
+  homeScore: score,
+  awayScore: score,
 });
 
 export type CreateLiveBonusRoundInput = z.infer<typeof CreateLiveBonusRoundSchema>;
 export type UpdateLiveBonusRoundInput = z.infer<typeof UpdateLiveBonusRoundSchema>;
-export type SetLiveBonusRoundFixturesInput = z.infer<typeof SetLiveBonusRoundFixturesSchema>;
+export type CreateLiveBonusFixtureInput = z.infer<typeof CreateLiveBonusFixtureSchema>;
+export type UpdateLiveBonusFixtureInput = z.infer<typeof UpdateLiveBonusFixtureSchema>;
 export type SaveLiveBonusRoundPredictionInput = z.infer<typeof SaveLiveBonusRoundPredictionSchema>;

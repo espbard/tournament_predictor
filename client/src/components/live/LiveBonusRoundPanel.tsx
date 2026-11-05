@@ -6,10 +6,10 @@ import type { LiveBonusRoundView, LiveFixtureView } from '@/lib/liveApi';
 // ── One bonus round ───────────────────────────────────────────────────────────
 //
 // What the fixtures tab shows in place of a gameweek when a bonus round is picked: its
-// name, where its matches come from, and the matches themselves on the ordinary cards.
-// The server has already made each fixture mean the round — its multiplier, its score
-// and the caller's bonus-round prediction — so the cards need no special casing beyond
-// asking the bonus-round route for "what everyone predicted".
+// name, the labels the admin gave its matches, and the matches themselves on the ordinary
+// cards. The server shapes each hand-entered match as an ordinary fixture view, so the
+// cards need no special casing beyond asking the bonus-round route for "what everyone
+// predicted".
 
 interface Props {
   round: LiveBonusRoundView;
@@ -34,7 +34,10 @@ export default function LiveBonusRoundPanel({
   hidePrediction = false,
 }: Props) {
   const { t } = useT();
-  const sources = [...new Set(round.fixtures.map(f => f.sourceTournamentName))].join(', ');
+  // The labels the admin gave the matches ("UEFA Nations League"), if any.
+  const sources = [
+    ...new Set(round.fixtures.map(f => f.label).filter((l): l is string => !!l)),
+  ].join(', ');
 
   return (
     <>
@@ -50,7 +53,9 @@ export default function LiveBonusRoundPanel({
         </h2>
         {round.fixtures.length > 0 && (
           <p className="mt-0.5 text-sm text-muted-foreground">
-            {t('live.bonusRounds.explainer', { count: round.fixtures.length, sources })}
+            {sources
+              ? t('live.bonusRounds.explainer', { count: round.fixtures.length, sources })
+              : t('live.bonusRounds.explainerPlain', { count: round.fixtures.length })}
           </p>
         )}
         {round.visibility === 'test' && (
@@ -73,10 +78,6 @@ export default function LiveBonusRoundPanel({
         competitionId={competitionId}
         bonusRound
       />
-
-      {round.fixtures.some(f => f.scoreOverridden) && (
-        <p className="mt-2 text-xs text-muted-foreground">{t('live.bonusRounds.scoreOverridden')}</p>
-      )}
     </>
   );
 }

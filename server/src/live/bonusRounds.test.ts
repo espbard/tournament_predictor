@@ -1,15 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CreateLiveBonusFixtureSchema,
   DEFAULT_LIVE_SCORING_CONFIG,
-  SetLiveBonusRoundFixturesSchema,
-  bonusRoundScore,
+  UpdateLiveBonusFixtureSchema,
+  bonusFixtureStatus,
   canSeeLiveBonusRound,
   layoutLiveRounds,
   suggestLiveBonusRoundAnchor,
   type LiveRoundLayoutStage,
   type PlaceableBonusRound,
 } from '@tournament-predictor/shared';
-import { calculateBonusRoundPoints, isBonusRoundFixtureScorable } from './bonusRoundPoints';
+import { calculateBonusRoundPoints, isBonusFixtureScorable } from './bonusRoundPoints';
 
 // Bonus rounds: where they sit among a competition's own rounds, who sees them, and how
 // they score. The database side is thin; the rules worth pinning are all here.
@@ -116,55 +117,51 @@ describe('canSeeLiveBonusRound', () => {
 });
 
 describe('bonus-round scoring', () => {
-  const finished = {
-    status: 'finished' as const,
-    normalTimeHome: 2,
-    normalTimeAway: 1,
-    scoreOverrideHome: null,
-    scoreOverrideAway: null,
-  };
+  const played = { homeScore: 2, awayScore: 1, multiplier: 1 };
+  const config = DEFAULT_LIVE_SCORING_CONFIG;
 
   it('scores on the three tiers like a normal match', () => {
-    const exact = calculateBonusRoundPoints({ homeScore: 2, awayScore: 1 }, finished, 1, DEFAULT_LIVE_SCORING_CONFIG);
-    expect(exact.points).toBe(4);
-    const outcome = calculateBonusRoundPoints({ homeScore: 3, awayScore: 0 }, finished, 1, DEFAULT_LIVE_SCORING_CONFIG);
-    expect(outcome.points).toBe(1);
+    expect(calculateBonusRoundPoints({ homeScore: 2, awayScore: 1 }, played, config).points).toBe(4);
+    expect(calculateBonusRoundPoints({ homeScore: 3, awayScore: 2 }, played, config).points).toBe(2);
+    expect(calculateBonusRoundPoints({ homeScore: 3, awayScore: 0 }, played, config).points).toBe(1);
+    expect(calculateBonusRoundPoints({ homeScore: 0, awayScore: 0 }, played, config).points).toBe(0);
   });
 
-  it("applies the round's multiplier as bonus points", () => {
-    const result = calculateBonusRoundPoints({ homeScore: 2, awayScore: 1 }, finished, 2, DEFAULT_LIVE_SCORING_CONFIG);
+  it("applies the match's multiplier as bonus points", () => {
+    const result = calculateBonusRoundPoints({ homeScore: 2, awayScore: 1 }, { ...played, multiplier: 2 }, config);
     expect(result.points).toBe(8);
     expect(result.exactScorePoints).toBe(2);
     expect(result.multiplierBonusPoints).toBe(4);
   });
 
-  it("scores on the admin's override when one is set", () => {
-    // 2-1 from the provider included extra time; it was 1-1 after 90 minutes.
-    const overridden = { ...finished, scoreOverrideHome: 1, scoreOverrideAway: 1 };
-    expect(bonusRoundScore(overridden)).toEqual({ home: 1, away: 1, overridden: true });
-    const draw = calculateBonusRoundPoints({ homeScore: 0, awayScore: 0 }, overridden, 1, DEFAULT_LIVE_SCORING_CONFIG);
-    expect(draw.points).toBe(2);
-    const old = calculateBonusRoundPoints({ homeScore: 2, awayScore: 1 }, overridden, 1, DEFAULT_LIVE_SCORING_CONFIG);
-    expect(old.points).toBe(0);
-  });
-
-  it('ignores a half-set override', () => {
-    expect(bonusRoundScore({ ...finished, scoreOverrideHome: 0 })).toEqual({ home: 2, away: 1, overridden: false });
-  });
-
-  it('awards nothing until the match has finished', () => {
-    const live = { ...finished, status: 'in_play' as const };
-    expect(isBonusRoundFixtureScorable(live)).toBe(false);
-    expect(calculateBonusRoundPoints({ homeScore: 2, awayScore: 1 }, live, 1, DEFAULT_LIVE_SCORING_CONFIG).points).toBe(0);
+  it('awards nothing until the admin has entered the result', () => {
+    const unplayed = { homeScore: null, awayScore: null, multiplier: 1 };
+    expect(bonusFixtureStatus(unplayed)).toBe('scheduled');
+    expect(isBonusFixtureScorable(unplayed)).toBe(false);
+    expect(calculateBonusRoundPoints({ homeScore: 2, awayScore: 1 }, unplayed, config).points).toBe(0);
+    // Half a result is not a result.
+    expect(bonusFixtureStatus({ homeScore: 1, awayScore: null })).toBe('scheduled');
+    expect(bonusFixtureStatus(played)).toBe('finished');
   });
 });
 
-describe('SetLiveBonusRoundFixturesSchema', () => {
+describe('bonus-round match schemas', () => {
+  const match = { homeTeamName: 'Norway', awayTeamName: 'Italy', kickoffAt: '2026-11-13T19:45:00.000Z' };
+
   it('defaults the multiplier to 1 and rejects one out of bounds', () => {
-    const ok = SetLiveBonusRoundFixturesSchema.parse({ fixtures: [{ fixtureId: 'f1' }] });
-    expect(ok.fixtures[0].multiplier).toBe(1);
-    expect(SetLiveBonusRoundFixturesSchema.safeParse({ fixtures: [{ fixtureId: 'f1', multiplier: 0 }] }).success).toBe(
-      false,
-    );
+    expect(CreateLiveBonusFixtureSchema.parse(match).multiplier).toBe(1);
+    expect(CreateLiveBonusFixtureSchema.safeParse({ ...match, multiplier: 0 }).success).toBe(false);
+  });
+
+  it('needs both teams and a real kickoff', () => {
+    expect(CreateLiveBonusFixtureSchema.safeParse({ ...match, awayTeamName: ' ' }).success).toBe(false);
+    expect(CreateLiveBonusFixtureSchema.safeParse({ ...match, kickoffAt: 'tomorrow' }).success).toBe(false);
+  });
+
+  it('takes a result as both scores or neither', () => {
+    expect(UpdateLiveBonusFixtureSchema.safeParse({ homeScore: 2, awayScore: 1 }).success).toBe(true);
+    expect(UpdateLiveBonusFixtureSchema.safeParse({ homeScore: null, awayScore: null }).success).toBe(true);
+    expect(UpdateLiveBonusFixtureSchema.safeParse({ homeScore: 2 }).success).toBe(false);
+    expect(UpdateLiveBonusFixtureSchema.safeParse({ homeScore: 2, awayScore: null }).success).toBe(false);
   });
 });

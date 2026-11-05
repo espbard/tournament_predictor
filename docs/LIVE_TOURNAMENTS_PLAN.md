@@ -2112,32 +2112,25 @@ one private `norwegianFaithCard()`.
 
 ## 38. Bonus rounds *(added after the six phases, on request)*
 
-Extra rounds of **match predictions only** inside an existing live competition, made of
-matches an admin borrows from another competition: the **UEFA Nations League** to begin with.
-A round can hold matches from several matchdays (and could from several source tournaments),
-and sits **between** the competition's own rounds. New rounds are visible to test accounts
-only.
+Extra rounds of **match predictions only** inside an existing live competition, placed
+**between** the competition's own rounds. The matches are **set up by hand** by an admin, the
+way the manual tournament type works: two team names, a kickoff, an optional competition
+label ("UEFA Nations League"), a multiplier, and once played the score after 90 minutes.
+A round can hold matches from any dates and any competition. New rounds are visible to test
+accounts only.
 
-**Source.** `unl_2026_27` (`shared/src/live/presets.ts`) is a *bonus source*
-(`live_tournaments.is_bonus_source`): synced like any tournament, never given a competition
-(the create route refuses it, the admin picker hides it). football-data's free tier does not
-cover the Nations League, so it is served entirely by **bigballsdata**, which gives fixtures
-and nothing else. `sync.ts` handles that as a *fixtures-only* tournament
-(`isFixturesOnlyTournament`): teams are created from the names on the fixtures (keyed
-`name:<lowercased name>`) and fixtures are matched back to them by name; no standings or
-scorer requests are made; stage-less fixtures go to `startStageKey`. The league key
-`uefa-nations-league` is a guess that could not be checked from a cloud session. Check it with
-**Ask the provider** and correct it in "Where fixtures come from" on the tournament page.
+A first version borrowed the matches from a provider-synced Nations League tournament on
+bigballsdata. It was dropped on request, before release, in favour of entering the matches
+by hand: no provider, no source tournament, no sync.
 
 **Tables** (`drizzle/0040_live_bonus_rounds.sql`, mirrored in `ensureSchema.ts`):
 
 | Table / column | Notes |
 |---|---|
 | `live_bonus_rounds` | Per competition. `after_stage_key` + `after_matchday` place it; `visibility` is `test` or `everyone` |
-| `live_bonus_round_fixtures` | PK `(round, fixture)`, unique `(competition, fixture)` so a match is in one round per competition. Carries the round's `multiplier` for that match |
-| `live_bonus_round_predictions` | Unique `(competition, user, fixture)`. Same score columns as `live_predictions` |
+| `live_bonus_round_fixtures` | One hand-entered match: team names, `label`, `kickoff_at`, `multiplier`, `home_score`/`away_score` (null until the result is entered) |
+| `live_bonus_round_predictions` | Unique `(bonus_fixture_id, user_id)`. Same score columns as `live_predictions` |
 | `live_competition_members.bonus_round_points` | Public rounds only |
-| `live_fixtures.score_override_home/away` | Admin-entered 90-minute score. Never written by sync |
 
 **Placement** (`layoutLiveRounds` in `shared/src/live/bonusRounds.ts`): a table-stage
 gameweek anchor puts the round in that stage's gameweek strip as a star after the gameweek; a
@@ -2147,10 +2140,10 @@ has gone degrades gracefully rather than losing the round.
 
 | Decision | Why |
 |---|---|
-| Own prediction table, not `live_predictions` | Everything that reads `live_predictions` (the save route, selections, user stats, the comparisons) assumes the fixture belongs to the competition's own tournament |
-| Scored from `applySyncResult`, not `scoreFixtures` | The source tournament has no competitions, and `scoreFixtures` stops as soon as it finds none |
-| The round's multiplier, never the source fixture's | The source fixture's `multiplier` belongs to the source tournament, and two competitions may weight the same match differently |
-| Admin 90-minute override | bigballsdata has one score with no split between 90 minutes and extra time. Fine for the league phase, wrong for a knockout that went to extra time |
+| Matches entered by hand, not synced | Requested. Same model as the manual tournament type, and no dependency on a provider that may not cover the competition |
+| Own tables, not `live_fixtures` / `live_predictions` | Those belong to the provider-synced tournament, and everything reading them (selections, user stats, comparisons) assumes so |
+| The API shapes a match as an ordinary `LiveFixtureView` with synthetic team ids (`<id>:home`) | The fixture cards, tie-free list and "what everyone predicted" dropdown render it unchanged |
+| A match is finished once both scores are set; scoring runs on that write | There is no sync tick for these. Clearing the result puts the predictions back to unscored |
 | Test-only rounds stay out of `total_points` | Requested ("only visible to test users"). A regular player must never see a total they cannot account for. The leaderboard adds the test-only points back for test accounts and admins, as a preview |
 | A hidden round is an empty list or a 404 | Nothing about a test-only round reaches a regular player's page, not even a leaderboard column |
 | The progression chart includes public rounds only | So it still ends on the leaderboard total that everyone sees |

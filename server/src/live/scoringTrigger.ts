@@ -24,12 +24,7 @@ import { calculateTablePoints, isTableStageComplete } from './tableScoring';
 import { notifyLiveCompetitions } from './liveEvents';
 import { scoreAllLiveBonusQuestions } from './bonusScoring';
 import { EMPTY_SELECTION_INDEX, loadSelectionIndex, loadSelectionIndexes } from './selections';
-import {
-  competitionsWithBonusFixtures,
-  recalculateBonusRoundsForCompetition,
-  scoreBonusRoundFixtures,
-  scoreUnscoredBonusRoundFixtures,
-} from './bonusRoundScoring';
+import { recalculateBonusRoundsForCompetition } from './bonusRoundScoring';
 
 // ── Scoring trigger ───────────────────────────────────────────────────────────
 //
@@ -127,9 +122,7 @@ export async function recomputeLiveMemberTotals(competitionIds: string[]): Promi
         -- points stay out of the total; the leaderboard adds them for test accounts.
         SELECT SUM(p.points) AS bonus_round_points
         FROM live_bonus_round_predictions p
-        JOIN live_bonus_round_fixtures rf
-          ON rf.live_competition_id = p.live_competition_id
-         AND rf.live_fixture_id = p.live_fixture_id
+        JOIN live_bonus_round_fixtures rf ON rf.id = p.bonus_fixture_id
         JOIN live_bonus_rounds r ON r.id = rf.bonus_round_id
         WHERE p.live_competition_id = m2.live_competition_id
           AND p.user_id = m2.user_id
@@ -630,23 +623,6 @@ export async function applySyncResult(opts: {
     ];
   }
 
-  // Bonus rounds borrowing this tournament's fixtures, in whatever competitions hold
-  // them. A score corrected after full time arrives as a change, so both lists are
-  // rescored; an unfinished fixture simply stays unscored.
-  const bonus = await scoreBonusRoundFixtures([
-    ...opts.newlyFinishedFixtureIds,
-    ...opts.changedFixtureIds,
-  ]);
-  const bonusCaughtUp = await scoreUnscoredBonusRoundFixtures(opts.liveTournamentId);
-  const bonusAffected = [
-    ...new Set([...bonus.affectedCompetitionIds, ...bonusCaughtUp.affectedCompetitionIds]),
-  ];
-  if (bonusAffected.length > 0) {
-    await recomputeLiveMemberTotals(bonusAffected);
-    result.scoredPredictions += bonus.scoredPredictions + bonusCaughtUp.scoredPredictions;
-    result.affectedCompetitionIds = [...new Set([...result.affectedCompetitionIds, ...bonusAffected])];
-  }
-
   if (result.affectedCompetitionIds.length > 0) {
     notifyLiveCompetitions(result.affectedCompetitionIds, 'leaderboard-updated');
   }
@@ -656,12 +632,8 @@ export async function applySyncResult(opts: {
       .select({ id: liveCompetitions.id })
       .from(liveCompetitions)
       .where(eq(liveCompetitions.liveTournamentId, opts.liveTournamentId));
-    const withBonusFixtures = await competitionsWithBonusFixtures([
-      ...opts.newlyFinishedFixtureIds,
-      ...opts.changedFixtureIds,
-    ]);
     notifyLiveCompetitions(
-      [...new Set([...competitions.map(c => c.id), ...withBonusFixtures])],
+      competitions.map(c => c.id),
       'fixtures-updated',
     );
   }

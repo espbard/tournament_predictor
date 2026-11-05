@@ -1,22 +1,14 @@
 -- Live tournaments: bonus rounds.
 --
--- Extra rounds of match predictions inside one live competition, made of fixtures
--- borrowed from another live tournament — the UEFA Nations League to begin with, which
--- exists only as such a source (`is_bonus_source`). Match predictions only.
+-- Extra rounds of match predictions inside one live competition, made of matches an
+-- admin sets up by hand (teams, kickoff, and later the 90-minute result), the way the
+-- manual tournament type works. Match predictions only.
 --
--- Predictions live in their own table rather than live_predictions, because everything
--- reading live_predictions assumes the fixture belongs to the competition's own
--- tournament.
+-- Kept apart from live_fixtures / live_predictions, which belong to the provider-synced
+-- tournament and are read everywhere on that assumption.
 --
 -- Hand-written: see docs/LIVE_TOURNAMENTS_PLAN.md on why db:generate is unsafe here.
 -- Mirrored with IF NOT EXISTS in server/src/live/ensureSchema.ts — keep the two in sync.
-
-ALTER TABLE "live_tournaments" ADD COLUMN IF NOT EXISTS "is_bonus_source" boolean NOT NULL DEFAULT false;
-
--- bigballsdata gives one score with no split between 90 minutes and extra time, so an
--- admin can state the normal-time score for bonus-round scoring. Never written by sync.
-ALTER TABLE "live_fixtures" ADD COLUMN IF NOT EXISTS "score_override_home" integer;
-ALTER TABLE "live_fixtures" ADD COLUMN IF NOT EXISTS "score_override_away" integer;
 
 ALTER TABLE "live_competition_members" ADD COLUMN IF NOT EXISTS "bonus_round_points" integer NOT NULL DEFAULT 0;
 
@@ -33,21 +25,27 @@ CREATE TABLE IF NOT EXISTS "live_bonus_rounds" (
 CREATE INDEX IF NOT EXISTS "live_bonus_rounds_competition_idx" ON "live_bonus_rounds" ("live_competition_id");
 
 CREATE TABLE IF NOT EXISTS "live_bonus_round_fixtures" (
+  "id" text PRIMARY KEY,
   "bonus_round_id" text NOT NULL REFERENCES "live_bonus_rounds"("id") ON DELETE CASCADE,
   "live_competition_id" text NOT NULL REFERENCES "live_competitions"("id") ON DELETE CASCADE,
-  "live_fixture_id" text NOT NULL REFERENCES "live_fixtures"("id") ON DELETE CASCADE,
+  "home_team_name" text NOT NULL,
+  "away_team_name" text NOT NULL,
+  "label" text,
+  "kickoff_at" timestamp NOT NULL,
   "multiplier" integer NOT NULL DEFAULT 1,
+  "home_score" integer,
+  "away_score" integer,
   "created_at" timestamp NOT NULL DEFAULT now(),
-  PRIMARY KEY ("bonus_round_id", "live_fixture_id")
+  "updated_at" timestamp NOT NULL DEFAULT now()
 );
-CREATE UNIQUE INDEX IF NOT EXISTS "live_bonus_round_fixtures_competition_fixture_unique" ON "live_bonus_round_fixtures" ("live_competition_id", "live_fixture_id");
-CREATE INDEX IF NOT EXISTS "live_bonus_round_fixtures_fixture_idx" ON "live_bonus_round_fixtures" ("live_fixture_id");
+CREATE INDEX IF NOT EXISTS "live_bonus_round_fixtures_round_idx" ON "live_bonus_round_fixtures" ("bonus_round_id");
+CREATE INDEX IF NOT EXISTS "live_bonus_round_fixtures_competition_idx" ON "live_bonus_round_fixtures" ("live_competition_id");
 
 CREATE TABLE IF NOT EXISTS "live_bonus_round_predictions" (
   "id" text PRIMARY KEY,
+  "bonus_fixture_id" text NOT NULL REFERENCES "live_bonus_round_fixtures"("id") ON DELETE CASCADE,
   "live_competition_id" text NOT NULL REFERENCES "live_competitions"("id") ON DELETE CASCADE,
   "user_id" text NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
-  "live_fixture_id" text NOT NULL REFERENCES "live_fixtures"("id") ON DELETE CASCADE,
   "home_score" integer NOT NULL,
   "away_score" integer NOT NULL,
   "points" integer,
@@ -58,5 +56,5 @@ CREATE TABLE IF NOT EXISTS "live_bonus_round_predictions" (
   "created_at" timestamp NOT NULL DEFAULT now(),
   "updated_at" timestamp NOT NULL DEFAULT now()
 );
-CREATE UNIQUE INDEX IF NOT EXISTS "live_bonus_round_predictions_competition_user_fixture_unique" ON "live_bonus_round_predictions" ("live_competition_id", "user_id", "live_fixture_id");
-CREATE INDEX IF NOT EXISTS "live_bonus_round_predictions_fixture_idx" ON "live_bonus_round_predictions" ("live_fixture_id");
+CREATE UNIQUE INDEX IF NOT EXISTS "live_bonus_round_predictions_fixture_user_unique" ON "live_bonus_round_predictions" ("bonus_fixture_id", "user_id");
+CREATE INDEX IF NOT EXISTS "live_bonus_round_predictions_competition_idx" ON "live_bonus_round_predictions" ("live_competition_id");

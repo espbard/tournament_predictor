@@ -164,8 +164,6 @@ export interface LiveTournament {
   startStageKey: string;
   status: LiveTournamentStatus;
   syncEnabled: boolean;
-  /** Exists only to lend fixtures to bonus rounds — see shared/src/live/bonusRounds.ts. */
-  isBonusSource: boolean;
   lastStructureSyncAt: string | null;
   lastFixtureSyncAt: string | null;
   lastSyncError: string | null;

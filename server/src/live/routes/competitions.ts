@@ -10,6 +10,7 @@ import {
   SaveLiveScorerPredictionSchema,
   SaveLiveTablePredictionSchema,
   UpdateLiveCompetitionSchema,
+  bonusFixtureStatus,
   bonusQuestionLockAt,
   checkLiveBonusAnswer,
   fixtureLockAt,
@@ -228,14 +229,10 @@ liveCompetitionsRouter.post('/competitions', requireAdmin, async (req, res) => {
     }
 
     const [tournament] = await db
-      .select({ id: liveTournaments.id, isBonusSource: liveTournaments.isBonusSource })
+      .select({ id: liveTournaments.id })
       .from(liveTournaments)
       .where(eq(liveTournaments.id, parsed.data.liveTournamentId));
     if (!tournament) return res.status(404).json({ error: 'Live tournament not found' });
-    // A bonus source only lends its fixtures to bonus rounds; nobody plays it directly.
-    if (tournament.isBonusSource) {
-      return res.status(400).json({ error: 'That tournament only supplies bonus-round matches' });
-    }
 
     let inviteCode = generateInviteCode();
     for (let i = 0; i < 10; i++) {
@@ -641,55 +638,53 @@ async function loadLiveProgression(
   );
 }
 
-/** A competition's public bonus-round matches, their teams and points, for the chart. */
+/**
+ * A competition's public bonus-round matches and points, for the chart. The teams are
+ * only names, so each match gets two synthetic team ids for the label to read.
+ */
 async function loadPublicBonusRoundProgression(competitionId: string) {
-  const fixtures = await db
-    .select({
-      id: liveFixtures.id,
-      kickoffAt: liveFixtures.kickoffAt,
-      status: liveFixtures.status,
-      stageKey: liveFixtures.stageKey,
-      matchday: liveFixtures.matchday,
-      homeTeamId: liveFixtures.homeTeamId,
-      awayTeamId: liveFixtures.awayTeamId,
-    })
+  const rows = await db
+    .select({ fixture: liveBonusRoundFixtures })
     .from(liveBonusRoundFixtures)
     .innerJoin(liveBonusRounds, eq(liveBonusRounds.id, liveBonusRoundFixtures.bonusRoundId))
-    .innerJoin(liveFixtures, eq(liveFixtures.id, liveBonusRoundFixtures.liveFixtureId))
     .where(
       and(
         eq(liveBonusRoundFixtures.liveCompetitionId, competitionId),
         eq(liveBonusRounds.visibility, 'everyone'),
       ),
     );
-  if (fixtures.length === 0) return { fixtures: [], teams: [], predictions: [] };
+  if (rows.length === 0) return { fixtures: [], teams: [], predictions: [] };
 
-  const fixtureIds = fixtures.map(f => f.id);
-  const teamIds = [
-    ...new Set(fixtures.flatMap(f => [f.homeTeamId, f.awayTeamId]).filter((t): t is string => !!t)),
-  ];
-  const [teams, predictions] = await Promise.all([
-    teamIds.length
-      ? db
-          .select({ id: liveTeams.id, name: liveTeams.name, shortName: liveTeams.shortName, tla: liveTeams.tla })
-          .from(liveTeams)
-          .where(inArray(liveTeams.id, teamIds))
-      : Promise.resolve([]),
-    db
-      .select({
-        userId: liveBonusRoundPredictions.userId,
-        liveFixtureId: liveBonusRoundPredictions.liveFixtureId,
-        points: liveBonusRoundPredictions.points,
-      })
-      .from(liveBonusRoundPredictions)
-      .where(
-        and(
-          eq(liveBonusRoundPredictions.liveCompetitionId, competitionId),
-          inArray(liveBonusRoundPredictions.liveFixtureId, fixtureIds),
-          isNotNull(liveBonusRoundPredictions.points),
-        ),
-      ),
+  const fixtures = rows.map(({ fixture: f }) => ({
+    id: f.id,
+    kickoffAt: f.kickoffAt,
+    status: bonusFixtureStatus(f),
+    stageKey: null,
+    matchday: null,
+    homeTeamId: `${f.id}:home`,
+    awayTeamId: `${f.id}:away`,
+  }));
+  const teams = rows.flatMap(({ fixture: f }) => [
+    { id: `${f.id}:home`, name: f.homeTeamName, shortName: null, tla: null },
+    { id: `${f.id}:away`, name: f.awayTeamName, shortName: null, tla: null },
   ]);
+  const predictions = await db
+    .select({
+      userId: liveBonusRoundPredictions.userId,
+      liveFixtureId: liveBonusRoundPredictions.bonusFixtureId,
+      points: liveBonusRoundPredictions.points,
+    })
+    .from(liveBonusRoundPredictions)
+    .where(
+      and(
+        eq(liveBonusRoundPredictions.liveCompetitionId, competitionId),
+        inArray(
+          liveBonusRoundPredictions.bonusFixtureId,
+          fixtures.map(f => f.id),
+        ),
+        isNotNull(liveBonusRoundPredictions.points),
+      ),
+    );
   return { fixtures, teams, predictions };
 }
 

@@ -9,7 +9,7 @@ import type { LiveProviderId } from './types';
 //
 // Adding a new competition shape is one entry in LIVE_FORMATS.
 
-export type LiveFormatKey = 'ucl_swiss' | 'domestic_league' | 'nations_league';
+export type LiveFormatKey = 'ucl_swiss' | 'domestic_league';
 
 export type LiveStageKind = 'table' | 'knockout';
 
@@ -185,51 +185,9 @@ const DOMESTIC_LEAGUE: LiveFormatDef = {
   ],
 };
 
-// ── UEFA Nations League ────────────────────────────────────────────────────────
-//
-// Only ever used as a *bonus-round source*: its fixtures are borrowed by bonus rounds in
-// other competitions, and nobody predicts its table. It is served by bigballsdata, which
-// names no stage at all, so in practice every fixture lands in `league_phase` (the
-// tournament's startStageKey — see defaultStageFor in sync.ts). The knockout stages are
-// listed so a provider that does report them can be mapped later without a migration.
-//
-// Four leagues (A–D) of groups, hence per-group tables.
-
-const NATIONS_LEAGUE: LiveFormatDef = {
-  key: 'nations_league',
-  tableScope: 'per_group',
-  stages: [
-    {
-      key: 'league_phase',
-      labelKey: 'live.stages.league_phase',
-      kind: 'table',
-      legs: 1,
-      order: 10,
-      providerStages: { football_data: ['LEAGUE_STAGE', 'GROUP_STAGE'] },
-    },
-    {
-      key: 'quarter_final',
-      labelKey: 'live.stages.quarter_final',
-      kind: 'knockout',
-      legs: 2,
-      order: 40,
-      providerStages: { football_data: ['QUARTER_FINALS'] },
-    },
-    {
-      key: 'finals',
-      labelKey: 'live.stages.finals',
-      kind: 'knockout',
-      legs: 1,
-      order: 50,
-      providerStages: { football_data: ['SEMI_FINALS', 'THIRD_PLACE', 'FINAL'] },
-    },
-  ],
-};
-
 export const LIVE_FORMATS: Record<LiveFormatKey, LiveFormatDef> = {
   ucl_swiss: UCL_SWISS,
   domestic_league: DOMESTIC_LEAGUE,
-  nations_league: NATIONS_LEAGUE,
 };
 
 export const LIVE_FORMAT_KEYS = Object.keys(LIVE_FORMATS) as LiveFormatKey[];

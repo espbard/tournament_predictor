@@ -10,7 +10,6 @@ import {
 } from '@tournament-predictor/shared';
 import { db } from '../db/client';
 import {
-  liveBonusRoundPredictions,
   liveFixtures,
   livePredictions,
   liveStandings,
@@ -738,12 +737,7 @@ async function removeOutOfSeasonFixtures(tournament: TournamentRow): Promise<num
     .select({ liveFixtureId: livePredictions.liveFixtureId })
     .from(livePredictions)
     .where(inArray(livePredictions.liveFixtureId, strayIds));
-  // A bonus source's fixtures are predicted in other competitions' bonus rounds instead.
-  const bonusPredicted = await db
-    .select({ liveFixtureId: liveBonusRoundPredictions.liveFixtureId })
-    .from(liveBonusRoundPredictions)
-    .where(inArray(liveBonusRoundPredictions.liveFixtureId, strayIds));
-  const keep = new Set([...predicted, ...bonusPredicted].map(p => p.liveFixtureId));
+  const keep = new Set(predicted.map(p => p.liveFixtureId));
 
   const removable = strayIds.filter(id => !keep.has(id));
   if (keep.size > 0) {
@@ -839,38 +833,7 @@ function providersFor(tournament: TournamentRow) {
     structure: getProvider(tournament.provider),
     fixtures: getProvider(fixtureProviderId),
     isSplit: fixtureProviderId !== tournament.provider,
-    fixturesOnly: isFixturesOnlyTournament(tournament),
   };
-}
-
-/** Providers that serve fixtures and nothing else — no team list, no table, no scorers. */
-const FIXTURES_ONLY_PROVIDERS: ReadonlySet<string> = new Set(['big_balls']);
-
-/**
- * Whether one fixtures-only provider serves the whole tournament.
- *
- * The UEFA Nations League (a bonus-round source) is the case: football-data does not
- * cover it, so bigballsdata is the tournament's only provider. There is then no team
- * list to fetch, so teams are created from the names on the fixtures — keyed by the
- * adapter's `name:<lowercased name>` id — and fixtures are joined back to them by name.
- * No standings and no scorer feed are requested either, since neither exists.
- */
-export function isFixturesOnlyTournament(tournament: {
-  provider: string;
-  fixtureProvider: string | null;
-}): boolean {
-  const fixtureProviderId = tournament.fixtureProvider ?? tournament.provider;
-  return (
-    FIXTURES_ONLY_PROVIDERS.has(tournament.provider) &&
-    FIXTURES_ONLY_PROVIDERS.has(fixtureProviderId)
-  );
-}
-
-/** The teams named on a set of fixtures, for a provider with no team list of its own. */
-function teamsNamedOn(fixtures: ProviderFixture[]): ProviderTeam[] {
-  return fixtures.flatMap(f =>
-    [f.homeTeam, f.awayTeam].filter((t): t is ProviderTeam => t !== null),
-  );
 }
 
 /**
@@ -910,7 +873,7 @@ async function teamResolverFor(
  * absent stage stays null and shows up as an unmapped-stage warning.
  */
 export function defaultStageFor(tournament: TournamentRow, isSplit: boolean): string | null {
-  return isSplit || isFixturesOnlyTournament(tournament) ? tournament.startStageKey : null;
+  return isSplit ? tournament.startStageKey : null;
 }
 
 // ── Entry points ──────────────────────────────────────────────────────────────
@@ -922,14 +885,13 @@ export function defaultStageFor(tournament: TournamentRow, isSplit: boolean): st
 export async function syncTournamentStructure(tournamentId: string): Promise<SyncResult> {
   const tournament = await loadTournament(tournamentId);
   const format = getLiveFormat(tournament.format);
-  const { structure, fixtures: fixtureProvider, isSplit, fixturesOnly } = providersFor(tournament);
+  const { structure, fixtures: fixtureProvider, isSplit } = providersFor(tournament);
   const result = emptyResult();
 
   try {
     const [providerTeams, providerFixtures] = await Promise.all([
-      (fixturesOnly
-        ? Promise.resolve([] as ProviderTeam[])
-        : structure.fetchTeams(tournament.providerCompetitionId, tournament.season))
+      structure
+        .fetchTeams(tournament.providerCompetitionId, tournament.season)
         // A missing teams list is survivable — fixtures carry their teams inline.
         .catch(err => {
           if (err instanceof ProviderError && err.isSeasonUnavailable) return [] as ProviderTeam[];
@@ -951,11 +913,11 @@ export async function syncTournamentStructure(tournamentId: string): Promise<Syn
     // Not so for a split: the second provider names clubs without ids, so inserting its
     // teams would duplicate all 36 under a made-up key. Those fixtures are matched to
     // the rows the main provider created instead.
-    //
-    // A fixtures-only tournament has no main provider at all, so the names on the
-    // fixtures are the only team data there is: they are inserted, and the fixtures are
-    // then matched back to them by name below.
-    const fromFixtures = isSplit ? [] : teamsNamedOn(providerFixtures);
+    const fromFixtures = isSplit
+      ? []
+      : providerFixtures.flatMap(f =>
+          [f.homeTeam, f.awayTeam].filter((t): t is ProviderTeam => t !== null),
+        );
     const teamIdByProviderId = await upsertTeams(tournament.id, [...providerTeams, ...fromFixtures]);
     result.teams = teamIdByProviderId.size;
 
@@ -963,7 +925,7 @@ export async function syncTournamentStructure(tournamentId: string): Promise<Syn
       tournament,
       format,
       providerFixtures,
-      await teamResolverFor(tournament, isSplit || fixturesOnly, teamIdByProviderId),
+      await teamResolverFor(tournament, isSplit, teamIdByProviderId),
       defaultStageFor(tournament, isSplit),
     );
     result.fixtures = fixtureOutcome.written;
@@ -979,23 +941,20 @@ export async function syncTournamentStructure(tournamentId: string): Promise<Syn
       );
     }
 
-    // Standings are optional: a season with no games played has no table yet. A
-    // fixtures-only provider has none to give.
-    if (!fixturesOnly) {
-      try {
-        const providerStandings = await structure.fetchStandings(
-          tournament.providerCompetitionId,
-          tournament.season,
-        );
-        result.standings = await replaceStandings(
-          tournament,
-          format,
-          providerStandings,
-          teamIdByProviderId,
-        );
-      } catch (err) {
-        if (!(err instanceof ProviderError && err.isSeasonUnavailable)) throw err;
-      }
+    // Standings are optional: a season with no games played has no table yet.
+    try {
+      const providerStandings = await structure.fetchStandings(
+        tournament.providerCompetitionId,
+        tournament.season,
+      );
+      result.standings = await replaceStandings(
+        tournament,
+        format,
+        providerStandings,
+        teamIdByProviderId,
+      );
+    } catch (err) {
+      if (!(err instanceof ProviderError && err.isSeasonUnavailable)) throw err;
     }
 
     // After the upsert, so a provider that ignored the season it was asked for does not
@@ -1025,7 +984,7 @@ export async function syncTournamentStructure(tournamentId: string): Promise<Syn
 
     // Last, and best-effort — see syncLiveScorers. This is the backstop: whatever else
     // happens, a tournament's goal counts are never more than one structure sync old.
-    if (!fixturesOnly) result.scorersSynced = await syncLiveScorers(tournament.id);
+    result.scorersSynced = await syncLiveScorers(tournament.id);
 
     await recordSyncOutcome(tournament.id, 'structure', null);
     return result;
@@ -1074,7 +1033,7 @@ export async function syncLiveScorers(tournamentId: string): Promise<number> {
 export async function syncLiveWindow(tournamentId: string): Promise<SyncResult> {
   const tournament = await loadTournament(tournamentId);
   const format = getLiveFormat(tournament.format);
-  const { fixtures: fixtureProvider, isSplit, fixturesOnly } = providersFor(tournament);
+  const { fixtures: fixtureProvider, isSplit } = providersFor(tournament);
   const result = emptyResult();
 
   try {
@@ -1083,10 +1042,6 @@ export async function syncLiveWindow(tournamentId: string): Promise<SyncResult> 
       tournament.season,
       { ...liveWindowDates(), ...seasonWindowFor(tournament) },
     );
-
-    // A team first seen in this window would otherwise have no row to match against
-    // until the next structure sync. Cheap: the window holds a handful of fixtures.
-    if (fixturesOnly) await upsertTeams(tournament.id, teamsNamedOn(providerFixtures));
 
     const existingTeams = await db
       .select({ id: liveTeams.id, providerTeamId: liveTeams.providerTeamId })
@@ -1098,7 +1053,7 @@ export async function syncLiveWindow(tournamentId: string): Promise<SyncResult> 
       tournament,
       format,
       providerFixtures,
-      await teamResolverFor(tournament, isSplit || fixturesOnly, teamIdByProviderId),
+      await teamResolverFor(tournament, isSplit, teamIdByProviderId),
       defaultStageFor(tournament, isSplit),
     );
     result.fixtures = outcome.written;

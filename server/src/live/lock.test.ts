@@ -261,18 +261,8 @@ describe('startStageKey filtering', () => {
 });
 
 describe('presets', () => {
-  it('ships the agreed competitions', () => {
-    expect(LIVE_TOURNAMENT_PRESETS.map(p => p.key)).toEqual([
-      'ucl_2026_27',
-      'pl_2026_27',
-      'unl_2026_27',
-    ]);
-  });
-
-  it('marks only the Nations League as a bonus-round source', () => {
-    expect(LIVE_TOURNAMENT_PRESETS.filter(p => p.bonusSourceOnly).map(p => p.key)).toEqual([
-      'unl_2026_27',
-    ]);
+  it('ships the two agreed competitions', () => {
+    expect(LIVE_TOURNAMENT_PRESETS.map(p => p.key)).toEqual(['ucl_2026_27', 'pl_2026_27']);
   });
 
   it('points the Champions League preset at the league phase onwards', () => {
