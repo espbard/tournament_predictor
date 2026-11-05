@@ -14,7 +14,12 @@ import { UserAvatar } from '@/components/UserAvatar';
 import { useT } from '@/lib/useT';
 import { useAuthStore } from '@/store/authStore';
 import LiveFixtureList from '@/components/live/LiveFixtureList';
+import LiveBonusRoundPanel from '@/components/live/LiveBonusRoundPanel';
+import { Star } from 'lucide-react';
+import { layoutLiveRounds } from '@tournament-predictor/shared';
 import LiveGameweekProgress, {
+  type LiveBonusStripItem,
+  type LiveGameweekState,
   type LiveGameweekProgressItem,
 } from '@/components/live/LiveGameweekProgress';
 import LiveTablePrediction from '@/components/live/LiveTablePrediction';
@@ -55,6 +60,7 @@ export default function LiveUserPredictionsPage() {
 
   const [stageKey, setStageKey] = useState<string | null>(null);
   const [matchday, setMatchday] = useState<number | null>(null);
+  const [bonusRoundId, setBonusRoundId] = useState<string | null>(null);
 
   const isSelf = !!userId && userId === user?.id;
 
@@ -206,6 +212,49 @@ export default function LiveUserPredictionsPage() {
 
   const shownMatchday = matchday ?? matchdays[0] ?? null;
 
+  // Their bonus rounds — only the rounds this viewer may see, and of those only the
+  // predictions on matches that have locked. Placed exactly as on the competition page.
+  const { data: bonusRounds = [] } = useQuery({
+    queryKey: liveKeys.userBonusRounds(id!, userId!),
+    queryFn: () => liveApi.userBonusRounds(id!, userId!),
+    enabled: !!id && !!userId,
+  });
+
+  const roundLayout = useMemo(
+    () =>
+      layoutLiveRounds(
+        stages.map(stage => ({
+          key: stage.key,
+          kind: stage.kind,
+          matchdays: [
+            ...new Set(
+              fixtures
+                .filter(f => f.stageKey === stage.key && f.matchday != null)
+                .map(f => f.matchday as number),
+            ),
+          ].sort((a, b) => a - b),
+        })),
+        bonusRounds,
+      ),
+    [stages, fixtures, bonusRounds],
+  );
+
+  const bonusStrip = useMemo<LiveBonusStripItem[]>(() => {
+    const byMatchday = stageKey ? roundLayout.inStage.get(stageKey) : undefined;
+    if (!byMatchday) return [];
+    return [...byMatchday.entries()].flatMap(([afterMatchday, rounds]) =>
+      rounds.map(round => {
+        const done = round.fixtures.filter(f => f.prediction !== null).length;
+        const state: LiveGameweekState =
+          round.fixtures.length === 0 ? 'empty' : done === round.fixtures.length ? 'complete' : 'partial';
+        return { id: round.id, name: round.name, afterMatchday, done, selected: round.fixtures.length, state };
+      }),
+    );
+  }, [roundLayout, stageKey]);
+
+  const shownBonusRound = bonusRounds.find(r => r.id === bonusRoundId) ?? null;
+  const bonusRoundInStrip = !!shownBonusRound && bonusStrip.some(b => b.id === shownBonusRound.id);
+
   if (loadingCompetition) return <LoadingSpinner />;
   if (!competition) {
     return (
@@ -288,34 +337,77 @@ export default function LiveUserPredictionsPage() {
           </p>
         ) : (
           <>
-            {stages.length > 1 && (
+            {roundLayout.top.length > 1 && (
               <div className="mb-3 flex flex-wrap gap-1.5">
-                {stages.map(stage => (
-                  <button
-                    key={stage.key}
-                    onClick={() => {
-                      setStageKey(stage.key);
-                      setMatchday(null);
-                    }}
-                    className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                      stage.key === stageKey
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-muted text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    {t(stage.labelKey)}
-                  </button>
-                ))}
+                {roundLayout.top.map(item => {
+                  if (item.type === 'bonus') {
+                    const isCurrent = item.round.id === bonusRoundId;
+                    return (
+                      <button
+                        key={`bonus-${item.round.id}`}
+                        onClick={() => setBonusRoundId(item.round.id)}
+                        className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                          isCurrent
+                            ? 'bg-amber-500 text-white'
+                            : 'bg-amber-500/15 text-amber-700 hover:text-amber-900 dark:text-amber-300'
+                        }`}
+                      >
+                        <Star className="h-3 w-3 fill-current" aria-hidden />
+                        {item.round.name}
+                      </button>
+                    );
+                  }
+                  const stage = stages.find(s => s.key === item.stageKey)!;
+                  return (
+                    <button
+                      key={stage.key}
+                      onClick={() => {
+                        setStageKey(stage.key);
+                        setMatchday(null);
+                        setBonusRoundId(null);
+                      }}
+                      className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                        stage.key === stageKey && (!shownBonusRound || bonusRoundInStrip)
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-muted text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {t(stage.labelKey)}
+                    </button>
+                  );
+                })}
               </div>
             )}
 
+            {stageDef?.kind === 'table' && matchdays.length > 0 && (!shownBonusRound || bonusRoundInStrip) && (
+              <LiveGameweekProgress
+                items={gameweekProgress}
+                current={shownMatchday}
+                onSelect={md => {
+                  setMatchday(md);
+                  setBonusRoundId(null);
+                }}
+                bonus={bonusStrip}
+                currentBonusId={bonusRoundId}
+                onSelectBonus={setBonusRoundId}
+              />
+            )}
+
+            {shownBonusRound ? (
+              <LiveBonusRoundPanel
+                key={`${userId}-${shownBonusRound.id}`}
+                round={shownBonusRound}
+                competitionId={id!}
+                onSave={() => {}}
+                savingFixtureId={null}
+                savedFixtures={{}}
+                errors={{}}
+                readOnly
+              />
+            ) : (
+            <>
             {stageDef?.kind === 'table' && matchdays.length > 0 && (
               <>
-                <LiveGameweekProgress
-                  items={gameweekProgress}
-                  current={shownMatchday}
-                  onSelect={setMatchday}
-                />
                 <h2 className="mb-3 text-lg font-semibold">
                   {t('live.gameweekHeading', { matchday: shownMatchday ?? 0 })}
                 </h2>
@@ -340,6 +432,8 @@ export default function LiveUserPredictionsPage() {
               readOnly
               competitionId={id!}
             />
+            </>
+            )}
           </>
         ))}
 

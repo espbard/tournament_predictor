@@ -31,6 +31,12 @@ import type { LiveLeaderboardRow } from '@/lib/liveApi';
 interface Props {
   rows: LiveLeaderboardRow[];
   competitionId: string;
+  /**
+   * Whether the viewer can see any bonus round. The column is the one exception to "every
+   * column always shown": while rounds are test-only, a regular player must not see a
+   * column for something that, for them, does not exist.
+   */
+  showBonusRounds?: boolean;
 }
 
 /**
@@ -47,10 +53,12 @@ const COLUMNS = [
   { key: 'table', get: (r: LiveLeaderboardRow) => r.breakdown.tablePoints },
   { key: 'scorers', get: (r: LiveLeaderboardRow) => r.breakdown.scorerPoints },
   { key: 'bonus', get: (r: LiveLeaderboardRow) => r.breakdown.bonusPoints },
+  { key: 'bonusRounds', get: (r: LiveLeaderboardRow) => r.breakdown.bonusRoundPoints ?? 0 },
 ] as const;
 
-export default function LiveLeaderboard({ rows, competitionId }: Props) {
+export default function LiveLeaderboard({ rows, competitionId, showBonusRounds = false }: Props) {
   const { t } = useT();
+  const columns = COLUMNS.filter(c => c.key !== 'bonusRounds' || showBonusRounds);
   const { user } = useAuthStore();
 
   // Which heading was last pressed, i.e. what the caption is naming. Pressing it again
@@ -93,7 +101,7 @@ export default function LiveLeaderboard({ rows, competitionId }: Props) {
               <th className="py-2 text-[10px] font-medium text-muted-foreground sm:text-xs">
                 {t('live.leaderboard.player')}
               </th>
-              {COLUMNS.map(column => (
+              {columns.map(column => (
                 <th key={column.key} className="w-6 p-0 sm:w-14">
                   <button
                     type="button"
@@ -152,7 +160,7 @@ export default function LiveLeaderboard({ rows, competitionId }: Props) {
                       <span className="truncate text-xs sm:text-sm">{row.username}</span>
                     </Link>
                   </td>
-                  {COLUMNS.map(column => {
+                  {columns.map(column => {
                     const value = column.get(row);
                     return (
                       <td

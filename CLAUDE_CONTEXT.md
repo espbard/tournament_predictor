@@ -258,6 +258,12 @@ indistinguishable from the outside.
   adapter retries such a response once without the `season=` filter, keeping the matches whose
   own `season.startDate` falls in the season asked for.
 
+- **Bonus rounds** are extra rounds of match predictions inside a live competition, with
+  matches an admin enters by hand (two teams from `live_bonus_teams`, kickoff, later the
+  90-minute result), like the manual type. Own tables (`live_bonus_teams`, `live_bonus_rounds`,
+  `live_bonus_round_fixtures`, `live_bonus_round_predictions`); they never touch `live_fixtures` or `live_predictions`.
+  See [`docs/LIVE_TOURNAMENTS_PLAN.md`](docs/LIVE_TOURNAMENTS_PLAN.md) §38.
+
 ### Migrations — read this before adding a column
 
 `server/drizzle/meta/_journal.json` is **out of sync** with the SQL files on disk: several
@@ -424,6 +430,22 @@ GET    /api/live/competitions/:id/bonus-questions      — + lockedAt / isLocked
 GET    /api/live/competitions/:id/bonus-answers        — the caller's own
 PUT    /api/live/competitions/:id/bonus-answers        — {questionId, answer}
 GET    /api/live/competitions/:id/bonus-answers/:userId — open to members from the off
+
+# Bonus rounds (server/src/live/routes/bonusRounds.ts): match predictions on matches an
+# admin sets up by hand. A test-only round is invisible (empty list / 404) to everyone but
+# test accounts and admins.
+GET    /api/live/competitions/:id/bonus-rounds         — visible rounds + matches + my predictions
+POST   /api/live/competitions/:id/bonus-rounds         — admin; {name, afterStageKey, afterMatchday}
+PATCH  /api/live/bonus-rounds/:roundId                 — admin; name, placement, visibility
+DELETE /api/live/bonus-rounds/:roundId                 — admin; deletes its matches and predictions
+GET    /api/live/bonus-teams                         — admin; picker: bonus teams + manual/live teams (manual:/live: ids)
+POST   /api/live/bonus-teams                         — admin; {name, imageUrl?}, 409 if the name exists
+POST   /api/live/bonus-rounds/:roundId/fixtures        — admin; {homeTeamId, awayTeamId, kickoffAt, label?, multiplier?}
+PATCH  /api/live/bonus-fixtures/:fixtureId             — admin; edit, or {homeScore, awayScore} to enter/clear the result
+DELETE /api/live/bonus-fixtures/:fixtureId             — admin
+PUT    /api/live/competitions/:id/bonus-predictions    — {fixtureId, homeScore, awayScore}
+GET    /api/live/competitions/:id/bonus-fixtures/:fixtureId/predictions — locked only
+GET    /api/live/competitions/:id/bonus-rounds/user/:userId — another member's, locked only
 ```
 
 `GET /competitions/:id/fixtures` is what the client should build the fixtures tab from: it

@@ -10,6 +10,7 @@ import {
   SaveLiveScorerPredictionSchema,
   SaveLiveTablePredictionSchema,
   UpdateLiveCompetitionSchema,
+  bonusFixtureStatus,
   bonusQuestionLockAt,
   checkLiveBonusAnswer,
   fixtureLockAt,
@@ -32,6 +33,10 @@ import { db } from '../../db/client';
 import {
   liveBonusAnswers,
   liveBonusQuestions,
+  liveBonusRoundFixtures,
+  liveBonusRoundPredictions,
+  liveBonusRounds,
+  liveBonusTeams,
   liveCompetitionMembers,
   liveCompetitions,
   liveFixtures,
@@ -49,6 +54,7 @@ import { subscribeLiveCompetition, unsubscribeLiveCompetition } from '../liveEve
 import { loadLiveBonusAnswers } from '../bonusScoring';
 import { redactLiveBonusAnswerPoints, redactLiveBonusQuestions } from '../bonusVisibility';
 import { recalculateLiveCompetition } from '../scoringTrigger';
+import { loadTestOnlyBonusRoundPoints } from '../bonusRoundScoring';
 import { loadSelectionIndex } from '../selections';
 import { filterLiveParticipants, loadLiveParticipation } from '../participation';
 import { buildLiveProgression, type LiveProgressionLang } from '../progression';
@@ -451,6 +457,7 @@ liveCompetitionsRouter.get('/competitions/:id/leaderboard', requireAuth, async (
           tablePoints: liveCompetitionMembers.tablePoints,
           scorerPoints: liveCompetitionMembers.scorerPoints,
           bonusPoints: liveCompetitionMembers.bonusPoints,
+          bonusRoundPoints: liveCompetitionMembers.bonusRoundPoints,
         })
         .from(liveCompetitionMembers)
         .innerJoin(users, eq(liveCompetitionMembers.userId, users.id))
@@ -459,7 +466,28 @@ liveCompetitionsRouter.get('/competitions/:id/leaderboard', requireAuth, async (
       loadLiveParticipation(competition.id, competition.liveTournamentId),
     ]);
 
-    const rows = filterLiveParticipants(allRows, participation, res.locals.user.id);
+    // Bonus rounds still limited to test accounts keep their points out of the stored
+    // totals. A test account (or an admin) sees them added back, so the leaderboard
+    // previews what it will look like once the round goes public; nobody else does.
+    const viewer = res.locals.user;
+    const testOnly =
+      viewer.isAdmin || viewer.isTestAccount
+        ? await loadTestOnlyBonusRoundPoints(competition.id)
+        : new Map<string, number>();
+    const withPreview = allRows
+      .map(row => {
+        const extra = testOnly.get(row.userId) ?? 0;
+        return extra === 0
+          ? row
+          : {
+              ...row,
+              totalPoints: row.totalPoints + extra,
+              bonusRoundPoints: row.bonusRoundPoints + extra,
+            };
+      })
+      .sort((a, b) => b.totalPoints - a.totalPoints || a.username.localeCompare(b.username));
+
+    const rows = filterLiveParticipants(withPreview, participation, res.locals.user.id);
 
     // Standard competition ranking: equal totals share a rank, and the next rank skips.
     let previousPoints: number | null = null;
@@ -484,6 +512,7 @@ liveCompetitionsRouter.get('/competitions/:id/leaderboard', requireAuth, async (
             tablePoints: row.tablePoints,
             scorerPoints: row.scorerPoints,
             bonusPoints: row.bonusPoints,
+            bonusRoundPoints: row.bonusRoundPoints,
           },
         };
       }),
@@ -519,6 +548,7 @@ async function loadLiveProgression(
     bonusPoints,
     selections,
     participation,
+    bonusRound,
   ] = await Promise.all([
     db
       .select({
@@ -582,6 +612,7 @@ async function loadLiveProgression(
       .where(eq(liveBonusAnswers.liveCompetitionId, competitionId)),
     loadSelectionIndex(liveTournamentId),
     loadLiveParticipation(competitionId, liveTournamentId),
+    loadPublicBonusRoundProgression(competitionId),
   ]);
 
   // The same members the leaderboard shows: a line that never leaves zero belongs to
@@ -592,15 +623,71 @@ async function loadLiveProgression(
   return buildLiveProgression(
     {
       members,
-      teams: teamRows,
-      fixtures: fixtures.map(f => ({ ...f, isSelected: isLiveFixtureSelected(f, selections) })),
-      predictions,
+      teams: [...teamRows, ...bonusRound.teams],
+      // Public bonus-round matches are milestones like any other, so the chart still ends
+      // on the leaderboard's totals. Test-only rounds are left out, as they are there.
+      fixtures: [
+        ...fixtures.map(f => ({ ...f, isSelected: isLiveFixtureSelected(f, selections) })),
+        ...bonusRound.fixtures.map(f => ({ ...f, isSelected: true })),
+      ],
+      predictions: [...predictions, ...bonusRound.predictions],
       tablePoints,
       scorerPoints,
       bonusPoints,
     },
     lang,
   );
+}
+
+/** A competition's public bonus-round matches, their teams and points, for the chart. */
+async function loadPublicBonusRoundProgression(competitionId: string) {
+  const rows = await db
+    .select({ fixture: liveBonusRoundFixtures })
+    .from(liveBonusRoundFixtures)
+    .innerJoin(liveBonusRounds, eq(liveBonusRounds.id, liveBonusRoundFixtures.bonusRoundId))
+    .where(
+      and(
+        eq(liveBonusRoundFixtures.liveCompetitionId, competitionId),
+        eq(liveBonusRounds.visibility, 'everyone'),
+      ),
+    );
+  if (rows.length === 0) return { fixtures: [], teams: [], predictions: [] };
+
+  const fixtures = rows.map(({ fixture: f }) => ({
+    id: f.id,
+    kickoffAt: f.kickoffAt,
+    status: bonusFixtureStatus(f),
+    stageKey: null,
+    matchday: null,
+    homeTeamId: f.homeTeamId,
+    awayTeamId: f.awayTeamId,
+  }));
+  const teamIds = [...new Set(fixtures.flatMap(f => [f.homeTeamId, f.awayTeamId]))];
+  const [teams, predictions] = await Promise.all([
+    db
+      .select({ id: liveBonusTeams.id, name: liveBonusTeams.name })
+      .from(liveBonusTeams)
+      .where(inArray(liveBonusTeams.id, teamIds))
+      .then(ts => ts.map(t => ({ ...t, shortName: null, tla: null }))),
+    db
+      .select({
+        userId: liveBonusRoundPredictions.userId,
+        liveFixtureId: liveBonusRoundPredictions.bonusFixtureId,
+        points: liveBonusRoundPredictions.points,
+      })
+      .from(liveBonusRoundPredictions)
+      .where(
+        and(
+          eq(liveBonusRoundPredictions.liveCompetitionId, competitionId),
+          inArray(
+            liveBonusRoundPredictions.bonusFixtureId,
+            fixtures.map(f => f.id),
+          ),
+          isNotNull(liveBonusRoundPredictions.points),
+        ),
+      ),
+  ]);
+  return { fixtures, teams, predictions };
 }
 
 /**

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '@/lib/api';
 import { liveApi, liveKeys, type LiveFixtureView } from '@/lib/liveApi';
@@ -7,8 +7,12 @@ import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { useT } from '@/lib/useT';
 import LiveFixtureList from '@/components/live/LiveFixtureList';
 import LiveGameweekProgress, {
+  type LiveBonusStripItem,
   type LiveGameweekProgressItem,
+  type LiveGameweekState,
 } from '@/components/live/LiveGameweekProgress';
+import LiveBonusRoundPanel from '@/components/live/LiveBonusRoundPanel';
+import { Star } from 'lucide-react';
 import LiveStandingsTable from '@/components/live/LiveStandingsTable';
 import LiveLeaderboard from '@/components/live/LiveLeaderboard';
 import LeaderboardLineGraph from '@/components/LeaderboardLineGraph';
@@ -28,7 +32,7 @@ import LiveTablePredictionGate from '@/components/live/LiveTablePredictionGate';
 import LiveBonusQuestionsGate from '@/components/live/LiveBonusQuestionsGate';
 import InviteButton from '@/components/InviteButton';
 import { useAuthStore } from '@/store/authStore';
-import type { Team } from '@tournament-predictor/shared';
+import { layoutLiveRounds, nextLiveRound, type Team } from '@tournament-predictor/shared';
 
 // ── Live competition ──────────────────────────────────────────────────────────
 //
@@ -72,6 +76,9 @@ export default function LiveCompetitionDetailPage() {
 
   const [stageKey, setStageKey] = useState<string | null>(null);
   const [matchday, setMatchday] = useState<number | null>(null);
+  // A bonus round being shown in place of a gameweek. Picking a stage or a gameweek
+  // clears it.
+  const [bonusRoundId, setBonusRoundId] = useState<string | null>(null);
   const [savingFixtureId, setSavingFixtureId] = useState<string | null>(null);
   const [scrollToFixtures, setScrollToFixtures] = useState(0);
   const fixturesRef = useRef<HTMLDivElement>(null);
@@ -106,6 +113,15 @@ export default function LiveCompetitionDetailPage() {
   });
 
   const tournamentId = competition?.tournament?.id;
+
+  // Bonus rounds of borrowed matches. The server leaves out any round this viewer may not
+  // see — a test-only round, for everybody but test accounts and admins — so an empty
+  // list is all a regular player ever gets while they are being tried out.
+  const { data: bonusRounds = [], isLoading: loadingBonusRounds } = useQuery({
+    queryKey: liveKeys.bonusRounds(id!),
+    queryFn: () => liveApi.bonusRounds(id!),
+    enabled: !!id,
+  });
 
   const { data: standings = [] } = useQuery({
     queryKey: liveKeys.standings(tournamentId ?? '', stageKey ?? undefined),
@@ -185,9 +201,11 @@ export default function LiveCompetitionDetailPage() {
     const es = new EventSource(`/api/live/competitions/${id}/events`, { withCredentials: true });
     es.addEventListener('fixtures-updated', () => {
       queryClient.invalidateQueries({ queryKey: liveKeys.fixtures(id) });
+      queryClient.invalidateQueries({ queryKey: liveKeys.bonusRounds(id) });
     });
     es.addEventListener('leaderboard-updated', () => {
       queryClient.invalidateQueries({ queryKey: liveKeys.leaderboard(id) });
+      queryClient.invalidateQueries({ queryKey: liveKeys.bonusRounds(id) });
       queryClient.invalidateQueries({ queryKey: liveKeys.allLeaderboardProgression(id) });
       // Scoring has run, so any open "what everyone predicted" dropdown is now behind.
       queryClient.invalidateQueries({ queryKey: liveKeys.allFixturePredictions(id) });
@@ -209,6 +227,15 @@ export default function LiveCompetitionDetailPage() {
     return (competition?.stages ?? []).filter(s => present.has(s.key));
   }, [competition?.stages, fixtures]);
 
+  // Show a bonus round, with the stage it sits in underneath so its gameweek strip (and the
+  // star in it) stays in view, and the gameweek it follows ready for when they step back.
+  const showBonusRound = (round: { id: string; afterStageKey: string | null; afterMatchday: number | null }) => {
+    setBonusRoundId(round.id);
+    const anchoredStage = stages.find(s => s.key === round.afterStageKey);
+    setStageKey(anchoredStage?.key ?? stages[0]?.key ?? null);
+    setMatchday(anchoredStage ? round.afterMatchday : null);
+  };
+
   // Default to whatever is happening next — the stage and matchday of the earliest
   // fixture still to be played, falling back to the last one for a finished season.
   //
@@ -216,25 +243,58 @@ export default function LiveCompetitionDetailPage() {
   // latest gameweek with a result in it instead — the most recent shown match that has
   // kicked off — and only fall back to the member's default before a ball is kicked.
   // Waits for the competition, since that is what says whether this is a spectator.
+  //
+  // A bonus round counts as a round like any other: when its first match still to be
+  // played comes before the next gameweek's, the page opens on the bonus round instead.
+  // Waits for the bonus rounds too, or it would settle on the gameweek before they arrive.
   useEffect(() => {
-    if (stageKey !== null || fixtures.length === 0 || !competition) return;
+    if (stageKey !== null || bonusRoundId !== null) return;
+    if (fixtures.length === 0 || !competition || loadingBonusRounds) return;
+
+    const played = (status: string) => status === 'finished' || LIVE_STATUSES.has(status);
+    const toCome = (status: string) => status !== 'finished' && status !== 'cancelled';
 
     const latestResult = isSpectator
       ? [...fixtures]
-          .filter(
-            f => f.isSelected && (f.status === 'finished' || LIVE_STATUSES.has(f.status)),
-          )
+          .filter(f => f.isSelected && played(f.status))
           .sort((a, b) => (b.kickoffAt ?? '').localeCompare(a.kickoffAt ?? ''))[0]
       : undefined;
+    // A spectator's latest result may be a bonus match, if one was played more recently.
+    const latestBonusResult = isSpectator
+      ? bonusRounds
+          .flatMap(round => round.fixtures.filter(f => played(f.status)).map(f => ({ round, at: f.kickoffAt ?? '' })))
+          .sort((a, b) => b.at.localeCompare(a.at))[0]
+      : undefined;
+    if (latestBonusResult && latestBonusResult.at > (latestResult?.kickoffAt ?? '')) {
+      showBonusRound(latestBonusResult.round);
+      return;
+    }
+
+    const next = latestResult
+      ? null
+      : nextLiveRound(
+          fixtures.filter(f => f.isSelected && toCome(f.status)),
+          bonusRounds.map(round => ({ round, fixtures: round.fixtures.filter(f => toCome(f.status)) })),
+        );
+    if (next?.type === 'bonus') {
+      const round = bonusRounds.find(r => r.id === next.roundId);
+      if (round) {
+        showBonusRound(round);
+        return;
+      }
+    }
+
     const upcoming = [...fixtures]
-      .filter(f => f.status !== 'finished' && f.status !== 'cancelled')
+      .filter(f => toCome(f.status))
       .sort((a, b) => (a.kickoffAt ?? '').localeCompare(b.kickoffAt ?? ''))[0];
     const fallback = [...fixtures].sort((a, b) => (b.kickoffAt ?? '').localeCompare(a.kickoffAt ?? ''))[0];
     const chosen = latestResult ?? upcoming ?? fallback;
 
     if (chosen?.stageKey) setStageKey(chosen.stageKey);
     if (chosen?.matchday != null) setMatchday(chosen.matchday);
-  }, [fixtures, stageKey, competition, isSpectator]);
+    // showBonusRound only reads `stages`, which follows `fixtures` and `competition`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fixtures, stageKey, bonusRoundId, competition, isSpectator, bonusRounds, loadingBonusRounds]);
 
   const stageDef = stages.find(s => s.key === stageKey) ?? null;
 
@@ -299,23 +359,89 @@ export default function LiveCompetitionDetailPage() {
   // be told that this week is unfilled. Matches whose kickoff has already passed are left
   // out of the count: nothing can be done about them, so counting them would leave the
   // reminder stuck at "4 of 5" for good.
+  //
+  // Bonus rounds take part: if a bonus round's first open match comes first, it is the next
+  // round, and the tile counts and opens it.
   const nextRound = useMemo(() => {
-    const open = fixtures.filter(
-      f => f.isSelected && f.isPredictable && !f.isLocked && !!f.kickoffAt,
-    );
-    if (open.length === 0) return null;
+    const isOpen = (f: Pick<LiveFixtureView, 'isSelected' | 'isPredictable' | 'isLocked' | 'kickoffAt'>) =>
+      f.isSelected && f.isPredictable && !f.isLocked && !!f.kickoffAt;
+    const open = fixtures.filter(isOpen);
+    const openBonus = bonusRounds.map(round => ({ round, fixtures: round.fixtures.filter(isOpen) }));
 
-    const first = open.reduce((a, b) => ((a.kickoffAt ?? '') <= (b.kickoffAt ?? '') ? a : b));
-    const round = open.filter(f => f.stageKey === first.stageKey && f.matchday === first.matchday);
+    const next = nextLiveRound(open, openBonus);
+    if (!next) return null;
+
+    if (next.type === 'bonus') {
+      const { round, fixtures: matches } = openBonus.find(b => b.round.id === next.roundId)!;
+      return {
+        bonusRound: round,
+        stageKey: null,
+        matchday: null,
+        total: matches.length,
+        predicted: matches.filter(f => f.prediction !== null).length,
+      };
+    }
+
+    const round = open.filter(f => f.stageKey === next.stageKey && f.matchday === next.matchday);
     return {
-      stageKey: first.stageKey,
-      matchday: first.matchday,
+      bonusRound: null,
+      stageKey: next.stageKey,
+      matchday: next.matchday,
       total: round.length,
       predicted: round.filter(f => f.prediction !== null).length,
     };
-  }, [fixtures]);
+  }, [fixtures, bonusRounds]);
 
   const shownMatchday = matchday ?? matchdays[0] ?? null;
+
+  // ── Bonus rounds ───────────────────────────────────────────────────────────
+  //
+  // Where each round sits among the stages and gameweeks — shared/src/live/bonusRounds.ts
+  // decides; this only draws it. A round after a gameweek goes in that stage's strip as a
+  // star, one after a whole stage (or before everything) becomes a pill between stages.
+  const roundLayout = useMemo(
+    () =>
+      layoutLiveRounds(
+        stages.map(stage => ({
+          key: stage.key,
+          kind: stage.kind,
+          matchdays: [
+            ...new Set(
+              fixtures
+                .filter(f => f.stageKey === stage.key && f.matchday != null)
+                .map(f => f.matchday as number),
+            ),
+          ].sort((a, b) => a - b),
+        })),
+        bonusRounds,
+      ),
+    [stages, fixtures, bonusRounds],
+  );
+
+  const bonusRoundState = (round: (typeof bonusRounds)[number]) => {
+    const done = round.fixtures.filter(f =>
+      isSpectator ? f.status === 'finished' || f.status === 'cancelled' : f.prediction !== null,
+    ).length;
+    const state: LiveGameweekState =
+      round.fixtures.length === 0 ? 'empty' : done === round.fixtures.length ? 'complete' : 'partial';
+    return { done, selected: round.fixtures.length, state };
+  };
+
+  const bonusStrip = useMemo<LiveBonusStripItem[]>(() => {
+    const byMatchday = stageKey ? roundLayout.inStage.get(stageKey) : undefined;
+    if (!byMatchday) return [];
+    return [...byMatchday.entries()].flatMap(([afterMatchday, rounds]) =>
+      rounds.map(round => ({ id: round.id, name: round.name, afterMatchday, ...bonusRoundState(round) })),
+    );
+    // bonusRoundState only reads isSpectator, which is in the list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roundLayout, stageKey, isSpectator]);
+
+  const shownBonusRound = bonusRounds.find(r => r.id === bonusRoundId) ?? null;
+  // A round from the strip keeps the strip on screen, so the viewer can step back to the
+  // gameweeks around it; a round between stages replaces the stage's view entirely.
+  const bonusRoundInStrip = !!shownBonusRound && bonusStrip.some(b => b.id === shownBonusRound.id);
+  const showTopRow = roundLayout.top.length > 1;
   const shownSelectedCount = stageFixtures.filter(
     f => shownMatchday === null || f.matchday === shownMatchday,
   ).length;
@@ -357,6 +483,42 @@ export default function LiveCompetitionDetailPage() {
 
   const handleSave = (fixtureId: string, homeScore: number, awayScore: number) =>
     saveMutation.mutate({ fixtureId, homeScore, awayScore });
+
+  // The same save flow for a bonus-round match, against its own route and query.
+  const saveBonusMutation = useMutation({
+    mutationFn: ({ fixtureId, homeScore, awayScore }: { fixtureId: string; homeScore: number; awayScore: number }) =>
+      liveApi.saveBonusPrediction(id!, { fixtureId, homeScore, awayScore }),
+    onMutate: ({ fixtureId }) => {
+      setSavingFixtureId(fixtureId);
+      setErrors(prev => {
+        const next = { ...prev };
+        delete next[fixtureId];
+        return next;
+      });
+    },
+    onSuccess: (_data, { fixtureId }) => {
+      setSavedFixtures(prev => ({ ...prev, [fixtureId]: Date.now() }));
+      queryClient.invalidateQueries({ queryKey: liveKeys.bonusRounds(id!) });
+      setTimeout(() => {
+        setSavedFixtures(prev => {
+          const next = { ...prev };
+          delete next[fixtureId];
+          return next;
+        });
+      }, 2500);
+    },
+    onError: (err, { fixtureId }) => {
+      setErrors(prev => ({
+        ...prev,
+        [fixtureId]: err instanceof ApiError ? err.message : t('live.saveFailed'),
+      }));
+      queryClient.invalidateQueries({ queryKey: liveKeys.bonusRounds(id!) });
+    },
+    onSettled: () => setSavingFixtureId(null),
+  });
+
+  const handleBonusSave = (fixtureId: string, homeScore: number, awayScore: number) =>
+    saveBonusMutation.mutate({ fixtureId, homeScore, awayScore });
 
   const leaveMutation = useMutation({
     mutationFn: () => liveApi.leave(id!),
@@ -597,8 +759,13 @@ export default function LiveCompetitionDetailPage() {
     // The round is on this tab already: switch the stage and gameweek to it and bring the
     // matches into view, rather than navigating somewhere.
     if (key === 'round') {
-      if (nextRound?.stageKey) setStageKey(nextRound.stageKey);
-      setMatchday(nextRound?.matchday ?? null);
+      if (nextRound?.bonusRound) {
+        showBonusRound(nextRound.bonusRound);
+      } else {
+        setBonusRoundId(null);
+        if (nextRound?.stageKey) setStageKey(nextRound.stageKey);
+        setMatchday(nextRound?.matchday ?? null);
+      }
       // A counter rather than a boolean, so pressing the tile a second time scrolls again.
       setScrollToFixtures(n => n + 1);
       return;
@@ -713,6 +880,17 @@ export default function LiveCompetitionDetailPage() {
               className="inline-flex items-center justify-center gap-1.5 rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
             />
           )}
+          {/* Admins manage this league's bonus rounds from here, at any point in the
+              season, as well as from the admin competitions list. */}
+          {user?.isAdmin && (
+            <Link
+              to={`/admin/live-competitions/${competition.id}/bonus-rounds`}
+              className="inline-flex items-center justify-center gap-1.5 rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+            >
+              <Star className="h-3.5 w-3.5" aria-hidden />
+              {t('live.bonusRounds.admin.title')}
+            </Link>
+          )}
         </div>
       </header>
 
@@ -777,36 +955,78 @@ export default function LiveCompetitionDetailPage() {
             // scroll-mt keeps the stage pills clear of the top edge when the "next round"
             // reminder scrolls the matches into view.
             <div ref={fixturesRef} className="scroll-mt-4">
-              {stages.length > 1 && (
+              {showTopRow && (
                 <div className="mb-3 flex flex-wrap gap-1.5">
-                  {stages.map(stage => (
-                    <button
-                      key={stage.key}
-                      onClick={() => {
-                        setStageKey(stage.key);
-                        setMatchday(null);
-                      }}
-                      className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                        stage.key === stageKey
-                          ? 'bg-primary text-primary-foreground'
-                          : 'bg-muted text-muted-foreground hover:text-foreground'
-                      }`}
-                    >
-                      {t(stage.labelKey)}
-                    </button>
-                  ))}
+                  {roundLayout.top.map(item => {
+                    if (item.type === 'bonus') {
+                      const isCurrent = item.round.id === bonusRoundId;
+                      return (
+                        <button
+                          key={`bonus-${item.round.id}`}
+                          onClick={() => setBonusRoundId(item.round.id)}
+                          className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                            isCurrent
+                              ? 'bg-amber-500 text-white'
+                              : 'bg-amber-500/15 text-amber-700 hover:text-amber-900 dark:text-amber-300'
+                          }`}
+                        >
+                          <Star className="h-3 w-3 fill-current" aria-hidden />
+                          {item.round.name}
+                        </button>
+                      );
+                    }
+                    const stage = stages.find(s => s.key === item.stageKey)!;
+                    return (
+                      <button
+                        key={stage.key}
+                        onClick={() => {
+                          setStageKey(stage.key);
+                          setMatchday(null);
+                          setBonusRoundId(null);
+                        }}
+                        className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                          stage.key === stageKey && (!shownBonusRound || bonusRoundInStrip)
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-muted text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        {t(stage.labelKey)}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
 
+              {stageDef?.kind === 'table' && matchdays.length > 0 && (!shownBonusRound || bonusRoundInStrip) && (
+                <LiveGameweekProgress
+                  mode={isSpectator ? 'results' : 'predictions'}
+                  items={gameweekProgress}
+                  current={shownMatchday}
+                  onSelect={md => {
+                    setMatchday(md);
+                    setBonusRoundId(null);
+                  }}
+                  bonus={bonusStrip}
+                  currentBonusId={bonusRoundId}
+                  onSelectBonus={setBonusRoundId}
+                />
+              )}
+
+              {shownBonusRound ? (
+                <LiveBonusRoundPanel
+                  round={shownBonusRound}
+                  competitionId={id!}
+                  onSave={handleBonusSave}
+                  savingFixtureId={savingFixtureId}
+                  savedFixtures={savedFixtures}
+                  errors={errors}
+                  readOnly={isSpectator}
+                  hidePrediction={isSpectator}
+                />
+              ) : (
+              <>
               {stageDef?.kind === 'table' && matchdays.length > 0 && (
                 <>
-                  <LiveGameweekProgress
-                    mode={isSpectator ? 'results' : 'predictions'}
-                    items={gameweekProgress}
-                    current={shownMatchday}
-                    onSelect={setMatchday}
-                  />
-
                   <div className="mb-3">
                     <h2 className="text-lg font-semibold">
                       {t('live.gameweekHeading', { matchday: shownMatchday ?? 0 })}
@@ -836,6 +1056,8 @@ export default function LiveCompetitionDetailPage() {
                 hidePrediction={isSpectator}
                 competitionId={id!}
               />
+              </>
+              )}
             </div>
           )}
         </>
@@ -970,7 +1192,11 @@ export default function LiveCompetitionDetailPage() {
             />
           )}
           <div className="mt-4">
-            <LiveLeaderboard rows={leaderboard} competitionId={id!} />
+            <LiveLeaderboard
+              rows={leaderboard}
+              competitionId={id!}
+              showBonusRounds={bonusRounds.length > 0}
+            />
           </div>
         </>
       )}

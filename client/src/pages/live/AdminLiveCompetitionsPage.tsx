@@ -167,6 +167,13 @@ export default function AdminLiveCompetitionsPage() {
                   {competition.inviteCode}
                 </span>
 
+                <Link
+                  to={`/admin/live-competitions/${competition.id}/bonus-rounds`}
+                  className="shrink-0 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-muted"
+                >
+                  {t('live.bonusRounds.admin.title')}
+                </Link>
+
                 <button
                   onClick={() => setEditingId(competition.id)}
                   className="shrink-0 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-muted"

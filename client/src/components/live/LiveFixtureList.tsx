@@ -31,6 +31,8 @@ interface Props {
   /** Set to offer the league's predictions under each played match. */
   competitionId?: string;
   linkToUsers?: boolean;
+  /** The fixtures are a bonus round's: see LiveMatchPredictions. */
+  bonusRound?: boolean;
 }
 
 export default function LiveFixtureList({
@@ -47,6 +49,7 @@ export default function LiveFixtureList({
   hidePrediction = false,
   competitionId,
   linkToUsers = true,
+  bonusRound = false,
 }: Props) {
   const { t } = useT();
 
@@ -129,6 +132,7 @@ export default function LiveFixtureList({
           hidePrediction={hidePrediction}
           competitionId={competitionId}
           linkToUsers={linkToUsers}
+          bonusRound={bonusRound}
         />
       ))}
     </div>

@@ -10,9 +10,10 @@ import {
   index,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 import type {
   LiveBonusAnswerType,
+  LiveBonusRoundVisibility,
   LiveScorerNationalities,
   LiveScoringConfig,
 } from '@tournament-predictor/shared';
@@ -174,7 +175,6 @@ export const liveFixtures = pgTable(
      * by the provider — the sync upsert deliberately leaves it alone.
      */
     multiplier: integer('multiplier').notNull().default(1),
-
     // Score at the end of normal time (90 minutes plus stoppage). The ONLY score that
     // awards points — extra time and penalties are stored for display but never scored.
     normalTimeHome: integer('normal_time_home'),
@@ -283,6 +283,11 @@ export const liveCompetitionMembers = pgTable(
     bonusPoints: integer('bonus_points').notNull().default(0),
     /** Top-scorer ranking points. Also withheld until the tournament is completed. */
     scorerPoints: integer('scorer_points').notNull().default(0),
+    /**
+     * Points from bonus rounds visible to everyone. Rounds still limited to test accounts
+     * are left out, so a regular player never sees a total they cannot account for.
+     */
+    bonusRoundPoints: integer('bonus_round_points').notNull().default(0),
     totalPoints: integer('total_points').notNull().default(0),
   },
   t => ({
@@ -524,6 +529,132 @@ export const liveBonusAnswers = pgTable(
       t.userId,
     ),
     competitionIdx: index('live_bonus_answers_competition_idx').on(t.liveCompetitionId),
+  }),
+);
+
+// ── Bonus rounds ──────────────────────────────────────────────────────────────
+//
+// Extra rounds of match predictions inside one competition, made of matches an admin sets
+// up by hand — teams, kickoff, and later the result — the way the manual tournament type
+// works. Typically matches from another competition (the Nations League). Only match
+// predictions: no table, scorers or questions. Kept apart from live_fixtures and
+// live_predictions, which belong to the provider-synced tournament.
+// See shared/src/live/bonusRounds.ts and server/src/live/bonusRoundScoring.ts.
+
+export const liveBonusRounds = pgTable(
+  'live_bonus_rounds',
+  {
+    id: text('id').primaryKey(),
+    liveCompetitionId: text('live_competition_id')
+      .notNull()
+      .references(() => liveCompetitions.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    /**
+     * Where the round sits among the competition's own rounds: after this stage's
+     * gameweek `after_matchday`, or after the whole stage when the matchday is null. Both
+     * null puts it before everything. See shared/src/live/bonusRounds.ts.
+     */
+    afterStageKey: text('after_stage_key'),
+    afterMatchday: integer('after_matchday'),
+    /** 'test' (test accounts and admins only) or 'everyone'. */
+    visibility: text('visibility').notNull().default('test').$type<LiveBonusRoundVisibility>(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  t => ({
+    competitionIdx: index('live_bonus_rounds_competition_idx').on(t.liveCompetitionId),
+  }),
+);
+
+/**
+ * A team bonus-round matches can be played by. One registry for the whole app, so a team
+ * is set up once and reused by every round and every competition. Created by an admin
+ * (name + logo), or copied in from a manual or live tournament's team the first time it
+ * is picked — see resolveBonusTeam in server/src/live/routes/bonusRounds.ts.
+ */
+export const liveBonusTeams = pgTable(
+  'live_bonus_teams',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    imageUrl: text('image_url'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  t => ({
+    // Names are what admins pick by, so two teams may not share one, whatever the case.
+    nameUnique: uniqueIndex('live_bonus_teams_name_unique').on(sql`lower(${t.name})`),
+  }),
+);
+
+/** One hand-entered match in a bonus round. */
+export const liveBonusRoundFixtures = pgTable(
+  'live_bonus_round_fixtures',
+  {
+    id: text('id').primaryKey(),
+    bonusRoundId: text('bonus_round_id')
+      .notNull()
+      .references(() => liveBonusRounds.id, { onDelete: 'cascade' }),
+    /** Repeated from the round, so predictions and totals can be read per competition. */
+    liveCompetitionId: text('live_competition_id')
+      .notNull()
+      .references(() => liveCompetitions.id, { onDelete: 'cascade' }),
+    // Restrict, not cascade: a team in use must not take matches and predictions with it.
+    homeTeamId: text('home_team_id')
+      .notNull()
+      .references(() => liveBonusTeams.id, { onDelete: 'restrict' }),
+    awayTeamId: text('away_team_id')
+      .notNull()
+      .references(() => liveBonusTeams.id, { onDelete: 'restrict' }),
+    /** Free text shown with the match — "UEFA Nations League". Optional. */
+    label: text('label'),
+    kickoffAt: timestamp('kickoff_at').notNull(),
+    /** Whole-number multiplier for this match. 1 leaves scoring untouched. */
+    multiplier: integer('multiplier').notNull().default(1),
+    /**
+     * The score after 90 minutes, typed in by an admin. Both null until the match is
+     * played; setting them is what finishes the match and scores it.
+     */
+    homeScore: integer('home_score'),
+    awayScore: integer('away_score'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  t => ({
+    roundIdx: index('live_bonus_round_fixtures_round_idx').on(t.bonusRoundId),
+    competitionIdx: index('live_bonus_round_fixtures_competition_idx').on(t.liveCompetitionId),
+  }),
+);
+
+export const liveBonusRoundPredictions = pgTable(
+  'live_bonus_round_predictions',
+  {
+    id: text('id').primaryKey(),
+    bonusFixtureId: text('bonus_fixture_id')
+      .notNull()
+      .references(() => liveBonusRoundFixtures.id, { onDelete: 'cascade' }),
+    liveCompetitionId: text('live_competition_id')
+      .notNull()
+      .references(() => liveCompetitions.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    homeScore: integer('home_score').notNull(),
+    awayScore: integer('away_score').notNull(),
+    /** Null until the result is entered. */
+    points: integer('points'),
+    correctOutcomePoints: integer('correct_outcome_points').notNull().default(0),
+    correctGoalDifferencePoints: integer('correct_goal_difference_points').notNull().default(0),
+    exactScorePoints: integer('exact_score_points').notNull().default(0),
+    multiplierBonusPoints: integer('multiplier_bonus_points').notNull().default(0),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  t => ({
+    predictionUnique: uniqueIndex('live_bonus_round_predictions_fixture_user_unique').on(
+      t.bonusFixtureId,
+      t.userId,
+    ),
+    competitionIdx: index('live_bonus_round_predictions_competition_idx').on(t.liveCompetitionId),
   }),
 );
 

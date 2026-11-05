@@ -2110,7 +2110,58 @@ one private `norwegianFaithCard()`.
 
 ---
 
-## 38. References
+## 38. Bonus rounds *(added after the six phases, on request)*
+
+Extra rounds of **match predictions only** inside an existing live competition, placed
+**between** the competition's own rounds. The matches are **set up by hand** by an admin, the
+way the manual tournament type works: two teams, a kickoff, an optional competition label
+("UEFA Nations League"), a multiplier, and once played the score after 90 minutes.
+
+**Teams** come from `live_bonus_teams`, one registry for the whole app (name + logo, name
+unique ignoring case). The admin picks them from a searchable dropdown (`TeamSelectInput`)
+that lists the bonus teams *and* every team the manual (`teams`) and live (`live_teams`)
+tournaments hold, one entry per name, preferring one with a logo. Those others carry a
+prefixed picker id (`manual:<id>`, `live:<id>`); saving a match registers them as bonus
+teams on first use (`resolveBonusTeam`), reusing a bonus team of the same name. A team that is
+nowhere yet is created from the add-match card with a name and an uploaded logo.
+A round can hold matches from any dates and any competition. New rounds are visible to test
+accounts only.
+
+A first version borrowed the matches from a provider-synced Nations League tournament on
+bigballsdata. It was dropped on request, before release, in favour of entering the matches
+by hand: no provider, no source tournament, no sync.
+
+**Tables** (`drizzle/0040_live_bonus_rounds.sql`, mirrored in `ensureSchema.ts`):
+
+| Table / column | Notes |
+|---|---|
+| `live_bonus_rounds` | Per competition. `after_stage_key` + `after_matchday` place it; `visibility` is `test` or `everyone` |
+| `live_bonus_teams` | Name + logo. Unique on `lower(name)` |
+| `live_bonus_round_fixtures` | One hand-entered match: `home_team_id`/`away_team_id` (bonus teams, `ON DELETE RESTRICT`), `label`, `kickoff_at`, `multiplier`, `home_score`/`away_score` (null until the result is entered) |
+| `live_bonus_round_predictions` | Unique `(bonus_fixture_id, user_id)`. Same score columns as `live_predictions` |
+| `live_competition_members.bonus_round_points` | Public rounds only |
+
+**Placement** (`layoutLiveRounds` in `shared/src/live/bonusRounds.ts`): a table-stage
+gameweek anchor puts the round in that stage's gameweek strip as a star after the gameweek; a
+stage anchor (matchday null) makes it a pill between the stage pills; no anchor puts it before
+everything. Rounds sharing an anchor sort by first kickoff. An anchor whose gameweek or stage
+has gone degrades gracefully rather than losing the round.
+
+| Decision | Why |
+|---|---|
+| Matches entered by hand, not synced | Requested. Same model as the manual tournament type, and no dependency on a provider that may not cover the competition |
+| Own tables, not `live_fixtures` / `live_predictions` | Those belong to the provider-synced tournament, and everything reading them (selections, user stats, comparisons) assumes so |
+| The API shapes a match as an ordinary `LiveFixtureView`, the bonus team's logo as `crestUrl` | The fixture cards, list and "what everyone predicted" dropdown render it unchanged |
+| Other tournaments' teams are copied into the registry, not referenced | Their rows belong to a tournament and cascade with it; a bonus round must not lose a team because an old tournament was deleted |
+| A match is finished once both scores are set; scoring runs on that write | There is no sync tick for these. Clearing the result puts the predictions back to unscored |
+| Test-only rounds stay out of `total_points` | Requested ("only visible to test users"). A regular player must never see a total they cannot account for. The leaderboard adds the test-only points back for test accounts and admins, as a preview |
+| A hidden round is an empty list or a 404 | Nothing about a test-only round reaches a regular player's page, not even a leaderboard column |
+| The progression chart includes public rounds only | So it still ends on the leaderboard total that everyone sees |
+| Not in the upcoming-deadline checklist, user stats or table/scorer/bonus features | Requested: match predictions only |
+
+---
+
+## 39. References
 
 - [2026/27 Champions League: teams, dates, draws, format](https://www.uefa.com/uefachampionsleague/news/02a6-20d57cfcd03e-407c22a7f465-1000--2026-27-champions-league-teams-dates-draws-format-final/)
 - [UEFA confirms date for the 2026/27 Champions League league phase draw](https://www.besoccer.com/new/uefa-confirms-date-for-the-202627-champions-league-league-phase-draw-1421299)

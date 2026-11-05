@@ -5,6 +5,11 @@ import type {
   LiveBonusAnswerType,
   LiveBonusQuestion,
   LiveBonusQuestionView,
+  LiveBonusFixture,
+  LiveBonusRoundView,
+  LiveBonusRoundVisibility,
+  LiveBonusTeam,
+  LiveBonusTeamOption,
   LiveCompetition,
   LiveFixture,
   LiveFormatDef,
@@ -79,8 +84,21 @@ export interface LiveLeaderboardRow {
     scorerPoints: number;
     /** Zero until the tournament is marked completed — bonus points are withheld until then. */
     bonusPoints: number;
+    /**
+     * Bonus-round matches. Only public rounds count for everybody; a test account's view
+     * adds the test-only rounds, total included.
+     */
+    bonusRoundPoints: number;
   };
 }
+
+export type {
+  LiveBonusFixture,
+  LiveBonusRoundView,
+  LiveBonusRoundVisibility,
+  LiveBonusTeam,
+  LiveBonusTeamOption,
+};
 
 /**
  * One member's prediction for a single fixture, as the "what everyone predicted" dropdown
@@ -637,6 +655,75 @@ export const liveApi = {
     api.get<LiveFixturePredictionRow[]>(
       `/live/competitions/${competitionId}/fixtures/${fixtureId}/predictions`,
     ),
+
+  // ── Bonus rounds ──────────────────────────────────────────────────────────
+  // Rounds of borrowed matches inside one competition. The server hides a test-only
+  // round from everybody but test accounts and admins.
+  bonusRounds: (competitionId: string) =>
+    api.get<LiveBonusRoundView[]>(`/live/competitions/${competitionId}/bonus-rounds`),
+  userBonusRounds: (competitionId: string, userId: string) =>
+    api.get<LiveBonusRoundView[]>(`/live/competitions/${competitionId}/bonus-rounds/user/${userId}`),
+  saveBonusPrediction: (
+    competitionId: string,
+    body: { fixtureId: string; homeScore: number; awayScore: number },
+  ) => api.put<{ id: string }>(`/live/competitions/${competitionId}/bonus-predictions`, body),
+  bonusFixturePredictions: (competitionId: string, fixtureId: string) =>
+    api.get<LiveFixturePredictionRow[]>(
+      `/live/competitions/${competitionId}/bonus-fixtures/${fixtureId}/predictions`,
+    ),
+  createBonusRound: (
+    competitionId: string,
+    body: {
+      name: string;
+      afterStageKey: string | null;
+      afterMatchday: number | null;
+      visibility?: LiveBonusRoundVisibility;
+    },
+  ) => api.post<LiveBonusRoundView>(`/live/competitions/${competitionId}/bonus-rounds`, body),
+  updateBonusRound: (
+    roundId: string,
+    body: {
+      name?: string;
+      afterStageKey?: string | null;
+      afterMatchday?: number | null;
+      visibility?: LiveBonusRoundVisibility;
+    },
+  ) => api.patch<LiveBonusRoundView>(`/live/bonus-rounds/${roundId}`, body),
+  deleteBonusRound: (roundId: string) => api.delete<{ ok: true }>(`/live/bonus-rounds/${roundId}`),
+  /**
+   * Every team the bonus-round picker offers: registered bonus teams plus the manual and
+   * live tournaments' teams (ids prefixed `manual:` / `live:`, registered on first use).
+   */
+  bonusTeams: () => api.get<LiveBonusTeamOption[]>('/live/bonus-teams'),
+  /** Register a team for bonus rounds. 409 when the name is taken. */
+  createBonusTeam: (body: { name: string; imageUrl?: string | null }) =>
+    api.post<LiveBonusTeam>('/live/bonus-teams', body),
+  /** Set up one match by hand. Team ids come from bonusTeams(). */
+  createBonusFixture: (
+    roundId: string,
+    body: {
+      homeTeamId: string;
+      awayTeamId: string;
+      label?: string | null;
+      kickoffAt: string;
+      multiplier?: number;
+    },
+  ) => api.post<LiveBonusFixture>(`/live/bonus-rounds/${roundId}/fixtures`, body),
+  /** Edit a match, or enter its 90-minute result (both scores null clears it). */
+  updateBonusFixture: (
+    fixtureId: string,
+    body: {
+      homeTeamId?: string;
+      awayTeamId?: string;
+      label?: string | null;
+      kickoffAt?: string;
+      multiplier?: number;
+      homeScore?: number | null;
+      awayScore?: number | null;
+    },
+  ) => api.patch<LiveBonusFixture>(`/live/bonus-fixtures/${fixtureId}`, body),
+  deleteBonusFixture: (fixtureId: string) =>
+    api.delete<{ ok: true }>(`/live/bonus-fixtures/${fixtureId}`),
 };
 
 // ── Query keys ────────────────────────────────────────────────────────────────
@@ -696,6 +783,12 @@ export const liveKeys = {
   bonusQuestions: (competitionId: string) => ['live', 'bonus-questions', competitionId] as const,
   bonusAnswers: (competitionId: string, userId?: string) =>
     ['live', 'bonus-answers', competitionId, userId ?? 'me'] as const,
+  bonusRounds: (competitionId: string) => ['live', 'bonus-rounds', competitionId] as const,
+  bonusTeams: ['live', 'bonus-teams'] as const,
+  userBonusRounds: (competitionId: string, userId: string) =>
+    ['live', 'bonus-rounds', competitionId, 'user', userId] as const,
+  bonusFixturePredictions: (competitionId: string, fixtureId: string) =>
+    ['live', 'fixture-predictions', competitionId, 'bonus', fixtureId] as const,
   presets: ['live', 'presets'] as const,
   syncStatus: ['live', 'sync-status'] as const,
 };

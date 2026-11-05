@@ -20,6 +20,7 @@ import { recalculateAllScoresForTournament } from './lib/scoringTrigger';
 import { ensureLiveSchema } from './live/ensureSchema';
 import { liveTournamentsRouter } from './live/routes/tournaments';
 import { liveCompetitionsRouter } from './live/routes/competitions';
+import { liveBonusRoundsRouter } from './live/routes/bonusRounds';
 import { startLiveScheduler } from './live/scheduler';
 import { recalculateLiveTournament } from './live/scoringTrigger';
 import { liveCompetitions } from './db/liveSchema';
@@ -67,6 +68,7 @@ app.use('/api/feedback', feedbackRouter);
 // Live (API-linked) tournaments — see docs/LIVE_TOURNAMENTS_PLAN.md
 app.use('/api/live', liveTournamentsRouter);
 app.use('/api/live', liveCompetitionsRouter);
+app.use('/api/live', liveBonusRoundsRouter);
 
 // Serve built React app in production
 if (process.env.NODE_ENV === 'production') {

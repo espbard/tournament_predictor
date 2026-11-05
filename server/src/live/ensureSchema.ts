@@ -290,4 +290,151 @@ export async function ensureLiveSchema(): Promise<void> {
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "live_players_tournament_provider_player_unique" ON "live_players" ("live_tournament_id", "provider_player_id")`);
   await db.execute(sql`CREATE INDEX IF NOT EXISTS "live_players_tournament_idx" ON "live_players" ("live_tournament_id")`);
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "live_scorer_predictions_competition_user_unique" ON "live_scorer_predictions" ("live_competition_id", "user_id")`);
+
+
+
+  // ── Bonus rounds — mirrors drizzle/0040_live_bonus_rounds.sql ───────────────
+  await db.execute(sql`ALTER TABLE "live_competition_members" ADD COLUMN IF NOT EXISTS "bonus_round_points" integer NOT NULL DEFAULT 0`);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "live_bonus_rounds" (
+      "id" text PRIMARY KEY,
+      "live_competition_id" text NOT NULL REFERENCES "live_competitions"("id") ON DELETE CASCADE,
+      "name" text NOT NULL,
+      "after_stage_key" text,
+      "after_matchday" integer,
+      "visibility" text NOT NULL DEFAULT 'test',
+      "created_at" timestamp NOT NULL DEFAULT now(),
+      "updated_at" timestamp NOT NULL DEFAULT now()
+    )
+  `);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS "live_bonus_rounds_competition_idx" ON "live_bonus_rounds" ("live_competition_id")`);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "live_bonus_teams" (
+      "id" text PRIMARY KEY,
+      "name" text NOT NULL,
+      "image_url" text,
+      "created_at" timestamp NOT NULL DEFAULT now()
+    )
+  `);
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "live_bonus_teams_name_unique" ON "live_bonus_teams" (lower("name"))`);
+  // Before the CREATE below, which would skip a table left over in an older shape.
+  await upgradeEarlyBonusRoundTables();
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "live_bonus_round_fixtures" (
+      "id" text PRIMARY KEY,
+      "bonus_round_id" text NOT NULL REFERENCES "live_bonus_rounds"("id") ON DELETE CASCADE,
+      "live_competition_id" text NOT NULL REFERENCES "live_competitions"("id") ON DELETE CASCADE,
+      "home_team_id" text NOT NULL REFERENCES "live_bonus_teams"("id") ON DELETE RESTRICT,
+      "away_team_id" text NOT NULL REFERENCES "live_bonus_teams"("id") ON DELETE RESTRICT,
+      "label" text,
+      "kickoff_at" timestamp NOT NULL,
+      "multiplier" integer NOT NULL DEFAULT 1,
+      "home_score" integer,
+      "away_score" integer,
+      "created_at" timestamp NOT NULL DEFAULT now(),
+      "updated_at" timestamp NOT NULL DEFAULT now()
+    )
+  `);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS "live_bonus_round_fixtures_round_idx" ON "live_bonus_round_fixtures" ("bonus_round_id")`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS "live_bonus_round_fixtures_competition_idx" ON "live_bonus_round_fixtures" ("live_competition_id")`);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "live_bonus_round_predictions" (
+      "id" text PRIMARY KEY,
+      "bonus_fixture_id" text NOT NULL REFERENCES "live_bonus_round_fixtures"("id") ON DELETE CASCADE,
+      "live_competition_id" text NOT NULL REFERENCES "live_competitions"("id") ON DELETE CASCADE,
+      "user_id" text NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+      "home_score" integer NOT NULL,
+      "away_score" integer NOT NULL,
+      "points" integer,
+      "correct_outcome_points" integer NOT NULL DEFAULT 0,
+      "correct_goal_difference_points" integer NOT NULL DEFAULT 0,
+      "exact_score_points" integer NOT NULL DEFAULT 0,
+      "multiplier_bonus_points" integer NOT NULL DEFAULT 0,
+      "created_at" timestamp NOT NULL DEFAULT now(),
+      "updated_at" timestamp NOT NULL DEFAULT now()
+    )
+  `);
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "live_bonus_round_predictions_fixture_user_unique" ON "live_bonus_round_predictions" ("bonus_fixture_id", "user_id")`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS "live_bonus_round_predictions_competition_idx" ON "live_bonus_round_predictions" ("live_competition_id")`);
+}
+
+/** Whether a column exists, for the one-off upgrades below. */
+async function hasColumn(table: string, column: string): Promise<boolean> {
+  const rows = await db.execute(sql`
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = current_schema() AND table_name = ${table} AND column_name = ${column}
+  `);
+  return Array.from(rows as unknown as unknown[]).length > 0;
+}
+
+/**
+ * Bring bonus-round tables written by earlier versions of the feature up to date.
+ *
+ * Bonus rounds changed shape twice before release, and a database that ran an earlier
+ * version keeps that table — CREATE TABLE IF NOT EXISTS skips it — so the current code
+ * would read columns that are not there. Runs on every boot and does nothing once a
+ * database is current.
+ *
+ *   1. Matches borrowed from a synced tournament (`live_fixture_id`, no `id` column). Those
+ *      matches no longer exist in any form, so the matches and their predictions are
+ *      dropped and recreated empty. The rounds themselves are kept.
+ *   2. Hand-entered matches with free-text team names (`home_team_name`). Each name is
+ *      registered as a bonus team (one per name, ignoring case) and the match is pointed
+ *      at it, so no match or prediction is lost.
+ *
+ * Requires live_bonus_teams and its name index, which the caller creates first.
+ */
+async function upgradeEarlyBonusRoundTables(): Promise<void> {
+  if (!(await hasColumn('live_bonus_round_fixtures', 'bonus_round_id'))) return; // fresh database
+
+  // 1. The first shape: matches borrowed from the Nations League tournament.
+  if (!(await hasColumn('live_bonus_round_fixtures', 'id'))) {
+    console.warn('[ensureSchema] replacing first-version bonus-round match tables (their matches cannot be kept)');
+    await db.execute(sql`DROP TABLE IF EXISTS "live_bonus_round_predictions"`);
+    await db.execute(sql`DROP TABLE IF EXISTS "live_bonus_round_fixtures"`);
+    // Its leftovers on other tables, unused since.
+    await db.execute(sql`ALTER TABLE "live_fixtures" DROP COLUMN IF EXISTS "score_override_home"`);
+    await db.execute(sql`ALTER TABLE "live_fixtures" DROP COLUMN IF EXISTS "score_override_away"`);
+    await db.execute(sql`ALTER TABLE "live_tournaments" DROP COLUMN IF EXISTS "is_bonus_source"`);
+    return;
+  }
+
+  // 2. The second shape: team names typed in by hand.
+  if (await hasColumn('live_bonus_round_fixtures', 'home_team_name')) {
+    console.warn('[ensureSchema] moving bonus-round matches from team names to bonus teams');
+    await db.execute(sql`
+      INSERT INTO "live_bonus_teams" ("id", "name")
+      SELECT substr(md5(random()::text || n.name), 1, 15), n.name
+      FROM (
+        SELECT DISTINCT ON (lower(trim(name))) trim(name) AS name
+        FROM (
+          SELECT "home_team_name" AS name FROM "live_bonus_round_fixtures"
+          UNION ALL
+          SELECT "away_team_name" FROM "live_bonus_round_fixtures"
+        ) AS all_names
+      ) AS n
+      ON CONFLICT DO NOTHING
+    `);
+    await db.execute(sql`ALTER TABLE "live_bonus_round_fixtures" ADD COLUMN IF NOT EXISTS "home_team_id" text`);
+    await db.execute(sql`ALTER TABLE "live_bonus_round_fixtures" ADD COLUMN IF NOT EXISTS "away_team_id" text`);
+    await db.execute(sql`
+      UPDATE "live_bonus_round_fixtures" f
+      SET "home_team_id" = (SELECT t."id" FROM "live_bonus_teams" t WHERE lower(t."name") = lower(trim(f."home_team_name"))),
+          "away_team_id" = (SELECT t."id" FROM "live_bonus_teams" t WHERE lower(t."name") = lower(trim(f."away_team_name")))
+    `);
+    await db.execute(sql`ALTER TABLE "live_bonus_round_fixtures" ALTER COLUMN "home_team_id" SET NOT NULL`);
+    await db.execute(sql`ALTER TABLE "live_bonus_round_fixtures" ALTER COLUMN "away_team_id" SET NOT NULL`);
+    await db.execute(sql`
+      ALTER TABLE "live_bonus_round_fixtures"
+        ADD CONSTRAINT "live_bonus_round_fixtures_home_team_id_fk"
+        FOREIGN KEY ("home_team_id") REFERENCES "live_bonus_teams"("id") ON DELETE RESTRICT
+    `);
+    await db.execute(sql`
+      ALTER TABLE "live_bonus_round_fixtures"
+        ADD CONSTRAINT "live_bonus_round_fixtures_away_team_id_fk"
+        FOREIGN KEY ("away_team_id") REFERENCES "live_bonus_teams"("id") ON DELETE RESTRICT
+    `);
+    await db.execute(sql`ALTER TABLE "live_bonus_round_fixtures" DROP COLUMN "home_team_name"`);
+    await db.execute(sql`ALTER TABLE "live_bonus_round_fixtures" DROP COLUMN "away_team_name"`);
+  }
 }
