@@ -1061,7 +1061,8 @@ liveCompetitionsRouter.get('/competitions/:id/fixtures', requireAuth, async (req
     return res.json(
       fixtures.map(f => {
         const prediction = predictionByFixtureId.get(f.id) ?? null;
-        const lockAt = fixtureLockAt(f.kickoffAt);
+        // A provisional kickoff has no deadline yet — see isFixtureLocked.
+        const lockAt = f.kickoffConfirmed ? fixtureLockAt(f.kickoffAt) : null;
         return {
           ...f,
           homeTeam: f.homeTeamId ? teamById.get(f.homeTeamId) ?? null : null,
@@ -1078,7 +1079,7 @@ liveCompetitionsRouter.get('/competitions/:id/fixtures', requireAuth, async (req
               }
             : null,
           lockedAt: lockAt ? lockAt.toISOString() : null,
-          isLocked: isFixtureLocked({ kickoffAt: f.kickoffAt, status: f.status }, now),
+          isLocked: isFixtureLocked({ kickoffAt: f.kickoffAt, kickoffConfirmed: f.kickoffConfirmed, status: f.status }, now),
           isPredictable: isStageAtOrAfter(format, f.stageKey, tournament.startStageKey),
           // False only where an admin has narrowed this gameweek to a set of matches
           // that leaves this one out.
@@ -1573,7 +1574,7 @@ liveCompetitionsRouter.put('/competitions/:id/predictions', requireAuth, async (
       return res.status(400).json({ error: 'This match is not one of the selected matches' });
     }
 
-    if (isFixtureLocked({ kickoffAt: fixture.kickoffAt, status: fixture.status })) {
+    if (isFixtureLocked({ kickoffAt: fixture.kickoffAt, kickoffConfirmed: fixture.kickoffConfirmed, status: fixture.status })) {
       const lockAt = fixtureLockAt(fixture.kickoffAt);
       return res.status(400).json({
         error: 'Predictions for this fixture are closed',
@@ -1633,6 +1634,7 @@ liveCompetitionsRouter.get(
         .select({
           prediction: livePredictions,
           kickoffAt: liveFixtures.kickoffAt,
+          kickoffConfirmed: liveFixtures.kickoffConfirmed,
           status: liveFixtures.status,
         })
         .from(livePredictions)
@@ -1647,7 +1649,7 @@ liveCompetitionsRouter.get(
         rows
           .filter(
             r =>
-              seesEverything || isFixtureLocked({ kickoffAt: r.kickoffAt, status: r.status }, now),
+              seesEverything || isFixtureLocked({ kickoffAt: r.kickoffAt, kickoffConfirmed: r.kickoffConfirmed, status: r.status }, now),
           )
           .map(r => r.prediction),
       );
@@ -2049,7 +2051,7 @@ liveCompetitionsRouter.get(
 
       if (
         !canPreviewLivePredictions(res.locals.user) &&
-        !isFixtureLocked({ kickoffAt: fixture.kickoffAt, status: fixture.status })
+        !isFixtureLocked({ kickoffAt: fixture.kickoffAt, kickoffConfirmed: fixture.kickoffConfirmed, status: fixture.status })
       ) {
         return res.status(403).json({ error: 'Not visible until the match has locked' });
       }

@@ -138,7 +138,7 @@ function fixtureView(
         } as LiveBonusRoundFixtureView['prediction'])
       : null,
     lockedAt: lockAt ? iso(lockAt) : null,
-    isLocked: isFixtureLocked({ kickoffAt: f.kickoffAt, status }, now),
+    isLocked: isFixtureLocked({ kickoffAt: f.kickoffAt, kickoffConfirmed: true, status }, now),
     isPredictable: true,
     isSelected: true,
   };
@@ -607,7 +607,7 @@ liveBonusRoundsRouter.put('/competitions/:id/bonus-predictions', requireAuth, as
     }
     const { fixture } = found;
 
-    if (isFixtureLocked({ kickoffAt: fixture.kickoffAt, status: bonusFixtureStatus(fixture) })) {
+    if (isFixtureLocked({ kickoffAt: fixture.kickoffAt, kickoffConfirmed: true, status: bonusFixtureStatus(fixture) })) {
       const lockAt = fixtureLockAt(fixture.kickoffAt);
       return res.status(400).json({
         error: 'Predictions for this fixture are closed',
@@ -657,7 +657,7 @@ liveBonusRoundsRouter.get(
       const { fixture } = found;
       if (
         !canPreviewPredictions(user) &&
-        !isFixtureLocked({ kickoffAt: fixture.kickoffAt, status: bonusFixtureStatus(fixture) })
+        !isFixtureLocked({ kickoffAt: fixture.kickoffAt, kickoffConfirmed: true, status: bonusFixtureStatus(fixture) })
       ) {
         return res.status(403).json({ error: 'Not visible until the match has locked' });
       }
