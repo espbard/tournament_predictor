@@ -8,6 +8,8 @@ import type {
   LiveBonusFixture,
   LiveBonusRoundView,
   LiveBonusRoundVisibility,
+  LiveBonusTeam,
+  LiveBonusTeamOption,
   LiveCompetition,
   LiveFixture,
   LiveFormatDef,
@@ -90,7 +92,13 @@ export interface LiveLeaderboardRow {
   };
 }
 
-export type { LiveBonusFixture, LiveBonusRoundView, LiveBonusRoundVisibility };
+export type {
+  LiveBonusFixture,
+  LiveBonusRoundView,
+  LiveBonusRoundVisibility,
+  LiveBonusTeam,
+  LiveBonusTeamOption,
+};
 
 /**
  * One member's prediction for a single fixture, as the "what everyone predicted" dropdown
@@ -682,12 +690,20 @@ export const liveApi = {
     },
   ) => api.patch<LiveBonusRoundView>(`/live/bonus-rounds/${roundId}`, body),
   deleteBonusRound: (roundId: string) => api.delete<{ ok: true }>(`/live/bonus-rounds/${roundId}`),
-  /** Set up one match by hand. */
+  /**
+   * Every team the bonus-round picker offers: registered bonus teams plus the manual and
+   * live tournaments' teams (ids prefixed `manual:` / `live:`, registered on first use).
+   */
+  bonusTeams: () => api.get<LiveBonusTeamOption[]>('/live/bonus-teams'),
+  /** Register a team for bonus rounds. 409 when the name is taken. */
+  createBonusTeam: (body: { name: string; imageUrl?: string | null }) =>
+    api.post<LiveBonusTeam>('/live/bonus-teams', body),
+  /** Set up one match by hand. Team ids come from bonusTeams(). */
   createBonusFixture: (
     roundId: string,
     body: {
-      homeTeamName: string;
-      awayTeamName: string;
+      homeTeamId: string;
+      awayTeamId: string;
       label?: string | null;
       kickoffAt: string;
       multiplier?: number;
@@ -697,8 +713,8 @@ export const liveApi = {
   updateBonusFixture: (
     fixtureId: string,
     body: {
-      homeTeamName?: string;
-      awayTeamName?: string;
+      homeTeamId?: string;
+      awayTeamId?: string;
       label?: string | null;
       kickoffAt?: string;
       multiplier?: number;
@@ -768,6 +784,7 @@ export const liveKeys = {
   bonusAnswers: (competitionId: string, userId?: string) =>
     ['live', 'bonus-answers', competitionId, userId ?? 'me'] as const,
   bonusRounds: (competitionId: string) => ['live', 'bonus-rounds', competitionId] as const,
+  bonusTeams: ['live', 'bonus-teams'] as const,
   userBonusRounds: (competitionId: string, userId: string) =>
     ['live', 'bonus-rounds', competitionId, 'user', userId] as const,
   bonusFixturePredictions: (competitionId: string, fixtureId: string) =>

@@ -259,9 +259,9 @@ indistinguishable from the outside.
   own `season.startDate` falls in the season asked for.
 
 - **Bonus rounds** are extra rounds of match predictions inside a live competition, with
-  matches an admin enters by hand (team names, kickoff, later the 90-minute result), like the
-  manual type. Own tables (`live_bonus_rounds`, `live_bonus_round_fixtures`,
-  `live_bonus_round_predictions`); they never touch `live_fixtures` or `live_predictions`.
+  matches an admin enters by hand (two teams from `live_bonus_teams`, kickoff, later the
+  90-minute result), like the manual type. Own tables (`live_bonus_teams`, `live_bonus_rounds`,
+  `live_bonus_round_fixtures`, `live_bonus_round_predictions`); they never touch `live_fixtures` or `live_predictions`.
   See [`docs/LIVE_TOURNAMENTS_PLAN.md`](docs/LIVE_TOURNAMENTS_PLAN.md) §38.
 
 ### Migrations — read this before adding a column
@@ -438,7 +438,9 @@ GET    /api/live/competitions/:id/bonus-rounds         — visible rounds + matc
 POST   /api/live/competitions/:id/bonus-rounds         — admin; {name, afterStageKey, afterMatchday}
 PATCH  /api/live/bonus-rounds/:roundId                 — admin; name, placement, visibility
 DELETE /api/live/bonus-rounds/:roundId                 — admin; deletes its matches and predictions
-POST   /api/live/bonus-rounds/:roundId/fixtures        — admin; {homeTeamName, awayTeamName, kickoffAt, label?, multiplier?}
+GET    /api/live/bonus-teams                         — admin; picker: bonus teams + manual/live teams (manual:/live: ids)
+POST   /api/live/bonus-teams                         — admin; {name, imageUrl?}, 409 if the name exists
+POST   /api/live/bonus-rounds/:roundId/fixtures        — admin; {homeTeamId, awayTeamId, kickoffAt, label?, multiplier?}
 PATCH  /api/live/bonus-fixtures/:fixtureId             — admin; edit, or {homeScore, awayScore} to enter/clear the result
 DELETE /api/live/bonus-fixtures/:fixtureId             — admin
 PUT    /api/live/competitions/:id/bonus-predictions    — {fixtureId, homeScore, awayScore}

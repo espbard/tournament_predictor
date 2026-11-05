@@ -43,9 +43,8 @@ export interface LiveBonusRound extends LiveBonusRoundAnchor {
 
 /**
  * A bonus-round match as the fixtures tab renders it: shaped as the ordinary fixture view,
- * so the same cards draw it. The team ids are synthetic (`<fixtureId>:home` / `:away`),
- * since the teams are only names; `normalTime*` is the admin's result and `prediction`
- * the caller's bonus-round prediction.
+ * so the same cards draw it. The teams are bonus teams (name + logo, as `crestUrl`);
+ * `normalTime*` is the admin's result and `prediction` the caller's bonus-round prediction.
  */
 export interface LiveBonusRoundFixtureView extends LiveFixtureView {
   /** Free text the admin gave the match, such as "UEFA Nations League". */
@@ -57,8 +56,8 @@ export interface LiveBonusFixture {
   id: string;
   bonusRoundId: string;
   liveCompetitionId: string;
-  homeTeamName: string;
-  awayTeamName: string;
+  homeTeamId: string;
+  awayTeamId: string;
   label: string | null;
   kickoffAt: string;
   multiplier: number;
@@ -71,6 +70,26 @@ export interface LiveBonusRoundView extends LiveBonusRound {
   /** ISO 8601, the earliest kickoff among the fixtures. Null for an empty round. */
   firstKickoffAt: string | null;
 }
+
+/** A team bonus-round matches can be played by. */
+export interface LiveBonusTeam {
+  id: string;
+  name: string;
+  imageUrl: string | null;
+}
+
+/**
+ * One entry of the admin's team picker. `bonus` is a registered bonus team; `manual` and
+ * `live` are teams of a manual or live tournament, offered so they need not be set up
+ * again. Picking one of those registers it as a bonus team when the match is saved — their
+ * `id` is prefixed (`manual:<id>`, `live:<id>`) so the server can tell.
+ */
+export interface LiveBonusTeamOption extends LiveBonusTeam {
+  source: 'bonus' | 'manual' | 'live';
+}
+
+/** Prefix on a picker id that names a team of another tournament, not a bonus team. */
+export const BONUS_TEAM_SOURCE_PREFIXES = ['manual:', 'live:'] as const;
 
 /** Whether a user may see a round at all. Admins and test accounts see every round. */
 export function canSeeLiveBonusRound(
@@ -238,22 +257,30 @@ export const UpdateLiveBonusRoundSchema = z
   })
   .refine(v => Object.keys(v).length > 0, { message: 'Nothing to update' });
 
-const teamName = z.string().trim().min(1).max(60);
+/** A bonus team id, or a picker id naming another tournament's team (`manual:…`, `live:…`). */
+const teamRef = z.string().min(1).max(80);
 const score = z.number().int().min(0).max(99);
 
-export const CreateLiveBonusFixtureSchema = z.object({
-  homeTeamName: teamName,
-  awayTeamName: teamName,
-  label: z.string().trim().max(60).nullable().optional(),
-  /** ISO 8601. */
-  kickoffAt: z.string().datetime({ offset: true }),
-  multiplier: z.number().int().min(LIVE_MIN_MULTIPLIER).max(LIVE_MAX_MULTIPLIER).default(1),
+export const CreateLiveBonusTeamSchema = z.object({
+  name: z.string().trim().min(1).max(60),
+  imageUrl: z.string().max(500).nullable().optional(),
 });
+
+export const CreateLiveBonusFixtureSchema = z
+  .object({
+    homeTeamId: teamRef,
+    awayTeamId: teamRef,
+    label: z.string().trim().max(60).nullable().optional(),
+    /** ISO 8601. */
+    kickoffAt: z.string().datetime({ offset: true }),
+    multiplier: z.number().int().min(LIVE_MIN_MULTIPLIER).max(LIVE_MAX_MULTIPLIER).default(1),
+  })
+  .refine(v => v.homeTeamId !== v.awayTeamId, { message: 'A team cannot play itself' });
 
 export const UpdateLiveBonusFixtureSchema = z
   .object({
-    homeTeamName: teamName.optional(),
-    awayTeamName: teamName.optional(),
+    homeTeamId: teamRef.optional(),
+    awayTeamId: teamRef.optional(),
     label: z.string().trim().max(60).nullable().optional(),
     kickoffAt: z.string().datetime({ offset: true }).optional(),
     multiplier: z.number().int().min(LIVE_MIN_MULTIPLIER).max(LIVE_MAX_MULTIPLIER).optional(),
@@ -277,6 +304,7 @@ export const SaveLiveBonusRoundPredictionSchema = z.object({
 
 export type CreateLiveBonusRoundInput = z.infer<typeof CreateLiveBonusRoundSchema>;
 export type UpdateLiveBonusRoundInput = z.infer<typeof UpdateLiveBonusRoundSchema>;
+export type CreateLiveBonusTeamInput = z.infer<typeof CreateLiveBonusTeamSchema>;
 export type CreateLiveBonusFixtureInput = z.infer<typeof CreateLiveBonusFixtureSchema>;
 export type UpdateLiveBonusFixtureInput = z.infer<typeof UpdateLiveBonusFixtureSchema>;
 export type SaveLiveBonusRoundPredictionInput = z.infer<typeof SaveLiveBonusRoundPredictionSchema>;

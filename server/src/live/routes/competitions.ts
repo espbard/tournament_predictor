@@ -36,6 +36,7 @@ import {
   liveBonusRoundFixtures,
   liveBonusRoundPredictions,
   liveBonusRounds,
+  liveBonusTeams,
   liveCompetitionMembers,
   liveCompetitions,
   liveFixtures,
@@ -638,10 +639,7 @@ async function loadLiveProgression(
   );
 }
 
-/**
- * A competition's public bonus-round matches and points, for the chart. The teams are
- * only names, so each match gets two synthetic team ids for the label to read.
- */
+/** A competition's public bonus-round matches, their teams and points, for the chart. */
 async function loadPublicBonusRoundProgression(competitionId: string) {
   const rows = await db
     .select({ fixture: liveBonusRoundFixtures })
@@ -661,30 +659,34 @@ async function loadPublicBonusRoundProgression(competitionId: string) {
     status: bonusFixtureStatus(f),
     stageKey: null,
     matchday: null,
-    homeTeamId: `${f.id}:home`,
-    awayTeamId: `${f.id}:away`,
+    homeTeamId: f.homeTeamId,
+    awayTeamId: f.awayTeamId,
   }));
-  const teams = rows.flatMap(({ fixture: f }) => [
-    { id: `${f.id}:home`, name: f.homeTeamName, shortName: null, tla: null },
-    { id: `${f.id}:away`, name: f.awayTeamName, shortName: null, tla: null },
-  ]);
-  const predictions = await db
-    .select({
-      userId: liveBonusRoundPredictions.userId,
-      liveFixtureId: liveBonusRoundPredictions.bonusFixtureId,
-      points: liveBonusRoundPredictions.points,
-    })
-    .from(liveBonusRoundPredictions)
-    .where(
-      and(
-        eq(liveBonusRoundPredictions.liveCompetitionId, competitionId),
-        inArray(
-          liveBonusRoundPredictions.bonusFixtureId,
-          fixtures.map(f => f.id),
+  const teamIds = [...new Set(fixtures.flatMap(f => [f.homeTeamId, f.awayTeamId]))];
+  const [teams, predictions] = await Promise.all([
+    db
+      .select({ id: liveBonusTeams.id, name: liveBonusTeams.name })
+      .from(liveBonusTeams)
+      .where(inArray(liveBonusTeams.id, teamIds))
+      .then(ts => ts.map(t => ({ ...t, shortName: null, tla: null }))),
+    db
+      .select({
+        userId: liveBonusRoundPredictions.userId,
+        liveFixtureId: liveBonusRoundPredictions.bonusFixtureId,
+        points: liveBonusRoundPredictions.points,
+      })
+      .from(liveBonusRoundPredictions)
+      .where(
+        and(
+          eq(liveBonusRoundPredictions.liveCompetitionId, competitionId),
+          inArray(
+            liveBonusRoundPredictions.bonusFixtureId,
+            fixtures.map(f => f.id),
+          ),
+          isNotNull(liveBonusRoundPredictions.points),
         ),
-        isNotNull(liveBonusRoundPredictions.points),
       ),
-    );
+  ]);
   return { fixtures, teams, predictions };
 }
 

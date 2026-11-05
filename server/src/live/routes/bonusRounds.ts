@@ -1,9 +1,10 @@
 import { Router } from 'express';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { generateId } from 'lucia';
 import {
   CreateLiveBonusFixtureSchema,
   CreateLiveBonusRoundSchema,
+  CreateLiveBonusTeamSchema,
   SaveLiveBonusRoundPredictionSchema,
   UpdateLiveBonusFixtureSchema,
   UpdateLiveBonusRoundSchema,
@@ -14,16 +15,19 @@ import {
   type LiveBonusRoundFixtureView,
   type LiveBonusRoundView,
   type LiveBonusRoundVisibility,
+  type LiveBonusTeamOption,
 } from '@tournament-predictor/shared';
 import { db } from '../../db/client';
 import {
   liveBonusRoundFixtures,
   liveBonusRoundPredictions,
   liveBonusRounds,
+  liveBonusTeams,
   liveCompetitionMembers,
   liveCompetitions,
+  liveTeams,
 } from '../../db/liveSchema';
-import { users } from '../../db/schema';
+import { teams as manualTeams, users } from '../../db/schema';
 import { requireAdmin, requireAuth } from '../../middleware/auth';
 import { canViewLiveCompetition, isLiveMember } from '../../lib/competitionAccess';
 import { notifyLiveCompetitions } from '../liveEvents';
@@ -58,6 +62,7 @@ function canPreviewPredictions(user: Viewer): boolean {
 type RoundRow = typeof liveBonusRounds.$inferSelect;
 type FixtureRow = typeof liveBonusRoundFixtures.$inferSelect;
 type PredictionRow = typeof liveBonusRoundPredictions.$inferSelect;
+type TeamRow = typeof liveBonusTeams.$inferSelect;
 
 const iso = (d: Date) => d.toISOString();
 
@@ -65,28 +70,37 @@ const iso = (d: Date) => d.toISOString();
  * A hand-entered match in the shape of the ordinary fixture view, so the same cards draw
  * it. The teams are only names, so they get synthetic ids and no crest.
  */
-function fixtureView(f: FixtureRow, prediction: PredictionRow | null, now: Date): LiveBonusRoundFixtureView {
+function fixtureView(
+  f: FixtureRow,
+  teamById: Map<string, TeamRow>,
+  prediction: PredictionRow | null,
+  now: Date,
+): LiveBonusRoundFixtureView {
   const status = bonusFixtureStatus(f);
   const lockAt = fixtureLockAt(f.kickoffAt);
-  const team = (side: 'home' | 'away', name: string) => ({
-    id: `${f.id}:${side}`,
-    liveTournamentId: '',
-    providerTeamId: '',
-    name,
-    shortName: null,
-    tla: null,
-    crestUrl: null,
-    groupName: null,
-    qualificationStatus: 'qualified' as const,
-  });
+  const team = (teamId: string) => {
+    const row = teamById.get(teamId);
+    return {
+      id: teamId,
+      liveTournamentId: '',
+      providerTeamId: '',
+      name: row?.name ?? '?',
+      shortName: null,
+      tla: null,
+      // The logo, drawn where a provider's crest would be.
+      crestUrl: row?.imageUrl ?? null,
+      groupName: null,
+      qualificationStatus: 'qualified' as const,
+    };
+  };
   return {
     id: f.id,
     liveTournamentId: '',
     providerFixtureId: f.id,
-    homeTeamId: `${f.id}:home`,
-    awayTeamId: `${f.id}:away`,
-    homeTeam: team('home', f.homeTeamName),
-    awayTeam: team('away', f.awayTeamName),
+    homeTeamId: f.homeTeamId,
+    awayTeamId: f.awayTeamId,
+    homeTeam: team(f.homeTeamId),
+    awayTeam: team(f.awayTeamId),
     kickoffAt: iso(f.kickoffAt),
     kickoffConfirmed: true,
     status,
@@ -162,6 +176,12 @@ async function buildRoundViews(rounds: RoundRow[], predictorId: string | null): 
       : [];
   const predictionByFixture = new Map(predictions.map(p => [p.bonusFixtureId, p]));
 
+  const teamIds = [...new Set(fixtures.flatMap(f => [f.homeTeamId, f.awayTeamId]))];
+  const teamRows = teamIds.length
+    ? await db.select().from(liveBonusTeams).where(inArray(liveBonusTeams.id, teamIds))
+    : [];
+  const teamById = new Map(teamRows.map(t => [t.id, t]));
+
   const now = new Date();
   return rounds.map(round => {
     const own = fixtures.filter(f => f.bonusRoundId === round.id);
@@ -174,7 +194,7 @@ async function buildRoundViews(rounds: RoundRow[], predictorId: string | null): 
       visibility: round.visibility as LiveBonusRoundVisibility,
       createdAt: iso(round.createdAt),
       updatedAt: iso(round.updatedAt),
-      fixtures: own.map(f => fixtureView(f, predictionByFixture.get(f.id) ?? null, now)),
+      fixtures: own.map(f => fixtureView(f, teamById, predictionByFixture.get(f.id) ?? null, now)),
       firstKickoffAt: own.length > 0 ? iso(own[0].kickoffAt) : null,
     };
   });
@@ -250,6 +270,107 @@ liveBonusRoundsRouter.get('/competitions/:id/bonus-rounds/user/:userId', require
         fixtures: round.fixtures.map(f => (seesEverything || f.isLocked ? f : { ...f, prediction: null })),
       })),
     );
+  } catch (err) {
+    return fail(res, err);
+  }
+});
+
+// ── Admin: teams ──────────────────────────────────────────────────────────────
+//
+// Bonus-round matches are played by bonus teams: one registry for the whole app, each a
+// name and a logo. The picker also offers every team the manual and live tournaments
+// already hold, so a team the database knows need not be set up again — picking one
+// registers it as a bonus team when the match is saved (resolveBonusTeam).
+
+const normalise = (name: string) => name.trim().toLowerCase();
+
+/** The bonus team with this name, ignoring case, or null. */
+async function bonusTeamByName(name: string): Promise<TeamRow | null> {
+  const [row] = await db
+    .select()
+    .from(liveBonusTeams)
+    .where(sql`lower(${liveBonusTeams.name}) = ${normalise(name)}`);
+  return row ?? null;
+}
+
+/** Register a team by name, or return the one already registered under it. */
+async function findOrCreateBonusTeam(name: string, imageUrl: string | null): Promise<TeamRow> {
+  const existing = await bonusTeamByName(name);
+  if (existing) return existing;
+  await db
+    .insert(liveBonusTeams)
+    .values({ id: generateId(15), name: name.trim(), imageUrl })
+    .onConflictDoNothing();
+  // Read back rather than trust the insert: a concurrent save may have won the name.
+  return (await bonusTeamByName(name))!;
+}
+
+/**
+ * Turn a picker id into a bonus team id: a bonus team as it is, another tournament's team
+ * registered (by name, with its logo) on first use. Null when it names nothing.
+ */
+async function resolveBonusTeam(ref: string): Promise<string | null> {
+  if (ref.startsWith('manual:')) {
+    const [row] = await db
+      .select({ name: manualTeams.name, imageUrl: manualTeams.imageUrl })
+      .from(manualTeams)
+      .where(eq(manualTeams.id, ref.slice('manual:'.length)));
+    return row ? (await findOrCreateBonusTeam(row.name, row.imageUrl)).id : null;
+  }
+  if (ref.startsWith('live:')) {
+    const [row] = await db
+      .select({ name: liveTeams.name, imageUrl: liveTeams.crestUrl })
+      .from(liveTeams)
+      .where(eq(liveTeams.id, ref.slice('live:'.length)));
+    return row ? (await findOrCreateBonusTeam(row.name, row.imageUrl)).id : null;
+  }
+  const [row] = await db.select({ id: liveBonusTeams.id }).from(liveBonusTeams).where(eq(liveBonusTeams.id, ref));
+  return row?.id ?? null;
+}
+
+/**
+ * Every team the picker offers, by name: bonus teams first, then the manual and live
+ * tournaments' teams under names no bonus team has. One entry per name, preferring one
+ * with a logo, since the same national team is often stored by several tournaments.
+ */
+liveBonusRoundsRouter.get('/bonus-teams', requireAdmin, async (_req, res) => {
+  try {
+    const [bonus, manual, live] = await Promise.all([
+      db.select().from(liveBonusTeams),
+      db.select({ id: manualTeams.id, name: manualTeams.name, imageUrl: manualTeams.imageUrl }).from(manualTeams),
+      db.select({ id: liveTeams.id, name: liveTeams.name, imageUrl: liveTeams.crestUrl }).from(liveTeams),
+    ]);
+
+    const byName = new Map<string, LiveBonusTeamOption>();
+    for (const t of bonus) byName.set(normalise(t.name), { id: t.id, name: t.name, imageUrl: t.imageUrl, source: 'bonus' });
+    const offer = (source: 'manual' | 'live', t: { id: string; name: string; imageUrl: string | null }) => {
+      const key = normalise(t.name);
+      const current = byName.get(key);
+      if (current && (current.source === 'bonus' || current.imageUrl || !t.imageUrl)) return;
+      byName.set(key, { id: `${source}:${t.id}`, name: t.name, imageUrl: t.imageUrl, source });
+    };
+    for (const t of manual) offer('manual', t);
+    for (const t of live) offer('live', t);
+
+    return res.json([...byName.values()].sort((a, b) => a.name.localeCompare(b.name)));
+  } catch (err) {
+    return fail(res, err);
+  }
+});
+
+/** Register a new team: a name and, optionally, an uploaded logo. */
+liveBonusRoundsRouter.post('/bonus-teams', requireAdmin, async (req, res) => {
+  try {
+    const parsed = CreateLiveBonusTeamSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid body', details: parsed.error.flatten() });
+    }
+    const existing = await bonusTeamByName(parsed.data.name);
+    if (existing) {
+      return res.status(409).json({ error: `A team called "${existing.name}" already exists`, details: existing });
+    }
+    const team = await findOrCreateBonusTeam(parsed.data.name, parsed.data.imageUrl ?? null);
+    return res.status(201).json(team);
   } catch (err) {
     return fail(res, err);
   }
@@ -355,6 +476,11 @@ liveBonusRoundsRouter.post('/bonus-rounds/:roundId/fixtures', requireAdmin, asyn
     const round = await loadRound(req.params.roundId);
     if (!round) return res.status(404).json({ error: 'Not found' });
 
+    const homeTeamId = await resolveBonusTeam(parsed.data.homeTeamId);
+    const awayTeamId = await resolveBonusTeam(parsed.data.awayTeamId);
+    if (!homeTeamId || !awayTeamId) return res.status(400).json({ error: 'Unknown team' });
+    if (homeTeamId === awayTeamId) return res.status(400).json({ error: 'A team cannot play itself' });
+
     const now = new Date();
     const [created] = await db
       .insert(liveBonusRoundFixtures)
@@ -362,8 +488,8 @@ liveBonusRoundsRouter.post('/bonus-rounds/:roundId/fixtures', requireAdmin, asyn
         id: generateId(15),
         bonusRoundId: round.id,
         liveCompetitionId: round.liveCompetitionId,
-        homeTeamName: parsed.data.homeTeamName,
-        awayTeamName: parsed.data.awayTeamName,
+        homeTeamId,
+        awayTeamId,
         label: parsed.data.label || null,
         kickoffAt: new Date(parsed.data.kickoffAt),
         multiplier: parsed.data.multiplier,
@@ -395,8 +521,15 @@ liveBonusRoundsRouter.patch('/bonus-fixtures/:fixtureId', requireAdmin, async (r
 
     const d = parsed.data;
     const update: Partial<FixtureRow> = { updatedAt: new Date() };
-    if (d.homeTeamName !== undefined) update.homeTeamName = d.homeTeamName;
-    if (d.awayTeamName !== undefined) update.awayTeamName = d.awayTeamName;
+    for (const side of ['homeTeamId', 'awayTeamId'] as const) {
+      if (d[side] === undefined) continue;
+      const resolved = await resolveBonusTeam(d[side]!);
+      if (!resolved) return res.status(400).json({ error: 'Unknown team' });
+      update[side] = resolved;
+    }
+    if ((update.homeTeamId ?? current.homeTeamId) === (update.awayTeamId ?? current.awayTeamId)) {
+      return res.status(400).json({ error: 'A team cannot play itself' });
+    }
     if (d.label !== undefined) update.label = d.label || null;
     if (d.kickoffAt !== undefined) update.kickoffAt = new Date(d.kickoffAt);
     if (d.multiplier !== undefined) update.multiplier = d.multiplier;

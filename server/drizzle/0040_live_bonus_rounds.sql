@@ -24,12 +24,21 @@ CREATE TABLE IF NOT EXISTS "live_bonus_rounds" (
 );
 CREATE INDEX IF NOT EXISTS "live_bonus_rounds_competition_idx" ON "live_bonus_rounds" ("live_competition_id");
 
+-- Teams bonus-round matches are played by: one registry for the whole app, name + logo.
+CREATE TABLE IF NOT EXISTS "live_bonus_teams" (
+  "id" text PRIMARY KEY,
+  "name" text NOT NULL,
+  "image_url" text,
+  "created_at" timestamp NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "live_bonus_teams_name_unique" ON "live_bonus_teams" (lower("name"));
+
 CREATE TABLE IF NOT EXISTS "live_bonus_round_fixtures" (
   "id" text PRIMARY KEY,
   "bonus_round_id" text NOT NULL REFERENCES "live_bonus_rounds"("id") ON DELETE CASCADE,
   "live_competition_id" text NOT NULL REFERENCES "live_competitions"("id") ON DELETE CASCADE,
-  "home_team_name" text NOT NULL,
-  "away_team_name" text NOT NULL,
+  "home_team_id" text NOT NULL REFERENCES "live_bonus_teams"("id") ON DELETE RESTRICT,
+  "away_team_id" text NOT NULL REFERENCES "live_bonus_teams"("id") ON DELETE RESTRICT,
   "label" text,
   "kickoff_at" timestamp NOT NULL,
   "multiplier" integer NOT NULL DEFAULT 1,

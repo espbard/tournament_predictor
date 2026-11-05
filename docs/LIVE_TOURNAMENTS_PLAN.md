@@ -2114,8 +2114,16 @@ one private `norwegianFaithCard()`.
 
 Extra rounds of **match predictions only** inside an existing live competition, placed
 **between** the competition's own rounds. The matches are **set up by hand** by an admin, the
-way the manual tournament type works: two team names, a kickoff, an optional competition
-label ("UEFA Nations League"), a multiplier, and once played the score after 90 minutes.
+way the manual tournament type works: two teams, a kickoff, an optional competition label
+("UEFA Nations League"), a multiplier, and once played the score after 90 minutes.
+
+**Teams** come from `live_bonus_teams`, one registry for the whole app (name + logo, name
+unique ignoring case). The admin picks them from a searchable dropdown (`TeamSelectInput`)
+that lists the bonus teams *and* every team the manual (`teams`) and live (`live_teams`)
+tournaments hold, one entry per name, preferring one with a logo. Those others carry a
+prefixed picker id (`manual:<id>`, `live:<id>`); saving a match registers them as bonus
+teams on first use (`resolveBonusTeam`), reusing a bonus team of the same name. A team that is
+nowhere yet is created from the add-match card with a name and an uploaded logo.
 A round can hold matches from any dates and any competition. New rounds are visible to test
 accounts only.
 
@@ -2128,7 +2136,8 @@ by hand: no provider, no source tournament, no sync.
 | Table / column | Notes |
 |---|---|
 | `live_bonus_rounds` | Per competition. `after_stage_key` + `after_matchday` place it; `visibility` is `test` or `everyone` |
-| `live_bonus_round_fixtures` | One hand-entered match: team names, `label`, `kickoff_at`, `multiplier`, `home_score`/`away_score` (null until the result is entered) |
+| `live_bonus_teams` | Name + logo. Unique on `lower(name)` |
+| `live_bonus_round_fixtures` | One hand-entered match: `home_team_id`/`away_team_id` (bonus teams, `ON DELETE RESTRICT`), `label`, `kickoff_at`, `multiplier`, `home_score`/`away_score` (null until the result is entered) |
 | `live_bonus_round_predictions` | Unique `(bonus_fixture_id, user_id)`. Same score columns as `live_predictions` |
 | `live_competition_members.bonus_round_points` | Public rounds only |
 
@@ -2142,7 +2151,8 @@ has gone degrades gracefully rather than losing the round.
 |---|---|
 | Matches entered by hand, not synced | Requested. Same model as the manual tournament type, and no dependency on a provider that may not cover the competition |
 | Own tables, not `live_fixtures` / `live_predictions` | Those belong to the provider-synced tournament, and everything reading them (selections, user stats, comparisons) assumes so |
-| The API shapes a match as an ordinary `LiveFixtureView` with synthetic team ids (`<id>:home`) | The fixture cards, tie-free list and "what everyone predicted" dropdown render it unchanged |
+| The API shapes a match as an ordinary `LiveFixtureView`, the bonus team's logo as `crestUrl` | The fixture cards, list and "what everyone predicted" dropdown render it unchanged |
+| Other tournaments' teams are copied into the registry, not referenced | Their rows belong to a tournament and cascade with it; a bonus round must not lose a team because an old tournament was deleted |
 | A match is finished once both scores are set; scoring runs on that write | There is no sync tick for these. Clearing the result puts the predictions back to unscored |
 | Test-only rounds stay out of `total_points` | Requested ("only visible to test users"). A regular player must never see a total they cannot account for. The leaderboard adds the test-only points back for test accounts and admins, as a preview |
 | A hidden round is an empty list or a 404 | Nothing about a test-only round reaches a regular player's page, not even a leaderboard column |

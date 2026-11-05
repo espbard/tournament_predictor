@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CreateLiveBonusFixtureSchema,
+  CreateLiveBonusTeamSchema,
   DEFAULT_LIVE_SCORING_CONFIG,
   UpdateLiveBonusFixtureSchema,
   bonusFixtureStatus,
@@ -146,15 +147,16 @@ describe('bonus-round scoring', () => {
 });
 
 describe('bonus-round match schemas', () => {
-  const match = { homeTeamName: 'Norway', awayTeamName: 'Italy', kickoffAt: '2026-11-13T19:45:00.000Z' };
+  const match = { homeTeamId: 'norway', awayTeamId: 'manual:italy', kickoffAt: '2026-11-13T19:45:00.000Z' };
 
   it('defaults the multiplier to 1 and rejects one out of bounds', () => {
     expect(CreateLiveBonusFixtureSchema.parse(match).multiplier).toBe(1);
     expect(CreateLiveBonusFixtureSchema.safeParse({ ...match, multiplier: 0 }).success).toBe(false);
   });
 
-  it('needs both teams and a real kickoff', () => {
-    expect(CreateLiveBonusFixtureSchema.safeParse({ ...match, awayTeamName: ' ' }).success).toBe(false);
+  it('needs two different teams and a real kickoff', () => {
+    expect(CreateLiveBonusFixtureSchema.safeParse({ ...match, awayTeamId: '' }).success).toBe(false);
+    expect(CreateLiveBonusFixtureSchema.safeParse({ ...match, awayTeamId: 'norway' }).success).toBe(false);
     expect(CreateLiveBonusFixtureSchema.safeParse({ ...match, kickoffAt: 'tomorrow' }).success).toBe(false);
   });
 
@@ -163,5 +165,13 @@ describe('bonus-round match schemas', () => {
     expect(UpdateLiveBonusFixtureSchema.safeParse({ homeScore: null, awayScore: null }).success).toBe(true);
     expect(UpdateLiveBonusFixtureSchema.safeParse({ homeScore: 2 }).success).toBe(false);
     expect(UpdateLiveBonusFixtureSchema.safeParse({ homeScore: 2, awayScore: null }).success).toBe(false);
+  });
+});
+
+describe('CreateLiveBonusTeamSchema', () => {
+  it('needs a name; the logo is optional', () => {
+    expect(CreateLiveBonusTeamSchema.safeParse({ name: 'Norway' }).success).toBe(true);
+    expect(CreateLiveBonusTeamSchema.safeParse({ name: 'Norway', imageUrl: '/api/images/teams/x.png' }).success).toBe(true);
+    expect(CreateLiveBonusTeamSchema.safeParse({ name: '  ' }).success).toBe(false);
   });
 });

@@ -292,6 +292,7 @@ export async function ensureLiveSchema(): Promise<void> {
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "live_scorer_predictions_competition_user_unique" ON "live_scorer_predictions" ("live_competition_id", "user_id")`);
 
 
+
   // ── Bonus rounds — mirrors drizzle/0040_live_bonus_rounds.sql ───────────────
   await db.execute(sql`ALTER TABLE "live_competition_members" ADD COLUMN IF NOT EXISTS "bonus_round_points" integer NOT NULL DEFAULT 0`);
   await db.execute(sql`
@@ -308,12 +309,21 @@ export async function ensureLiveSchema(): Promise<void> {
   `);
   await db.execute(sql`CREATE INDEX IF NOT EXISTS "live_bonus_rounds_competition_idx" ON "live_bonus_rounds" ("live_competition_id")`);
   await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "live_bonus_teams" (
+      "id" text PRIMARY KEY,
+      "name" text NOT NULL,
+      "image_url" text,
+      "created_at" timestamp NOT NULL DEFAULT now()
+    )
+  `);
+  await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "live_bonus_teams_name_unique" ON "live_bonus_teams" (lower("name"))`);
+  await db.execute(sql`
     CREATE TABLE IF NOT EXISTS "live_bonus_round_fixtures" (
       "id" text PRIMARY KEY,
       "bonus_round_id" text NOT NULL REFERENCES "live_bonus_rounds"("id") ON DELETE CASCADE,
       "live_competition_id" text NOT NULL REFERENCES "live_competitions"("id") ON DELETE CASCADE,
-      "home_team_name" text NOT NULL,
-      "away_team_name" text NOT NULL,
+      "home_team_id" text NOT NULL REFERENCES "live_bonus_teams"("id") ON DELETE RESTRICT,
+      "away_team_id" text NOT NULL REFERENCES "live_bonus_teams"("id") ON DELETE RESTRICT,
       "label" text,
       "kickoff_at" timestamp NOT NULL,
       "multiplier" integer NOT NULL DEFAULT 1,

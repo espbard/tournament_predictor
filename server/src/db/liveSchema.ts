@@ -10,7 +10,7 @@ import {
   index,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 import type {
   LiveBonusAnswerType,
   LiveBonusRoundVisibility,
@@ -566,6 +566,26 @@ export const liveBonusRounds = pgTable(
   }),
 );
 
+/**
+ * A team bonus-round matches can be played by. One registry for the whole app, so a team
+ * is set up once and reused by every round and every competition. Created by an admin
+ * (name + logo), or copied in from a manual or live tournament's team the first time it
+ * is picked — see resolveBonusTeam in server/src/live/routes/bonusRounds.ts.
+ */
+export const liveBonusTeams = pgTable(
+  'live_bonus_teams',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    imageUrl: text('image_url'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  t => ({
+    // Names are what admins pick by, so two teams may not share one, whatever the case.
+    nameUnique: uniqueIndex('live_bonus_teams_name_unique').on(sql`lower(${t.name})`),
+  }),
+);
+
 /** One hand-entered match in a bonus round. */
 export const liveBonusRoundFixtures = pgTable(
   'live_bonus_round_fixtures',
@@ -578,8 +598,13 @@ export const liveBonusRoundFixtures = pgTable(
     liveCompetitionId: text('live_competition_id')
       .notNull()
       .references(() => liveCompetitions.id, { onDelete: 'cascade' }),
-    homeTeamName: text('home_team_name').notNull(),
-    awayTeamName: text('away_team_name').notNull(),
+    // Restrict, not cascade: a team in use must not take matches and predictions with it.
+    homeTeamId: text('home_team_id')
+      .notNull()
+      .references(() => liveBonusTeams.id, { onDelete: 'restrict' }),
+    awayTeamId: text('away_team_id')
+      .notNull()
+      .references(() => liveBonusTeams.id, { onDelete: 'restrict' }),
     /** Free text shown with the match — "UEFA Nations League". Optional. */
     label: text('label'),
     kickoffAt: timestamp('kickoff_at').notNull(),
