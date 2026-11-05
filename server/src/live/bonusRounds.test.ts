@@ -7,6 +7,7 @@ import {
   bonusFixtureStatus,
   canSeeLiveBonusRound,
   layoutLiveRounds,
+  nextLiveRound,
   suggestLiveBonusRoundAnchor,
   type LiveRoundLayoutStage,
   type PlaceableBonusRound,
@@ -173,5 +174,32 @@ describe('CreateLiveBonusTeamSchema', () => {
     expect(CreateLiveBonusTeamSchema.safeParse({ name: 'Norway' }).success).toBe(true);
     expect(CreateLiveBonusTeamSchema.safeParse({ name: 'Norway', imageUrl: '/api/images/teams/x.png' }).success).toBe(true);
     expect(CreateLiveBonusTeamSchema.safeParse({ name: '  ' }).success).toBe(false);
+  });
+});
+
+describe('nextLiveRound', () => {
+  const gw5 = { kickoffAt: '2026-11-24T17:45:00Z', stageKey: 'league_phase', matchday: 5 };
+  const gw6 = { kickoffAt: '2026-12-08T17:45:00Z', stageKey: 'league_phase', matchday: 6 };
+  const nl = { round: { id: 'nl' }, fixtures: [{ kickoffAt: '2026-11-16T19:45:00Z' }, { kickoffAt: '2026-11-13T19:45:00Z' }] };
+
+  it('picks a bonus round that kicks off before the next gameweek', () => {
+    expect(nextLiveRound([gw6, gw5], [nl])).toEqual({ type: 'bonus', roundId: 'nl' });
+  });
+
+  it('picks the gameweek once the bonus round is out of the running', () => {
+    expect(nextLiveRound([gw6, gw5], [{ ...nl, fixtures: [] }])).toEqual({
+      type: 'gameweek',
+      stageKey: 'league_phase',
+      matchday: 5,
+    });
+  });
+
+  it('lets a gameweek win a tie, and ignores undated matches', () => {
+    const same = { round: { id: 'same' }, fixtures: [{ kickoffAt: gw5.kickoffAt }, { kickoffAt: null }] };
+    expect(nextLiveRound([gw5], [same])).toMatchObject({ type: 'gameweek', matchday: 5 });
+  });
+
+  it('is null with nothing to come', () => {
+    expect(nextLiveRound([], [])).toBeNull();
   });
 });

@@ -225,6 +225,49 @@ export function suggestLiveBonusRoundAnchor(
   return { afterStageKey: best.afterStageKey, afterMatchday: best.afterMatchday };
 }
 
+// ── The next round ────────────────────────────────────────────────────────────
+
+/** A competition fixture, as far as deciding the next round goes. */
+export interface NextRoundFixture {
+  kickoffAt: string | null;
+  stageKey: string | null;
+  matchday: number | null;
+}
+
+export type NextLiveRound =
+  | { type: 'gameweek'; stageKey: string | null; matchday: number | null }
+  | { type: 'bonus'; roundId: string };
+
+/**
+ * Which round comes next: the one holding the earliest kickoff among the given matches,
+ * whether that is one of the competition's own gameweeks or a bonus round. The caller
+ * decides what "still to come" means — still open to predict, or not yet finished — and
+ * passes only those matches. Null when there are none.
+ *
+ * A bonus round has to kick off strictly earlier to win a tie, so a round of borrowed
+ * matches never hides a gameweek starting at the same moment.
+ */
+export function nextLiveRound<R extends { id: string }>(
+  fixtures: NextRoundFixture[],
+  bonusRounds: Array<{ round: R; fixtures: Array<{ kickoffAt: string | null }> }>,
+): NextLiveRound | null {
+  let best: { at: string; next: NextLiveRound } | null = null;
+
+  for (const f of fixtures) {
+    if (!f.kickoffAt) continue;
+    if (!best || f.kickoffAt < best.at) {
+      best = { at: f.kickoffAt, next: { type: 'gameweek', stageKey: f.stageKey, matchday: f.matchday } };
+    }
+  }
+  for (const { round, fixtures: matches } of bonusRounds) {
+    for (const f of matches) {
+      if (!f.kickoffAt) continue;
+      if (!best || f.kickoffAt < best.at) best = { at: f.kickoffAt, next: { type: 'bonus', roundId: round.id } };
+    }
+  }
+  return best?.next ?? null;
+}
+
 // ── Results ───────────────────────────────────────────────────────────────────
 
 /** A hand-entered match is finished once both halves of its result are set. */
