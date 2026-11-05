@@ -22,8 +22,12 @@ function at(minutesFromNow: number): string {
   return new Date(NOW.getTime() + minutesFromNow * 60_000).toISOString();
 }
 
-function fixture(kickoffAt: string | null, status: LiveFixtureStatus = 'scheduled') {
-  return { kickoffAt, status };
+function fixture(
+  kickoffAt: string | null,
+  status: LiveFixtureStatus = 'scheduled',
+  kickoffConfirmed = true,
+) {
+  return { kickoffAt, kickoffConfirmed, status };
 }
 
 describe('fixtureLockAt', () => {
@@ -84,6 +88,27 @@ describe('isFixtureLocked — kickoff still to be announced', () => {
   });
 });
 
+describe('isFixtureLocked — provisional kickoff', () => {
+  // football-data's SCHEDULED: a placeholder date, not the real slot. The real kickoff can
+  // be a day or more later, so the placeholder must not close the fixture.
+  it('stays open inside the final hour of a placeholder kickoff', () => {
+    expect(isFixtureLocked(fixture(at(30), 'scheduled', false), NOW)).toBe(false);
+  });
+
+  it('stays open once a placeholder kickoff has passed', () => {
+    expect(isFixtureLocked(fixture(at(-120), 'scheduled', false), NOW)).toBe(false);
+  });
+
+  it('locks normally once the provider confirms the time', () => {
+    expect(isFixtureLocked(fixture(at(30), 'scheduled', true), NOW)).toBe(true);
+    expect(isFixtureLocked(fixture(at(61), 'scheduled', true), NOW)).toBe(false);
+  });
+
+  it('still closes when the match starts before the time is confirmed', () => {
+    expect(isFixtureLocked(fixture(at(-5), 'in_play', false), NOW)).toBe(true);
+  });
+});
+
 describe('isFixtureLocked — status overrides the clock', () => {
   const statuses: LiveFixtureStatus[] = ['in_play', 'paused', 'finished', 'suspended', 'cancelled'];
 
@@ -125,6 +150,15 @@ describe('minutesUntilLock', () => {
 
   it('is null when the kickoff time is unknown', () => {
     expect(minutesUntilLock(fixture(null), NOW)).toBeNull();
+  });
+
+  it('is null while the kickoff time is only provisional', () => {
+    expect(minutesUntilLock(fixture(at(150), 'scheduled', false), NOW)).toBeNull();
+    expect(minutesUntilLock(fixture(at(30), 'scheduled', false), NOW)).toBeNull();
+  });
+
+  it('is zero for a match under way, even with no kickoff time', () => {
+    expect(minutesUntilLock(fixture(null, 'in_play'), NOW)).toBe(0);
   });
 });
 

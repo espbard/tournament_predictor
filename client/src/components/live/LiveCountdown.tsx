@@ -13,6 +13,8 @@ import { useT } from '@/lib/useT';
 
 interface Props {
   kickoffAt: string | null;
+  /** False while the kickoff is a provider placeholder: no countdown, just "TBD". */
+  kickoffConfirmed: boolean;
   status: string;
   className?: string;
 }
@@ -25,10 +27,10 @@ function tickIntervalMs(minutesLeft: number | null): number {
   return 60_000;
 }
 
-export default function LiveCountdown({ kickoffAt, status, className = '' }: Props) {
+export default function LiveCountdown({ kickoffAt, kickoffConfirmed, status, className = '' }: Props) {
   const { t } = useT();
   const [minutes, setMinutes] = useState<number | null>(() =>
-    minutesUntilLock({ kickoffAt, status: status as never }),
+    minutesUntilLock({ kickoffAt, kickoffConfirmed, status: status as never }),
   );
 
   useEffect(() => {
@@ -36,7 +38,7 @@ export default function LiveCountdown({ kickoffAt, status, className = '' }: Pro
     let timer: ReturnType<typeof setTimeout>;
 
     function schedule() {
-      const next = minutesUntilLock({ kickoffAt, status: status as never });
+      const next = minutesUntilLock({ kickoffAt, kickoffConfirmed, status: status as never });
       if (cancelled) return;
       setMinutes(next);
       timer = setTimeout(schedule, tickIntervalMs(next));
@@ -47,10 +49,10 @@ export default function LiveCountdown({ kickoffAt, status, className = '' }: Pro
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [kickoffAt, status]);
+  }, [kickoffAt, kickoffConfirmed, status]);
 
-  // No kickoff time published yet — common for knockout ties before a draw. The fixture
-  // stays open, so saying "locks in …" would be wrong.
+  // No kickoff time published yet — common for knockout ties before a draw — or only a
+  // provisional one. The fixture stays open, so saying "locks in …" would be wrong.
   if (minutes === null) {
     return (
       <span className={`text-xs text-muted-foreground ${className}`}>{t('live.kickoffTbd')}</span>

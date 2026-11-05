@@ -193,7 +193,11 @@ export default function LiveFixtureCard({
             {t('live.fullTime')}
           </span>
         ) : inPredictionGame ? (
-          <LiveCountdown kickoffAt={fixture.kickoffAt} status={fixture.status} />
+          <LiveCountdown
+            kickoffAt={fixture.kickoffAt}
+            kickoffConfirmed={fixture.kickoffConfirmed}
+            status={fixture.status}
+          />
         ) : null}
       </div>
 

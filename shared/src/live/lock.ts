@@ -15,6 +15,14 @@ const MS_PER_MINUTE = 60_000;
 
 export interface LockableFixture {
   kickoffAt: string | Date | null;
+  /**
+   * Whether `kickoffAt` is the real kickoff time rather than a provider placeholder.
+   * football-data publishes a provisional date (status SCHEDULED) for matches whose slot
+   * has not been fixed yet — a Premier League match waiting on its TV pick, a knockout
+   * round before its slots are announced — and only marks it TIMED once it is real.
+   * A placeholder must never lock a fixture: the real kickoff can be a day or more later.
+   */
+  kickoffConfirmed: boolean;
   status: LiveFixtureStatus;
 }
 
@@ -43,6 +51,11 @@ export function isFixtureLocked(fixture: LockableFixture, now: Date = new Date()
 
   // Kickoff still to be announced — stays open. It will lock once a date arrives.
   if (!kickoff || !lockAt) return false;
+
+  // A provisional date is a kickoff still to be announced too, just one with a guess
+  // filled in. It stays open until the provider confirms a time; if the match starts
+  // before that, the in-play status above closes it.
+  if (!fixture.kickoffConfirmed) return false;
 
   // A postponed fixture keeps its old kickoff until the provider publishes the new one.
   // That stale date must not lock the fixture: the match has not been played.
@@ -160,15 +173,15 @@ export function isBonusQuestionLocked(
 }
 
 /**
- * Whole minutes until a fixture locks. Null when the kickoff time is unknown,
- * zero once the deadline has passed. For the countdown UI.
+ * Whole minutes until a fixture locks. Null when the kickoff time is unknown or only
+ * provisional, zero once the deadline has passed. For the countdown UI.
  */
 export function minutesUntilLock(
   fixture: LockableFixture,
   now: Date = new Date(),
 ): number | null {
-  const lockAt = fixtureLockAt(fixture.kickoffAt);
-  if (!lockAt) return null;
   if (isFixtureLocked(fixture, now)) return 0;
+  const lockAt = fixture.kickoffConfirmed ? fixtureLockAt(fixture.kickoffAt) : null;
+  if (!lockAt) return null;
   return Math.max(0, Math.ceil((lockAt.getTime() - now.getTime()) / MS_PER_MINUTE));
 }
