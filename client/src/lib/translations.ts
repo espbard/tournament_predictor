@@ -628,9 +628,6 @@ const translations = {
       bonusRounds: {
         pill: 'Bonus round',
         testOnly: 'Test only',
-        explainer: 'A bonus round of {{count}} matches from {{sources}}. Predict them like any other match; the points count toward your total.',
-        explainerPlain: 'A bonus round of {{count}} matches. Predict them like any other match; the points count toward your total.',
-        testExplainer: 'Only test accounts can see this round, and its points are left out of the total everyone else sees.',
         empty: 'No matches have been added to this bonus round yet.',
         dot: '{{name}}: {{done}} of {{selected}} predicted',
         admin: {
@@ -1819,9 +1816,6 @@ const translations = {
       bonusRounds: {
         pill: 'Bonusrunde',
         testOnly: 'Kun test',
-        explainer: 'En bonusrunde med {{count}} kamper fra {{sources}}. Tipp dem som alle andre kamper; poengene teller i totalen din.',
-        explainerPlain: 'En bonusrunde med {{count}} kamper. Tipp dem som alle andre kamper; poengene teller i totalen din.',
-        testExplainer: 'Bare testkontoer ser denne runden, og poengene holdes utenfor totalen alle andre ser.',
         empty: 'Ingen kamper er lagt til i denne bonusrunden ennå.',
         dot: '{{name}}: {{done}} av {{selected}} tippet',
         admin: {
@@ -3009,9 +3003,6 @@ const translations = {
       bonusRounds: {
         pill: 'Bonusrunde',
         testOnly: 'Nur Test',
-        explainer: 'Eine Bonusrunde mit {{count}} Spielen aus {{sources}}. Tippe sie wie jedes andere Spiel; die Punkte zählen zu deiner Gesamtwertung.',
-        explainerPlain: 'Eine Bonusrunde mit {{count}} Spielen. Tippe sie wie jedes andere Spiel; die Punkte zählen zu deiner Gesamtwertung.',
-        testExplainer: 'Nur Testkonten sehen diese Runde, und ihre Punkte bleiben aus der Gesamtwertung aller anderen heraus.',
         empty: 'Dieser Bonusrunde wurden noch keine Spiele hinzugefügt.',
         dot: '{{name}}: {{done}} von {{selected}} getippt',
         admin: {

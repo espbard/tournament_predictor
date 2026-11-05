@@ -6,8 +6,7 @@ import type { LiveBonusRoundView, LiveFixtureView } from '@/lib/liveApi';
 // ── One bonus round ───────────────────────────────────────────────────────────
 //
 // What the fixtures tab shows in place of a gameweek when a bonus round is picked: its
-// name, the labels the admin gave its matches, and the matches themselves on the ordinary
-// cards. The server shapes each hand-entered match as an ordinary fixture view, so the
+// name, and the matches themselves on the ordinary cards. The server shapes each hand-entered match as an ordinary fixture view, so the
 // cards need no special casing beyond asking the bonus-round route for "what everyone
 // predicted".
 
@@ -34,11 +33,6 @@ export default function LiveBonusRoundPanel({
   hidePrediction = false,
 }: Props) {
   const { t } = useT();
-  // The labels the admin gave the matches ("UEFA Nations League"), if any.
-  const sources = [
-    ...new Set(round.fixtures.map(f => f.label).filter((l): l is string => !!l)),
-  ].join(', ');
-
   return (
     <>
       <div className="mb-3">
@@ -51,16 +45,6 @@ export default function LiveBonusRoundPanel({
             </span>
           )}
         </h2>
-        {round.fixtures.length > 0 && (
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            {sources
-              ? t('live.bonusRounds.explainer', { count: round.fixtures.length, sources })
-              : t('live.bonusRounds.explainerPlain', { count: round.fixtures.length })}
-          </p>
-        )}
-        {round.visibility === 'test' && (
-          <p className="mt-0.5 text-xs text-muted-foreground">{t('live.bonusRounds.testExplainer')}</p>
-        )}
       </div>
 
       <LiveFixtureList
