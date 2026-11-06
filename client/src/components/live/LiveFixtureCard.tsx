@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { liveFixtureMultiplier } from '@tournament-predictor/shared';
 import { useT } from '@/lib/useT';
 import LiveCountdown from '@/components/live/LiveCountdown';
@@ -61,8 +61,19 @@ const SCORE_BOX = 'h-9 w-12 rounded-md border text-center text-sm tabular-nums';
 const SCORE_LABEL = 'text-[10px] font-medium uppercase tracking-wide text-muted-foreground';
 // Equal outer thirds keep the middle pair on the card's centre line whatever sits beside
 // it, so the actual score and the prediction below it stay aligned once a points badge
-// or a save button appears.
+// or the save status appears.
 const SCORE_ROW = 'grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-end gap-2';
+
+// How long the inputs have to sit still before a prediction is saved. Long enough that
+// stepping a score up with the arrow keys, or typing "1" then "0", is one save and not
+// several; short enough that it has gone before the user has moved on.
+const AUTOSAVE_DELAY_MS = 700;
+
+/** A score the server will take: a whole number of goals, 0–30, as the inputs allow. */
+function validScore(value: string): boolean {
+  if (!/^\d{1,2}$/.test(value)) return false;
+  return Number(value) <= 30;
+}
 
 /**
  * Which wording explains a multiplied match.
@@ -93,10 +104,19 @@ export default function LiveFixtureCard({
   const [home, setHome] = useState(fixture.prediction ? String(fixture.prediction.homeScore) : '');
   const [away, setAway] = useState(fixture.prediction ? String(fixture.prediction.awayScore) : '');
 
+  // The score most recently handed to `onSave`, or already stored — see Auto-save below.
+  const lastSent = useRef<string | null>(
+    fixture.prediction ? `${fixture.prediction.homeScore}-${fixture.prediction.awayScore}` : null,
+  );
+
   // A prediction can arrive after first render — from a refetch, or another device.
   // Only adopt it when the user has not typed anything, so an edit in progress survives.
   useEffect(() => {
     if (!fixture.prediction) return;
+    // A stored prediction showing up late is not an edit, so it is not saved back.
+    if (lastSent.current === null) {
+      lastSent.current = `${fixture.prediction.homeScore}-${fixture.prediction.awayScore}`;
+    }
     setHome(prev => (prev === '' ? String(fixture.prediction!.homeScore) : prev));
     setAway(prev => (prev === '' ? String(fixture.prediction!.awayScore) : prev));
   }, [fixture.prediction]);
@@ -116,17 +136,51 @@ export default function LiveFixtureCard({
   const multiplier = liveFixtureMultiplier(fixture.multiplier);
   const isMultiplied = inPredictionGame && multiplier > 1;
   const editable = !readOnly && !fixture.isLocked && inPredictionGame && fixture.homeTeamId !== null;
-  const dirty =
-    home !== '' &&
-    away !== '' &&
-    (!fixture.prediction ||
-      Number(home) !== fixture.prediction.homeScore ||
-      Number(away) !== fixture.prediction.awayScore);
 
-  function handleSave() {
-    if (!dirty) return;
-    onSave(fixture.id, Number(home), Number(away));
-  }
+  // ── Auto-save ──
+  //
+  // There is no save button: a prediction is saved once both boxes hold a valid score and
+  // the user has stopped changing it for a moment. `lastSent` is the score most recently
+  // handed to `onSave` (or already stored), so neither a re-render nor the refetch that
+  // follows a save sends the same score twice.
+  //
+  // A save still waiting out its delay, so it can be sent at once if the card unmounts —
+  // switching gameweek straight after typing should not throw the prediction away.
+  const pending = useRef<(() => void) | null>(null);
+  const onSaveRef = useRef(onSave);
+  onSaveRef.current = onSave;
+
+  useEffect(() => {
+    if (!editable || !validScore(home) || !validScore(away)) return;
+    const key = `${Number(home)}-${Number(away)}`;
+    if (key === lastSent.current) return;
+    const send = () => {
+      pending.current = null;
+      lastSent.current = key;
+      onSaveRef.current(fixture.id, Number(home), Number(away));
+    };
+    pending.current = send;
+    const timer = setTimeout(send, AUTOSAVE_DELAY_MS);
+    return () => {
+      clearTimeout(timer);
+      if (pending.current === send) pending.current = null;
+    };
+  }, [home, away, editable, fixture.id]);
+
+  // Flush a save still waiting on its delay when the card goes away.
+  useEffect(() => () => pending.current?.(), []);
+
+  // A failed save leaves the score unsaved, so the same score typed again should be sent
+  // again rather than mistaken for one already stored.
+  useEffect(() => {
+    if (error) {
+      lastSent.current = fixture.prediction
+        ? `${fixture.prediction.homeScore}-${fixture.prediction.awayScore}`
+        : null;
+    }
+  }, [error, fixture.prediction]);
+
+  const justSaved = savedAt !== null && !error;
 
   // How the tie actually ended, when that differs from the score that counted.
   const decidedBeyond90 =
@@ -246,14 +300,21 @@ export default function LiveFixtureCard({
         <div className={`mt-3 ${SCORE_ROW}`}>
           <div className="col-start-2 flex flex-col items-center gap-1">
             <span className={SCORE_LABEL}>{t('live.predictedScoreLabel')}</span>
-            <div className="flex items-center gap-2">
+            {/* The green ring is the confirmation that the prediction was saved. It is a
+                ring rather than a border, and the padding is cancelled by the negative
+                margin, so the boxes do not move off the actual score's line when it shows. */}
+            <div
+              className={`-m-1 flex items-center gap-2 rounded-lg p-1 ring-2 transition-shadow duration-500 ${
+                justSaved ? 'ring-green-500/80' : 'ring-transparent'
+              }`}
+            >
               <input
                 type="number"
                 min={0}
                 max={30}
                 inputMode="numeric"
                 value={home}
-                disabled={!editable || isSaving}
+                disabled={!editable}
                 onChange={e => setHome(e.target.value)}
                 aria-label={t('live.predictedHomeScore', { team: homeName })}
                 className={`${SCORE_BOX} focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-60`}
@@ -265,7 +326,7 @@ export default function LiveFixtureCard({
                 max={30}
                 inputMode="numeric"
                 value={away}
-                disabled={!editable || isSaving}
+                disabled={!editable}
                 onChange={e => setAway(e.target.value)}
                 aria-label={t('live.predictedAwayScore', { team: awayName })}
                 className={`${SCORE_BOX} focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-60`}
@@ -273,17 +334,19 @@ export default function LiveFixtureCard({
             </div>
           </div>
 
-          {/* Save and the points badge sit off the centre line, so the boxes stay lined up
-              with the actual score above them however wide these get. */}
-          <div className="col-start-3 flex min-w-0 items-center gap-2">
+          {/* The save status and the points badge sit off the centre line, so the boxes
+              stay lined up with the actual score above them however wide these get. */}
+          <div className="col-start-3 flex min-h-9 min-w-0 items-center gap-2">
             {editable && (
-              <button
-                onClick={handleSave}
-                disabled={!dirty || isSaving}
-                className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+              <span
+                aria-live="polite"
+                className={`text-xs transition-opacity duration-500 ${
+                  isSaving || justSaved ? 'opacity-100' : 'opacity-0'
+                } ${justSaved && !isSaving ? 'font-medium text-green-600 dark:text-green-400' : 'text-muted-foreground'}`}
               >
-                {isSaving ? t('common.saving') : t('common.save')}
-              </button>
+                {/* Kept as "saved" while hidden, so the word fades out rather than vanishing. */}
+                {isSaving ? t('common.saving') : t('common.saved')}
+              </span>
             )}
 
             {/* Points awarded, once the fixture has been scored */}
@@ -319,11 +382,6 @@ export default function LiveFixtureCard({
         </div>
       )}
 
-      {savedAt && !error && (
-        <p className="mt-1 text-center text-xs text-green-600 dark:text-green-400">
-          {t('common.saved')}
-        </p>
-      )}
       {error && <p className="mt-1 text-center text-xs text-destructive">{error}</p>}
 
       {/* A finished fixture the provider gave us no normal-time score for cannot be
