@@ -409,9 +409,15 @@ export interface LiveBonusQuestion {
   points: number;
   /**
    * Null until an admin records it. A JSON array of strings when several answers count,
-   * a plain string otherwise. Redacted from non-admins until the tournament is completed.
+   * a plain string otherwise. Redacted from members other than admins and test accounts
+   * until the question is finalized.
    */
   correctAnswer: string | null;
+  /**
+   * Set by an admin once the correct answer is settled. Until then the answer is hidden from
+   * regular members and the question awards no points.
+   */
+  finalized: boolean;
   /**
    * When answers close. Null means the default: one hour before the first match of the
    * tournament's starting stage — the same instant the table prediction locks.
@@ -440,7 +446,7 @@ export interface LiveBonusAnswer {
   liveCompetitionId: string;
   userId: string;
   answer: string;
-  /** Null until the tournament is completed and bonus scoring runs. */
+  /** Null until the question is finalized and bonus scoring runs. */
   points: number | null;
   createdAt: string;
   updatedAt: string;

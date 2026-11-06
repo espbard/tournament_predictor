@@ -181,6 +181,8 @@ export const UpdateBonusQuestionSchema = z.object({
   answerType: z.enum(['number', 'player', 'team', 'yes_no']).optional(),
   points: z.number().int().min(1).max(1000).optional(),
   correctAnswer: z.string().nullable().optional(),
+  /** Reveals the correct answer to members and awards its points. Off by default. */
+  finalized: z.boolean().optional(),
 });
 
 export const CreatePlayerSchema = z.object({

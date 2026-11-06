@@ -2187,24 +2187,25 @@ liveCompetitionsRouter.get('/competitions/:id/bonus-questions', requireAuth, asy
     const kickoffs = await tablePredictionStageKickoffs(tournament);
     const now = new Date();
 
+    // Admins and test accounts see every recorded correct answer; regular members only
+    // those of finalized questions. A finalized question is closed whatever its deadline,
+    // since its answer is no longer a secret.
     return res.json(
-      redactLiveBonusQuestions(questions, user.isAdmin, tournament.status === 'completed').map(
-        q => {
-          const lockedAt = bonusQuestionLockAt(q.lockAt, kickoffs);
-          return {
-            ...q,
-            lockedAt: lockedAt ? lockedAt.toISOString() : null,
-            isLocked: isBonusQuestionLocked(q.lockAt, kickoffs, now),
-          };
-        },
-      ),
+      redactLiveBonusQuestions(questions, user.isAdmin || user.isTestAccount).map(q => {
+        const lockedAt = bonusQuestionLockAt(q.lockAt, kickoffs);
+        return {
+          ...q,
+          lockedAt: lockedAt ? lockedAt.toISOString() : null,
+          isLocked: q.finalized || isBonusQuestionLocked(q.lockAt, kickoffs, now),
+        };
+      }),
     );
   } catch (err) {
     return fail(res, err);
   }
 });
 
-/** The caller's own answers. Points are redacted until the tournament is completed. */
+/** The caller's own answers. Points are redacted until their question is finalized. */
 liveCompetitionsRouter.get('/competitions/:id/bonus-answers', requireAuth, async (req, res) => {
   try {
     const user = res.locals.user;
@@ -2214,20 +2215,24 @@ liveCompetitionsRouter.get('/competitions/:id/bonus-answers', requireAuth, async
 
     const answers = await loadLiveBonusAnswers(req.params.id, user.id);
     return res.json(
-      redactLiveBonusAnswerPoints(answers, user.isAdmin, await isTournamentCompletedFor(req.params.id)),
+      redactLiveBonusAnswerPoints(answers, await finalizedQuestionIdsFor(req.params.id), user.isAdmin),
     );
   } catch (err) {
     return fail(res, err);
   }
 });
 
-async function isTournamentCompletedFor(competitionId: string): Promise<boolean> {
-  const [row] = await db
-    .select({ status: liveTournaments.status })
+/** Ids of the finalized bonus questions a competition asks — the only ones whose points show. */
+async function finalizedQuestionIdsFor(competitionId: string): Promise<Set<string>> {
+  const rows = await db
+    .select({ id: liveBonusQuestions.id })
     .from(liveCompetitions)
-    .innerJoin(liveTournaments, eq(liveTournaments.id, liveCompetitions.liveTournamentId))
-    .where(eq(liveCompetitions.id, competitionId));
-  return row?.status === 'completed';
+    .innerJoin(
+      liveBonusQuestions,
+      eq(liveBonusQuestions.liveTournamentId, liveCompetitions.liveTournamentId),
+    )
+    .where(and(eq(liveCompetitions.id, competitionId), eq(liveBonusQuestions.finalized, true)));
+  return new Set(rows.map(r => r.id));
 }
 
 /**
@@ -2291,20 +2296,14 @@ liveCompetitionsRouter.get(
       }
 
       const [competition] = await db
-        .select()
+        .select({ id: liveCompetitions.id })
         .from(liveCompetitions)
         .where(eq(liveCompetitions.id, id));
       if (!competition) return res.status(404).json({ error: 'Not found' });
 
-      const [tournament] = await db
-        .select()
-        .from(liveTournaments)
-        .where(eq(liveTournaments.id, competition.liveTournamentId));
-      if (!tournament) return res.status(404).json({ error: 'Live tournament not found' });
-
       const answers = await loadLiveBonusAnswers(id, userId);
       return res.json(
-        redactLiveBonusAnswerPoints(answers, viewer.isAdmin, tournament.status === 'completed'),
+        redactLiveBonusAnswerPoints(answers, await finalizedQuestionIdsFor(id), viewer.isAdmin),
       );
     } catch (err) {
       return fail(res, err);
@@ -2347,13 +2346,17 @@ liveCompetitionsRouter.delete('/competitions/:id/bonus-answers', requireAuth, as
     if (!tournament) return res.status(404).json({ error: 'Live tournament not found' });
 
     const questions = await db
-      .select({ id: liveBonusQuestions.id, lockAt: liveBonusQuestions.lockAt })
+      .select({
+        id: liveBonusQuestions.id,
+        lockAt: liveBonusQuestions.lockAt,
+        finalized: liveBonusQuestions.finalized,
+      })
       .from(liveBonusQuestions)
       .where(eq(liveBonusQuestions.liveTournamentId, tournament.id));
 
     const kickoffs = await tablePredictionStageKickoffs(tournament);
     const openQuestionIds = questions
-      .filter(q => !isBonusQuestionLocked(q.lockAt, kickoffs))
+      .filter(q => !q.finalized && !isBonusQuestionLocked(q.lockAt, kickoffs))
       .map(q => q.id);
     if (openQuestionIds.length === 0) return res.json({ deleted: 0 });
 
@@ -2422,7 +2425,8 @@ liveCompetitionsRouter.put('/competitions/:id/bonus-answers', requireAuth, async
     if (!question) return res.status(404).json({ error: 'Question not found' });
 
     const kickoffs = await tablePredictionStageKickoffs(tournament);
-    if (isBonusQuestionLocked(question.lockAt, kickoffs)) {
+    // A finalized question's correct answer is public, so it is closed whatever its deadline.
+    if (question.finalized || isBonusQuestionLocked(question.lockAt, kickoffs)) {
       const lockedAt = bonusQuestionLockAt(question.lockAt, kickoffs);
       return res.status(400).json({
         error: 'This bonus question is closed',
@@ -2474,8 +2478,8 @@ liveCompetitionsRouter.put('/competitions/:id/bonus-answers', requireAuth, async
       })
       .returning();
 
-    // Nothing to score: points wait for the tournament to be marked completed.
-    return res.json(redactLiveBonusAnswerPoints([saved], user.isAdmin, tournament.status === 'completed')[0]);
+    // Nothing to score: the question is not finalized, so its points are still withheld.
+    return res.json(saved);
   } catch (err) {
     return fail(res, err);
   }

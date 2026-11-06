@@ -1502,7 +1502,7 @@ tournamentsRouter.delete('/:id/groups/:groupId', requireAdmin, async (req, res) 
 tournamentsRouter.get('/:id/bonus-questions', requireAuth, async (req, res) => {
   try {
     const [tournament] = await db
-      .select({ status: tournaments.status })
+      .select({ id: tournaments.id })
       .from(tournaments)
       .where(eq(tournaments.id, req.params.id))
       .limit(1);
@@ -1513,7 +1513,9 @@ tournamentsRouter.get('/:id/bonus-questions', requireAuth, async (req, res) => {
       .from(bonusQuestions)
       .where(eq(bonusQuestions.tournamentId, req.params.id));
     const user = res.locals.user;
-    return res.json(redactBonusQuestions(questions, user.isAdmin, tournament.status === 'completed'));
+    // Admins and test accounts see every recorded correct answer; regular members only
+    // those of finalized questions.
+    return res.json(redactBonusQuestions(questions, user.isAdmin || user.isTestAccount));
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'Internal server error' });
@@ -1560,6 +1562,7 @@ tournamentsRouter.patch('/:id/bonus-questions/:qid', requireAdmin, async (req, r
     if (result.data.answerType !== undefined) updates.answerType = result.data.answerType;
     if (result.data.points !== undefined) updates.points = result.data.points;
     if (result.data.correctAnswer !== undefined) updates.correctAnswer = result.data.correctAnswer;
+    if (result.data.finalized !== undefined) updates.finalized = result.data.finalized;
 
     if (Object.keys(updates).length === 0) return res.status(400).json({ error: 'No updates provided' });
 
@@ -1569,7 +1572,12 @@ tournamentsRouter.patch('/:id/bonus-questions/:qid', requireAdmin, async (req, r
       .where(eq(bonusQuestions.id, qid))
       .returning();
 
-    if (result.data.correctAnswer !== undefined) {
+    // Anything that changes what an answer is worth, or whether it counts yet.
+    if (
+      result.data.correctAnswer !== undefined ||
+      result.data.finalized !== undefined ||
+      result.data.points !== undefined
+    ) {
       await triggerBonusScoring(qid, id).catch(err =>
         console.error('Bonus scoring error:', err),
       );

@@ -167,7 +167,7 @@ configured, so shared-package specs go under `server/src/` too. Existing example
 | `competition_members` | Membership **and** the per-user score aggregate | 8 denormalised `*_points` columns, `groupStageLocked`, tiebreak choice JSON, late-addition fields. **Has no primary key** |
 | `predictions` | Per-match score predictions | **No unique constraint** on (competition, user, match) — enforced only in app code |
 | `bracket_predictions` | Whole knockout bracket as one JSON blob | PK `(competitionId, userId)`; keys are `${stage}_${index}` |
-| `bonus_questions` / `bonus_answers` | Custom Q&A scoring | Question is tournament-scoped, answer is competition-scoped |
+| `bonus_questions` / `bonus_answers` | Custom Q&A scoring | Question is tournament-scoped, answer is competition-scoped. `finalized` (admin checkbox, default off) reveals the correct answer to members and awards its points — see "Bonus questions: finalized" below |
 | `players` | Named players, for `player`-type bonus answers | |
 | `feedback` | In-app feedback inbox | |
 
@@ -203,7 +203,7 @@ the data requires, unlike their manual counterparts:
 | `live_predictions` | Unique on `(competition, user, fixture)` — the constraint the manual `predictions` table lacks |
 | `live_gameweek_selections` | One row per gameweek (`(tournament, stage_key, matchday)`, unique) holding the fixture ids users predict on, as a single `json` array. **No row means every fixture in that gameweek counts** — the default — so a row is never stored empty |
 | `live_bonus_questions` | Season-long side bets on the tournament, so every league playing it asks the same ones. `lock_at` is an optional per-question deadline; null means the default — an hour before the first match of the starting stage. `min_value` / `max_value` / `leeway` / `options` are the optional constraints, enforced in `shared/src/live/bonus.ts` |
-| `live_bonus_answers` | Unique on `(question, competition, user)`. `points` stays null until the tournament is marked completed — bonus points are withheld until then, as in the manual type |
+| `live_bonus_answers` | Unique on `(question, competition, user)`. `points` stays null until the question is marked `finalized` — bonus points are withheld until then, as in the manual type |
 | `live_table_predictions` | One row per user per table stage; the predicted order is a single `json` array of team ids, top first. No FK on those ids on purpose — a removed team degrades to a stale id that scores nothing rather than cascading the prediction away |
 
 `liveSchema.ts` imports `users` from `schema.ts`, so `schema.ts` deliberately does **not**
@@ -394,9 +394,9 @@ GET    /api/live/tournaments/:id/fixtures         — ?stageKey&matchday&from&to
 GET    /api/live/tournaments/:id/standings        — ?stageKey
 GET    /api/live/tournaments/:id/selected-matches — every gameweek + how many matches count
 PUT    /api/live/tournaments/:id/selected-matches — admin; {stageKey, matchday, fixtureIds}
-GET    /api/live/tournaments/:id/bonus-questions  — answers redacted until completed
+GET    /api/live/tournaments/:id/bonus-questions  — answers redacted until finalized (admins/test accounts excepted)
 POST   /api/live/tournaments/:id/bonus-questions  — admin
-PATCH  /api/live/tournaments/:id/bonus-questions/:questionId  — admin; sets the correct answer
+PATCH  /api/live/tournaments/:id/bonus-questions/:questionId  — admin; sets the correct answer / finalized
 DELETE /api/live/tournaments/:id/bonus-questions/:questionId  — admin
 ```
 
@@ -541,9 +541,10 @@ off `view.isLocked`, which the server already answers per member.
 type: all-or-nothing per question, matched case-insensitively after trimming, with several
 correct answers stored as a JSON array. Two rules are worth knowing:
 
-- **Points are withheld until the tournament is marked `completed`**, so nobody can infer a
-  correct answer from a leaderboard that moved. Marking it completed is what awards them; moving
-  it back out of `completed` takes them away again.
+- **Points are withheld until an admin marks the question `finalized`** (a checkbox on the
+  question card), so nobody can infer a correct answer from a leaderboard that moved. Ticking it
+  awards them; unticking it takes them away again. A finalized question is also closed for
+  answering.
 - **A question closes at its own `lock_at`**, or by default an hour before the first match of the
   starting stage — the same instant the table prediction locks. There is no competition-wide
   deadline to fall back on in this tournament type.
@@ -596,9 +597,28 @@ each tournament is next polled; `PATCH /api/live/sync/settings` is the toggle. B
 and the "Automatic updates" panel on the admin tournament page renders them.
 
 The two points sources still gated on a human are the bonus questions and the top-scorer
-ranking: both are withheld until the tournament is marked `completed`, deliberately, because
-that switch is what reveals the answers. The tick moves a tournament from `upcoming` to `active`
+ranking: bonus points are withheld until each question is marked `finalized`, and the ranking
+until the tournament is marked `completed` — deliberately, because those switches are what
+reveal the answers. The tick moves a tournament from `upcoming` to `active`
 by itself once a match has started, but never into `completed`.
+
+### Bonus questions: finalized (both tournament types)
+
+Every bonus question has a `finalized` flag, off by default, set by an admin with the checkbox
+on the question card (`PATCH …/bonus-questions/:id` with `{finalized}`). It is the one switch
+that settles a question:
+
+- **Not finalized:** regular members never see the correct answer, and the question awards no
+  points (`points` stays null on every answer). Test accounts *do* see the correct answer,
+  marked "not finalized", but never points for it. Admins see everything.
+- **Finalized:** the answer is shown to everybody, points are written onto the answers and
+  rolled up into the totals, and the question is closed for answering.
+
+This replaced the old rule, under which marking the whole tournament `completed` revealed and
+scored every question. Questions that already had an answer on a completed tournament were
+backfilled to finalized (drizzle/0041, plus the boot-time copies in `server/src/index.ts` and
+`server/src/live/ensureSchema.ts`). The visibility helpers are `lib/bonusVisibility.ts` and
+`live/bonusVisibility.ts`.
 
 ---
 

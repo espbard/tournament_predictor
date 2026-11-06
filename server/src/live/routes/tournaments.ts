@@ -371,10 +371,11 @@ liveTournamentsRouter.patch('/tournaments/:id', requireAdmin, async (req, res) =
       await db.delete(liveFixtures).where(eq(liveFixtures.liveTournamentId, row.id));
     }
 
-    // Bonus points and top-scorer ranking points are both withheld while a tournament is
-    // still running, so the status change is what awards them — and moving a tournament
-    // back out of `completed` takes them away again. Either way the stored points, and the
-    // totals they feed, are rebuilt here.
+    // Top-scorer ranking points are withheld while a tournament is still running, so the
+    // status change is what awards them — and moving a tournament back out of `completed`
+    // takes them away again. Bonus questions follow their own finalized flags; re-scoring
+    // them here is only a consistency pass. Either way the stored points, and the totals
+    // they feed, are rebuilt here.
     if (parsed.data.status !== undefined) {
       const scored = await scoreAllLiveBonusQuestions(row.id);
       const ranked = await scoreLiveScorerPredictions(row.id);
@@ -1036,14 +1037,15 @@ liveTournamentsRouter.post('/tournaments/:id/players/refresh', requireAdmin, asy
 // same ones — exactly how the manual type works. Answers, and the points they earn, live
 // on the competition; see routes/competitions.ts.
 //
-// A correct answer is invisible to non-admins until the tournament is marked completed,
-// which is also the moment the points it implies are actually awarded.
+// A correct answer is invisible to regular members (admins and test accounts excepted)
+// until an admin marks the question finalized, which is also the moment the points it
+// implies are actually awarded.
 
-/** The tournament's questions. Correct answers are redacted until completion. */
+/** The tournament's questions. Correct answers are redacted until finalized. */
 liveTournamentsRouter.get('/tournaments/:id/bonus-questions', requireAuth, async (req, res) => {
   try {
     const [tournament] = await db
-      .select({ id: liveTournaments.id, status: liveTournaments.status })
+      .select({ id: liveTournaments.id })
       .from(liveTournaments)
       .where(eq(liveTournaments.id, req.params.id));
     if (!tournament) return res.status(404).json({ error: 'Not found' });
@@ -1054,13 +1056,8 @@ liveTournamentsRouter.get('/tournaments/:id/bonus-questions', requireAuth, async
       .where(eq(liveBonusQuestions.liveTournamentId, tournament.id))
       .orderBy(asc(liveBonusQuestions.createdAt));
 
-    return res.json(
-      redactLiveBonusQuestions(
-        questions,
-        res.locals.user.isAdmin,
-        tournament.status === 'completed',
-      ),
-    );
+    const user = res.locals.user;
+    return res.json(redactLiveBonusQuestions(questions, user.isAdmin || user.isTestAccount));
   } catch (err) {
     return fail(res, err);
   }
@@ -1105,9 +1102,9 @@ liveTournamentsRouter.post('/tournaments/:id/bonus-questions', requireAdmin, asy
 /**
  * Edit a question, or record its correct answer.
  *
- * Setting the correct answer scores it — but only if the tournament is already completed.
- * Before that the answer is stored and scoring is deferred, so nobody can infer it from a
- * leaderboard that moved.
+ * Points are only awarded once the question is finalized: before that a correct answer is
+ * stored but scoring is deferred, so nobody can infer it from a leaderboard that moved.
+ * Ticking `finalized` awards them; unticking it takes them away again.
  */
 liveTournamentsRouter.patch(
   '/tournaments/:id/bonus-questions/:questionId',
@@ -1135,6 +1132,7 @@ liveTournamentsRouter.patch(
       if (parsed.data.answerType !== undefined) update.answerType = parsed.data.answerType;
       if (parsed.data.points !== undefined) update.points = parsed.data.points;
       if (parsed.data.correctAnswer !== undefined) update.correctAnswer = parsed.data.correctAnswer;
+      if (parsed.data.finalized !== undefined) update.finalized = parsed.data.finalized;
       if (parsed.data.lockAt !== undefined) {
         update.lockAt = parsed.data.lockAt ? new Date(parsed.data.lockAt) : null;
       }
@@ -1158,6 +1156,7 @@ liveTournamentsRouter.patch(
       // stored points are stale — leeway most obviously, since it decides the match.
       if (
         parsed.data.correctAnswer !== undefined ||
+        parsed.data.finalized !== undefined ||
         parsed.data.points !== undefined ||
         parsed.data.leeway !== undefined ||
         parsed.data.answerType !== undefined

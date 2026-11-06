@@ -218,6 +218,8 @@ export const UpdateLiveBonusQuestionSchema = z.object({
   points: z.number().int().min(1).max(1000).optional(),
   /** A JSON array of strings when several answers count; a plain string otherwise. */
   correctAnswer: z.string().nullable().optional(),
+  /** Reveals the correct answer to members and awards its points. Off by default. */
+  finalized: z.boolean().optional(),
   lockAt: z.string().datetime().nullable().optional(),
   ...bonusConstraints,
 });

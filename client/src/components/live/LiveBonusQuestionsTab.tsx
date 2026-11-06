@@ -127,6 +127,7 @@ export default function LiveBonusQuestionsTab({
           answerType: q.answerType as PanelAnswerType,
           points: q.points,
           correctAnswer: q.correctAnswer,
+          finalized: q.finalized,
           minValue: q.minValue,
           maxValue: q.maxValue,
           leeway: q.leeway,
@@ -164,7 +165,7 @@ export default function LiveBonusQuestionsTab({
           queryClient.invalidateQueries({
             queryKey: liveKeys.tournamentBonusQuestions(liveTournamentId),
           });
-          // A correct answer can award points the moment the tournament is completed.
+          // Finalizing a question awards its points at once.
           queryClient.invalidateQueries({ queryKey: liveKeys.leaderboard(competitionId) });
         }}
         // Live questions can be narrowed, and only they offer a country answer.

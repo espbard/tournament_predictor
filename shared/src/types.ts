@@ -171,6 +171,11 @@ export interface BonusQuestion {
   answerType: BonusAnswerType;
   points: number;
   correctAnswer: string | null;
+  /**
+   * Set by an admin once the correct answer is settled. Until then the answer is hidden from
+   * regular members (test accounts see it) and the question awards no points.
+   */
+  finalized: boolean;
   createdAt: string;
 }
 

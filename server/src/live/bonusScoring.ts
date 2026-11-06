@@ -1,20 +1,18 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { liveBonusAnswerMatches, type LiveBonusConstraints } from '@tournament-predictor/shared';
 import { db } from '../db/client';
 import {
   liveBonusAnswers,
   liveBonusQuestions,
   liveCompetitions,
-  liveTournaments,
 } from '../db/liveSchema';
 
 // ── Live bonus question scoring ───────────────────────────────────────────────
 //
-// Season-long side bets. Two rules, both inherited from the manual type because they are
-// what make a bonus question fair:
+// Season-long side bets. Two rules:
 //
-//   * points are withheld until the tournament is marked completed, so nobody can watch
-//     their bonus total move — and infer a correct answer — while the season runs;
+//   * points are only awarded once an admin marks the question finalized, so nobody can
+//     watch their bonus total move — and infer a correct answer — before it is settled;
 //   * an answer matches case-insensitively after trimming, and a question may accept
 //     several correct answers (stored as a JSON array).
 //
@@ -63,24 +61,30 @@ export function computeLiveBonusPoints(
     : 0;
 }
 
-async function isTournamentCompleted(liveTournamentId: string): Promise<boolean> {
-  const [tournament] = await db
-    .select({ status: liveTournaments.status })
-    .from(liveTournaments)
-    .where(eq(liveTournaments.id, liveTournamentId));
-  return tournament?.status === 'completed';
-}
+type ScorableQuestion = {
+  id: string;
+  correctAnswer: string | null;
+  points: number;
+  finalized: boolean;
+} & Partial<LiveBonusConstraints>;
 
 /**
- * Score every answer to one question, unconditionally.
+ * Score every answer to one question.
  *
- * Callers are responsible for only reaching here once the tournament is completed —
- * `scoreLiveBonusQuestion` and `scoreAllLiveBonusQuestions` are the gated entry points.
+ * A finalized question with a correct answer awards its points; any other question has
+ * its answers cleared back to null rather than stored as zero, so the UI can tell "not
+ * scored" from "scored, nothing earned" — and un-finalizing a question takes its points
+ * away again.
  */
-async function applyQuestionScores(
-  question: { id: string; correctAnswer: string | null; points: number } &
-    Partial<LiveBonusConstraints>,
-): Promise<number> {
+async function applyQuestionScores(question: ScorableQuestion): Promise<number> {
+  if (!question.finalized || question.correctAnswer === null) {
+    await db
+      .update(liveBonusAnswers)
+      .set({ points: null, updatedAt: new Date() })
+      .where(eq(liveBonusAnswers.questionId, question.id));
+    return 0;
+  }
+
   const answers = await db
     .select({ id: liveBonusAnswers.id, answer: liveBonusAnswers.answer })
     .from(liveBonusAnswers)
@@ -104,16 +108,14 @@ async function competitionIdsFor(liveTournamentId: string): Promise<string[]> {
 }
 
 export interface LiveBonusScoringResult {
-  /** Answers whose points were written. Zero while the tournament is not completed. */
+  /** Answers whose points were written. Zero for a question that is not finalized. */
   scoredAnswers: number;
   affectedCompetitionIds: string[];
 }
 
 /**
- * Score one question — called when an admin sets or clears its correct answer.
- *
- * A no-op while the tournament is not completed: the correct answer is stored, but the
- * points it implies are deferred to `scoreAllLiveBonusQuestions`.
+ * Score one question — called when an admin changes its correct answer, its finalized
+ * flag, or anything else that decides what an answer is worth.
  */
 export async function scoreLiveBonusQuestion(questionId: string): Promise<LiveBonusScoringResult> {
   const [question] = await db
@@ -121,9 +123,6 @@ export async function scoreLiveBonusQuestion(questionId: string): Promise<LiveBo
     .from(liveBonusQuestions)
     .where(eq(liveBonusQuestions.id, questionId));
   if (!question) return { scoredAnswers: 0, affectedCompetitionIds: [] };
-  if (!(await isTournamentCompleted(question.liveTournamentId))) {
-    return { scoredAnswers: 0, affectedCompetitionIds: [] };
-  }
 
   const scoredAnswers = await applyQuestionScores(question);
   return {
@@ -133,12 +132,9 @@ export async function scoreLiveBonusQuestion(questionId: string): Promise<LiveBo
 }
 
 /**
- * Score every bonus question on a tournament.
- *
- * Called when a tournament is marked completed — which is the moment the withheld points
- * are actually awarded — and again from a full recalculation. Answers to a question with
- * no correct answer recorded are cleared back to null rather than stored as zero, so the
- * UI can tell "not scored" from "scored, nothing earned".
+ * Score every bonus question on a tournament. Run from a full recalculation and when the
+ * tournament's status changes, as a consistency pass — it is each question's own
+ * finalized flag that decides whether points are awarded.
  */
 export async function scoreAllLiveBonusQuestions(
   liveTournamentId: string,
@@ -149,32 +145,8 @@ export async function scoreAllLiveBonusQuestions(
     .from(liveBonusQuestions)
     .where(eq(liveBonusQuestions.liveTournamentId, liveTournamentId));
 
-  if (!(await isTournamentCompleted(liveTournamentId))) {
-    // Not completed: nothing is awarded yet, and anything scored by an earlier run — say
-    // the admin moved the tournament back to active — is taken away again.
-    if (questions.length > 0) {
-      await db
-        .update(liveBonusAnswers)
-        .set({ points: null, updatedAt: new Date() })
-        .where(
-          inArray(
-            liveBonusAnswers.questionId,
-            questions.map(q => q.id),
-          ),
-        );
-    }
-    return { scoredAnswers: 0, affectedCompetitionIds: competitionIds };
-  }
-
   let scoredAnswers = 0;
   for (const question of questions) {
-    if (question.correctAnswer === null) {
-      await db
-        .update(liveBonusAnswers)
-        .set({ points: null, updatedAt: new Date() })
-        .where(eq(liveBonusAnswers.questionId, question.id));
-      continue;
-    }
     scoredAnswers += await applyQuestionScores(question);
   }
 
