@@ -59,6 +59,7 @@ export default function AdminLiveBonusQuestionsPanel({ tournamentId }: Props) {
           answerType: q.answerType as PanelAnswerType,
           points: q.points,
           correctAnswer: q.correctAnswer,
+          finalized: q.finalized,
         minValue: q.minValue,
         maxValue: q.maxValue,
         leeway: q.leeway,

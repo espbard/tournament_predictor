@@ -1,28 +1,30 @@
 import type { bonusQuestions } from '../db/schema';
 
-// Correct answers must stay hidden from regular members until the tournament
-// they belong to is marked completed — otherwise users could see (and infer
-// points for) bonus answers before the tournament is actually decided.
-// `canSeeAll` is true for admins everywhere, and additionally for test
-// accounts on the Final Results endpoints (which give test accounts an early,
-// non-scoring preview of that page).
-export function redactBonusQuestions<T extends Pick<typeof bonusQuestions.$inferSelect, 'correctAnswer'>>(
-  questions: T[],
-  canSeeAll: boolean,
-  tournamentCompleted: boolean,
-): T[] {
-  if (canSeeAll || tournamentCompleted) return questions;
-  return questions.map(q => (q.correctAnswer === null ? q : { ...q, correctAnswer: null }));
+// A bonus question's correct answer stays hidden from regular members until an admin marks
+// the question finalized — the same moment its points are awarded, so nobody can see (or
+// infer from a moving leaderboard) an answer that is not settled yet.
+//
+// `canSeeAnswers` is true for admins and test accounts: test accounts get an early look at
+// the answer, but never at points for a question that is not finalized.
+export function redactBonusQuestions<
+  T extends Pick<typeof bonusQuestions.$inferSelect, 'correctAnswer' | 'finalized'>,
+>(questions: T[], canSeeAnswers: boolean): T[] {
+  if (canSeeAnswers) return questions;
+  return questions.map(q =>
+    q.finalized || q.correctAnswer === null ? q : { ...q, correctAnswer: null },
+  );
 }
 
-// Bonus points must stay invisible (as well as unawarded) until the
-// tournament is completed, even against any answers that were already
-// scored before that point. See `redactBonusQuestions` for what `canSeeAll` covers.
-export function redactBonusAnswerPoints<T extends { points: number | null }>(
+// Points on an answer are only shown once its question is finalized. Scoring never writes
+// points before then, but an admin un-finalizing a question must not leave an earlier score
+// visible to anyone but admins.
+export function redactBonusAnswerPoints<T extends { questionId: string; points: number | null }>(
   answers: T[],
-  canSeeAll: boolean,
-  tournamentCompleted: boolean,
+  finalizedQuestionIds: ReadonlySet<string>,
+  isAdmin: boolean,
 ): T[] {
-  if (canSeeAll || tournamentCompleted) return answers;
-  return answers.map(a => (a.points === null ? a : { ...a, points: null }));
+  if (isAdmin) return answers;
+  return answers.map(a =>
+    a.points === null || finalizedQuestionIds.has(a.questionId) ? a : { ...a, points: null },
+  );
 }

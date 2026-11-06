@@ -57,6 +57,11 @@ export interface BonusQuestionLike {
   points: number;
   correctAnswer: string | null;
   /**
+   * Admin-set. Until true the correct answer is hidden from regular members (admins and test
+   * accounts still get it) and the question awards no points.
+   */
+  finalized?: boolean;
+  /**
    * Per-question deadline state. When undefined the panel falls back to `deadlinePassed`,
    * which is how the manual type — one deadline for the whole competition — works.
    */
@@ -103,6 +108,7 @@ export interface BonusPanelApi {
       answerType?: PanelAnswerType;
       points?: number;
       correctAnswer?: string | null;
+      finalized?: boolean;
     } & Partial<BonusConstraintsPayload>,
   ): Promise<unknown>;
   deleteQuestion(questionId: string): Promise<unknown>;
@@ -208,7 +214,7 @@ export default function BonusQuestionsPanel({
   const questionMap = Object.fromEntries(questions.map(q => [q.id, q]));
   const hasClearableAnswers = answers.some(a => {
     const q = questionMap[a.questionId];
-    return q ? !(q.isLocked ?? deadlinePassed) : false;
+    return q ? !(q.finalized || (q.isLocked ?? deadlinePassed)) : false;
   });
   const canClearAnswers = !!api.clearAnswers && !isReadOnly && hasClearableAnswers;
 
@@ -256,6 +262,21 @@ export default function BonusQuestionsPanel({
       onQuestionsChanged();
     },
     onError: (err) => setSetAnswerError(err instanceof ApiError ? err.message : t('bonusQuestions.failedToSetAnswer')),
+  });
+
+  const [finalizeError, setFinalizeError] = useState<{ qid: string; message: string } | null>(null);
+  const finalizeMutation = useMutation({
+    mutationFn: ({ qid, finalized }: { qid: string; finalized: boolean }) =>
+      api.updateQuestion(qid, { finalized }),
+    onSuccess: () => {
+      setFinalizeError(null);
+      onQuestionsChanged();
+    },
+    onError: (err, { qid }) =>
+      setFinalizeError({
+        qid,
+        message: err instanceof ApiError ? err.message : t('bonusQuestions.failedToFinalize'),
+      }),
   });
 
   const clearAnswersMutation = useMutation({
@@ -478,7 +499,8 @@ export default function BonusQuestionsPanel({
             const saveErr = saveErrors[q.id];
             // The manual type locks the whole panel at once; the live type locks each
             // question on its own schedule, and says so through `isLocked`.
-            const locked = q.isLocked ?? deadlinePassed;
+            // A finalized question has its answer revealed, so it is closed whatever its deadline.
+            const locked = !!q.finalized || (q.isLocked ?? deadlinePassed);
             // A question may be narrowed to a list of answers; a country question is
             // narrowed to Europe even when the admin listed nothing. A team question keeps
             // its picker either way — the list just shrinks what it offers.
@@ -788,6 +810,24 @@ export default function BonusQuestionsPanel({
                   <CorrectAnswerDisplay type={q.answerType} value={q.correctAnswer} teams={teams} correctAnswerLabel={t('bonusQuestions.correctAnswer')} />
                 )}
 
+                {/* Admin: finalized — reveals the correct answer to members and awards its points */}
+                {canManage && !isReadOnly && !isEditing && (
+                  <div className="space-y-1">
+                    <label className="flex w-fit items-center gap-2 text-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={!!q.finalized}
+                        disabled={finalizeMutation.isPending}
+                        onChange={e => finalizeMutation.mutate({ qid: q.id, finalized: e.target.checked })}
+                      />
+                      {t('bonusQuestions.finalized')}
+                    </label>
+                    {finalizeError?.qid === q.id && (
+                      <p className="text-xs text-destructive">{finalizeError.message}</p>
+                    )}
+                  </div>
+                )}
+
                 {/* Read-only view of another user's answer */}
                 {isReadOnly && (
                   <div className="pt-1 border-t space-y-2">
@@ -806,6 +846,7 @@ export default function BonusQuestionsPanel({
                         value={q.correctAnswer}
                         teams={teams}
                         correctAnswerLabel={t('bonusQuestions.correctAnswer')}
+                        notFinalizedLabel={q.finalized === false ? t('bonusQuestions.notFinalized') : undefined}
                       />
                     )}
                   </div>
@@ -943,6 +984,7 @@ export default function BonusQuestionsPanel({
                         value={q.correctAnswer}
                         teams={teams}
                         correctAnswerLabel={t('bonusQuestions.correctAnswer')}
+                        notFinalizedLabel={q.finalized === false ? t('bonusQuestions.notFinalized') : undefined}
                       />
                     )}
                     {saveErr && <p className="text-xs text-destructive">{saveErr}</p>}
@@ -1037,7 +1079,11 @@ function displayYesNo(type: PanelAnswerType | string, value: string, t: ReturnTy
   return value;
 }
 
-function CorrectAnswerDisplay({ type, value, teams, correctAnswerLabel }: { type: PanelAnswerType | string; value: string; teams: Team[]; correctAnswerLabel: string }) {
+/**
+ * `notFinalizedLabel` marks an answer a regular member could not see yet — what a test
+ * account is shown before the admin finalizes the question.
+ */
+function CorrectAnswerDisplay({ type, value, teams, correctAnswerLabel, notFinalizedLabel }: { type: PanelAnswerType | string; value: string; teams: Team[]; correctAnswerLabel: string; notFinalizedLabel?: string }) {
   const { t } = useT();
   const answers = parseCorrectAnswers(value);
   return (
@@ -1055,6 +1101,7 @@ function CorrectAnswerDisplay({ type, value, teams, correctAnswerLabel }: { type
           </span>
         );
       })}
+      {notFinalizedLabel && <span className="italic">({notFinalizedLabel})</span>}
     </div>
   );
 }

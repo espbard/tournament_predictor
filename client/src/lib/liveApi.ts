@@ -522,6 +522,7 @@ export const liveApi = {
       answerType?: LiveBonusAnswerType;
       points?: number;
       correctAnswer?: string | null;
+      finalized?: boolean;
       lockAt?: string | null;
     } & Partial<LiveBonusConstraintsPayload>,
   ) => api.patch<LiveBonusQuestion>(`/live/tournaments/${id}/bonus-questions/${questionId}`, body),

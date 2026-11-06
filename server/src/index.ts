@@ -128,6 +128,22 @@ async function start() {
   await db.execute(sql`ALTER TABLE app_config ADD COLUMN IF NOT EXISTS "live_sync_enabled" boolean`);
   // Defensive: ensure bracket_index and next_match_id columns exist regardless of migration state
   await db.execute(sql`ALTER TABLE matches ADD COLUMN IF NOT EXISTS "bracket_index" integer`);
+  // Defensive: the per-question bonus "finalized" flag (drizzle/0041). Added and backfilled
+  // only the first time — questions answered on an already-completed tournament were revealed
+  // and scored under the old rule, so they start out finalized. Re-running the backfill on
+  // every boot would re-finalize a question an admin has since unticked.
+  const finalizedColumn = await db.execute(sql`
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = current_schema() AND table_name = 'bonus_questions' AND column_name = 'finalized'
+  `);
+  if (Array.from(finalizedColumn as unknown as unknown[]).length === 0) {
+    await db.execute(sql`ALTER TABLE bonus_questions ADD COLUMN IF NOT EXISTS "finalized" boolean NOT NULL DEFAULT false`);
+    await db.execute(sql`
+      UPDATE bonus_questions q SET "finalized" = true
+        FROM tournaments t
+        WHERE t.id = q.tournament_id AND t.status = 'completed' AND q.correct_answer IS NOT NULL
+    `);
+  }
   await db.execute(sql`ALTER TABLE matches ADD COLUMN IF NOT EXISTS "next_match_id" text REFERENCES matches(id) ON DELETE SET NULL`);
 
   // Backfill bracket_index for any knockout matches that still have it NULL (legacy rows created

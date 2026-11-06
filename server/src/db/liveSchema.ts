@@ -480,6 +480,8 @@ export const liveBonusQuestions = pgTable('live_bonus_questions', {
   points: integer('points').notNull(),
   /** Null until an admin records it. A JSON array of strings when several answers count. */
   correctAnswer: text('correct_answer'),
+  /** Admin-set. Until true the correct answer is hidden from members and awards no points. */
+  finalized: boolean('finalized').notNull().default(false),
   /**
    * Per-question deadline. Null means the default — one hour before the first match of the
    * tournament's starting stage, the same instant the table prediction locks. See
@@ -516,7 +518,7 @@ export const liveBonusAnswers = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     answer: text('answer').notNull(),
-    /** Null until the tournament is completed and bonus scoring runs. */
+    /** Null until the question is finalized and bonus scoring runs. */
     points: integer('points'),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),

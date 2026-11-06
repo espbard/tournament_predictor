@@ -234,6 +234,8 @@ export const bonusQuestions = pgTable('bonus_questions', {
   answerType: bonusAnswerTypeEnum('answer_type').notNull().default('text').$type<BonusAnswerType>(),
   points: integer('points').notNull(),
   correctAnswer: text('correct_answer'),
+  /** Admin-set. Until true the correct answer is hidden from members and awards no points. */
+  finalized: boolean('finalized').notNull().default(false),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 

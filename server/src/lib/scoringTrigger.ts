@@ -578,10 +578,7 @@ function parseCorrectAnswers(raw: string): string[] {
   return [raw];
 }
 
-// Pure scoring rule shared by the real (post-completion) scoring pass and the
-// test-account preview shown on the Final Results page before the tournament
-// is actually completed — the latter never writes to the database, it just
-// tells a privileged viewer what a submitted answer would be worth.
+// Pure scoring rule: all-or-nothing per question, matched case-insensitively.
 export function computeBonusAnswerPoints(
   question: Pick<typeof bonusQuestions.$inferSelect, 'correctAnswer' | 'points'>,
   answerText: string,
@@ -592,11 +589,18 @@ export function computeBonusAnswerPoints(
   return isCorrect ? question.points : 0;
 }
 
-// Scores a single bonus question's answers, unconditionally. Callers are
-// responsible for only invoking this once the tournament is completed —
-// bonus points must never be awarded before then.
+// Scores a single bonus question's answers. Points are only awarded once an
+// admin has finalized the question; until then (or with no correct answer
+// recorded) every answer is cleared back to null, so un-finalizing a question
+// takes its points away again.
 async function scoreBonusQuestion(question: typeof bonusQuestions.$inferSelect): Promise<void> {
-  if (!question.correctAnswer) return;
+  if (!question.finalized || !question.correctAnswer) {
+    await db
+      .update(bonusAnswers)
+      .set({ points: null })
+      .where(eq(bonusAnswers.questionId, question.id));
+    return;
+  }
 
   const allAnswers = await db
     .select()
@@ -632,18 +636,9 @@ async function recomputeBonusQuestionPointsRollup(competitionIds: string[]): Pro
   }
 }
 
-// Called whenever an admin sets/changes a bonus question's correct answer.
-// Bonus points are only ever awarded once the tournament has been marked
-// completed — until then this is a no-op (the answer is stored, but scoring
-// is deferred to scoreAllBonusQuestionsForTournament).
+// Called whenever an admin changes a bonus question's correct answer, points
+// or finalized flag. Only a finalized question awards points.
 export async function triggerBonusScoring(questionId: string, tournamentId: string): Promise<void> {
-  const [tournament] = await db
-    .select({ status: tournaments.status })
-    .from(tournaments)
-    .where(eq(tournaments.id, tournamentId))
-    .limit(1);
-  if (!tournament || tournament.status !== 'completed') return;
-
   const [question] = await db
     .select()
     .from(bonusQuestions)
@@ -660,9 +655,9 @@ export async function triggerBonusScoring(questionId: string, tournamentId: stri
   notifyLeaderboardUpdate(compIds);
 }
 
-// Called when a tournament transitions to 'completed'. Scores every bonus
-// question that already has a correct answer recorded, awarding the points
-// that were withheld while the tournament was still upcoming/active.
+// Re-scores every bonus question on a tournament — finalized questions award
+// their points, the rest are cleared. Run when a tournament is marked completed
+// as a consistency pass; it no longer decides whether points are awarded.
 export async function scoreAllBonusQuestionsForTournament(tournamentId: string): Promise<void> {
   const questions = await db
     .select()

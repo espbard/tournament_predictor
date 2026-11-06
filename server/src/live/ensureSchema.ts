@@ -319,6 +319,7 @@ export async function ensureLiveSchema(): Promise<void> {
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "live_bonus_teams_name_unique" ON "live_bonus_teams" (lower("name"))`);
   // Before the CREATE below, which would skip a table left over in an older shape.
   await upgradeEarlyBonusRoundTables();
+  await addBonusQuestionFinalized();
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS "live_bonus_round_fixtures" (
       "id" text PRIMARY KEY,
@@ -365,6 +366,22 @@ async function hasColumn(table: string, column: string): Promise<boolean> {
     WHERE table_schema = current_schema() AND table_name = ${table} AND column_name = ${column}
   `);
   return Array.from(rows as unknown as unknown[]).length > 0;
+}
+
+/**
+ * The per-question `finalized` flag (drizzle/0041). Added and backfilled only the first
+ * time: a question that already had a correct answer on a completed tournament was revealed
+ * and scored under the old rule, so it starts out finalized. Running the backfill on every
+ * boot would re-finalize a question an admin has since unticked.
+ */
+async function addBonusQuestionFinalized(): Promise<void> {
+  if (await hasColumn('live_bonus_questions', 'finalized')) return;
+  await db.execute(sql`ALTER TABLE "live_bonus_questions" ADD COLUMN IF NOT EXISTS "finalized" boolean NOT NULL DEFAULT false`);
+  await db.execute(sql`
+    UPDATE "live_bonus_questions" q SET "finalized" = true
+      FROM "live_tournaments" t
+      WHERE t."id" = q."live_tournament_id" AND t."status" = 'completed' AND q."correct_answer" IS NOT NULL
+  `);
 }
 
 /**
