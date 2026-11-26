@@ -1,4 +1,5 @@
 import type { LiveFormatKey } from './formats';
+import type { LiveRoundCalendarEntry } from './rounds';
 import type { LiveProviderId } from './types';
 
 // ── Ready-made competition connections ────────────────────────────────────────
@@ -42,7 +43,31 @@ export interface LiveTournamentPreset {
    */
   expectedStartStageFixtures: number | null;
   defaultImageUrl?: string | null;
+  /**
+   * Rounds declared from the competition's published calendar rather than discovered from
+   * fixtures — the knockout legs, which exist in the predictor before the draw has filled
+   * them. See shared/src/live/rounds.ts.
+   */
+  roundCalendar?: LiveRoundCalendarEntry[];
+  /**
+   * Stages shown to test accounts and admins only, until an admin decides otherwise. Used
+   * while `live_tournaments.test_only_stage_keys` is null. See liveTestOnlyStageKeys.
+   */
+  defaultTestOnlyStageKeys?: string[];
 }
+
+/** The UEFA Champions League 2026/27 knockout calendar, as UEFA published it. */
+const UCL_2026_27_KNOCKOUT_CALENDAR: LiveRoundCalendarEntry[] = [
+  { stageKey: 'knockout_playoff', matchday: 1, dates: ['2027-02-16', '2027-02-17'] },
+  { stageKey: 'knockout_playoff', matchday: 2, dates: ['2027-02-23', '2027-02-24'] },
+  { stageKey: 'round_of_16', matchday: 1, dates: ['2027-03-09', '2027-03-10'] },
+  { stageKey: 'round_of_16', matchday: 2, dates: ['2027-03-16', '2027-03-17'] },
+  { stageKey: 'quarter_final', matchday: 1, dates: ['2027-04-06', '2027-04-07'] },
+  { stageKey: 'quarter_final', matchday: 2, dates: ['2027-04-13', '2027-04-14'] },
+  { stageKey: 'semi_final', matchday: 1, dates: ['2027-04-27', '2027-04-28'] },
+  { stageKey: 'semi_final', matchday: 2, dates: ['2027-05-04', '2027-05-05'] },
+  { stageKey: 'final', matchday: 1, dates: ['2027-06-05'] },
+];
 
 export const LIVE_TOURNAMENT_PRESETS: LiveTournamentPreset[] = [
   {
@@ -56,10 +81,21 @@ export const LIVE_TOURNAMENT_PRESETS: LiveTournamentPreset[] = [
     // The league phase draw is 27 August 2026; the summer qualifiers before it are
     // ingested only so qualification status can be derived.
     startStageKey: 'league_phase',
-    // League phase from mid-September; the final is in late May.
-    seasonBounds: { from: '09-01', to: '06-01' },
+    // League phase from mid-September; the final is on 5 June 2027. The end was 1 June
+    // until the knockout calendar was added, which would have filtered the final out of
+    // every sync and deleted it from the database.
+    seasonBounds: { from: '09-01', to: '06-30' },
     expectedTeamCount: 36,
     expectedStartStageFixtures: 144,
+    roundCalendar: UCL_2026_27_KNOCKOUT_CALENDAR,
+    // Released to everyone by an admin once they have been tried out.
+    defaultTestOnlyStageKeys: [
+      'knockout_playoff',
+      'round_of_16',
+      'quarter_final',
+      'semi_final',
+      'final',
+    ],
   },
   {
     key: 'pl_2026_27',

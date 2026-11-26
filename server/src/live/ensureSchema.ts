@@ -271,6 +271,14 @@ export async function ensureLiveSchema(): Promise<void> {
   await db.execute(sql`ALTER TABLE "live_tournaments" ADD COLUMN IF NOT EXISTS "fixture_provider" "live_provider"`);
   await db.execute(sql`ALTER TABLE "live_tournaments" ADD COLUMN IF NOT EXISTS "fixture_provider_competition_id" text`);
   await db.execute(sql`ALTER TABLE "live_tournaments" ADD COLUMN IF NOT EXISTS "scorer_nationalities" jsonb`);
+  // Test-only stages — mirrors drizzle/0042_live_test_only_stages.sql. Null on purpose:
+  // it means "the preset's default", so no row needs seeding.
+  await db.execute(sql`ALTER TABLE "live_tournaments" ADD COLUMN IF NOT EXISTS "test_only_stage_keys" jsonb`);
+  // Team through on second legs — mirrors drizzle/0043_live_advancing_team.sql.
+  await db.execute(sql`ALTER TABLE "live_predictions" ADD COLUMN IF NOT EXISTS "advancing_team_id" text`);
+  await db.execute(sql`ALTER TABLE "live_predictions" ADD COLUMN IF NOT EXISTS "advancing_team_points" integer NOT NULL DEFAULT 0`);
+  await db.execute(sql`ALTER TABLE "live_competition_members" ADD COLUMN IF NOT EXISTS "advancing_team_points" integer NOT NULL DEFAULT 0`);
+  await db.execute(sql`ALTER TABLE "live_fixtures" ADD COLUMN IF NOT EXISTS "advancing_team_override" text`);
 
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "live_tournaments_provider_competition_season_unique" ON "live_tournaments" ("provider", "provider_competition_id", "season")`);
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "live_teams_tournament_provider_team_unique" ON "live_teams" ("live_tournament_id", "provider_team_id")`);

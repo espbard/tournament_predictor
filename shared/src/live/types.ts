@@ -80,6 +80,11 @@ export interface LiveScoringConfig {
    * That ranking has no bands — a player is in the right place or is not.
    */
   scorer_exact_position: number;
+  /**
+   * For the right team going through, on the second leg of a two-legged knockout tie.
+   * See shared/src/live/ties.ts.
+   */
+  advancing_team: number;
 }
 
 export const DEFAULT_LIVE_SCORING_CONFIG: LiveScoringConfig = {
@@ -89,6 +94,7 @@ export const DEFAULT_LIVE_SCORING_CONFIG: LiveScoringConfig = {
   table_exact_position: 2,
   table_near_position: 1,
   scorer_exact_position: 3,
+  advancing_team: 1,
 };
 
 /**
@@ -133,6 +139,11 @@ export interface LiveScoreBreakdown {
   exactScorePoints: number;
   /** Everything highlighted matches added on top of those three. */
   multiplierBonusPoints: number;
+  /**
+   * Right team through on second legs, at face value. Shown inside the "result" column
+   * rather than one of its own; see shared/src/live/ties.ts.
+   */
+  advancingTeamPoints?: number;
   /** Combined exact-position and within-one-place points from the table prediction. */
   tablePoints: number;
   /** Exact-position points from the top-scorer ranking. Awarded at completion. */
@@ -164,6 +175,11 @@ export interface LiveTournament {
   startStageKey: string;
   status: LiveTournamentStatus;
   syncEnabled: boolean;
+  /**
+   * Stages only test accounts and admins see, as stored. Null means the preset's default;
+   * read it through liveTestOnlyStageKeys rather than directly.
+   */
+  testOnlyStageKeys?: string[] | null;
   lastStructureSyncAt: string | null;
   lastFixtureSyncAt: string | null;
   lastSyncError: string | null;
@@ -275,6 +291,10 @@ export interface LivePrediction {
   exactScorePoints: number;
   /** What a highlighted (multiplied) fixture added on top of the tiers. */
   multiplierBonusPoints: number;
+  /** Second leg only: who goes through if the predicted total is level. */
+  advancingTeamId?: string | null;
+  /** Second leg only: the right team through, at face value. */
+  advancingTeamPoints?: number;
   createdAt: string;
   updatedAt: string;
 }

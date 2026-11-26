@@ -10,16 +10,22 @@ import {
   LIVE_FORMATS,
   LIVE_TOURNAMENT_PRESETS,
   ListLiveFixturesQuerySchema,
+  RefreshLiveRoundSchema,
   SaveLiveFixtureMultiplierSchema,
   SaveLiveGameweekSelectionSchema,
+  SetLiveAdvancingTeamSchema,
   SyncLiveTournamentSchema,
   UpdateLiveBonusQuestionSchema,
   UpdateLiveSyncSettingsSchema,
   UpdateLivePlayerSchema,
   UpdateLiveTournamentSchema,
+  canSeeLiveStage,
   getLiveFormat,
+  isAdvanceStage,
   isLiveFixtureSelected,
   isStageAtOrAfter,
+  liveRoundCalendar,
+  liveTestOnlyStageKeys,
   summariseLiveGameweeks,
 } from '@tournament-predictor/shared';
 import { db } from '../../db/client';
@@ -40,6 +46,8 @@ import { scoreAllLiveBonusQuestions, scoreLiveBonusQuestion } from '../bonusScor
 import { redactLiveBonusQuestions } from '../bonusVisibility';
 import {
   applyScorerRefresh,
+  applySyncResult,
+  loadSecondLegContexts,
   recalculateLiveTournament,
   recomputeLiveMemberTotals,
   scoreLiveScorerPredictions,
@@ -47,7 +55,7 @@ import {
 import { diagnoseTournamentFixtures } from '../diagnostics';
 import { loadSelectionIndex } from '../selections';
 import { refreshLivePlayerGoals, searchLivePlayers } from '../scorers';
-import { syncLiveWindow, syncTournamentStructure } from '../sync';
+import { syncLiveRound, syncLiveWindow, syncTournamentStructure } from '../sync';
 import { getLiveSyncStatus, writeSyncOverride } from '../scheduler';
 
 // ── Live tournament API ───────────────────────────────────────────────────────
@@ -270,6 +278,11 @@ liveTournamentsRouter.get('/tournaments/:id', requireAuth, async (req, res) => {
 
     return res.json({
       ...tournament,
+      // Resolved, so the admin page shows what is in force — the preset's default while
+      // nobody has chosen — rather than a null it would have to interpret.
+      testOnlyStageKeys: liveTestOnlyStageKeys(tournament),
+      // Rounds declared from the published calendar, which exist before their fixtures.
+      roundCalendar: liveRoundCalendar(tournament.presetKey),
       teamCount: teams.length,
       qualifiedCount: teams.filter(t => t.qualificationStatus === 'qualified').length,
       expectedTeamCount: preset?.expectedTeamCount ?? null,
@@ -331,6 +344,15 @@ liveTournamentsRouter.patch('/tournaments/:id', requireAdmin, async (req, res) =
     if (parsed.data.fixtureProviderCompetitionId !== undefined) {
       update.fixtureProviderCompetitionId = parsed.data.fixtureProviderCompetitionId;
     }
+    if (parsed.data.testOnlyStageKeys !== undefined) {
+      const format = getLiveFormat(current.format);
+      const keys = parsed.data.testOnlyStageKeys;
+      const unknown = (keys ?? []).filter(k => !format.stages.some(st => st.key === k));
+      if (unknown.length > 0) {
+        return res.status(400).json({ error: `Unknown stage(s): ${unknown.join(', ')}` });
+      }
+      update.testOnlyStageKeys = keys === null ? null : [...new Set(keys)];
+    }
     if (Object.keys(update).length === 0) return res.status(400).json({ error: 'Nothing to update' });
 
     // Fixtures are keyed by (tournament, provider_fixture_id) and two providers do not
@@ -369,6 +391,15 @@ liveTournamentsRouter.patch('/tournaments/:id', requireAdmin, async (req, res) =
 
     if (providerChanged) {
       await db.delete(liveFixtures).where(eq(liveFixtures.liveTournamentId, row.id));
+    }
+
+    // Releasing (or hiding) a stage changes what every open fixtures tab should show.
+    if (parsed.data.testOnlyStageKeys !== undefined) {
+      const competitions = await db
+        .select({ id: liveCompetitions.id })
+        .from(liveCompetitions)
+        .where(eq(liveCompetitions.liveTournamentId, row.id));
+      notifyLiveCompetitions(competitions.map(c => c.id), 'fixtures-updated');
     }
 
     // Top-scorer ranking points are withheld while a tournament is still running, so the
@@ -530,9 +561,19 @@ liveTournamentsRouter.get('/tournaments/:id/fixtures', requireAuth, async (req, 
 
     const format = getLiveFormat(tournament.format);
     const selections = await loadSelectionIndex(tournament.id);
+    // A test-only stage is invisible to everybody but test accounts and admins.
+    const hidden = liveTestOnlyStageKeys(tournament);
+    const user = res.locals.user;
+    const secondLegs = await loadSecondLegContexts([tournament.id]);
     return res.json(
-      rows.map(r => ({
+      rows.filter(r => canSeeLiveStage(user, hidden, r.stageKey)).map(r => ({
         ...r,
+        advance: secondLegs.has(r.id)
+          ? {
+              firstLeg: secondLegs.get(r.id)!.carried,
+              actualTeamId: secondLegs.get(r.id)!.actualAdvancerId,
+            }
+          : null,
         homeTeam: r.homeTeamId ? teamById.get(r.homeTeamId) ?? null : null,
         awayTeam: r.awayTeamId ? teamById.get(r.awayTeamId) ?? null : null,
         // Stages below startStageKey are ingested but never predicted on.
@@ -577,14 +618,69 @@ liveTournamentsRouter.get('/tournaments/:id/standings', requireAuth, async (req,
 //
 // See shared/src/live/selection.ts for the rule itself.
 
-/** Every gameweek in the tournament, with how many of its fixtures are selected. */
-liveTournamentsRouter.get('/tournaments/:id/selected-matches', requireAuth, async (req, res) => {
+/**
+ * Fetch one calendar round's matches from the fixture provider — the knockout legs, once
+ * the draw has been made and the provider has the matches. Pressing it before then finds
+ * nothing and changes nothing, so it can be pressed at any time.
+ *
+ * Whatever finished in the meantime is scored, as a scheduled sync would; fetching does
+ * not select anything, which stays the admin's call below.
+ */
+liveTournamentsRouter.post('/tournaments/:id/rounds/refresh', requireAdmin, async (req, res) => {
   try {
+    const parsed = RefreshLiveRoundSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid body', details: parsed.error.flatten() });
+    }
+
     const [tournament] = await db
       .select({ id: liveTournaments.id })
       .from(liveTournaments)
       .where(eq(liveTournaments.id, req.params.id));
     if (!tournament) return res.status(404).json({ error: 'Not found' });
+
+    const result = await syncLiveRound(tournament.id, parsed.data.stageKey, parsed.data.matchday);
+    if (!result) {
+      return res.status(404).json({ error: 'That round is not on this tournament’s calendar' });
+    }
+
+    await applySyncResult({
+      liveTournamentId: tournament.id,
+      newlyFinishedFixtureIds: result.newlyFinishedFixtureIds,
+      changedFixtureIds: result.changedFixtureIds,
+    });
+    // Fixtures may have appeared, or gained their teams, without finishing or changing
+    // score — which applySyncResult does not announce.
+    const competitions = await db
+      .select({ id: liveCompetitions.id })
+      .from(liveCompetitions)
+      .where(eq(liveCompetitions.liveTournamentId, tournament.id));
+    notifyLiveCompetitions(competitions.map(c => c.id), 'fixtures-updated');
+
+    return res.json(result);
+  } catch (err) {
+    // As with /sync: a provider failure is the expected error, reported verbatim.
+    console.error(err);
+    return res.status(502).json({
+      error: 'Provider sync failed',
+      details: err instanceof Error ? err.message : String(err),
+    });
+  }
+});
+
+/** Every gameweek in the tournament, with how many of its fixtures are selected. */
+liveTournamentsRouter.get('/tournaments/:id/selected-matches', requireAuth, async (req, res) => {
+  try {
+    const [tournament] = await db
+      .select({
+        id: liveTournaments.id,
+        presetKey: liveTournaments.presetKey,
+        testOnlyStageKeys: liveTournaments.testOnlyStageKeys,
+      })
+      .from(liveTournaments)
+      .where(eq(liveTournaments.id, req.params.id));
+    if (!tournament) return res.status(404).json({ error: 'Not found' });
+    const hidden = liveTestOnlyStageKeys(tournament);
 
     const fixtures = await db
       .select({
@@ -597,7 +693,8 @@ liveTournamentsRouter.get('/tournaments/:id/selected-matches', requireAuth, asyn
       .where(eq(liveFixtures.liveTournamentId, tournament.id));
 
     const selections = await loadSelectionIndex(tournament.id);
-    return res.json(summariseLiveGameweeks(fixtures, selections));
+    const visible = fixtures.filter(f => canSeeLiveStage(res.locals.user, hidden, f.stageKey));
+    return res.json(summariseLiveGameweeks(visible, selections));
   } catch (err) {
     return fail(res, err);
   }
@@ -706,6 +803,67 @@ liveTournamentsRouter.put('/tournaments/:id/selected-matches', requireAdmin, asy
     return fail(res, err);
   }
 });
+
+// ── Who went through ──────────────────────────────────────────────────────────
+
+/**
+ * Name the team that went through on a two-legged tie, for when the provider's score data
+ * cannot settle it (no extra-time or penalty breakdown). Null hands it back to the
+ * derived answer. Set on the second leg; the sync never touches it.
+ *
+ * Rescored at once, like a multiplier: the team-through point depends on it.
+ */
+liveTournamentsRouter.patch(
+  '/tournaments/:id/fixtures/:fixtureId/advancing-team',
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const parsed = SetLiveAdvancingTeamSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: 'Invalid body', details: parsed.error.flatten() });
+      }
+
+      const [tournament] = await db
+        .select({ id: liveTournaments.id, format: liveTournaments.format })
+        .from(liveTournaments)
+        .where(eq(liveTournaments.id, req.params.id));
+      if (!tournament) return res.status(404).json({ error: 'Not found' });
+
+      const [fixture] = await db
+        .select()
+        .from(liveFixtures)
+        .where(
+          and(
+            eq(liveFixtures.id, req.params.fixtureId),
+            eq(liveFixtures.liveTournamentId, tournament.id),
+          ),
+        );
+      if (!fixture) return res.status(404).json({ error: 'Fixture not found' });
+
+      const stage = getLiveFormat(tournament.format).stages.find(s => s.key === fixture.stageKey);
+      if (!isAdvanceStage(stage) || fixture.legNumber !== 2 || !fixture.tieKey) {
+        return res.status(400).json({ error: 'Only the second leg of a two-legged tie has a team through' });
+      }
+      const teamId = parsed.data.teamId;
+      if (teamId !== null && teamId !== fixture.homeTeamId && teamId !== fixture.awayTeamId) {
+        return res.status(400).json({ error: 'That team is not in this tie' });
+      }
+
+      await db
+        .update(liveFixtures)
+        .set({ advancingTeamOverride: teamId })
+        .where(eq(liveFixtures.id, fixture.id));
+
+      const recalculated = await rebuildAndNotify(tournament.id);
+      return res.json({
+        fixture: { id: fixture.id, advancingTeamOverride: teamId },
+        scoredPredictions: recalculated.scoredPredictions,
+      });
+    } catch (err) {
+      return fail(res, err);
+    }
+  },
+);
 
 // ── Fixture multipliers ───────────────────────────────────────────────────────
 

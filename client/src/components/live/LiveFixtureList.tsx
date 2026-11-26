@@ -5,8 +5,9 @@ import type { LiveFixtureView } from '@/lib/liveApi';
 
 // ── Fixture list ──────────────────────────────────────────────────────────────
 //
-// The stage's matches, grouped the way the stage is played: a table stage lists one
-// matchday, a two-legged knockout stage groups both legs of a tie together.
+// The stage's matches, grouped the way the stage is played. Given a matchday, it lists that
+// one round: a gameweek of a table stage, or one leg of a knockout stage, each leg being a
+// round of its own. Without one, a two-legged knockout stage groups both legs of a tie.
 //
 // Shared by the competition page and the read-only view of another member's predictions,
 // which differ only in whether the cards can be edited.
@@ -18,7 +19,7 @@ interface Props {
   matchday: number | null;
   /** Why there is nothing here, when the caller knows better than "no matches yet". */
   emptyMessage?: string;
-  onSave: (fixtureId: string, homeScore: number, awayScore: number) => void;
+  onSave: (fixtureId: string, homeScore: number, awayScore: number, advancingTeamId?: string | null) => void;
   savingFixtureId: string | null;
   savedFixtures: Record<string, number>;
   errors: Record<string, string>;
@@ -53,8 +54,8 @@ export default function LiveFixtureList({
 }: Props) {
   const { t } = useT();
 
-  // A two-legged knockout stage groups its legs into ties.
-  if (stageKind === 'knockout' && legs === 2) {
+  // A two-legged knockout stage shown whole groups its legs into ties.
+  if (stageKind === 'knockout' && legs === 2 && matchday === null) {
     const ties = new Map<string, LiveFixtureView[]>();
     const loose: LiveFixtureView[] = [];
 
@@ -105,10 +106,7 @@ export default function LiveFixtureList({
     );
   }
 
-  const shown =
-    stageKind === 'table' && matchday !== null
-      ? fixtures.filter(f => f.matchday === matchday)
-      : fixtures;
+  const shown = matchday !== null ? fixtures.filter(f => f.matchday === matchday) : fixtures;
 
   if (shown.length === 0) {
     return (

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronDown } from 'lucide-react';
+import { advancePickApplies } from '@tournament-predictor/shared';
 import { useT } from '@/lib/useT';
 import { cn } from '@/lib/utils';
 import { UserAvatar } from '@/components/UserAvatar';
@@ -30,6 +31,14 @@ interface Props {
   multiplier?: number;
   /** A bonus-round match: its predictions live in their own table, behind their own route. */
   bonusRound?: boolean;
+  /**
+   * Set on the second leg of a two-legged tie, so a member's pick of who goes through can
+   * be shown beside a level prediction.
+   */
+  secondLeg?: {
+    firstLeg: { home: number; away: number } | null;
+    teamName: (teamId: string | null | undefined) => string | null;
+  };
 }
 
 type Prediction = NonNullable<LiveFixturePredictionRow['prediction']>;
@@ -93,6 +102,7 @@ function PointsBreakdown({
     { key: 'exact', points: prediction.exactScorePoints, value: null as string | null },
     { key: 'goalDifference', points: prediction.correctGoalDifferencePoints, value: null },
     { key: 'outcome', points: prediction.correctOutcomePoints, value: null },
+    { key: 'advance', points: prediction.advancingTeamPoints ?? 0, value: null },
     {
       key: 'multiplier',
       points: prediction.multiplierBonusPoints,
@@ -137,6 +147,7 @@ export default function LiveMatchPredictions({
   linkToUsers = true,
   multiplier = 1,
   bonusRound = false,
+  secondLeg,
 }: Props) {
   const { t } = useT();
   const { user } = useAuthStore();
@@ -230,6 +241,16 @@ export default function LiveMatchPredictions({
                     <span className={scoreClass(prediction)}>
                       {prediction.homeScore}–{prediction.awayScore}
                     </span>
+                    {/* Who they sent through on a level total. */}
+                    {secondLeg &&
+                      prediction.advancingTeamId &&
+                      advancePickApplies(secondLeg.firstLeg, prediction.homeScore, prediction.awayScore) && (
+                        <span className="min-w-0 truncate text-[11px] text-muted-foreground">
+                          {t('live.advance.pickShort', {
+                            team: secondLeg.teamName(prediction.advancingTeamId) ?? '?',
+                          })}
+                        </span>
+                      )}
                     {prediction.points != null && (
                       <span
                         className={`w-14 shrink-0 rounded px-2 py-0.5 text-right font-semibold tabular-nums ${

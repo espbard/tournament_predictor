@@ -55,6 +55,11 @@ interface Props {
   /** What a dot counts: the viewer's predictions (default) or the matches' results. */
   mode?: 'predictions' | 'results';
   bonus?: LiveBonusStripItem[];
+  /**
+   * What a dot's round is called in its label. Defaults to "Gameweek N"; a knockout
+   * stage's rounds are its legs.
+   */
+  roundName?: (matchday: number) => string;
   /** The bonus round being shown, if any. While set, no gameweek is current. */
   currentBonusId?: string | null;
   onSelectBonus?: (id: string) => void;
@@ -80,8 +85,10 @@ export default function LiveGameweekProgress({
   bonus = [],
   currentBonusId = null,
   onSelectBonus,
+  roundName,
 }: Props) {
   const { t } = useT();
+  const nameOf = roundName ?? ((matchday: number) => t('live.gameweekHeading', { matchday }));
   if (items.length === 0) return null;
   const labelBase = mode === 'results' ? 'live.gameweekDotResults' : 'live.gameweekDot';
 
@@ -129,13 +136,13 @@ export default function LiveGameweekProgress({
                 // The count is in the label rather than only the colour, so the state is
                 // not carried by hue alone.
                 aria-label={t(`${labelBase}.${item.state}`, {
-                  matchday: item.matchday,
+                  round: nameOf(item.matchday),
                   predicted: item.done,
                   done: item.done,
                   selected: item.selected,
                 })}
                 title={t(`${labelBase}.${item.state}`, {
-                  matchday: item.matchday,
+                  round: nameOf(item.matchday),
                   predicted: item.done,
                   done: item.done,
                   selected: item.selected,

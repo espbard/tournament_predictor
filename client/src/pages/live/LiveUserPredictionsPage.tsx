@@ -17,6 +17,7 @@ import LiveFixtureList from '@/components/live/LiveFixtureList';
 import LiveBonusRoundPanel from '@/components/live/LiveBonusRoundPanel';
 import { Star } from 'lucide-react';
 import { layoutLiveRounds } from '@tournament-predictor/shared';
+import { isRoundedStage, liveRoundHeading, liveRoundShortName } from '@/lib/liveRounds';
 import LiveGameweekProgress, {
   type LiveBonusStripItem,
   type LiveGameweekState,
@@ -139,6 +140,8 @@ export default function LiveUserPredictionsPage() {
               correctGoalDifferencePoints: prediction.correctGoalDifferencePoints,
               exactScorePoints: prediction.exactScorePoints,
               multiplierBonusPoints: prediction.multiplierBonusPoints,
+              advancingTeamId: prediction.advancingTeamId ?? null,
+              advancingTeamPoints: prediction.advancingTeamPoints ?? 0,
             }
           : null,
       };
@@ -379,9 +382,10 @@ export default function LiveUserPredictionsPage() {
               </div>
             )}
 
-            {stageDef?.kind === 'table' && matchdays.length > 0 && (!shownBonusRound || bonusRoundInStrip) && (
+            {isRoundedStage(stageDef) && matchdays.length > 0 && (!shownBonusRound || bonusRoundInStrip) && (
               <LiveGameweekProgress
                 items={gameweekProgress}
+                roundName={md => liveRoundShortName(t, stageDef, md)}
                 current={shownMatchday}
                 onSelect={md => {
                   setMatchday(md);
@@ -406,10 +410,10 @@ export default function LiveUserPredictionsPage() {
               />
             ) : (
             <>
-            {stageDef?.kind === 'table' && matchdays.length > 0 && (
+            {isRoundedStage(stageDef) && matchdays.length > 0 && (
               <>
                 <h2 className="mb-3 text-lg font-semibold">
-                  {t('live.gameweekHeading', { matchday: shownMatchday ?? 0 })}
+                  {liveRoundHeading(t, stageDef, shownMatchday ?? 0)}
                 </h2>
               </>
             )}
@@ -421,10 +425,8 @@ export default function LiveUserPredictionsPage() {
               fixtures={stageFixtures}
               stageKind={stageDef?.kind ?? 'table'}
               legs={stageDef?.legs ?? 1}
-              matchday={shownMatchday}
-              emptyMessage={
-                stageDef?.kind === 'table' ? t('live.gameweekNoneSelected') : undefined
-              }
+              matchday={isRoundedStage(stageDef) ? shownMatchday : null}
+              emptyMessage={isRoundedStage(stageDef) ? t('live.gameweekNoneSelected') : undefined}
               onSave={() => {}}
               savingFixtureId={null}
               savedFixtures={{}}

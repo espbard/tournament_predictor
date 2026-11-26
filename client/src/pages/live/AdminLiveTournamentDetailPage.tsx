@@ -12,6 +12,7 @@ import {
 } from '@/lib/liveApi';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import LiveSelectedMatchesPanel from '@/components/live/LiveSelectedMatchesPanel';
+import AdminLiveKnockoutRoundsPanel from '@/components/live/AdminLiveKnockoutRoundsPanel';
 import AdminLiveBonusQuestionsPanel from '@/components/live/AdminLiveBonusQuestionsPanel';
 import AdminLiveScorersPanel from '@/components/live/AdminLiveScorersPanel';
 import AdminLiveAutoSyncPanel from '@/components/live/AdminLiveAutoSyncPanel';
@@ -406,7 +407,13 @@ export default function AdminLiveTournamentDetailPage() {
         </>
       )}
 
-      {activeTab === 'matches' && <LiveSelectedMatchesPanel tournamentId={tournament.id} />}
+      {activeTab === 'matches' && (
+        <>
+          {/* Renders nothing for a tournament without a round calendar. */}
+          <AdminLiveKnockoutRoundsPanel tournament={tournament} />
+          <LiveSelectedMatchesPanel tournamentId={tournament.id} />
+        </>
+      )}
 
       {activeTab === 'scorers' && (
         <AdminLiveScorersPanel tournamentId={tournament.id} season={tournament.season} />

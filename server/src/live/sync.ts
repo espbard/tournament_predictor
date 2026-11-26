@@ -1,12 +1,17 @@
 import { and, eq, gt, inArray, isNotNull, lt, notInArray, or, sql } from 'drizzle-orm';
 import { generateId } from 'lucia';
 import {
+  findLiveCalendarRound,
   getLiveFormat,
   getLiveTournamentPreset,
   isStageAtOrAfter,
+  liveCalendarRoundForKickoff,
+  liveRoundCalendar,
+  liveRoundWindow,
   resolveStageKey,
   type LiveFormatDef,
   type LiveQualificationStatus,
+  type LiveRoundCalendarEntry,
 } from '@tournament-predictor/shared';
 import { db } from '../db/client';
 import {
@@ -123,6 +128,50 @@ export function buildTieKey(
 ): string | null {
   if (!stageKey || !homeTeamId || !awayTeamId) return null;
   return `${stageKey}:${[homeTeamId, awayTeamId].sort().join('-')}`;
+}
+
+/**
+ * Which round — stage and matchday — a fixture belongs to.
+ *
+ * The provider's own answer wins wherever it gives one. The tournament's round calendar
+ * (shared/src/live/rounds.ts) fills the gaps:
+ *
+ *   * a fixture whose provider names no stage at all is filed under the calendar round
+ *     its kickoff falls in, and only otherwise under `defaultStageKey`. Without this a
+ *     bigballsdata knockout match would land in the league phase as "matchday 9";
+ *   * a two-legged stage's fixture with no matchday takes the leg number from the
+ *     calendar, provided the calendar round is of the same stage.
+ *
+ * And a single-legged knockout stage is always matchday 1, whatever the provider says
+ * (football-data reports a final as matchday 0). The round is the whole stage, and one
+ * fixed number means the admin's selection for it, keyed by matchday, cannot be orphaned
+ * by a provider changing its mind.
+ */
+export function placeFixtureInRound(opts: {
+  format: LiveFormatDef;
+  calendar: LiveRoundCalendarEntry[];
+  /** The provider's stage string, mapped through the format; null if it maps to nothing. */
+  mappedStageKey: string | null;
+  providerStage: string | null;
+  /** Stage for a fixture the provider files under none and the calendar does not place. */
+  defaultStageKey: string | null;
+  providerMatchday: number | null;
+  kickoffAt: Date | null;
+}): { stageKey: string | null; matchday: number | null } {
+  const round = liveCalendarRoundForKickoff(opts.calendar, opts.kickoffAt);
+
+  // A stage string we do not recognise keeps its null: that is a mapping gap worth
+  // surfacing, not papering over.
+  const stageKey =
+    opts.mappedStageKey ??
+    (opts.providerStage === null ? (round?.stageKey ?? opts.defaultStageKey) : null);
+
+  const stage = opts.format.stages.find(s => s.key === stageKey);
+  if (stage?.kind === 'knockout' && stage.legs === 1) return { stageKey, matchday: 1 };
+
+  const matchday =
+    opts.providerMatchday ?? (round && round.stageKey === stageKey ? round.matchday : null);
+  return { stageKey, matchday };
 }
 
 export interface TieAssignable {
@@ -402,14 +451,23 @@ async function upsertFixtures(
   });
 
   const fixtureProviderId = tournament.fixtureProvider ?? tournament.provider;
+  const calendar = liveRoundCalendar(tournament.presetKey);
 
   const prepared = fixtures.map(f => {
     const mapped = resolveStageKey(format, fixtureProviderId, f.providerStage);
     if (!mapped && f.providerStage) unmapped.add(f.providerStage);
-    // A provider that reports no stage at all gets the tournament's default rather than
-    // a null that would make the fixture unpredictable. A stage string we simply do not
-    // recognise keeps its null: that is a mapping gap worth surfacing, not papering over.
-    const stageKey = mapped ?? (f.providerStage === null ? defaultStageKey : null);
+    const kickoffAt = toDate(f.kickoffAt);
+    // A provider that reports no stage at all gets a calendar round, or else the
+    // tournament's default, rather than a null that would make the fixture unpredictable.
+    const { stageKey, matchday } = placeFixtureInRound({
+      format,
+      calendar,
+      mappedStageKey: mapped,
+      providerStage: f.providerStage,
+      defaultStageKey,
+      providerMatchday: f.matchday,
+      kickoffAt,
+    });
 
     const home = resolveTeam(f, 'home');
     const away = resolveTeam(f, 'away');
@@ -419,9 +477,10 @@ async function upsertFixtures(
     return {
       dto: f,
       stageKey,
+      matchday,
       homeTeamId: home.teamId,
       awayTeamId: away.teamId,
-      kickoffAt: toDate(f.kickoffAt),
+      kickoffAt,
     };
   });
 
@@ -433,7 +492,7 @@ async function upsertFixtures(
     prepared.map(p => ({
       providerFixtureId: p.dto.providerFixtureId,
       stageKey: p.stageKey,
-      matchday: p.dto.matchday,
+      matchday: p.matchday,
       kickoffAt: p.kickoffAt,
     })),
   );
@@ -1071,4 +1130,87 @@ export async function syncLiveWindow(tournamentId: string): Promise<SyncResult> 
     result.seasonUnavailable = true;
     return result;
   }
+}
+
+export interface RoundRefreshResult extends SyncResult {
+  /** The dates the provider was asked for. */
+  dateFrom: string;
+  dateTo: string;
+  /** How many stored fixtures the round holds after the refresh. */
+  roundFixtures: number;
+}
+
+/**
+ * Fetch one round's matches from the fixture provider: the admin's "refresh" for a
+ * knockout leg once the draw has been made.
+ *
+ * One provider request for the round's calendar window (its dates, padded — see
+ * liveRoundWindow), upserted exactly as any other sync would, so a fixture lands in the
+ * round by the same rules. Safe to press at any time: before the provider has published
+ * the round it simply finds nothing. Selecting which of the matches count is still the
+ * admin's job, in the selected-matches panel — nothing becomes predictable by being
+ * fetched.
+ *
+ * Only rounds on the tournament's calendar can be refreshed; null when this is not one.
+ */
+export async function syncLiveRound(
+  tournamentId: string,
+  stageKey: string,
+  matchday: number,
+): Promise<RoundRefreshResult | null> {
+  const tournament = await loadTournament(tournamentId);
+  const round = findLiveCalendarRound(liveRoundCalendar(tournament.presetKey), stageKey, matchday);
+  if (!round) return null;
+
+  const format = getLiveFormat(tournament.format);
+  const { fixtures: fixtureProvider, isSplit } = providersFor(tournament);
+  const window = liveRoundWindow(round);
+  const result: RoundRefreshResult = { ...emptyResult(), ...window, roundFixtures: 0 };
+
+  try {
+    const providerFixtures = await fixtureProvider.fetchFixtures(
+      fixtureCompetitionId(tournament),
+      tournament.season,
+      { ...window, ...seasonWindowFor(tournament) },
+    );
+
+    const existingTeams = await db
+      .select({ id: liveTeams.id, providerTeamId: liveTeams.providerTeamId })
+      .from(liveTeams)
+      .where(eq(liveTeams.liveTournamentId, tournament.id));
+    const teamIdByProviderId = new Map(existingTeams.map(t => [t.providerTeamId, t.id]));
+
+    const outcome = await upsertFixtures(
+      tournament,
+      format,
+      providerFixtures,
+      await teamResolverFor(tournament, isSplit, teamIdByProviderId),
+      defaultStageFor(tournament, isSplit),
+    );
+    result.fixtures = outcome.written;
+    result.newlyFinishedFixtureIds = outcome.newlyFinishedFixtureIds;
+    result.changedFixtureIds = outcome.changedFixtureIds;
+    result.unmappedStages = outcome.unmappedStages;
+    result.unresolvedTeamNames = outcome.unresolvedTeamNames;
+
+    await recordSyncOutcome(tournament.id, 'window', null);
+  } catch (err) {
+    const { message, seasonUnavailable } = describeError(err);
+    await recordSyncOutcome(tournament.id, 'window', seasonUnavailable ? null : message);
+    if (!seasonUnavailable) throw err;
+    result.seasonUnavailable = true;
+  }
+
+  const [counted] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(liveFixtures)
+    .where(
+      and(
+        eq(liveFixtures.liveTournamentId, tournament.id),
+        eq(liveFixtures.stageKey, stageKey),
+        eq(liveFixtures.matchday, matchday),
+      ),
+    );
+  result.roundFixtures = counted?.count ?? 0;
+  return result;
 }

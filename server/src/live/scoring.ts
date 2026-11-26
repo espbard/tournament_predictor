@@ -58,6 +58,8 @@ export interface LiveScoreResult {
   correctOutcomePoints: number;
   correctGoalDifferencePoints: number;
   exactScorePoints: number;
+  /** The right team going through, on the second leg of a two-legged tie. */
+  advancingTeamPoints: number;
   /**
    * What the fixture's multiplier added on top of the tiers, and nothing else: the tiers
    * once more for a x2 match, twice more for a x3. Zero on an ordinary fixture.
@@ -70,8 +72,19 @@ const ZERO: LiveScoreResult = {
   correctOutcomePoints: 0,
   correctGoalDifferencePoints: 0,
   exactScorePoints: 0,
+  advancingTeamPoints: 0,
   multiplierBonusPoints: 0,
 };
+
+/**
+ * Who went through and who the prediction sent through, on the second leg of a
+ * two-legged tie. Both ids come from shared/src/live/ties.ts; either being null awards
+ * nothing.
+ */
+export interface LiveAdvanceInput {
+  predictedTeamId: string | null;
+  actualTeamId: string | null;
+}
 
 /**
  * Whether a fixture can award points at all.
@@ -94,6 +107,8 @@ export function calculateLivePoints(
   prediction: LivePredictionInput,
   fixture: LiveFixtureScoreInput,
   config: LiveScoringConfig,
+  /** Only for a second leg; omitted everywhere else, which awards no team-through point. */
+  advance?: LiveAdvanceInput | null,
 ): LiveScoreResult {
   if (!isFixtureScorable(fixture)) return { ...ZERO };
 
@@ -110,7 +125,14 @@ export function calculateLivePoints(
   const correctOutcomePoints = correctOutcome ? config.correct_outcome : 0;
   const correctGoalDifferencePoints = correctGoalDifference ? config.correct_goal_difference : 0;
   const exactScorePoints = exactScore ? config.exact_score : 0;
-  const base = correctOutcomePoints + correctGoalDifferencePoints + exactScorePoints;
+  // Separate from the tiers: it is about the tie, not this match's scoreline. A level
+  // total with no pick sends nobody through, and so earns nothing here.
+  const advancingTeamPoints =
+    advance?.actualTeamId && advance.predictedTeamId === advance.actualTeamId
+      ? (config.advancing_team ?? 0)
+      : 0;
+  const base =
+    correctOutcomePoints + correctGoalDifferencePoints + exactScorePoints + advancingTeamPoints;
 
   // ...and the highlight is what the multiplier added to them. A x1 fixture adds nothing,
   // and a prediction that earned nothing is multiplied to nothing however big the number.
@@ -122,6 +144,7 @@ export function calculateLivePoints(
     correctOutcomePoints,
     correctGoalDifferencePoints,
     exactScorePoints,
+    advancingTeamPoints,
     multiplierBonusPoints,
   };
 }

@@ -32,6 +32,7 @@ import LiveTablePredictionGate from '@/components/live/LiveTablePredictionGate';
 import LiveBonusQuestionsGate from '@/components/live/LiveBonusQuestionsGate';
 import InviteButton from '@/components/InviteButton';
 import { useAuthStore } from '@/store/authStore';
+import { isRoundedStage, liveRoundHeading, liveRoundShortName } from '@/lib/liveRounds';
 import { layoutLiveRounds, nextLiveRound, type Team } from '@tournament-predictor/shared';
 
 // ── Live competition ──────────────────────────────────────────────────────────
@@ -221,11 +222,15 @@ export default function LiveCompetitionDetailPage() {
     return () => es.close();
   }, [id, queryClient]);
 
-  // Stages that actually have fixtures, in the format's chronological order.
+  // Stages that have fixtures, or rounds on the calendar, in the format's chronological
+  // order. The calendar is what puts the knockout rounds on the page before the draw: they
+  // show up empty rather than not at all. The server has already left out any stage this
+  // viewer may not see.
   const stages = useMemo(() => {
     const present = new Set(fixtures.map(f => f.stageKey).filter((s): s is string => !!s));
+    for (const round of competition?.rounds ?? []) present.add(round.stageKey);
     return (competition?.stages ?? []).filter(s => present.has(s.key));
-  }, [competition?.stages, fixtures]);
+  }, [competition?.stages, competition?.rounds, fixtures]);
 
   // Show a bonus round, with the stage it sits in underneath so its gameweek strip (and the
   // star in it) stays in view, and the gameweek it follows ready for when they step back.
@@ -313,13 +318,20 @@ export default function LiveCompetitionDetailPage() {
     [stageAllFixtures],
   );
 
+  // The stage's rounds: its fixtures' matchdays plus any the calendar declares, so a leg
+  // nobody has fetched matches for yet still gets its dot.
   const matchdays = useMemo(
     () =>
       [
-        ...new Set(stageAllFixtures.map(f => f.matchday).filter((m): m is number => m != null)),
+        ...new Set([
+          ...stageAllFixtures.map(f => f.matchday).filter((m): m is number => m != null),
+          ...(competition?.rounds ?? []).filter(r => r.stageKey === stageKey).map(r => r.matchday),
+        ]),
       ].sort((a, b) => a - b),
-    [stageAllFixtures],
+    [stageAllFixtures, competition?.rounds, stageKey],
   );
+  const isRounded = isRoundedStage(stageDef);
+  const isTestOnlyStage = !!stageKey && (competition?.testOnlyStageKeys ?? []).includes(stageKey);
 
   // One dot per gameweek: grey with nothing to predict, green once every selected match
   // of that week has this viewer's prediction, yellow while any is still missing.
@@ -447,8 +459,8 @@ export default function LiveCompetitionDetailPage() {
   ).length;
 
   const saveMutation = useMutation({
-    mutationFn: ({ fixtureId, homeScore, awayScore }: { fixtureId: string; homeScore: number; awayScore: number }) =>
-      liveApi.savePrediction(id!, { fixtureId, homeScore, awayScore }),
+    mutationFn: (body: { fixtureId: string; homeScore: number; awayScore: number; advancingTeamId?: string | null }) =>
+      liveApi.savePrediction(id!, body),
     onMutate: ({ fixtureId }) => {
       setSavingFixtureId(fixtureId);
       setErrors(prev => {
@@ -481,8 +493,9 @@ export default function LiveCompetitionDetailPage() {
     onSettled: () => setSavingFixtureId(null),
   });
 
-  const handleSave = (fixtureId: string, homeScore: number, awayScore: number) =>
-    saveMutation.mutate({ fixtureId, homeScore, awayScore });
+  // The fourth argument only comes from a second leg's card: who goes through if level.
+  const handleSave = (fixtureId: string, homeScore: number, awayScore: number, advancingTeamId?: string | null) =>
+    saveMutation.mutate({ fixtureId, homeScore, awayScore, advancingTeamId });
 
   // The same save flow for a bonus-round match, against its own route and query.
   const saveBonusMutation = useMutation({
@@ -997,9 +1010,18 @@ export default function LiveCompetitionDetailPage() {
                 </div>
               )}
 
-              {stageDef?.kind === 'table' && matchdays.length > 0 && (!shownBonusRound || bonusRoundInStrip) && (
+              {isTestOnlyStage && (!shownBonusRound || bonusRoundInStrip) && (
+                // Only test accounts and admins ever get here; the badge says why the
+                // stage is not on everybody's page yet.
+                <p className="mb-2 inline-block rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300">
+                  {t('live.testOnlyBadge')}
+                </p>
+              )}
+
+              {isRounded && matchdays.length > 0 && (!shownBonusRound || bonusRoundInStrip) && (
                 <LiveGameweekProgress
                   mode={isSpectator ? 'results' : 'predictions'}
+                  roundName={md => liveRoundShortName(t, stageDef, md)}
                   items={gameweekProgress}
                   current={shownMatchday}
                   onSelect={md => {
@@ -1025,11 +1047,11 @@ export default function LiveCompetitionDetailPage() {
                 />
               ) : (
               <>
-              {stageDef?.kind === 'table' && matchdays.length > 0 && (
+              {isRounded && matchdays.length > 0 && (
                 <>
                   <div className="mb-3">
                     <h2 className="text-lg font-semibold">
-                      {t('live.gameweekHeading', { matchday: shownMatchday ?? 0 })}
+                      {liveRoundHeading(t, stageDef, shownMatchday ?? 0)}
                     </h2>
                     {shownSelectedCount > 0 && (
                       <p className="mt-0.5 text-sm text-muted-foreground">
@@ -1044,10 +1066,9 @@ export default function LiveCompetitionDetailPage() {
                 fixtures={stageFixtures}
                 stageKind={stageDef?.kind ?? 'table'}
                 legs={stageDef?.legs ?? 1}
-                matchday={shownMatchday}
-                emptyMessage={
-                  stageDef?.kind === 'table' ? t('live.gameweekNoneSelected') : undefined
-                }
+                // A rounded stage shows one round at a time; a final is the whole stage.
+                matchday={isRounded ? shownMatchday : null}
+                emptyMessage={isRounded ? t('live.gameweekNoneSelected') : undefined}
                 onSave={handleSave}
                 savingFixtureId={savingFixtureId}
                 savedFixtures={savedFixtures}

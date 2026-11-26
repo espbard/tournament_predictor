@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  LIVE_FORMATS,
   LIVE_MAX_MULTIPLIER,
   LIVE_MIN_MULTIPLIER,
   liveFixtureMultiplier,
 } from '@tournament-predictor/shared';
+import { liveRoundShortName } from '@/lib/liveRounds';
 import { ApiError } from '@/lib/api';
 import { liveApi, liveKeys, type LiveFixtureView } from '@/lib/liveApi';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
@@ -55,7 +57,8 @@ export default function LiveSelectedMatchesPanel({ tournamentId }: Props) {
     queryFn: () => liveApi.selectedMatches(tournamentId),
   });
 
-  // Only fixtures that sit in a gameweek can be selected; a knockout tie has no matchday.
+  // Only fixtures that sit in a gameweek can be selected. A knockout leg is a gameweek of its
+  // own; matches the provider has not published yet are fetched in the knockout rounds panel.
   const gameweekFixtures = useMemo(
     () => fixtures.filter(f => f.stageKey !== null && f.matchday !== null),
     [fixtures],
@@ -143,6 +146,13 @@ export default function LiveSelectedMatchesPanel({ tournamentId }: Props) {
       setError(err instanceof ApiError ? err.message : t('live.admin.selection.saveFailed'));
     },
   });
+
+  // Stage keys are unique across formats, so the definition can be found without knowing
+  // which format the tournament uses. It names the rounds: a knockout stage's are its legs.
+  const stageDefOf = (stageKey: string | undefined) =>
+    Object.values(LIVE_FORMATS)
+      .flatMap(f => f.stages)
+      .find(s => s.key === stageKey) ?? null;
 
   const multiplierMutation = useMutation({
     mutationFn: (vars: { fixtureId: string; multiplier: number }) =>
@@ -267,11 +277,11 @@ export default function LiveSelectedMatchesPanel({ tournamentId }: Props) {
                           which weeks have been narrowed without opening each one. */}
                       {g?.isCustomised
                         ? t('live.admin.selection.gameweekOptionCustom', {
-                            matchday: md,
+                            round: liveRoundShortName(t, stageDefOf(gameweek?.stageKey), md),
                             selected: g.selectedCount,
                             total: g.fixtureCount,
                           })
-                        : t('live.admin.selection.gameweekOption', { matchday: md })}
+                        : liveRoundShortName(t, stageDefOf(gameweek?.stageKey), md)}
                     </option>
                   );
                 })}

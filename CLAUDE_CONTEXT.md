@@ -258,6 +258,16 @@ indistinguishable from the outside.
   adapter retries such a response once without the `season=` filter, keeping the matches whose
   own `season.startDate` falls in the season asked for.
 
+- **Knockout rounds** (UCL 2026/27): each leg of a knockout stage is its own round, declared up
+  front by `roundCalendar` on the preset so it shows before the draw; an admin refreshes a
+  round's matches from the provider and then selects them as usual. Stages listed in
+  `live_tournaments.test_only_stage_keys` (null = the preset's default, all knockout stages) are
+  visible to test accounts and admins only. See [`docs/LIVE_TOURNAMENTS_PLAN.md`](docs/LIVE_TOURNAMENTS_PLAN.md) §39.
+- **Team through** (second legs of two-legged knockout ties): +1 for the right team going
+  through — on the predicted aggregate, or the member's pick when that is level. Extra time and
+  penalties decide only who went through, never the tiers. See §40 of the plan and
+  `shared/src/live/ties.ts`.
+
 - **Bonus rounds** are extra rounds of match predictions inside a live competition, with
   matches an admin enters by hand (two teams from `live_bonus_teams`, kickoff, later the
   90-minute result), like the manual type. Own tables (`live_bonus_teams`, `live_bonus_rounds`,
@@ -394,6 +404,8 @@ GET    /api/live/tournaments/:id/fixtures         — ?stageKey&matchday&from&to
 GET    /api/live/tournaments/:id/standings        — ?stageKey
 GET    /api/live/tournaments/:id/selected-matches — every gameweek + how many matches count
 PUT    /api/live/tournaments/:id/selected-matches — admin; {stageKey, matchday, fixtureIds}
+POST   /api/live/tournaments/:id/rounds/refresh   — admin; {stageKey, matchday} — fetch one calendar round (knockout leg) from the fixture provider
+PATCH  /api/live/tournaments/:id/fixtures/:fixtureId/advancing-team — admin; {teamId|null} — who went through on a second leg, when the provider cannot say
 GET    /api/live/tournaments/:id/bonus-questions  — answers redacted until finalized (admins/test accounts excepted)
 POST   /api/live/tournaments/:id/bonus-questions  — admin
 PATCH  /api/live/tournaments/:id/bonus-questions/:questionId  — admin; sets the correct answer / finalized
@@ -495,6 +507,11 @@ extra time and penalties never score, in any stage, though they are stored and d
 
 Nested, so they add: actual 2–1 → predicted 2–1 scores 4, predicted 3–2 scores 2, predicted 3–1
 scores 1, predicted 1–1 scores 0.
+
+**Team through** — the second leg of a two-legged knockout tie adds `advancing_team` (+1) for the
+right team going through: the team ahead on the first leg plus the predicted score, or the
+member's pick when that is level. Extra time and penalties decide only who actually went
+through. The fixture multiplier applies to it too. See `shared/src/live/ties.ts` and §40 of the plan.
 
 **League table prediction** (`server/src/live/tableScoring.ts`) — a fourth source, scored once
 per season. Users order every team in the table stage; each team in exactly the right final

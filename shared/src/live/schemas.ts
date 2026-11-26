@@ -17,6 +17,7 @@ export const LiveScoringConfigSchema = z.object({
   table_exact_position: points.optional(),
   table_near_position: points.optional(),
   scorer_exact_position: points.optional(),
+  advancing_team: points.optional(),
 });
 
 export const CreateLiveTournamentSchema = z.object({
@@ -34,6 +35,17 @@ export const UpdateLiveTournamentSchema = z.object({
   fixtureProvider: z.enum(['football_data', 'big_balls']).nullable().optional(),
   /** That provider's own identifier for the competition. Null falls back to the main one. */
   fixtureProviderCompetitionId: z.string().min(1).max(64).nullable().optional(),
+  /**
+   * The stages only test accounts and admins see. Null hands the choice back to the
+   * preset's default; see liveTestOnlyStageKeys.
+   */
+  testOnlyStageKeys: z.array(z.string().min(1).max(64)).max(32).nullable().optional(),
+});
+
+/** Fetch one round's matches from the fixture provider. */
+export const RefreshLiveRoundSchema = z.object({
+  stageKey: z.string().min(1).max(64),
+  matchday: z.number().int().min(0).max(1000),
 });
 
 export const SyncLiveTournamentSchema = z.object({
@@ -74,6 +86,16 @@ export const SaveLivePredictionSchema = z.object({
   fixtureId: z.string().min(1),
   homeScore: goals,
   awayScore: goals,
+  /**
+   * On the second leg of a two-legged tie: who goes through if the total is level. Null
+   * clears the pick; leaving it out keeps whatever is stored.
+   */
+  advancingTeamId: z.string().min(1).max(64).nullable().optional(),
+});
+
+/** An admin naming the team that went through, where the provider cannot say. */
+export const SetLiveAdvancingTeamSchema = z.object({
+  teamId: z.string().min(1).max(64).nullable(),
 });
 
 /**
@@ -245,6 +267,7 @@ export const LiveFormatKeySchema = z.enum(LIVE_FORMAT_KEYS as [string, ...string
 export type LiveScoringConfigInput = z.infer<typeof LiveScoringConfigSchema>;
 export type CreateLiveTournamentInput = z.infer<typeof CreateLiveTournamentSchema>;
 export type UpdateLiveTournamentInput = z.infer<typeof UpdateLiveTournamentSchema>;
+export type RefreshLiveRoundInput = z.infer<typeof RefreshLiveRoundSchema>;
 export type SyncLiveTournamentInput = z.infer<typeof SyncLiveTournamentSchema>;
 export type UpdateLiveSyncSettingsInput = z.infer<typeof UpdateLiveSyncSettingsSchema>;
 export type CreateLiveCompetitionInput = z.infer<typeof CreateLiveCompetitionSchema>;

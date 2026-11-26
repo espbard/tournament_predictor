@@ -7,11 +7,14 @@ import {
   ListLiveFixturesQuerySchema,
   SaveLiveBonusAnswerSchema,
   SaveLivePredictionSchema,
+  isAdvanceStage,
   SaveLiveScorerPredictionSchema,
   SaveLiveTablePredictionSchema,
   UpdateLiveCompetitionSchema,
   bonusFixtureStatus,
   bonusQuestionLockAt,
+  canSeeLiveStage,
+  canSeeTestOnlyLiveStages,
   checkLiveBonusAnswer,
   fixtureLockAt,
   getLiveFormat,
@@ -20,6 +23,8 @@ import {
   isLiveFixtureSelected,
   isStageAtOrAfter,
   isTablePredictionLocked,
+  liveRoundCalendar,
+  liveTestOnlyStageKeys,
   seasonPredictionLock,
   tablePredictionLockAt,
   tablePredictionStage,
@@ -53,7 +58,7 @@ import { requireAdmin, requireAuth } from '../../middleware/auth';
 import { subscribeLiveCompetition, unsubscribeLiveCompetition } from '../liveEvents';
 import { loadLiveBonusAnswers } from '../bonusScoring';
 import { redactLiveBonusAnswerPoints, redactLiveBonusQuestions } from '../bonusVisibility';
-import { recalculateLiveCompetition } from '../scoringTrigger';
+import { loadSecondLegContexts, recalculateLiveCompetition } from '../scoringTrigger';
 import { loadTestOnlyBonusRoundPoints } from '../bonusRoundScoring';
 import { loadSelectionIndex } from '../selections';
 import { filterLiveParticipants, loadLiveParticipation } from '../participation';
@@ -282,13 +287,25 @@ liveCompetitionsRouter.get('/competitions/:id', requireAuth, async (req, res) =>
       .where(eq(liveTournaments.id, competition.liveTournamentId));
 
     const format = tournament ? getLiveFormat(tournament.format) : null;
+    const user = res.locals.user;
+    const hidden = tournament ? liveTestOnlyStageKeys(tournament) : [];
+    const visible = (stageKey: string) => canSeeLiveStage(user, hidden, stageKey);
 
     return res.json({
       ...competition,
-      isMember: await isLiveMember(competition.id, res.locals.user.id),
+      isMember: await isLiveMember(competition.id, user.id),
       tournament: tournament ?? null,
-      // The client renders its stage selector from this rather than a hardcoded list.
-      stages: format?.stages ?? [],
+      // The client renders its stage selector from this rather than a hardcoded list. A
+      // test-only stage is left out for everybody who may not see it.
+      stages: (format?.stages ?? []).filter(st => visible(st.key)),
+      // Rounds that exist before their fixtures do — the knockout legs ahead of the draw —
+      // so the fixtures tab can show them empty rather than not at all.
+      rounds: tournament
+        ? liveRoundCalendar(tournament.presetKey).filter(r => visible(r.stageKey))
+        : [],
+      // Which of the stages shown are test-only, for the badge test accounts and admins
+      // see on them. Empty for everybody else, who never sees one.
+      testOnlyStageKeys: canSeeTestOnlyLiveStages(user) ? hidden : [],
       tableScope: format?.tableScope ?? 'single',
     });
   } catch (err) {
@@ -454,6 +471,7 @@ liveCompetitionsRouter.get('/competitions/:id/leaderboard', requireAuth, async (
           correctGoalDifferencePoints: liveCompetitionMembers.correctGoalDifferencePoints,
           exactScorePoints: liveCompetitionMembers.exactScorePoints,
           multiplierBonusPoints: liveCompetitionMembers.multiplierBonusPoints,
+          advancingTeamPoints: liveCompetitionMembers.advancingTeamPoints,
           tablePoints: liveCompetitionMembers.tablePoints,
           scorerPoints: liveCompetitionMembers.scorerPoints,
           bonusPoints: liveCompetitionMembers.bonusPoints,
@@ -509,6 +527,7 @@ liveCompetitionsRouter.get('/competitions/:id/leaderboard', requireAuth, async (
             correctGoalDifferencePoints: row.correctGoalDifferencePoints,
             exactScorePoints: row.exactScorePoints,
             multiplierBonusPoints: row.multiplierBonusPoints,
+            advancingTeamPoints: row.advancingTeamPoints,
             tablePoints: row.tablePoints,
             scorerPoints: row.scorerPoints,
             bonusPoints: row.bonusPoints,
@@ -1023,11 +1042,15 @@ liveCompetitionsRouter.get('/competitions/:id/fixtures', requireAuth, async (req
     if (parsed.data.matchday) filters.push(eq(liveFixtures.matchday, parsed.data.matchday));
     if (parsed.data.status) filters.push(eq(liveFixtures.status, parsed.data.status));
 
-    const fixtures = await db
-      .select()
-      .from(liveFixtures)
-      .where(and(...filters))
-      .orderBy(asc(liveFixtures.kickoffAt), asc(liveFixtures.providerFixtureId));
+    // A test-only stage's fixtures are invisible to everybody but test accounts and admins.
+    const hidden = liveTestOnlyStageKeys(tournament);
+    const fixtures = (
+      await db
+        .select()
+        .from(liveFixtures)
+        .where(and(...filters))
+        .orderBy(asc(liveFixtures.kickoffAt), asc(liveFixtures.providerFixtureId))
+    ).filter(f => canSeeLiveStage(user, hidden, f.stageKey));
 
     const teamIds = [
       ...new Set(
@@ -1056,11 +1079,15 @@ liveCompetitionsRouter.get('/competitions/:id/fixtures', requireAuth, async (req
 
     const format = getLiveFormat(tournament.format);
     const selections = await loadSelectionIndex(tournament.id);
+    // Second legs of two-legged ties: the first leg's result to show above the inputs,
+    // and who went through once that is known.
+    const secondLegs = await loadSecondLegContexts([tournament.id]);
     const now = new Date();
 
     return res.json(
       fixtures.map(f => {
         const prediction = predictionByFixtureId.get(f.id) ?? null;
+        const secondLeg = secondLegs.get(f.id);
         // A provisional kickoff has no deadline yet — see isFixtureLocked.
         const lockAt = f.kickoffConfirmed ? fixtureLockAt(f.kickoffAt) : null;
         return {
@@ -1076,7 +1103,13 @@ liveCompetitionsRouter.get('/competitions/:id/fixtures', requireAuth, async (req
                 correctGoalDifferencePoints: prediction.correctGoalDifferencePoints,
                 exactScorePoints: prediction.exactScorePoints,
                 multiplierBonusPoints: prediction.multiplierBonusPoints,
+                advancingTeamId: prediction.advancingTeamId,
+                advancingTeamPoints: prediction.advancingTeamPoints,
               }
+            : null,
+          // Null on everything but the second leg of a two-legged tie.
+          advance: secondLeg
+            ? { firstLeg: secondLeg.carried, actualTeamId: secondLeg.actualAdvancerId }
             : null,
           lockedAt: lockAt ? lockAt.toISOString() : null,
           isLocked: isFixtureLocked({ kickoffAt: f.kickoffAt, kickoffConfirmed: f.kickoffConfirmed, status: f.status }, now),
@@ -1562,6 +1595,11 @@ liveCompetitionsRouter.put('/competitions/:id/predictions', requireAuth, async (
       .where(eq(liveTournaments.id, competition.liveTournamentId));
     if (!tournament) return res.status(404).json({ error: 'Live tournament not found' });
 
+    // A fixture this account cannot see does not exist, as far as it is concerned.
+    if (!canSeeLiveStage(user, liveTestOnlyStageKeys(tournament), fixture.stageKey)) {
+      return res.status(404).json({ error: 'Fixture not found' });
+    }
+
     // Fixtures below the tournament's starting stage are ingested but never predictable.
     const format = getLiveFormat(tournament.format);
     if (!isStageAtOrAfter(format, fixture.stageKey, tournament.startStageKey)) {
@@ -1582,6 +1620,17 @@ liveCompetitionsRouter.put('/competitions/:id/predictions', requireAuth, async (
       });
     }
 
+    // Who goes through if level on aggregate: only on a second leg, and only one of its
+    // two teams. Left out of the request means "keep what is stored".
+    const pick = parsed.data.advancingTeamId;
+    if (pick != null) {
+      const stage = format.stages.find(s => s.key === fixture.stageKey);
+      const isSecondLeg = isAdvanceStage(stage) && fixture.legNumber === 2 && !!fixture.tieKey;
+      if (!isSecondLeg || (pick !== fixture.homeTeamId && pick !== fixture.awayTeamId)) {
+        return res.status(400).json({ error: 'Not a team that can go through in this tie' });
+      }
+    }
+
     const now = new Date();
     const [saved] = await db
       .insert(livePredictions)
@@ -1592,6 +1641,7 @@ liveCompetitionsRouter.put('/competitions/:id/predictions', requireAuth, async (
         liveFixtureId: fixture.id,
         homeScore: parsed.data.homeScore,
         awayScore: parsed.data.awayScore,
+        advancingTeamId: pick ?? null,
         createdAt: now,
         updatedAt: now,
       })
@@ -1604,6 +1654,7 @@ liveCompetitionsRouter.put('/competitions/:id/predictions', requireAuth, async (
         set: {
           homeScore: parsed.data.homeScore,
           awayScore: parsed.data.awayScore,
+          ...(pick !== undefined ? { advancingTeamId: pick } : {}),
           updatedAt: now,
         },
       })
@@ -2069,6 +2120,8 @@ liveCompetitionsRouter.get(
           correctGoalDifferencePoints: livePredictions.correctGoalDifferencePoints,
           exactScorePoints: livePredictions.exactScorePoints,
           multiplierBonusPoints: livePredictions.multiplierBonusPoints,
+          advancingTeamId: livePredictions.advancingTeamId,
+          advancingTeamPoints: livePredictions.advancingTeamPoints,
         })
         .from(liveCompetitionMembers)
         .innerJoin(users, eq(liveCompetitionMembers.userId, users.id))
@@ -2116,6 +2169,8 @@ liveCompetitionsRouter.get(
                   correctGoalDifferencePoints: row.correctGoalDifferencePoints ?? 0,
                   exactScorePoints: row.exactScorePoints ?? 0,
                   multiplierBonusPoints: row.multiplierBonusPoints ?? 0,
+                  advancingTeamId: row.advancingTeamId ?? null,
+                  advancingTeamPoints: row.advancingTeamPoints ?? 0,
                 },
         })),
       );

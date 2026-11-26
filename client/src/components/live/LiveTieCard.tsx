@@ -9,7 +9,7 @@ import type { LiveFixtureView } from '@/lib/liveApi';
 
 interface Props {
   legs: LiveFixtureView[];
-  onSave: (fixtureId: string, homeScore: number, awayScore: number) => void;
+  onSave: (fixtureId: string, homeScore: number, awayScore: number, advancingTeamId?: string | null) => void;
   savingFixtureId: string | null;
   savedFixtures: Record<string, number>;
   errors: Record<string, string>;

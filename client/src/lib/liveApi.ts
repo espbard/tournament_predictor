@@ -15,6 +15,7 @@ import type {
   LiveFormatDef,
   LiveFormatKey,
   LivePlayer,
+  LiveRoundCalendarEntry,
   LiveScorerPrediction,
   LiveScoringConfig,
   LiveStageDef,
@@ -49,7 +50,19 @@ export interface LiveFixtureView extends LiveFixture {
     correctGoalDifferencePoints: number;
     exactScorePoints: number;
     multiplierBonusPoints: number;
+    /** Second leg only: who goes through if the predicted total is level. */
+    advancingTeamId?: string | null;
+    /** Second leg only: the right team through, at face value. */
+    advancingTeamPoints?: number;
   } | null;
+  /**
+   * On the second leg of a two-legged tie: the first leg's result from this match's home
+   * team's side (null until it is played), and who went through once that is known. Null
+   * on every other fixture. See shared/src/live/ties.ts.
+   */
+  advance?: LiveSecondLegView | null;
+  /** Second legs: the team an admin named as going through, if any. */
+  advancingTeamOverride?: string | null;
   /** kickoff − 60 min, or null when the kickoff time is still unknown. */
   lockedAt: string | null;
   isLocked: boolean;
@@ -60,6 +73,11 @@ export interface LiveFixtureView extends LiveFixture {
    * matches that leaves this one out. True by default.
    */
   isSelected: boolean;
+}
+
+export interface LiveSecondLegView {
+  firstLeg: { home: number; away: number } | null;
+  actualTeamId: string | null;
 }
 
 export interface LiveStandingView extends LiveStanding {
@@ -89,6 +107,8 @@ export interface LiveLeaderboardRow {
      * adds the test-only rounds, total included.
      */
     bonusRoundPoints: number;
+    /** Right team through on second legs; shown inside the result column. */
+    advancingTeamPoints?: number;
   };
 }
 
@@ -118,6 +138,8 @@ export interface LiveFixturePredictionRow {
     exactScorePoints: number;
     /** What a highlighted (multiplied) fixture added on top of the three tiers. */
     multiplierBonusPoints: number;
+    advancingTeamId?: string | null;
+    advancingTeamPoints?: number;
   } | null;
 }
 
@@ -214,6 +236,10 @@ export interface LiveCompetitionDetail extends LiveCompetition {
   tournament: LiveTournament | null;
   /** Stage definitions from the tournament's format — render the tab from these. */
   stages: LiveStageDef[];
+  /** Rounds declared from the calendar, which exist before their fixtures do. */
+  rounds: LiveRoundCalendarEntry[];
+  /** The visible stages that are test-only. Empty for anybody who cannot see those. */
+  testOnlyStageKeys: string[];
   tableScope: 'single' | 'per_group';
 }
 
@@ -233,6 +259,17 @@ export interface LiveTournamentDetail extends LiveTournament {
   /** What a complete starting stage looks like, and how much of it we hold. */
   expectedStartStageFixtures: number | null;
   startStageFixtureCount: number;
+  /** In force: the preset's default until an admin has chosen. */
+  testOnlyStageKeys: string[];
+  /** Rounds declared from the published calendar — the knockout legs. */
+  roundCalendar: LiveRoundCalendarEntry[];
+}
+
+export interface LiveRoundRefreshResult extends LiveSyncResult {
+  dateFrom: string;
+  dateTo: string;
+  /** Fixtures the round holds after the refresh. */
+  roundFixtures: number;
 }
 
 /** What an admin may narrow about a bonus question. See shared/src/live/bonus.ts. */
@@ -421,8 +458,13 @@ export const liveApi = {
       syncEnabled?: boolean;
       fixtureProvider?: 'football_data' | 'big_balls' | null;
       fixtureProviderCompetitionId?: string | null;
+      /** Null goes back to the preset's default. */
+      testOnlyStageKeys?: string[] | null;
     },
   ) => api.patch<LiveTournament>(`/live/tournaments/${id}`, body),
+  /** Fetch one calendar round's matches from the fixture provider. Admin-only. */
+  refreshRound: (id: string, body: { stageKey: string; matchday: number }) =>
+    api.post<LiveRoundRefreshResult>(`/live/tournaments/${id}/rounds/refresh`, body),
   deleteTournament: (id: string) => api.delete<{ ok: true }>(`/live/tournaments/${id}`),
   syncTournament: (id: string, full: boolean) =>
     api.post<LiveSyncResult>(`/live/tournaments/${id}/sync`, { full }),
@@ -449,6 +491,12 @@ export const liveApi = {
     id: string,
     body: { stageKey: string; matchday: number; fixtureIds: string[] | null },
   ) => api.put<SaveLiveSelectionResult>(`/live/tournaments/${id}/selected-matches`, body),
+  /** Name the team that went through on a second leg; null hands it back to the scores. */
+  setAdvancingTeam: (id: string, fixtureId: string, teamId: string | null) =>
+    api.patch<{ fixture: { id: string; advancingTeamOverride: string | null }; scoredPredictions: number }>(
+      `/live/tournaments/${id}/fixtures/${fixtureId}/advancing-team`,
+      { teamId },
+    ),
   /** Make one match worth more. 1 is the default and leaves scoring untouched. */
   saveFixtureMultiplier: (id: string, fixtureId: string, multiplier: number) =>
     api.patch<{
@@ -586,7 +634,10 @@ export const liveApi = {
   // ── Fixtures and predictions ──────────────────────────────────────────────
   fixtures: (competitionId: string, params: ListFixturesParams = {}) =>
     api.get<LiveFixtureView[]>(`/live/competitions/${competitionId}/fixtures${query(params)}`),
-  savePrediction: (competitionId: string, body: { fixtureId: string; homeScore: number; awayScore: number }) =>
+  savePrediction: (
+    competitionId: string,
+    body: { fixtureId: string; homeScore: number; awayScore: number; advancingTeamId?: string | null },
+  ) =>
     api.put<{ id: string }>(`/live/competitions/${competitionId}/predictions`, body),
   // ── League table prediction ───────────────────────────────────────────────
   tablePrediction: (competitionId: string) =>
@@ -648,6 +699,8 @@ export const liveApi = {
         correctGoalDifferencePoints: number;
         exactScorePoints: number;
         multiplierBonusPoints: number;
+        advancingTeamId?: string | null;
+        advancingTeamPoints?: number;
       }>
     >(`/live/competitions/${competitionId}/predictions/${userId}`),
 

@@ -78,6 +78,7 @@ const scoringConfig = {
   table_exact_position: 3,
   table_near_position: 1,
   scorer_exact_position: 3,
+  advancing_team: 1,
 };
 
 /** Which teams each test fixture is between. A fixture id not listed here has none yet. */

@@ -46,7 +46,13 @@ interface Props {
  * and a sentence for the press-to-reveal caption and the desktop tooltip.
  */
 const COLUMNS = [
-  { key: 'result', get: (r: LiveLeaderboardRow) => r.breakdown.correctOutcomePoints },
+  // The right team through on a second leg counts as getting the result of the tie, so it
+  // sits in this column rather than one of its own; the match's breakdown names it.
+  {
+    key: 'result',
+    get: (r: LiveLeaderboardRow) =>
+      r.breakdown.correctOutcomePoints + (r.breakdown.advancingTeamPoints ?? 0),
+  },
   { key: 'goalDifference', get: (r: LiveLeaderboardRow) => r.breakdown.correctGoalDifferencePoints },
   { key: 'exact', get: (r: LiveLeaderboardRow) => r.breakdown.exactScorePoints },
   { key: 'highlight', get: (r: LiveLeaderboardRow) => r.breakdown.multiplierBonusPoints },

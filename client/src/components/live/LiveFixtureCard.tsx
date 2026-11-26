@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { liveFixtureMultiplier } from '@tournament-predictor/shared';
+import { advancePickApplies, liveFixtureMultiplier } from '@tournament-predictor/shared';
 import { useT } from '@/lib/useT';
 import LiveCountdown from '@/components/live/LiveCountdown';
 import LiveMatchPredictions from '@/components/live/LiveMatchPredictions';
@@ -20,10 +20,15 @@ import type { LiveFixtureView } from '@/lib/liveApi';
 // A match an admin has given a multiplier is rendered gold — border, tint and a ×N badge —
 // and says so in a line at the foot of the card, because a match worth several times the
 // rest is worth noticing before the deadline rather than after it.
+//
+// The second leg of a two-legged tie also carries the first leg's result above the
+// prediction, as "(1-2)" from this match's home team's side, and — when the predicted total
+// is level, or the first leg has not been played yet — asks who goes through. That pick is
+// saved with the score. See shared/src/live/ties.ts.
 
 interface Props {
   fixture: LiveFixtureView;
-  onSave: (fixtureId: string, homeScore: number, awayScore: number) => void;
+  onSave: (fixtureId: string, homeScore: number, awayScore: number, advancingTeamId?: string | null) => void;
   isSaving: boolean;
   savedAt: number | null;
   error: string | null;
@@ -103,11 +108,17 @@ export default function LiveFixtureCard({
   const { t } = useT();
   const [home, setHome] = useState(fixture.prediction ? String(fixture.prediction.homeScore) : '');
   const [away, setAway] = useState(fixture.prediction ? String(fixture.prediction.awayScore) : '');
+  // Second legs only: who goes through if the total is level.
+  const [pick, setPick] = useState<string | null>(fixture.prediction?.advancingTeamId ?? null);
+  const isSecondLeg = !!fixture.advance;
+
+  // What a stored prediction looks like as an auto-save key: the score, and on a second
+  // leg the pick too, so changing only the pick is a change worth saving.
+  const storedKey = (p: LiveFixtureView['prediction']) =>
+    p ? `${p.homeScore}-${p.awayScore}${isSecondLeg ? `|${p.advancingTeamId ?? ''}` : ''}` : null;
 
   // The score most recently handed to `onSave`, or already stored — see Auto-save below.
-  const lastSent = useRef<string | null>(
-    fixture.prediction ? `${fixture.prediction.homeScore}-${fixture.prediction.awayScore}` : null,
-  );
+  const lastSent = useRef<string | null>(storedKey(fixture.prediction));
 
   // A prediction can arrive after first render — from a refetch, or another device.
   // Only adopt it when the user has not typed anything, so an edit in progress survives.
@@ -115,10 +126,13 @@ export default function LiveFixtureCard({
     if (!fixture.prediction) return;
     // A stored prediction showing up late is not an edit, so it is not saved back.
     if (lastSent.current === null) {
-      lastSent.current = `${fixture.prediction.homeScore}-${fixture.prediction.awayScore}`;
+      lastSent.current = storedKey(fixture.prediction);
+      setPick(fixture.prediction.advancingTeamId ?? null);
     }
     setHome(prev => (prev === '' ? String(fixture.prediction!.homeScore) : prev));
     setAway(prev => (prev === '' ? String(fixture.prediction!.awayScore) : prev));
+    // storedKey only reads isSecondLeg, which follows the fixture.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fixture.prediction]);
 
   const homeName = fixture.homeTeam?.shortName ?? fixture.homeTeam?.name ?? t('live.tbd');
@@ -152,12 +166,14 @@ export default function LiveFixtureCard({
 
   useEffect(() => {
     if (!editable || !validScore(home) || !validScore(away)) return;
-    const key = `${Number(home)}-${Number(away)}`;
+    const key = `${Number(home)}-${Number(away)}${isSecondLeg ? `|${pick ?? ''}` : ''}`;
     if (key === lastSent.current) return;
     const send = () => {
       pending.current = null;
       lastSent.current = key;
-      onSaveRef.current(fixture.id, Number(home), Number(away));
+      // The pick travels only with a second leg; anywhere else it is left out entirely.
+      if (isSecondLeg) onSaveRef.current(fixture.id, Number(home), Number(away), pick);
+      else onSaveRef.current(fixture.id, Number(home), Number(away));
     };
     pending.current = send;
     const timer = setTimeout(send, AUTOSAVE_DELAY_MS);
@@ -165,7 +181,7 @@ export default function LiveFixtureCard({
       clearTimeout(timer);
       if (pending.current === send) pending.current = null;
     };
-  }, [home, away, editable, fixture.id]);
+  }, [home, away, pick, isSecondLeg, editable, fixture.id]);
 
   // Flush a save still waiting on its delay when the card goes away.
   useEffect(() => () => pending.current?.(), []);
@@ -173,11 +189,9 @@ export default function LiveFixtureCard({
   // A failed save leaves the score unsaved, so the same score typed again should be sent
   // again rather than mistaken for one already stored.
   useEffect(() => {
-    if (error) {
-      lastSent.current = fixture.prediction
-        ? `${fixture.prediction.homeScore}-${fixture.prediction.awayScore}`
-        : null;
-    }
+    if (error) lastSent.current = storedKey(fixture.prediction);
+    // storedKey only reads isSecondLeg, which follows the fixture.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [error, fixture.prediction]);
 
   const justSaved = savedAt !== null && !error;
@@ -196,6 +210,26 @@ export default function LiveFixtureCard({
   const actualAway = fixture.normalTimeAway ?? fixture.finalAway ?? 0;
 
   const kickoff = fixture.kickoffAt ? new Date(fixture.kickoffAt) : null;
+
+  // ── Second leg ──
+  const firstLeg = fixture.advance?.firstLeg ?? null;
+  const predictedHome = validScore(home) ? Number(home) : null;
+  const predictedAway = validScore(away) ? Number(away) : null;
+  // Asked while the predicted total is level — or might be, before the first leg is
+  // played. A read-only card shows the question only if there is a pick to show.
+  const pickApplies = isSecondLeg && advancePickApplies(firstLeg, predictedHome, predictedAway);
+  const showPick = pickApplies && fixture.homeTeamId !== null && (editable || pick !== null);
+  // Who the score alone sends through, once the first leg is known and the total is not level.
+  const throughOnScore =
+    isSecondLeg && firstLeg && !pickApplies && predictedHome !== null && predictedAway !== null
+      ? firstLeg.home + predictedHome > firstLeg.away + predictedAway
+        ? homeName
+        : awayName
+      : null;
+  const teamName = (teamId: string | null | undefined) =>
+    teamId === fixture.homeTeamId ? homeName : teamId === fixture.awayTeamId ? awayName : null;
+  const wentThrough = teamName(fixture.advance?.actualTeamId);
+  const advancingTeamPoints = fixture.prediction?.advancingTeamPoints ?? 0;
 
   return (
     <div
@@ -290,6 +324,40 @@ export default function LiveFixtureCard({
       {decidedBeyond90 && (
         <p className="mt-1 text-center text-xs text-muted-foreground">{decidedBeyond90}</p>
       )}
+      {isFinished && wentThrough && (
+        <p className="mt-1 text-center text-xs font-medium text-muted-foreground">
+          {t('live.advance.wentThrough', { team: wentThrough })}
+        </p>
+      )}
+
+      {/* The first leg's result, from this match's home team's side, right above the
+          prediction it bears on. */}
+      {isSecondLeg && inPredictionGame && !hidePrediction && (
+        <p
+          className="mt-3 text-center text-xs text-muted-foreground"
+          title={
+            firstLeg
+              ? t('live.advance.firstLegTitle', {
+                  home: homeName,
+                  away: awayName,
+                  homeGoals: firstLeg.home,
+                  awayGoals: firstLeg.away,
+                })
+              : undefined
+          }
+        >
+          {firstLeg ? (
+            <>
+              <span className="font-semibold tabular-nums text-foreground">
+                ({firstLeg.home}–{firstLeg.away})
+              </span>{' '}
+              {t('live.advance.firstLegCaption')}
+            </>
+          ) : (
+            t('live.advance.firstLegPending')
+          )}
+        </p>
+      )}
 
       {/* Prediction row */}
       {hidePrediction ? null : !inPredictionGame ? (
@@ -361,7 +429,7 @@ export default function LiveFixtureCard({
                 // highlighted match they no longer add up to the badge without saying what
                 // the multiplier put on top.
                 title={
-                  fixture.prediction.multiplierBonusPoints > 0
+                  (fixture.prediction.multiplierBonusPoints > 0
                     ? t('live.pointsBreakdownWithHighlight', {
                         outcome: fixture.prediction.correctOutcomePoints,
                         gd: fixture.prediction.correctGoalDifferencePoints,
@@ -372,7 +440,10 @@ export default function LiveFixtureCard({
                         outcome: fixture.prediction.correctOutcomePoints,
                         gd: fixture.prediction.correctGoalDifferencePoints,
                         exact: fixture.prediction.exactScorePoints,
-                      })
+                      })) +
+                  (advancingTeamPoints > 0
+                    ? t('live.advance.pointsBreakdownSuffix', { points: advancingTeamPoints })
+                    : '')
                 }
               >
                 {t('live.pointsShort', { points: fixture.prediction.points })}
@@ -380,6 +451,46 @@ export default function LiveFixtureCard({
             )}
           </div>
         </div>
+      )}
+
+      {/* Who goes through, when the score alone does not say. */}
+      {!hidePrediction && inPredictionGame && showPick && (
+        <div className="mt-3 flex flex-col items-center gap-1.5">
+          <span className="text-center text-xs text-muted-foreground">
+            {firstLeg ? t('live.advance.questionLevel') : t('live.advance.questionIfLevel')}
+          </span>
+          <div className="flex w-full max-w-xs gap-2" role="group">
+            {[
+              { id: fixture.homeTeamId, name: homeName },
+              { id: fixture.awayTeamId, name: awayName },
+            ].map(team => (
+              <button
+                key={team.id ?? team.name}
+                type="button"
+                disabled={!editable}
+                aria-pressed={pick === team.id}
+                onClick={() => setPick(team.id)}
+                className={`min-w-0 flex-1 truncate rounded-md border px-2 py-1.5 text-xs font-medium transition-colors disabled:cursor-default ${
+                  pick === team.id
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'hover:bg-muted disabled:opacity-60 disabled:hover:bg-transparent'
+                }`}
+              >
+                {team.name}
+              </button>
+            ))}
+          </div>
+          {editable && firstLeg && pick === null && predictedHome !== null && predictedAway !== null && (
+            <span className="text-center text-xs text-amber-600 dark:text-amber-400">
+              {t('live.advance.pickMissing')}
+            </span>
+          )}
+        </div>
+      )}
+      {!hidePrediction && inPredictionGame && throughOnScore && (
+        <p className="mt-2 text-center text-xs text-muted-foreground">
+          {t('live.advance.throughOnScore', { team: throughOnScore })}
+        </p>
       )}
 
       {error && <p className="mt-1 text-center text-xs text-destructive">{error}</p>}
@@ -411,6 +522,11 @@ export default function LiveFixtureCard({
           linkToUsers={linkToUsers}
           multiplier={multiplier}
           bonusRound={bonusRound}
+          secondLeg={
+            fixture.advance
+              ? { firstLeg: fixture.advance.firstLeg, teamName }
+              : undefined
+          }
         />
       )}
     </div>

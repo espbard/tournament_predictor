@@ -105,6 +105,12 @@ export const liveTournaments = pgTable(
      * "at least" when it is set rather than printing a number that reads as exact.
      */
     scorerNationalities: jsonb('scorer_nationalities').$type<LiveScorerNationalities>(),
+    /**
+     * Stages only test accounts and admins see — knockout rounds being tried out before
+     * release. Null means "the preset's default"; see liveTestOnlyStageKeys in
+     * shared/src/live/rounds.ts.
+     */
+    testOnlyStageKeys: jsonb('test_only_stage_keys').$type<string[]>(),
     lastStructureSyncAt: timestamp('last_structure_sync_at'),
     lastFixtureSyncAt: timestamp('last_fixture_sync_at'),
     lastSyncError: text('last_sync_error'),
@@ -175,6 +181,11 @@ export const liveFixtures = pgTable(
      * by the provider — the sync upsert deliberately leaves it alone.
      */
     multiplier: integer('multiplier').notNull().default(1),
+    /**
+     * On a second leg: the team an admin says went through, for when the provider's score
+     * data cannot settle it. Wins over the derived answer. Never touched by a sync.
+     */
+    advancingTeamOverride: text('advancing_team_override'),
     // Score at the end of normal time (90 minutes plus stoppage). The ONLY score that
     // awards points — extra time and penalties are stored for display but never scored.
     normalTimeHome: integer('normal_time_home'),
@@ -279,6 +290,8 @@ export const liveCompetitionMembers = pgTable(
     tablePoints: integer('table_points').notNull().default(0),
     /** What highlighted (multiplied) matches added on top of the three tiers. */
     multiplierBonusPoints: integer('multiplier_bonus_points').notNull().default(0),
+    /** Right team through on second legs, before any multiplier. */
+    advancingTeamPoints: integer('advancing_team_points').notNull().default(0),
     /** Bonus question points. Stays zero until the tournament is marked completed. */
     bonusPoints: integer('bonus_points').notNull().default(0),
     /** Top-scorer ranking points. Also withheld until the tournament is completed. */
@@ -320,6 +333,13 @@ export const livePredictions = pgTable(
     exactScorePoints: integer('exact_score_points').notNull().default(0),
     /** What the fixture's multiplier added on top of the tiers. Zero on a normal match. */
     multiplierBonusPoints: integer('multiplier_bonus_points').notNull().default(0),
+    /**
+     * Second leg of a two-legged tie only: who goes through if the predicted total is
+     * level. Plain text, no FK, like the table prediction's team ids.
+     */
+    advancingTeamId: text('advancing_team_id'),
+    /** The right team through, at face value. Zero everywhere but a second leg. */
+    advancingTeamPoints: integer('advancing_team_points').notNull().default(0),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
   },

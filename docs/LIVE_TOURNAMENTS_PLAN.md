@@ -2161,7 +2161,105 @@ has gone degrades gracefully rather than losing the round.
 
 ---
 
-## 39. References
+## 39. Knockout rounds *(added after the six phases, on request)*
+
+The Champions League knockout phase as rounds in the predictor: every stage but the final is
+**two rounds, one per leg** (matchday 1 and 2, which is how football-data numbers legs), the final
+one round (matchday 1). They look and behave like league-phase gameweeks: a dot per leg in the
+strip, one leg's matches at a time, admin-selected matches only. The rounds are **test-only**
+until an admin releases them.
+
+| Stage | 1st leg | 2nd leg |
+|---|---|---|
+| `knockout_playoff` | 16/17 Feb 2027 | 23/24 Feb 2027 |
+| `round_of_16` | 9/10 Mar 2027 | 16/17 Mar 2027 |
+| `quarter_final` | 6/7 Apr 2027 | 13/14 Apr 2027 |
+| `semi_final` | 27/28 Apr 2027 | 4/5 May 2027 |
+| `final` | 5 Jun 2027 | |
+
+**The round calendar** (`roundCalendar` on the `ucl_2026_27` preset, helpers in
+`shared/src/live/rounds.ts`) declares those rounds up front, so they exist before the draw:
+
+- `GET /competitions/:id` returns them as `rounds`, and the fixtures tab shows a calendar
+  round with no fixtures as an empty round rather than leaving the stage out.
+- **Refresh** (`POST /api/live/tournaments/:id/rounds/refresh {stageKey, matchday}`, admin,
+  the *Knockout rounds* panel on the admin tournament page's *Selected matches* tab) fetches the
+  round's calendar window from the fixture provider (its dates ± 2 days), upserts as any sync
+  does, scores what finished and pushes `fixtures-updated`. Before the provider has the
+  matches it finds nothing; pressing it is always safe. Fetching selects nothing: the admin
+  still ticks the matches that count in *Selected matches*.
+- **Filing.** `placeFixtureInRound` in `sync.ts`: the provider's stage and matchday win. A
+  fixture with no provider stage (bigballsdata) is filed under the calendar round its kickoff
+  falls in, before falling back to `startStageKey` — otherwise a knockout match would land in
+  the league phase as "matchday 9". A two-legged stage's fixture with no matchday takes the
+  leg from the calendar. A single-legged knockout stage is always matchday 1 (football-data
+  reports the final as matchday 0).
+- **Season end moved** from 1 June to 30 June on the UCL preset: the final is 5 June, and the
+  old bound would have filtered it out of every sync and deleted it.
+
+**Visibility.** `live_tournaments.test_only_stage_keys` (`drizzle/0042_live_test_only_stages.sql`,
+mirrored in `ensureSchema.ts`). Null means the preset's `defaultTestOnlyStageKeys` — every UCL
+knockout stage — so no data migration was needed; an array, even empty, is the admin's choice
+(PATCH `/tournaments/:id {testOnlyStageKeys}`, the *Test accounts only / Everyone* toggle per
+stage). For everybody but test accounts and admins a test-only stage is left out of the
+competition's `stages` and `rounds`, its fixtures out of `GET /competitions/:id/fixtures`,
+`GET /tournaments/:id/fixtures` and `selected-matches`, and a prediction on one is a 404.
+
+| Decision | Why |
+|---|---|
+| Calendar on the preset, not the format | The format is season-agnostic; the dates belong to 2026/27 |
+| Visibility per stage, per tournament | Fixtures and selections are tournament-level; releasing a stage releases both legs |
+| Null = preset default | Hides the knockouts on the existing CL row without a run-once data migration |
+| Scoring untouched by visibility | The stages are meant to be released before their first kickoff. A test account's prediction on a still-hidden match that *finishes* would count in its total — release before 16 February |
+
+**Still open.** If the CL fixtures are on bigballsdata (`fixture_provider = big_balls`), the
+knockouts are still unfit for scoring: its single score cannot tell 90 minutes from extra time
+(see the adapter header). Move fixtures to football-data before the play-offs. Separately, a
+*window* sync on bigballsdata derives league-phase matchdays from the partial batch it fetched,
+which renumbers those fixtures from 1 until the next structure sync — pre-existing, unchanged
+here, and irrelevant to knockout rounds, which now take their leg from the calendar.
+
+---
+
+## 40. Team through on two-legged ties *(added after the six phases, on request)*
+
+The second leg of a two-legged knockout tie (play-offs, round of 16, quarter- and semi-finals;
+never the final, never a first leg) awards **+1 for the right team going through**, on top of the
+usual tiers, which stay on the 90-minute score. Rules in `shared/src/live/ties.ts`:
+
+- **Banner.** Above the second leg's prediction the card shows the first leg's result from this
+  match's home team's side, `(1–2)`, matched by team id so it is right whichever way the
+  provider lists them. "First leg not played yet" until it has a 90-minute result.
+- **Whom a prediction sends through.** First-leg result plus the predicted second-leg score.
+  Ahead on that total: that team. Level: the member's pick (`live_predictions.advancing_team_id`).
+  No pick: nobody, and no point.
+- **The pick.** Two team buttons, saved with the score by the same auto-save. While the first
+  leg is unplayed they are always offered, worded "if level on aggregate"; once it is played,
+  only when the predicted total is level, with a warning until one is chosen. A pick on a
+  non-level prediction is kept but ignored. Saving without `advancingTeamId` keeps the stored
+  pick; `null` clears it; a team outside the tie, or a pick on anything but a second leg, is a 400.
+- **Who actually went through.** Both legs' 90-minute goals plus second-leg extra-time goals
+  (football-data's `extraTime` holds extra-time goals only); if still level, the shootout. The
+  provider's `winner` is the *match* winner and is only trusted after a shootout, where it is
+  also the tie's. An admin can name the team (`live_fixtures.advancing_team_override`, PATCH
+  `/api/live/tournaments/:id/fixtures/:fixtureId/advancing-team {teamId|null}`), which wins and
+  rescores; the *Knockout rounds* panel offers it under any finished second leg the scores
+  cannot settle.
+- **Points.** `advancing_team` in the scoring config (default 1). Stored as
+  `live_predictions.advancing_team_points` and summed to `live_competition_members.advancing_team_points`;
+  included in `points` and `total_points`. The fixture multiplier applies to it like the tiers
+  (the extra lands in `multiplier_bonus_points`). On the leaderboard it is folded into the
+  **Result** column (no column of its own); the match's points tooltip and the "what everyone
+  predicted" breakdown name it as its own line.
+
+Migration `drizzle/0043_live_advancing_team.sql`, mirrored in `ensureSchema.ts`. Pinned by
+`server/src/live/ties.test.ts`, including the agreed Example A (first leg B 2-1 A, second leg
+A 2-0 B: predictions 5-0, 1-0 picking B, 1-0 picking A and 2-0 score 2, 1, 2 and 5) and the
+real 2024/25 Inter–Barça (extra time) and Liverpool–PSG (penalties) second legs.
+
+---
+
+## 41. References
 
 - [2026/27 Champions League: teams, dates, draws, format](https://www.uefa.com/uefachampionsleague/news/02a6-20d57cfcd03e-407c22a7f465-1000--2026-27-champions-league-teams-dates-draws-format-final/)
 - [UEFA confirms date for the 2026/27 Champions League league phase draw](https://www.besoccer.com/new/uefa-confirms-date-for-the-202627-champions-league-league-phase-draw-1421299)

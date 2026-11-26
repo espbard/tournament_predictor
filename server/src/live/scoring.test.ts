@@ -37,6 +37,7 @@ describe('calculateLivePoints', () => {
       correctOutcomePoints: 1,
       correctGoalDifferencePoints: 1,
       exactScorePoints: 2,
+      advancingTeamPoints: 0,
       multiplierBonusPoints: 0,
     });
   });
@@ -47,6 +48,7 @@ describe('calculateLivePoints', () => {
       correctOutcomePoints: 1,
       correctGoalDifferencePoints: 1,
       exactScorePoints: 0,
+      advancingTeamPoints: 0,
       multiplierBonusPoints: 0,
     });
   });
@@ -57,6 +59,7 @@ describe('calculateLivePoints', () => {
       correctOutcomePoints: 1,
       correctGoalDifferencePoints: 0,
       exactScorePoints: 0,
+      advancingTeamPoints: 0,
       multiplierBonusPoints: 0,
     });
   });
@@ -71,6 +74,7 @@ describe('calculateLivePoints', () => {
       correctOutcomePoints: 0,
       correctGoalDifferencePoints: 0,
       exactScorePoints: 0,
+      advancingTeamPoints: 0,
       multiplierBonusPoints: 0,
     });
   });
@@ -137,6 +141,7 @@ describe('calculateLivePoints — fixture multipliers', () => {
       correctOutcomePoints: 1,
       correctGoalDifferencePoints: 1,
       exactScorePoints: 2,
+      advancingTeamPoints: 0,
       multiplierBonusPoints: 8,
     });
   });

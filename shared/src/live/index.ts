@@ -6,3 +6,5 @@ export * from './selection';
 export * from './bonus';
 export * from './schemas';
 export * from './bonusRounds';
+export * from './rounds';
+export * from './ties';

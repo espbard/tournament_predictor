@@ -1,10 +1,13 @@
 import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import {
   getLiveFormat,
+  indexSecondLegs,
   isLiveFixtureSelected,
+  predictedAdvancer,
   tablePredictionStage,
   withLiveScoringDefaults,
   type LiveScoringConfig,
+  type SecondLegContext,
 } from '@tournament-predictor/shared';
 import { db } from '../db/client';
 import {
@@ -18,7 +21,7 @@ import {
   liveTablePredictions,
   liveTournaments,
 } from '../db/liveSchema';
-import { calculateLivePoints } from './scoring';
+import { calculateLivePoints, type LiveAdvanceInput } from './scoring';
 import { calculateScorerPoints, liveScorerPositions } from './scorerScoring';
 import { calculateTablePoints, isTableStageComplete } from './tableScoring';
 import { notifyLiveCompetitions } from './liveEvents';
@@ -43,6 +46,71 @@ async function chunked<T>(rows: T[], fn: (chunk: T[]) => Promise<void>): Promise
   for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
     await fn(rows.slice(i, i + CHUNK_SIZE));
   }
+}
+
+/**
+ * Every second leg of a two-legged tie on these tournaments, with its first leg's result
+ * and who actually went through — what the team-through point is scored against.
+ *
+ * Read per tournament rather than per fixture: a second leg needs its first leg, which is
+ * usually not among the fixtures being scored. A season has a few dozen knockout fixtures,
+ * so this is a small read.
+ */
+export async function loadSecondLegContexts(tournamentIds: string[]): Promise<Map<string, SecondLegContext>> {
+  const out = new Map<string, SecondLegContext>();
+  if (tournamentIds.length === 0) return out;
+
+  const tournaments = await db
+    .select({ id: liveTournaments.id, format: liveTournaments.format })
+    .from(liveTournaments)
+    .where(inArray(liveTournaments.id, tournamentIds));
+
+  for (const tournament of tournaments) {
+    const legs = await db
+      .select({
+        id: liveFixtures.id,
+        stageKey: liveFixtures.stageKey,
+        tieKey: liveFixtures.tieKey,
+        legNumber: liveFixtures.legNumber,
+        homeTeamId: liveFixtures.homeTeamId,
+        awayTeamId: liveFixtures.awayTeamId,
+        status: liveFixtures.status,
+        normalTimeHome: liveFixtures.normalTimeHome,
+        normalTimeAway: liveFixtures.normalTimeAway,
+        extraTimeHome: liveFixtures.extraTimeHome,
+        extraTimeAway: liveFixtures.extraTimeAway,
+        penaltiesHome: liveFixtures.penaltiesHome,
+        penaltiesAway: liveFixtures.penaltiesAway,
+        winner: liveFixtures.winner,
+        advancingTeamOverride: liveFixtures.advancingTeamOverride,
+      })
+      .from(liveFixtures)
+      .where(and(eq(liveFixtures.liveTournamentId, tournament.id), isNotNull(liveFixtures.tieKey)));
+    for (const [id, context] of indexSecondLegs(getLiveFormat(tournament.format), legs)) {
+      out.set(id, context);
+    }
+  }
+  return out;
+}
+
+/** The team-through half of scoring one prediction; null on anything but a second leg. */
+function advanceInputFor(
+  context: SecondLegContext | undefined,
+  fixture: { homeTeamId: string | null; awayTeamId: string | null },
+  prediction: { homeScore: number; awayScore: number; advancingTeamId: string | null },
+): LiveAdvanceInput | null {
+  if (!context) return null;
+  return {
+    predictedTeamId: predictedAdvancer({
+      carried: context.carried,
+      homeScore: prediction.homeScore,
+      awayScore: prediction.awayScore,
+      homeTeamId: fixture.homeTeamId,
+      awayTeamId: fixture.awayTeamId,
+      pickedTeamId: prediction.advancingTeamId,
+    }),
+    actualTeamId: context.actualAdvancerId,
+  };
 }
 
 export interface ScoreFixturesResult {
@@ -74,6 +142,7 @@ export async function recomputeLiveMemberTotals(competitionIds: string[]): Promi
           correct_goal_difference_points = COALESCE(f.gd, 0),
           exact_score_points = COALESCE(f.exact, 0),
           multiplier_bonus_points = COALESCE(f.multiplier_bonus, 0),
+          advancing_team_points = COALESCE(f.advancing_team, 0),
           table_points = COALESCE(tp.table_points, 0),
           scorer_points = COALESCE(sp.scorer_points, 0),
           bonus_points = COALESCE(bq.bonus_points, 0),
@@ -89,6 +158,7 @@ export async function recomputeLiveMemberTotals(competitionIds: string[]): Promi
                SUM(p.correct_goal_difference_points) AS gd,
                SUM(p.exact_score_points)             AS exact,
                SUM(p.multiplier_bonus_points)        AS multiplier_bonus,
+               SUM(p.advancing_team_points)          AS advancing_team,
                -- Already includes the bonus, so the total needs no separate term for it.
                SUM(p.points)                         AS total
         FROM live_predictions p
@@ -155,6 +225,8 @@ export async function scoreFixtures(fixtureIds: string[]): Promise<ScoreFixtures
       normalTimeHome: liveFixtures.normalTimeHome,
       normalTimeAway: liveFixtures.normalTimeAway,
       multiplier: liveFixtures.multiplier,
+      homeTeamId: liveFixtures.homeTeamId,
+      awayTeamId: liveFixtures.awayTeamId,
     })
     .from(liveFixtures)
     .where(inArray(liveFixtures.id, fixtureIds));
@@ -184,6 +256,7 @@ export async function scoreFixtures(fixtureIds: string[]): Promise<ScoreFixtures
   if (competitions.length === 0) return result;
 
   const fixtureById = new Map(fixtures.map(f => [f.id, f]));
+  const secondLegs = await loadSecondLegContexts(tournamentIds);
   const affected = new Set<string>();
 
   for (const competition of competitions) {
@@ -198,6 +271,7 @@ export async function scoreFixtures(fixtureIds: string[]): Promise<ScoreFixtures
         liveFixtureId: livePredictions.liveFixtureId,
         homeScore: livePredictions.homeScore,
         awayScore: livePredictions.awayScore,
+        advancingTeamId: livePredictions.advancingTeamId,
       })
       .from(livePredictions)
       .where(
@@ -216,6 +290,7 @@ export async function scoreFixtures(fixtureIds: string[]): Promise<ScoreFixtures
         { homeScore: prediction.homeScore, awayScore: prediction.awayScore },
         fixture,
         config,
+        advanceInputFor(secondLegs.get(fixture.id), fixture, prediction),
       );
 
       await db
@@ -225,6 +300,7 @@ export async function scoreFixtures(fixtureIds: string[]): Promise<ScoreFixtures
           correctOutcomePoints: points.correctOutcomePoints,
           correctGoalDifferencePoints: points.correctGoalDifferencePoints,
           exactScorePoints: points.exactScorePoints,
+          advancingTeamPoints: points.advancingTeamPoints,
           multiplierBonusPoints: points.multiplierBonusPoints,
           updatedAt: new Date(),
         })
@@ -473,7 +549,10 @@ export async function recalculateLiveCompetition(competitionId: string): Promise
       predictionId: livePredictions.id,
       homeScore: livePredictions.homeScore,
       awayScore: livePredictions.awayScore,
+      advancingTeamId: livePredictions.advancingTeamId,
       id: liveFixtures.id,
+      homeTeamId: liveFixtures.homeTeamId,
+      awayTeamId: liveFixtures.awayTeamId,
       stageKey: liveFixtures.stageKey,
       matchday: liveFixtures.matchday,
       status: liveFixtures.status,
@@ -488,17 +567,24 @@ export async function recalculateLiveCompetition(competitionId: string): Promise
   // Recomputed rather than remembered, so deselecting a match takes its points away on
   // the next recalculation — which is exactly what the selection route triggers.
   const selections = await loadSelectionIndex(competition.liveTournamentId);
+  const secondLegs = await loadSecondLegContexts([competition.liveTournamentId]);
 
   let scored = 0;
   for (const row of rows) {
     const selected = isLiveFixtureSelected(row, selections);
     const points = selected
-      ? calculateLivePoints({ homeScore: row.homeScore, awayScore: row.awayScore }, row, config)
+      ? calculateLivePoints(
+          { homeScore: row.homeScore, awayScore: row.awayScore },
+          row,
+          config,
+          advanceInputFor(secondLegs.get(row.id), row, row),
+        )
       : {
           points: 0,
           correctOutcomePoints: 0,
           correctGoalDifferencePoints: 0,
           exactScorePoints: 0,
+          advancingTeamPoints: 0,
           multiplierBonusPoints: 0,
         };
     // An unscorable fixture goes back to null rather than a stored zero, so the UI can
@@ -513,6 +599,7 @@ export async function recalculateLiveCompetition(competitionId: string): Promise
         correctOutcomePoints: points.correctOutcomePoints,
         correctGoalDifferencePoints: points.correctGoalDifferencePoints,
         exactScorePoints: points.exactScorePoints,
+        advancingTeamPoints: points.advancingTeamPoints,
         multiplierBonusPoints: points.multiplierBonusPoints,
         updatedAt: new Date(),
       })
