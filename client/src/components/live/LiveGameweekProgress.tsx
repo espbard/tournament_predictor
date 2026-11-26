@@ -6,7 +6,8 @@ import { useT } from '@/lib/useT';
 //
 // One dot per round of the whole competition, in order — the league phase's gameweeks,
 // then each knockout leg, then the final — replacing the stage tabs and the dropdown that
-// used to pick between them. A thin divider marks where one stage gives way to the next.
+// used to pick between them. A thin divider marks where the league phase gives way to the
+// knockouts; the knockout rounds themselves run on without a break.
 // The dots also say how far through the season you are and, at a glance, which rounds
 // still want a prediction.
 //
@@ -29,6 +30,8 @@ export interface LiveGameweekProgressItem {
   /** Unique across the strip: stage and matchday together. See liveRoundKey. */
   key: string;
   stageKey: string;
+  /** A divider goes where this changes — between the league phase and the knockouts. */
+  stageKind: 'table' | 'knockout';
   matchday: number;
   /** What the round is called in the dot's label: "Gameweek 3", "Round of 16: 1st leg". */
   label: string;
@@ -165,7 +168,7 @@ export default function LiveGameweekProgress({
             done: item.done,
             selected: item.selected,
           });
-          const newStage = index > 0 && items[index - 1].stageKey !== item.stageKey;
+          const newStage = index > 0 && items[index - 1].stageKind !== item.stageKind;
           return (
             <Fragment key={item.key}>
               {newStage && <li aria-hidden className="mx-1 h-4 w-px bg-border" />}

@@ -2170,8 +2170,8 @@ only, one round's matches at a time. The rounds are **test-only** until an admin
 
 **One progress bar.** The fixtures tab (and the read-only view of another member's predictions)
 has no stage pills. Every round of every stage is a dot on one bar, in order — the league
-phase's gameweeks, then each knockout leg, then the final — with a thin divider where one stage
-gives way to the next and bonus rounds as stars among the dots. The final is drawn as a
+phase's gameweeks, then each knockout leg, then the final — with a thin divider where the league
+phase gives way to the knockouts (none between knockout stages) and bonus rounds as stars among the dots. The final is drawn as a
 trophy instead of a dot (`isTrophyStage`: a single-legged knockout stage), coloured by the same
 three states. A dot sets stage and round
 together; its label names both ("Round of 16: 1st leg"). Built by `buildLiveRoundStrip` and

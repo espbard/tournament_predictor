@@ -208,6 +208,7 @@ export default function LiveUserPredictionsPage() {
           ...round,
           label: liveRoundHeading(t, stages.find(st => st.key === round.stageKey), round.matchday),
           trophy: isTrophyStage(stages.find(st => st.key === round.stageKey)),
+          stageKind: stages.find(st => st.key === round.stageKey)?.kind ?? 'table',
           selected: selected.length,
           done: predicted,
           state:
