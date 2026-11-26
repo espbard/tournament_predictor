@@ -2141,10 +2141,10 @@ by hand: no provider, no source tournament, no sync.
 | `live_bonus_round_predictions` | Unique `(bonus_fixture_id, user_id)`. Same score columns as `live_predictions` |
 | `live_competition_members.bonus_round_points` | Public rounds only |
 
-**Placement** (`layoutLiveRounds` in `shared/src/live/bonusRounds.ts`): a table-stage
-gameweek anchor puts the round in that stage's gameweek strip as a star after the gameweek; a
-stage anchor (matchday null) makes it a pill between the stage pills; no anchor puts it before
-everything. Rounds sharing an anchor sort by first kickoff. An anchor whose gameweek or stage
+**Placement** (`layoutLiveRounds` in `shared/src/live/bonusRounds.ts`): every round is a star on
+the competition's one progress bar (see §39). A table-stage gameweek anchor puts it after that
+gameweek's dot; a stage anchor (matchday null) after the stage's last dot; no anchor before
+everything. (Before §39 a stage anchor made a pill between stage pills; the pills are gone.) Rounds sharing an anchor sort by first kickoff. An anchor whose gameweek or stage
 has gone degrades gracefully rather than losing the round.
 
 | Decision | Why |
@@ -2165,9 +2165,17 @@ has gone degrades gracefully rather than losing the round.
 
 The Champions League knockout phase as rounds in the predictor: every stage but the final is
 **two rounds, one per leg** (matchday 1 and 2, which is how football-data numbers legs), the final
-one round (matchday 1). They look and behave like league-phase gameweeks: a dot per leg in the
-strip, one leg's matches at a time, admin-selected matches only. The rounds are **test-only**
-until an admin releases them.
+one round (matchday 1). They look and behave like league-phase gameweeks: admin-selected matches
+only, one round's matches at a time. The rounds are **test-only** until an admin releases them.
+
+**One progress bar.** The fixtures tab (and the read-only view of another member's predictions)
+has no stage pills. Every round of every stage is a dot on one bar, in order — the league
+phase's gameweeks, then each knockout leg, then the final — with a thin divider where one stage
+gives way to the next and bonus rounds as stars among the dots. The final is drawn as a
+trophy instead of a dot (`isTrophyStage`: a single-legged knockout stage), coloured by the same
+three states. A dot sets stage and round
+together; its label names both ("Round of 16: 1st leg"). Built by `buildLiveRoundStrip` and
+`placeBonusRoundsOnStrip` in `client/src/lib/liveRounds.ts`, pinned by `liveRounds.test.ts`.
 
 | Stage | 1st leg | 2nd leg |
 |---|---|---|

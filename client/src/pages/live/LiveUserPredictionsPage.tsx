@@ -15,9 +15,14 @@ import { useT } from '@/lib/useT';
 import { useAuthStore } from '@/store/authStore';
 import LiveFixtureList from '@/components/live/LiveFixtureList';
 import LiveBonusRoundPanel from '@/components/live/LiveBonusRoundPanel';
-import { Star } from 'lucide-react';
 import { layoutLiveRounds } from '@tournament-predictor/shared';
-import { isRoundedStage, liveRoundHeading, liveRoundShortName } from '@/lib/liveRounds';
+import {
+  buildLiveRoundStrip,
+  isTrophyStage,
+  liveRoundHeading,
+  liveRoundKey,
+  placeBonusRoundsOnStrip,
+} from '@/lib/liveRounds';
 import LiveGameweekProgress, {
   type LiveBonusStripItem,
   type LiveGameweekState,
@@ -50,7 +55,7 @@ type TabId = (typeof TABS)[number];
 
 export default function LiveUserPredictionsPage() {
   const { id, userId } = useParams<{ id: string; userId: string }>();
-  const { t } = useT();
+  const { t, language } = useT();
   const { user } = useAuthStore();
   const [searchParams] = useSearchParams();
 
@@ -183,23 +188,26 @@ export default function LiveUserPredictionsPage() {
     [stageAllFixtures],
   );
 
+  // The same single progress bar as the competition page, over every stage's rounds.
+  const strip = useMemo(() => buildLiveRoundStrip(stages, fixtures), [stages, fixtures]);
   const matchdays = useMemo(
-    () =>
-      [
-        ...new Set(stageAllFixtures.map(f => f.matchday).filter((m): m is number => m != null)),
-      ].sort((a, b) => a - b),
-    [stageAllFixtures],
+    () => strip.filter(r => r.stageKey === stageKey).map(r => r.matchday),
+    [strip, stageKey],
   );
 
-  // The same dots as the member's own page, reading their predictions: a green week is one
-  // they filled in completely, a yellow one a week they left holes in.
+  // The same dots as the member's own page, reading their predictions: a green round is
+  // one they filled in completely, a yellow one a round they left holes in.
   const gameweekProgress = useMemo<LiveGameweekProgressItem[]>(
     () =>
-      matchdays.map(matchday => {
-        const selected = stageFixtures.filter(f => f.matchday === matchday);
+      strip.map(round => {
+        const selected = fixtures.filter(
+          f => f.isSelected && f.stageKey === round.stageKey && f.matchday === round.matchday,
+        );
         const predicted = selected.filter(f => f.prediction !== null).length;
         return {
-          matchday,
+          ...round,
+          label: liveRoundHeading(t, stages.find(st => st.key === round.stageKey), round.matchday),
+          trophy: isTrophyStage(stages.find(st => st.key === round.stageKey)),
           selected: selected.length,
           done: predicted,
           state:
@@ -210,7 +218,9 @@ export default function LiveUserPredictionsPage() {
                 : 'partial',
         };
       }),
-    [matchdays, stageFixtures],
+    // t changes with the language, which renames the rounds.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [strip, fixtures, stages, language],
   );
 
   const shownMatchday = matchday ?? matchdays[0] ?? null;
@@ -229,34 +239,25 @@ export default function LiveUserPredictionsPage() {
         stages.map(stage => ({
           key: stage.key,
           kind: stage.kind,
-          matchdays: [
-            ...new Set(
-              fixtures
-                .filter(f => f.stageKey === stage.key && f.matchday != null)
-                .map(f => f.matchday as number),
-            ),
-          ].sort((a, b) => a - b),
+          matchdays: strip.filter(r => r.stageKey === stage.key).map(r => r.matchday),
         })),
         bonusRounds,
       ),
-    [stages, fixtures, bonusRounds],
+    [stages, strip, bonusRounds],
   );
 
-  const bonusStrip = useMemo<LiveBonusStripItem[]>(() => {
-    const byMatchday = stageKey ? roundLayout.inStage.get(stageKey) : undefined;
-    if (!byMatchday) return [];
-    return [...byMatchday.entries()].flatMap(([afterMatchday, rounds]) =>
-      rounds.map(round => {
+  const bonusStrip = useMemo<LiveBonusStripItem[]>(
+    () =>
+      placeBonusRoundsOnStrip(roundLayout, strip).map(({ round, afterKey }) => {
         const done = round.fixtures.filter(f => f.prediction !== null).length;
         const state: LiveGameweekState =
           round.fixtures.length === 0 ? 'empty' : done === round.fixtures.length ? 'complete' : 'partial';
-        return { id: round.id, name: round.name, afterMatchday, done, selected: round.fixtures.length, state };
+        return { id: round.id, name: round.name, afterKey, done, selected: round.fixtures.length, state };
       }),
-    );
-  }, [roundLayout, stageKey]);
+    [roundLayout, strip],
+  );
 
   const shownBonusRound = bonusRounds.find(r => r.id === bonusRoundId) ?? null;
-  const bonusRoundInStrip = !!shownBonusRound && bonusStrip.some(b => b.id === shownBonusRound.id);
 
   if (loadingCompetition) return <LoadingSpinner />;
   if (!competition) {
@@ -340,62 +341,18 @@ export default function LiveUserPredictionsPage() {
           </p>
         ) : (
           <>
-            {roundLayout.top.length > 1 && (
-              <div className="mb-3 flex flex-wrap gap-1.5">
-                {roundLayout.top.map(item => {
-                  if (item.type === 'bonus') {
-                    const isCurrent = item.round.id === bonusRoundId;
-                    return (
-                      <button
-                        key={`bonus-${item.round.id}`}
-                        onClick={() => setBonusRoundId(item.round.id)}
-                        className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                          isCurrent
-                            ? 'bg-amber-500 text-white'
-                            : 'bg-amber-500/15 text-amber-700 hover:text-amber-900 dark:text-amber-300'
-                        }`}
-                      >
-                        <Star className="h-3 w-3 fill-current" aria-hidden />
-                        {item.round.name}
-                      </button>
-                    );
-                  }
-                  const stage = stages.find(s => s.key === item.stageKey)!;
-                  return (
-                    <button
-                      key={stage.key}
-                      onClick={() => {
-                        setStageKey(stage.key);
-                        setMatchday(null);
-                        setBonusRoundId(null);
-                      }}
-                      className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                        stage.key === stageKey && (!shownBonusRound || bonusRoundInStrip)
-                          ? 'bg-primary text-primary-foreground'
-                          : 'bg-muted text-muted-foreground hover:text-foreground'
-                      }`}
-                    >
-                      {t(stage.labelKey)}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
-            {isRoundedStage(stageDef) && matchdays.length > 0 && (!shownBonusRound || bonusRoundInStrip) && (
-              <LiveGameweekProgress
-                items={gameweekProgress}
-                roundName={md => liveRoundShortName(t, stageDef, md)}
-                current={shownMatchday}
-                onSelect={md => {
-                  setMatchday(md);
-                  setBonusRoundId(null);
-                }}
-                bonus={bonusStrip}
-                currentBonusId={bonusRoundId}
-                onSelectBonus={setBonusRoundId}
-              />
-            )}
+            <LiveGameweekProgress
+              items={gameweekProgress}
+              current={stageKey && shownMatchday !== null ? liveRoundKey(stageKey, shownMatchday) : null}
+              onSelect={round => {
+                setStageKey(round.stageKey);
+                setMatchday(round.matchday);
+                setBonusRoundId(null);
+              }}
+              bonus={bonusStrip}
+              currentBonusId={bonusRoundId}
+              onSelectBonus={setBonusRoundId}
+            />
 
             {shownBonusRound ? (
               <LiveBonusRoundPanel
@@ -410,7 +367,7 @@ export default function LiveUserPredictionsPage() {
               />
             ) : (
             <>
-            {isRoundedStage(stageDef) && matchdays.length > 0 && (
+            {stageDef && shownMatchday !== null && (
               <>
                 <h2 className="mb-3 text-lg font-semibold">
                   {liveRoundHeading(t, stageDef, shownMatchday ?? 0)}
@@ -425,8 +382,8 @@ export default function LiveUserPredictionsPage() {
               fixtures={stageFixtures}
               stageKind={stageDef?.kind ?? 'table'}
               legs={stageDef?.legs ?? 1}
-              matchday={isRoundedStage(stageDef) ? shownMatchday : null}
-              emptyMessage={isRoundedStage(stageDef) ? t('live.gameweekNoneSelected') : undefined}
+              matchday={shownMatchday}
+              emptyMessage={t('live.gameweekNoneSelected')}
               onSave={() => {}}
               savingFixtureId={null}
               savedFixtures={{}}

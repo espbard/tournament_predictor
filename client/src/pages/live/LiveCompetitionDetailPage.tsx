@@ -32,7 +32,13 @@ import LiveTablePredictionGate from '@/components/live/LiveTablePredictionGate';
 import LiveBonusQuestionsGate from '@/components/live/LiveBonusQuestionsGate';
 import InviteButton from '@/components/InviteButton';
 import { useAuthStore } from '@/store/authStore';
-import { isRoundedStage, liveRoundHeading, liveRoundShortName } from '@/lib/liveRounds';
+import {
+  buildLiveRoundStrip,
+  isTrophyStage,
+  liveRoundHeading,
+  liveRoundKey,
+  placeBonusRoundsOnStrip,
+} from '@/lib/liveRounds';
 import { layoutLiveRounds, nextLiveRound, type Team } from '@tournament-predictor/shared';
 
 // ── Live competition ──────────────────────────────────────────────────────────
@@ -318,19 +324,18 @@ export default function LiveCompetitionDetailPage() {
     [stageAllFixtures],
   );
 
-  // The stage's rounds: its fixtures' matchdays plus any the calendar declares, so a leg
-  // nobody has fetched matches for yet still gets its dot.
-  const matchdays = useMemo(
-    () =>
-      [
-        ...new Set([
-          ...stageAllFixtures.map(f => f.matchday).filter((m): m is number => m != null),
-          ...(competition?.rounds ?? []).filter(r => r.stageKey === stageKey).map(r => r.matchday),
-        ]),
-      ].sort((a, b) => a - b),
-    [stageAllFixtures, competition?.rounds, stageKey],
+  // Every round of every stage, in order, for the one progress bar: the fixtures'
+  // matchdays plus any the calendar declares, so a knockout leg nobody has fetched matches
+  // for yet still gets its dot.
+  const strip = useMemo(
+    () => buildLiveRoundStrip(stages, fixtures, competition?.rounds ?? []),
+    [stages, fixtures, competition?.rounds],
   );
-  const isRounded = isRoundedStage(stageDef);
+  // The shown stage's rounds, for the default round when only a stage is known.
+  const matchdays = useMemo(
+    () => strip.filter(r => r.stageKey === stageKey).map(r => r.matchday),
+    [strip, stageKey],
+  );
   const isTestOnlyStage = !!stageKey && (competition?.testOnlyStageKeys ?? []).includes(stageKey);
 
   // One dot per gameweek: grey with nothing to predict, green once every selected match
@@ -342,15 +347,19 @@ export default function LiveCompetitionDetailPage() {
   // would leave its week yellow for good.
   const gameweekProgress = useMemo<LiveGameweekProgressItem[]>(
     () =>
-      matchdays.map(matchday => {
-        const selected = stageFixtures.filter(f => f.matchday === matchday);
+      strip.map(round => {
+        const selected = fixtures.filter(
+          f => f.isSelected && f.stageKey === round.stageKey && f.matchday === round.matchday,
+        );
         const done = selected.filter(f =>
           isSpectator
             ? f.status === 'finished' || f.status === 'cancelled'
             : f.prediction !== null,
         ).length;
         return {
-          matchday,
+          ...round,
+          label: liveRoundHeading(t, stages.find(st => st.key === round.stageKey), round.matchday),
+          trophy: isTrophyStage(stages.find(st => st.key === round.stageKey)),
           selected: selected.length,
           done,
           state:
@@ -361,7 +370,9 @@ export default function LiveCompetitionDetailPage() {
                 : 'partial',
         };
       }),
-    [matchdays, stageFixtures, isSpectator],
+    // t changes with the language, which renames the rounds.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [strip, fixtures, stages, isSpectator, language],
   );
 
   // ── The next round ─────────────────────────────────────────────────────────
@@ -409,25 +420,19 @@ export default function LiveCompetitionDetailPage() {
   // ── Bonus rounds ───────────────────────────────────────────────────────────
   //
   // Where each round sits among the stages and gameweeks — shared/src/live/bonusRounds.ts
-  // decides; this only draws it. A round after a gameweek goes in that stage's strip as a
-  // star, one after a whole stage (or before everything) becomes a pill between stages.
+  // decides; this only draws it. Every bonus round is a star on the one progress bar: after
+  // its gameweek, after its whole stage, or before everything.
   const roundLayout = useMemo(
     () =>
       layoutLiveRounds(
         stages.map(stage => ({
           key: stage.key,
           kind: stage.kind,
-          matchdays: [
-            ...new Set(
-              fixtures
-                .filter(f => f.stageKey === stage.key && f.matchday != null)
-                .map(f => f.matchday as number),
-            ),
-          ].sort((a, b) => a - b),
+          matchdays: strip.filter(r => r.stageKey === stage.key).map(r => r.matchday),
         })),
         bonusRounds,
       ),
-    [stages, fixtures, bonusRounds],
+    [stages, strip, bonusRounds],
   );
 
   const bonusRoundState = (round: (typeof bonusRounds)[number]) => {
@@ -439,21 +444,20 @@ export default function LiveCompetitionDetailPage() {
     return { done, selected: round.fixtures.length, state };
   };
 
-  const bonusStrip = useMemo<LiveBonusStripItem[]>(() => {
-    const byMatchday = stageKey ? roundLayout.inStage.get(stageKey) : undefined;
-    if (!byMatchday) return [];
-    return [...byMatchday.entries()].flatMap(([afterMatchday, rounds]) =>
-      rounds.map(round => ({ id: round.id, name: round.name, afterMatchday, ...bonusRoundState(round) })),
-    );
+  const bonusStrip = useMemo<LiveBonusStripItem[]>(
+    () =>
+      placeBonusRoundsOnStrip(roundLayout, strip).map(({ round, afterKey }) => ({
+        id: round.id,
+        name: round.name,
+        afterKey,
+        ...bonusRoundState(round),
+      })),
     // bonusRoundState only reads isSpectator, which is in the list.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roundLayout, stageKey, isSpectator]);
+    [roundLayout, strip, isSpectator],
+  );
 
   const shownBonusRound = bonusRounds.find(r => r.id === bonusRoundId) ?? null;
-  // A round from the strip keeps the strip on screen, so the viewer can step back to the
-  // gameweeks around it; a round between stages replaces the stage's view entirely.
-  const bonusRoundInStrip = !!shownBonusRound && bonusStrip.some(b => b.id === shownBonusRound.id);
-  const showTopRow = roundLayout.top.length > 1;
   const shownSelectedCount = stageFixtures.filter(
     f => shownMatchday === null || f.matchday === shownMatchday,
   ).length;
@@ -968,70 +972,28 @@ export default function LiveCompetitionDetailPage() {
             // scroll-mt keeps the stage pills clear of the top edge when the "next round"
             // reminder scrolls the matches into view.
             <div ref={fixturesRef} className="scroll-mt-4">
-              {showTopRow && (
-                <div className="mb-3 flex flex-wrap gap-1.5">
-                  {roundLayout.top.map(item => {
-                    if (item.type === 'bonus') {
-                      const isCurrent = item.round.id === bonusRoundId;
-                      return (
-                        <button
-                          key={`bonus-${item.round.id}`}
-                          onClick={() => setBonusRoundId(item.round.id)}
-                          className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                            isCurrent
-                              ? 'bg-amber-500 text-white'
-                              : 'bg-amber-500/15 text-amber-700 hover:text-amber-900 dark:text-amber-300'
-                          }`}
-                        >
-                          <Star className="h-3 w-3 fill-current" aria-hidden />
-                          {item.round.name}
-                        </button>
-                      );
-                    }
-                    const stage = stages.find(s => s.key === item.stageKey)!;
-                    return (
-                      <button
-                        key={stage.key}
-                        onClick={() => {
-                          setStageKey(stage.key);
-                          setMatchday(null);
-                          setBonusRoundId(null);
-                        }}
-                        className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                          stage.key === stageKey && (!shownBonusRound || bonusRoundInStrip)
-                            ? 'bg-primary text-primary-foreground'
-                            : 'bg-muted text-muted-foreground hover:text-foreground'
-                        }`}
-                      >
-                        {t(stage.labelKey)}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
+              {/* One progress bar for the whole competition: a dot per round of every stage,
+                  bonus rounds as stars among them. */}
+              <LiveGameweekProgress
+                mode={isSpectator ? 'results' : 'predictions'}
+                items={gameweekProgress}
+                current={stageKey && shownMatchday !== null ? liveRoundKey(stageKey, shownMatchday) : null}
+                onSelect={round => {
+                  setStageKey(round.stageKey);
+                  setMatchday(round.matchday);
+                  setBonusRoundId(null);
+                }}
+                bonus={bonusStrip}
+                currentBonusId={bonusRoundId}
+                onSelectBonus={setBonusRoundId}
+              />
 
-              {isTestOnlyStage && (!shownBonusRound || bonusRoundInStrip) && (
+              {isTestOnlyStage && !shownBonusRound && (
                 // Only test accounts and admins ever get here; the badge says why the
                 // stage is not on everybody's page yet.
                 <p className="mb-2 inline-block rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300">
                   {t('live.testOnlyBadge')}
                 </p>
-              )}
-
-              {isRounded && matchdays.length > 0 && (!shownBonusRound || bonusRoundInStrip) && (
-                <LiveGameweekProgress
-                  mode={isSpectator ? 'results' : 'predictions'}
-                  roundName={md => liveRoundShortName(t, stageDef, md)}
-                  items={gameweekProgress}
-                  current={shownMatchday}
-                  onSelect={md => {
-                    setMatchday(md);
-                    setBonusRoundId(null);
-                  }}
-                  bonus={bonusStrip}
-                  currentBonusId={bonusRoundId}
-                  onSelectBonus={setBonusRoundId}
-                />
               )}
 
               {shownBonusRound ? (
@@ -1047,7 +1009,7 @@ export default function LiveCompetitionDetailPage() {
                 />
               ) : (
               <>
-              {isRounded && matchdays.length > 0 && (
+              {stageDef && shownMatchday !== null && (
                 <>
                   <div className="mb-3">
                     <h2 className="text-lg font-semibold">
@@ -1066,9 +1028,9 @@ export default function LiveCompetitionDetailPage() {
                 fixtures={stageFixtures}
                 stageKind={stageDef?.kind ?? 'table'}
                 legs={stageDef?.legs ?? 1}
-                // A rounded stage shows one round at a time; a final is the whole stage.
-                matchday={isRounded ? shownMatchday : null}
-                emptyMessage={isRounded ? t('live.gameweekNoneSelected') : undefined}
+                // One round at a time, whatever the stage.
+                matchday={shownMatchday}
+                emptyMessage={t('live.gameweekNoneSelected')}
                 onSave={handleSave}
                 savingFixtureId={savingFixtureId}
                 savedFixtures={savedFixtures}
